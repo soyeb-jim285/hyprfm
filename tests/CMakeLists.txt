@@ -9,3 +9,16 @@ target_include_directories(tst_configmanager PRIVATE
 )
 target_link_libraries(tst_configmanager PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME tst_configmanager COMMAND tst_configmanager)
+
+add_executable(tst_themeloader tst_themeloader.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/themeloader.cpp
+)
+target_include_directories(tst_themeloader PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/third_party
+)
+target_compile_definitions(tst_themeloader PRIVATE
+    THEMES_DIR="${CMAKE_SOURCE_DIR}/themes"
+)
+target_link_libraries(tst_themeloader PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+add_test(NAME tst_themeloader COMMAND tst_themeloader)
