@@ -2,8 +2,10 @@ qt_add_executable(hyprfm
     main.cpp
     services/configmanager.cpp
     services/themeloader.cpp
+    services/clipboardmanager.cpp
     models/tabmodel.cpp
     models/tablistmodel.cpp
+    models/bookmarkmodel.cpp
 )
 
 qt_add_qml_module(hyprfm

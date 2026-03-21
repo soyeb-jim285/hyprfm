@@ -30,3 +30,17 @@ add_executable(tst_tabmodel tst_tabmodel.cpp
 target_include_directories(tst_tabmodel PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_tabmodel PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME tst_tabmodel COMMAND tst_tabmodel)
+
+add_executable(tst_clipboardmanager tst_clipboardmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/clipboardmanager.cpp
+)
+target_include_directories(tst_clipboardmanager PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_clipboardmanager PRIVATE Qt6::Test Qt6::Core)
+add_test(NAME tst_clipboardmanager COMMAND tst_clipboardmanager)
+
+add_executable(tst_bookmarkmodel tst_bookmarkmodel.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/bookmarkmodel.cpp
+)
+target_include_directories(tst_bookmarkmodel PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_bookmarkmodel PRIVATE Qt6::Test Qt6::Core)
+add_test(NAME tst_bookmarkmodel COMMAND tst_bookmarkmodel)
