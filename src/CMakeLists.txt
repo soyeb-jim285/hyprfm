@@ -10,11 +10,15 @@ qt_add_executable(hyprfm
     models/filesystemmodel.cpp
 )
 
+set_source_files_properties(qml/theme/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(hyprfm
     URI HyprFM
     VERSION 1.0
     QML_FILES
         qml/main.qml
+        qml/theme/Theme.qml
+        qml/components/StatusBar.qml
 )
 
 target_link_libraries(hyprfm PRIVATE
