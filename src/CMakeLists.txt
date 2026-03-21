@@ -8,6 +8,7 @@ qt_add_executable(hyprfm
     models/tablistmodel.cpp
     models/bookmarkmodel.cpp
     models/filesystemmodel.cpp
+    models/devicemodel.cpp
     providers/thumbnailprovider.cpp
 )
 

@@ -5,6 +5,8 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QCoreApplication>
+#include <QProcess>
+#include <QDebug>
 
 #include "services/configmanager.h"
 #include "services/themeloader.h"
@@ -13,6 +15,7 @@
 #include "models/filesystemmodel.h"
 #include "models/tablistmodel.h"
 #include "models/bookmarkmodel.h"
+#include "models/devicemodel.h"
 #include "providers/thumbnailprovider.h"
 
 int main(int argc, char *argv[])
@@ -58,6 +61,21 @@ int main(int argc, char *argv[])
     // Connect lastWindowClosed to quit
     QObject::connect(&app, &QGuiApplication::lastWindowClosed, &app, &QGuiApplication::quit);
 
+    // Create DeviceModel
+    DeviceModel *devices = new DeviceModel(&app);
+
+    // Check for required CLI tools and warn if missing
+    const QStringList requiredTools = {"rsync", "gio", "xdg-open", "wl-copy"};
+    for (const QString &tool : requiredTools) {
+        QProcess which;
+        which.setProgram("which");
+        which.setArguments({tool});
+        which.start();
+        which.waitForFinished(2000);
+        if (which.exitCode() != 0)
+            qWarning() << "HyprFM: optional tool not found:" << tool;
+    }
+
     QQmlApplicationEngine engine;
 
     // Register image providers
@@ -71,6 +89,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("fileOps", fileOps);
     engine.rootContext()->setContextProperty("clipboard", clipboard);
     engine.rootContext()->setContextProperty("fsModel", fsModel);
+    engine.rootContext()->setContextProperty("devices", devices);
 
     engine.loadFromModule("HyprFM", "Main");
 

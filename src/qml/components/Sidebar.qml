@@ -109,19 +109,150 @@ Rectangle {
             }
         }
 
-        // Devices section placeholder
+        // Devices section
         Item {
             Layout.fillWidth: true
-            height: 32
+            implicitHeight: devicesColumn.implicitHeight
 
-            Text {
+            Column {
+                id: devicesColumn
                 anchors.left: parent.left
-                anchors.leftMargin: Theme.spacing
-                anchors.verticalCenter: parent.verticalCenter
-                text: "DEVICES"
-                color: Theme.muted
-                font.pixelSize: Theme.fontSmall - 1
-                font.letterSpacing: 1.0
+                anchors.right: parent.right
+
+                // Section header
+                Item {
+                    width: parent.width
+                    height: 32
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: Theme.spacing
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "DEVICES"
+                        color: Theme.muted
+                        font.pixelSize: Theme.fontSmall - 1
+                        font.letterSpacing: 1.0
+                    }
+                }
+
+                // Device entries
+                Repeater {
+                    model: devices
+
+                    delegate: Rectangle {
+                        id: deviceDelegate
+                        width: parent.width
+                        height: deviceContent.implicitHeight + 8
+                        color: deviceHoverArea.containsMouse
+                            ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
+                            : "transparent"
+                        radius: Theme.radiusSmall
+
+                        Column {
+                            id: deviceContent
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: Theme.spacing
+                            anchors.rightMargin: Theme.spacing
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4
+
+                            // Device row: icon + name + eject button
+                            Item {
+                                width: parent.width
+                                height: 24
+
+                                Row {
+                                    anchors.left: parent.left
+                                    anchors.right: ejectBtn.visible ? ejectBtn.left : parent.right
+                                    anchors.rightMargin: 4
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: Theme.spacing
+
+                                    Text {
+                                        text: model.removable ? "🔌" : "💿"
+                                        font.pixelSize: Theme.fontNormal
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+
+                                    Text {
+                                        text: model.deviceName
+                                        color: Theme.text
+                                        font.pixelSize: Theme.fontNormal
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideRight
+                                        width: parent.width - 24 - Theme.spacing
+                                    }
+                                }
+
+                                Text {
+                                    id: ejectBtn
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: model.removable
+                                    text: "⏏"
+                                    font.pixelSize: Theme.fontNormal
+                                    color: ejectHover.containsMouse ? Theme.error : Theme.muted
+
+                                    MouseArea {
+                                        id: ejectHover
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: devices.unmount(index)
+                                    }
+                                }
+                            }
+
+                            // Storage usage bar
+                            Rectangle {
+                                width: parent.width
+                                height: 4
+                                radius: 2
+                                color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
+
+                                Rectangle {
+                                    width: parent.width * Math.min(model.usagePercent / 100.0, 1.0)
+                                    height: parent.height
+                                    radius: parent.radius
+                                    color: model.usagePercent >= 90
+                                        ? Theme.error
+                                        : model.usagePercent >= 75
+                                            ? Theme.warning
+                                            : Theme.accent
+                                }
+                            }
+
+                            // "X free of Y" text
+                            Text {
+                                width: parent.width
+                                text: {
+                                    function fmt(b) {
+                                        if (b <= 0) return "0 B"
+                                        const units = ["B","KB","MB","GB","TB"]
+                                        let i = 0
+                                        let v = b
+                                        while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
+                                        return v.toFixed(1) + " " + units[i]
+                                    }
+                                    return fmt(model.freeSpace) + " free of " + fmt(model.totalSize)
+                                }
+                                color: Theme.muted
+                                font.pixelSize: Theme.fontSmall - 1
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        MouseArea {
+                            id: deviceHoverArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            // Navigate to mount point on click
+                            onClicked: root.bookmarkClicked(model.mountPoint)
+                        }
+                    }
+                }
             }
         }
 
