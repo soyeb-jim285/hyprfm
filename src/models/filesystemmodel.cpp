@@ -1,6 +1,7 @@
 #include "models/filesystemmodel.h"
 #include <QLocale>
 #include <QDateTime>
+#include <QDebug>
 
 FileSystemModel::FileSystemModel(QObject *parent)
     : QAbstractListModel(parent)

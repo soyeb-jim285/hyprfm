@@ -32,6 +32,13 @@ ApplicationWindow {
         }
     }
 
+    // Force initial load after QML is fully set up
+    Component.onCompleted: {
+        if (tabModel.activeTab) {
+            fsModel.refresh()
+        }
+    }
+
     // ── Sidebar visibility (local property; config.sidebarVisible is read-only) ─
     property bool sidebarVisible: config.sidebarVisible
 
@@ -82,8 +89,7 @@ ApplicationWindow {
 
         var indices = subView.selectedIndices
         for (var i = 0; i < indices.length; i++) {
-            var idx = fsModel.index(indices[i], 0, fsModel.rootIndex())
-            var fp = fsModel.filePath(idx)
+            var fp = fsModel.filePath(indices[i])
             if (fp !== "") paths.push(fp)
         }
         return paths
@@ -480,7 +486,7 @@ ApplicationWindow {
                 id: fileViewContainer
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                fsModel: fsModel
+                fileModel: fsModel
                 viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                 currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
 

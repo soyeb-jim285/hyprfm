@@ -6,7 +6,7 @@ Item {
 
     // "grid" | "list" | "detailed"
     property string viewMode: "grid"
-    property var fsModel: null
+    property var fileModel: null
     property string currentPath: ""
 
     signal fileActivated(string filePath, bool isDirectory)
@@ -22,7 +22,7 @@ Item {
         id: gridView
         anchors.fill: parent
         visible: root.viewMode === "grid"
-        model: root.fsModel
+        model: root.fileModel
         currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
@@ -34,7 +34,7 @@ Item {
         id: listView
         anchors.fill: parent
         visible: root.viewMode === "list"
-        model: root.fsModel
+        model: root.fileModel
         currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
@@ -46,13 +46,13 @@ Item {
         id: detailedView
         anchors.fill: parent
         visible: root.viewMode === "detailed"
-        viewModel: root.fsModel
+        viewModel: root.fileModel
         currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
         onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
         onSortRequested: (col, asc) => {
-            if (root.fsModel) root.fsModel.sortByColumn(col, asc)
+            if (root.fileModel) root.fileModel.sortByColumn(col, asc)
         }
         onSelectedIndicesChanged: root.selectionChanged()
     }
