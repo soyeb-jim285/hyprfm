@@ -21,7 +21,6 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         spacing: 8
-        layoutDirection: Qt.BottomToTop
 
         Repeater {
             model: toastModel

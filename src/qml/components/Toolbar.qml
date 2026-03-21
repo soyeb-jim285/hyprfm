@@ -38,7 +38,7 @@ Rectangle {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                enabled: root.activeTab && root.activeTab.canGoBack
+                enabled: root.activeTab ? root.activeTab.canGoBack : false
                 onClicked: { if (root.activeTab) root.activeTab.goBack() }
             }
         }
@@ -65,7 +65,7 @@ Rectangle {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                enabled: root.activeTab && root.activeTab.canGoForward
+                enabled: root.activeTab ? root.activeTab.canGoForward : false
                 onClicked: { if (root.activeTab) root.activeTab.goForward() }
             }
         }

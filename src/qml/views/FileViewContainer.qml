@@ -18,13 +18,13 @@ Item {
     property alias listViewItem: listView
     property alias detailedViewItem: detailedView
 
-    // Recompute rootIndex whenever fsModel or its rootPath changes
-    property var currentRootIndex: fsModel ? fsModel.rootIndex() : null
+    // Compute rootIndex, update when path changes
+    property var currentRootIndex: fsModel ? fsModel.rootIndex() : undefined
 
     Connections {
         target: fsModel
         function onRootPathChanged() {
-            root.currentRootIndex = root.fsModel ? root.fsModel.rootIndex() : null
+            root.currentRootIndex = root.fsModel ? root.fsModel.rootIndex() : undefined
         }
     }
 
@@ -32,8 +32,8 @@ Item {
         id: gridView
         anchors.fill: parent
         visible: root.viewMode === "grid"
-        model: root.fsModel
-        rootIndex: root.currentRootIndex
+        fsModel: root.fsModel
+        fsRootIndex: root.currentRootIndex
         currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
@@ -45,8 +45,8 @@ Item {
         id: listView
         anchors.fill: parent
         visible: root.viewMode === "list"
-        model: root.fsModel
-        rootIndex: root.currentRootIndex
+        fsModel: root.fsModel
+        fsRootIndex: root.currentRootIndex
         currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)

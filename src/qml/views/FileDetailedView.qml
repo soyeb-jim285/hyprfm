@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQml.Models
 import HyprFM
 
 Item {
@@ -17,8 +18,7 @@ Item {
     property var viewModel
     property var viewRootIndex
 
-    onViewModelChanged: listView.model = viewModel
-    onViewRootIndexChanged: listView.rootIndex = viewRootIndex
+    // Model is set via DelegateModel inside listView
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
@@ -176,7 +176,11 @@ Item {
                 policy: ScrollBar.AsNeeded
             }
 
-            delegate: Item {
+            model: DelegateModel {
+                model: root.viewModel
+                rootIndex: root.viewRootIndex
+
+                delegate: Item {
                 id: detRow
                 width: listView.width
                 height: 28
@@ -357,6 +361,7 @@ Item {
                     color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05)
                 }
             }
+            } // end DelegateModel
 
             // ── Drop area ─────────────────────────────────────────────────
             DropArea {

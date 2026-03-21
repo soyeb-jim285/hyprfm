@@ -24,7 +24,8 @@ ApplicationWindow {
     }
 
     Connections {
-        target: tabModel.activeTab
+        target: tabModel.activeTab ?? null
+        ignoreUnknownSignals: true
         function onCurrentPathChanged() {
             if (tabModel.activeTab)
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
