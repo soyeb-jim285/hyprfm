@@ -1,4 +1,7 @@
-qt_add_executable(hyprfm main.cpp)
+qt_add_executable(hyprfm
+    main.cpp
+    services/configmanager.cpp
+)
 
 qt_add_qml_module(hyprfm
     URI HyprFM
@@ -16,4 +19,7 @@ target_link_libraries(hyprfm PRIVATE
     Qt6::DBus
 )
 
-target_include_directories(hyprfm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(hyprfm PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
