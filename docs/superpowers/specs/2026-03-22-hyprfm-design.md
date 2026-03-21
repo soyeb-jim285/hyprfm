@@ -51,7 +51,7 @@ Polished modern style — Nautilus-inspired warmth with Catppuccin theming. Roun
 
 1. **Tab Bar** — Browser-style tabs at the top. Each tab shows the current folder name and a close button. Active tab blends into the content area. `+` button for new tabs.
 
-2. **Toolbar** — Back/forward navigation buttons, breadcrumb path bar (clickable segments, Ctrl+L to type a path), view mode toggle (grid/list/detailed), search button.
+2. **Toolbar** — Back/forward navigation buttons, breadcrumb path bar (clickable segments, Ctrl+L to type a path), view mode toggle (grid/list/detailed). Search button deferred to post-MVP along with fd integration.
 
 3. **Main Area** — Split into:
    - **Sidebar** (~200px, configurable left/right position): Bookmarks section + Devices section with storage usage bars and eject buttons. Operations progress bar anchored at the bottom.
@@ -153,7 +153,6 @@ Right-click opens a context-aware menu:
 - Rename
 - Trash / Delete
 - Open in Terminal
-- Compress / Extract (for archives)
 - New Folder / New File
 - Properties
 
@@ -196,7 +195,6 @@ Default shortcuts (all configurable via config):
 | Permanent delete | Shift+Delete |
 | Toggle hidden | Ctrl+H |
 | Quick preview | Space |
-| Search | Ctrl+F |
 | Path bar focus | Ctrl+L |
 | Toggle sidebar | F9 |
 | Grid view | Ctrl+1 |
