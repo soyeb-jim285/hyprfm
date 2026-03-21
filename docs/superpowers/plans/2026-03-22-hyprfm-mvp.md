@@ -2444,21 +2444,39 @@ git commit -m "feat: add configurable keyboard shortcuts"
 
 - [ ] **Step 1: Create QuickPreview.qml**
 
-Full-window overlay with semi-transparent backdrop. Centered card with: header (filename + close button), content area (Image for images, scrollable Text for text files, "not available" for others). Fade-in animation. Close on Escape or backdrop click.
+Full-window overlay with semi-transparent backdrop. Centered card with: header (filename + close button), content area. Supported preview types:
+- **Images:** QML `Image` element with `fillMode: Image.PreserveAspectFit`
+- **Text files:** Scrollable monospace `Text` in a `Flickable` (load first 100KB via C++ helper)
+- **PDFs:** Use `Image` with `source: "image://thumbnail/" + filePath` for first-page rendering as a fallback. For full PDF preview, use Qt PDF module (`import QtQuick.Pdf; PdfMultiPageView`) if available, otherwise show first-page thumbnail.
 
-- [ ] **Step 2: Add spacebar shortcut**
+Fade-in animation. Close on Escape or backdrop click.
+
+- [ ] **Step 2: Add arrow key navigation while preview is open**
+
+When QuickPreview is visible, Left/Right arrow keys cycle through files in the current directory. Update the preview content and filename header. Wrap around at boundaries.
+
+```qml
+Keys.onLeftPressed: cycleFile(-1)
+Keys.onRightPressed: cycleFile(1)
+
+function cycleFile(direction) {
+    // Get current index in file list, move by direction, clamp, update filePath
+}
+```
+
+- [ ] **Step 3: Add spacebar shortcut**
 
 Toggle preview on selected file.
 
-- [ ] **Step 3: Build and verify**
+- [ ] **Step 4: Build and verify**
 
-Expected: Select file, Space opens preview. Space/Escape closes.
+Expected: Select file, Space opens preview. Arrow keys cycle through files. Space/Escape closes. Images, text, and PDFs render correctly.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/qml/components/QuickPreview.qml src/qml/main.qml src/CMakeLists.txt
-git commit -m "feat: add spacebar quick preview overlay for images and text"
+git commit -m "feat: add spacebar quick preview with PDF support and arrow key cycling"
 ```
 
 ---
