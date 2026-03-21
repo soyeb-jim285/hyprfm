@@ -74,6 +74,7 @@ GridView {
         required property string fileName
         required property string filePath
         required property bool isDir
+        required property string fileIconName
 
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
@@ -109,15 +110,15 @@ GridView {
                 anchors.centerIn: parent
                 spacing: 6
 
-                // Show thumbnail for image files, emoji icon otherwise
+                // Show thumbnail for image files, theme icon otherwise
                 readonly property bool isImage: !delegateItem.isDir &&
                     /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(delegateItem.filePath)
 
                 Image {
                     visible: parent.isImage
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 60
-                    height: 60
+                    width: 48
+                    height: 48
                     fillMode: Image.PreserveAspectFit
                     source: parent.isImage
                         ? ("image://thumbnail/" + delegateItem.filePath)
@@ -125,11 +126,14 @@ GridView {
                     asynchronous: true
                 }
 
-                Text {
+                Image {
                     visible: !parent.isImage
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: delegateItem.isDir ? "📁" : "📄"
-                    font.pixelSize: 36
+                    width: 48
+                    height: 48
+                    source: "image://icon/" + delegateItem.fileIconName
+                    sourceSize: Qt.size(48, 48)
+                    asynchronous: true
                 }
 
                 Text {

@@ -27,6 +27,7 @@ public:
         FilePermissionsRole,
         IsDirRole,
         IsSymlinkRole,
+        FileIconNameRole,
     };
     Q_ENUM(Roles)
 

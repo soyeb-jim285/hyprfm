@@ -187,6 +187,7 @@ Item {
                 required property string fileType
                 required property int filePermissions
                 required property bool isDir
+                required property string fileIconName
 
                 readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
@@ -245,10 +246,13 @@ Item {
                             height: parent.height
                             spacing: 6
 
-                            Text {
+                            Image {
+                                width: 16
+                                height: 16
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: detRow.isDir ? "📁" : "📄"
-                                font.pixelSize: 14
+                                source: "image://icon/" + detRow.fileIconName
+                                sourceSize: Qt.size(16, 16)
+                                asynchronous: true
                             }
 
                             Text {

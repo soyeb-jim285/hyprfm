@@ -66,6 +66,7 @@ ListView {
         required property string fileSizeText
         required property string fileModifiedText
         required property bool isDir
+        required property string fileIconName
 
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
@@ -95,11 +96,13 @@ ListView {
                 spacing: 8
 
                 // Icon
-                Text {
+                Image {
                     width: 20
+                    height: 20
                     anchors.verticalCenter: parent.verticalCenter
-                    text: rowItem.isDir ? "📁" : "📄"
-                    font.pixelSize: 16
+                    source: "image://icon/" + rowItem.fileIconName
+                    sourceSize: Qt.size(20, 20)
+                    asynchronous: true
                 }
 
                 // Name (fills remaining space)

@@ -17,6 +17,8 @@
 #include "models/bookmarkmodel.h"
 #include "models/devicemodel.h"
 #include "providers/thumbnailprovider.h"
+#include "providers/iconprovider.h"
+#include <QIcon>
 
 int main(int argc, char *argv[])
 {
@@ -92,6 +94,10 @@ int main(int argc, char *argv[])
 
     // Register image providers
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
+    engine.addImageProvider("icon", new IconProvider);
+
+    // Use system icon theme (Adwaita, Papirus, etc.)
+    QIcon::setThemeName(QIcon::themeName().isEmpty() ? "Adwaita" : QIcon::themeName());
 
     // Register context properties
     engine.rootContext()->setContextProperty("config", config);

@@ -10,22 +10,22 @@ Rectangle {
 
     color: Theme.mantle
 
-    // Map common folder names to emoji icons
-    function folderIcon(name) {
+    // Map common folder names to freedesktop icon names
+    function folderIconName(name) {
         const lower = name.toLowerCase()
-        if (lower === "home" || lower === "~") return "🏠"
-        if (lower === "documents" || lower === "docs") return "📄"
-        if (lower === "downloads") return "⬇️"
-        if (lower === "pictures" || lower === "photos" || lower === "images") return "🖼️"
-        if (lower === "music" || lower === "audio") return "🎵"
-        if (lower === "videos" || lower === "movies") return "🎬"
-        if (lower === "desktop") return "🖥️"
-        if (lower === "trash") return "🗑️"
-        if (lower === "projects" || lower === "code" || lower === "dev") return "💻"
-        if (lower === "games") return "🎮"
-        if (lower === "public") return "🌐"
-        if (lower === "templates") return "📋"
-        return "📁"
+        if (lower === "home" || lower === "~") return "user-home"
+        if (lower === "documents" || lower === "docs") return "folder-documents"
+        if (lower === "downloads") return "folder-download"
+        if (lower === "pictures" || lower === "photos" || lower === "images") return "folder-pictures"
+        if (lower === "music" || lower === "audio") return "folder-music"
+        if (lower === "videos" || lower === "movies") return "folder-videos"
+        if (lower === "desktop") return "user-desktop"
+        if (lower === "trash") return "user-trash"
+        if (lower === "projects" || lower === "code" || lower === "dev") return "folder-development"
+        if (lower === "games") return "folder-games"
+        if (lower === "public") return "folder-publicshare"
+        if (lower === "templates") return "folder-templates"
+        return "folder"
     }
 
     ColumnLayout {
@@ -81,10 +81,12 @@ Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: Theme.spacing
 
-                            Text {
-                                text: root.folderIcon(model.name)
-                                font.pixelSize: Theme.fontNormal
-                                verticalAlignment: Text.AlignVCenter
+                            Image {
+                                width: 18
+                                height: 18
+                                source: "image://icon/" + root.folderIconName(model.name)
+                                sourceSize: Qt.size(18, 18)
+                                anchors.verticalCenter: parent.verticalCenter
                             }
 
                             Text {
@@ -169,10 +171,12 @@ Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     spacing: Theme.spacing
 
-                                    Text {
-                                        text: model.removable ? "🔌" : "💿"
-                                        font.pixelSize: Theme.fontNormal
-                                        verticalAlignment: Text.AlignVCenter
+                                    Image {
+                                        width: 16
+                                        height: 16
+                                        source: "image://icon/" + (model.removable ? "drive-removable-media" : "drive-harddisk")
+                                        sourceSize: Qt.size(16, 16)
+                                        anchors.verticalCenter: parent.verticalCenter
                                     }
 
                                     Text {
@@ -185,14 +189,16 @@ Rectangle {
                                     }
                                 }
 
-                                Text {
+                                Image {
                                     id: ejectBtn
                                     anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
                                     visible: model.removable
-                                    text: "⏏"
-                                    font.pixelSize: Theme.fontNormal
-                                    color: ejectHover.containsMouse ? Theme.error : Theme.muted
+                                    width: 16
+                                    height: 16
+                                    source: "image://icon/media-eject"
+                                    sourceSize: Qt.size(16, 16)
+                                    opacity: ejectHover.containsMouse ? 1.0 : 0.5
 
                                     MouseArea {
                                         id: ejectHover

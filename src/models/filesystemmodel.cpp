@@ -69,6 +69,35 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
         return info.isDir();
     case IsSymlinkRole:
         return info.isSymLink();
+    case FileIconNameRole: {
+        if (info.isDir())
+            return QStringLiteral("folder");
+        QString suffix = info.suffix().toLower();
+        // Map common suffixes to freedesktop icon names
+        static const QHash<QString, QString> iconMap = {
+            {"png", "image-x-generic"}, {"jpg", "image-x-generic"},
+            {"jpeg", "image-x-generic"}, {"gif", "image-x-generic"},
+            {"svg", "image-x-generic"}, {"webp", "image-x-generic"},
+            {"bmp", "image-x-generic"},
+            {"mp3", "audio-x-generic"}, {"flac", "audio-x-generic"},
+            {"ogg", "audio-x-generic"}, {"wav", "audio-x-generic"},
+            {"mp4", "video-x-generic"}, {"mkv", "video-x-generic"},
+            {"avi", "video-x-generic"}, {"webm", "video-x-generic"},
+            {"pdf", "application-pdf"},
+            {"zip", "package-x-generic"}, {"tar", "package-x-generic"},
+            {"gz", "package-x-generic"}, {"xz", "package-x-generic"},
+            {"7z", "package-x-generic"}, {"rar", "package-x-generic"},
+            {"txt", "text-x-generic"}, {"md", "text-x-generic"},
+            {"cpp", "text-x-generic"}, {"h", "text-x-generic"},
+            {"py", "text-x-generic"}, {"js", "text-x-generic"},
+            {"rs", "text-x-generic"}, {"go", "text-x-generic"},
+            {"sh", "text-x-script"}, {"bash", "text-x-script"},
+            {"html", "text-html"}, {"css", "text-css"},
+            {"json", "text-x-generic"}, {"xml", "text-xml"},
+            {"toml", "text-x-generic"}, {"yaml", "text-x-generic"},
+        };
+        return iconMap.value(suffix, QStringLiteral("text-x-generic"));
+    }
     default:
         return {};
     }
@@ -87,6 +116,7 @@ QHash<int, QByteArray> FileSystemModel::roleNames() const
         {FilePermissionsRole,  "filePermissions"},
         {IsDirRole,            "isDir"},
         {IsSymlinkRole,        "isSymlink"},
+        {FileIconNameRole,     "fileIconName"},
     };
 }
 
