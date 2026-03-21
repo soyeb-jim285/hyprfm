@@ -9,6 +9,7 @@ class TabListModel : public QAbstractListModel
     Q_OBJECT
     Q_PROPERTY(int activeIndex READ activeIndex WRITE setActiveIndex NOTIFY activeIndexChanged)
     Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
+    Q_PROPERTY(TabModel* activeTab READ activeTab NOTIFY activeIndexChanged)
 
 public:
     enum Roles {
