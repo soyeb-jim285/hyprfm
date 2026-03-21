@@ -19,6 +19,11 @@ qt_add_qml_module(hyprfm
         qml/main.qml
         qml/theme/Theme.qml
         qml/components/StatusBar.qml
+        qml/components/OperationsBar.qml
+        qml/components/Sidebar.qml
+        qml/components/FileTabBar.qml
+        qml/components/Breadcrumb.qml
+        qml/components/Toolbar.qml
 )
 
 target_link_libraries(hyprfm PRIVATE

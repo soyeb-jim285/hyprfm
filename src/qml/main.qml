@@ -15,18 +15,15 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
 
-        // Tab bar placeholder
-        Rectangle {
+        // Tab bar
+        FileTabBar {
             Layout.fillWidth: true
-            height: 40
-            color: Theme.mantle
         }
 
-        // Toolbar placeholder
-        Rectangle {
+        // Toolbar with breadcrumb and view mode toggle
+        Toolbar {
             Layout.fillWidth: true
-            height: 44
-            color: Theme.base
+            activeTab: tabModel.activeTab
         }
 
         // Main content area
@@ -35,12 +32,15 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 0
 
-            // Sidebar placeholder
-            Rectangle {
+            // Sidebar with bookmarks
+            Sidebar {
                 width: config.sidebarWidth
                 Layout.fillHeight: true
-                color: Theme.mantle
                 visible: config.sidebarVisible
+                currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+                onBookmarkClicked: (path) => {
+                    if (tabModel.activeTab) tabModel.activeTab.navigateTo(path)
+                }
             }
 
             // File view placeholder
