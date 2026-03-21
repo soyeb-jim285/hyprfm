@@ -67,7 +67,8 @@ void FileSystemModel::sortByColumn(const QString &column, bool ascending)
 
 QString FileSystemModel::filePath(int row) const
 {
-    QModelIndex idx = index(row, 0);
+    QModelIndex ri = rootIndex();
+    QModelIndex idx = index(row, 0, ri);
     if (!idx.isValid())
         return QString();
     return m_fsModel->filePath(mapToSource(idx));
@@ -75,7 +76,8 @@ QString FileSystemModel::filePath(int row) const
 
 bool FileSystemModel::isDir(int row) const
 {
-    QModelIndex idx = index(row, 0);
+    QModelIndex ri = rootIndex();
+    QModelIndex idx = index(row, 0, ri);
     if (!idx.isValid())
         return false;
     return m_fsModel->isDir(mapToSource(idx));
@@ -83,7 +85,8 @@ bool FileSystemModel::isDir(int row) const
 
 QString FileSystemModel::fileName(int row) const
 {
-    QModelIndex idx = index(row, 0);
+    QModelIndex ri = rootIndex();
+    QModelIndex idx = index(row, 0, ri);
     if (!idx.isValid())
         return QString();
     return m_fsModel->fileName(mapToSource(idx));
@@ -163,11 +166,13 @@ bool FileSystemModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceP
 
 void FileSystemModel::updateCounts()
 {
+    QModelIndex ri = rootIndex();
     int files = 0;
     int folders = 0;
-    int rows = rowCount();
+    int rows = rowCount(ri);
     for (int i = 0; i < rows; ++i) {
-        if (isDir(i))
+        QModelIndex child = index(i, 0, ri);
+        if (child.isValid() && m_fsModel->isDir(mapToSource(child)))
             ++folders;
         else
             ++files;
