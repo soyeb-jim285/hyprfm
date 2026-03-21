@@ -44,6 +44,7 @@ target_link_libraries(hyprfm PRIVATE
     Qt6::QuickControls2
     Qt6::DBus
     Qt6::Widgets
+    Qt6::Svg
 )
 
 target_include_directories(hyprfm PRIVATE
