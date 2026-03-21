@@ -3,9 +3,11 @@ qt_add_executable(hyprfm
     services/configmanager.cpp
     services/themeloader.cpp
     services/clipboardmanager.cpp
+    services/fileoperations.cpp
     models/tabmodel.cpp
     models/tablistmodel.cpp
     models/bookmarkmodel.cpp
+    models/filesystemmodel.cpp
 )
 
 qt_add_qml_module(hyprfm
@@ -22,6 +24,7 @@ target_link_libraries(hyprfm PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::DBus
+    Qt6::Widgets
 )
 
 target_include_directories(hyprfm PRIVATE
