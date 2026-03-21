@@ -1,0 +1,7 @@
+build/
+.cache/
+.superpowers/
+CMakeLists.txt.user
+*.o
+*.so
+compile_commands.json
