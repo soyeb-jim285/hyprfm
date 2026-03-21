@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQml.Models
 import HyprFM
 
 Item {
@@ -14,11 +13,8 @@ Item {
     // Current directory path (used as drop target)
     property string currentPath: ""
 
-    // Exposed model/rootIndex bound by FileViewContainer
+    // Model bound by FileViewContainer
     property var viewModel
-    property var viewRootIndex
-
-    // Model is set via DelegateModel inside listView
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
@@ -176,11 +172,9 @@ Item {
                 policy: ScrollBar.AsNeeded
             }
 
-            model: DelegateModel {
-                model: root.viewModel
-                rootIndex: root.viewRootIndex
+            model: root.viewModel
 
-                delegate: Item {
+            delegate: Item {
                 id: detRow
                 width: listView.width
                 height: 28
@@ -361,7 +355,6 @@ Item {
                     color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05)
                 }
             }
-            } // end DelegateModel
 
             // ── Drop area ─────────────────────────────────────────────────
             DropArea {

@@ -1,13 +1,9 @@
 import QtQuick
 import QtQuick.Controls
-import QtQml.Models
 import HyprFM
 
 GridView {
     id: root
-
-    property var fsModel: null
-    property var fsRootIndex: undefined
 
     property var selectedIndices: []
     property int lastSelectedIndex: -1
@@ -69,11 +65,7 @@ GridView {
         return paths.map(function(p) { return "file://" + p }).join("\n")
     }
 
-    model: DelegateModel {
-        model: root.fsModel
-        rootIndex: root.fsRootIndex
-
-        delegate: Item {
+    delegate: Item {
         id: delegateItem
         width: root.cellWidth
         height: root.cellHeight
@@ -88,10 +80,9 @@ GridView {
         // ── Drag support ─────────────────────────────────────────────────────
         Drag.active: dragHandler.active
         Drag.mimeData: {
-            var paths = root.selectedIndices.length > 1 && root.isSelected
+            var paths = root.selectedIndices.length > 1 && delegateItem.isSelected
                 ? root.selectedIndices.map(function(i) {
-                    var mi = fsModel.index(i, 0, fsModel.rootIndex())
-                    return "file://" + fsModel.filePath(mi)
+                    return "file://" + fsModel.filePath(i)
                   })
                 : ["file://" + delegateItem.filePath]
             return { "text/uri-list": paths.join("\n") }
@@ -203,7 +194,6 @@ GridView {
             }
         }
     }
-    } // end DelegateModel
 
     // ── Drop area: accept files dropped onto this view ───────────────────────
     DropArea {

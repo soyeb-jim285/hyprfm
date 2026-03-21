@@ -1,10 +1,13 @@
 #pragma once
 
-#include <QSortFilterProxyModel>
-#include <QFileSystemModel>
+#include <QAbstractListModel>
+#include <QFileSystemWatcher>
+#include <QFileInfo>
+#include <QDir>
+#include <QList>
 #include <QString>
 
-class FileSystemModel : public QSortFilterProxyModel
+class FileSystemModel : public QAbstractListModel
 {
     Q_OBJECT
     Q_PROPERTY(QString rootPath READ rootPath NOTIFY rootPathChanged)
@@ -29,6 +32,10 @@ public:
 
     explicit FileSystemModel(QObject *parent = nullptr);
 
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    QHash<int, QByteArray> roleNames() const override;
+
     QString rootPath() const;
     bool showHidden() const;
     int fileCount() const;
@@ -39,26 +46,22 @@ public:
     Q_INVOKABLE QString filePath(int row) const;
     Q_INVOKABLE bool isDir(int row) const;
     Q_INVOKABLE QString fileName(int row) const;
-    Q_INVOKABLE QModelIndex rootIndex() const;
     Q_INVOKABLE void sortByColumn(const QString &column, bool ascending);
-
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-    QHash<int, QByteArray> roleNames() const override;
+    Q_INVOKABLE void refresh();
 
 signals:
     void rootPathChanged();
     void showHiddenChanged();
     void countsChanged();
 
-protected:
-    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
-
 private:
-    void updateCounts();
+    void reload();
 
-    QFileSystemModel *m_fsModel;
     QString m_rootPath;
     bool m_showHidden = false;
+    QList<QFileInfo> m_entries;
     int m_fileCount = 0;
     int m_folderCount = 0;
+    QFileSystemWatcher m_watcher;
+    QDir::SortFlags m_sortFlags = QDir::Name | QDir::DirsFirst | QDir::IgnoreCase;
 };

@@ -1,104 +1,28 @@
 #include "models/filesystemmodel.h"
-#include <QDateTime>
-#include <QFileInfo>
 #include <QLocale>
+#include <QDateTime>
 
 FileSystemModel::FileSystemModel(QObject *parent)
-    : QSortFilterProxyModel(parent)
-    , m_fsModel(new QFileSystemModel(this))
+    : QAbstractListModel(parent)
 {
-    m_fsModel->setRootPath(QString());
-    setSourceModel(m_fsModel);
-
-    connect(m_fsModel, &QFileSystemModel::directoryLoaded, this, [this](const QString &) {
-        updateCounts();
+    connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this]() {
+        reload();
     });
-
-    connect(this, &QAbstractItemModel::modelReset, this, &FileSystemModel::updateCounts);
-    connect(this, &QAbstractItemModel::rowsInserted, this, &FileSystemModel::updateCounts);
-    connect(this, &QAbstractItemModel::rowsRemoved, this, &FileSystemModel::updateCounts);
 }
 
-QString FileSystemModel::rootPath() const { return m_rootPath; }
-bool FileSystemModel::showHidden() const { return m_showHidden; }
-int FileSystemModel::fileCount() const { return m_fileCount; }
-int FileSystemModel::folderCount() const { return m_folderCount; }
-
-void FileSystemModel::setRootPath(const QString &path)
+int FileSystemModel::rowCount(const QModelIndex &parent) const
 {
-    if (m_rootPath == path)
-        return;
-    m_rootPath = path;
-    m_fsModel->setRootPath(path);
-    emit rootPathChanged();
-    updateCounts();
-}
-
-void FileSystemModel::setShowHidden(bool show)
-{
-    if (m_showHidden == show)
-        return;
-    m_showHidden = show;
-    invalidate();
-    emit showHiddenChanged();
-    updateCounts();
-}
-
-QModelIndex FileSystemModel::rootIndex() const
-{
-    QModelIndex srcRoot = m_fsModel->index(m_rootPath);
-    return mapFromSource(srcRoot);
-}
-
-void FileSystemModel::sortByColumn(const QString &column, bool ascending)
-{
-    Qt::SortOrder order = ascending ? Qt::AscendingOrder : Qt::DescendingOrder;
-    if (column == "name")
-        QSortFilterProxyModel::sort(0, order);
-    else if (column == "size")
-        QSortFilterProxyModel::sort(1, order);
-    else if (column == "modified")
-        QSortFilterProxyModel::sort(3, order);
-    else if (column == "type")
-        QSortFilterProxyModel::sort(2, order);
-    else
-        QSortFilterProxyModel::sort(0, order);
-}
-
-QString FileSystemModel::filePath(int row) const
-{
-    QModelIndex ri = rootIndex();
-    QModelIndex idx = index(row, 0, ri);
-    if (!idx.isValid())
-        return QString();
-    return m_fsModel->filePath(mapToSource(idx));
-}
-
-bool FileSystemModel::isDir(int row) const
-{
-    QModelIndex ri = rootIndex();
-    QModelIndex idx = index(row, 0, ri);
-    if (!idx.isValid())
-        return false;
-    return m_fsModel->isDir(mapToSource(idx));
-}
-
-QString FileSystemModel::fileName(int row) const
-{
-    QModelIndex ri = rootIndex();
-    QModelIndex idx = index(row, 0, ri);
-    if (!idx.isValid())
-        return QString();
-    return m_fsModel->fileName(mapToSource(idx));
+    if (parent.isValid())
+        return 0;
+    return m_entries.size();
 }
 
 QVariant FileSystemModel::data(const QModelIndex &index, int role) const
 {
-    if (!index.isValid())
-        return QVariant();
+    if (!index.isValid() || index.row() >= m_entries.size())
+        return {};
 
-    QModelIndex srcIndex = mapToSource(index);
-    QFileInfo info = m_fsModel->fileInfo(srcIndex);
+    const QFileInfo &info = m_entries.at(index.row());
 
     switch (role) {
     case FileNameRole:
@@ -115,7 +39,7 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
             return QString("%1 B").arg(size);
         else if (size < 1024 * 1024)
             return QString("%1 KB").arg(size / 1024.0, 0, 'f', 1);
-        else if (size < 1024 * 1024 * 1024)
+        else if (size < 1024LL * 1024 * 1024)
             return QString("%1 MB").arg(size / (1024.0 * 1024.0), 0, 'f', 1);
         else
             return QString("%1 GB").arg(size / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
@@ -126,60 +50,150 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
         return info.lastModified();
     case FileModifiedTextRole:
         return QLocale().toString(info.lastModified(), QLocale::ShortFormat);
-    case FilePermissionsRole:
-        return static_cast<int>(info.permissions());
+    case FilePermissionsRole: {
+        auto p = info.permissions();
+        QString s;
+        s += (p & QFile::ReadOwner)  ? 'r' : '-';
+        s += (p & QFile::WriteOwner) ? 'w' : '-';
+        s += (p & QFile::ExeOwner)   ? 'x' : '-';
+        s += (p & QFile::ReadGroup)  ? 'r' : '-';
+        s += (p & QFile::WriteGroup) ? 'w' : '-';
+        s += (p & QFile::ExeGroup)   ? 'x' : '-';
+        s += (p & QFile::ReadOther)  ? 'r' : '-';
+        s += (p & QFile::WriteOther) ? 'w' : '-';
+        s += (p & QFile::ExeOther)   ? 'x' : '-';
+        return s;
+    }
     case IsDirRole:
         return info.isDir();
     case IsSymlinkRole:
         return info.isSymLink();
     default:
-        return QSortFilterProxyModel::data(index, role);
+        return {};
     }
 }
 
 QHash<int, QByteArray> FileSystemModel::roleNames() const
 {
-    QHash<int, QByteArray> roles = QSortFilterProxyModel::roleNames();
-    roles[FileNameRole]         = "fileName";
-    roles[FilePathRole]         = "filePath";
-    roles[FileSizeRole]         = "fileSize";
-    roles[FileSizeTextRole]     = "fileSizeText";
-    roles[FileTypeRole]         = "fileType";
-    roles[FileModifiedRole]     = "fileModified";
-    roles[FileModifiedTextRole] = "fileModifiedText";
-    roles[FilePermissionsRole]  = "filePermissions";
-    roles[IsDirRole]            = "isDir";
-    roles[IsSymlinkRole]        = "isSymlink";
-    return roles;
+    return {
+        {FileNameRole,         "fileName"},
+        {FilePathRole,         "filePath"},
+        {FileSizeRole,         "fileSize"},
+        {FileSizeTextRole,     "fileSizeText"},
+        {FileTypeRole,         "fileType"},
+        {FileModifiedRole,     "fileModified"},
+        {FileModifiedTextRole, "fileModifiedText"},
+        {FilePermissionsRole,  "filePermissions"},
+        {IsDirRole,            "isDir"},
+        {IsSymlinkRole,        "isSymlink"},
+    };
 }
 
-bool FileSystemModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
-{
-    QModelIndex idx = m_fsModel->index(sourceRow, 0, sourceParent);
-    QString name = m_fsModel->fileName(idx);
+QString FileSystemModel::rootPath() const { return m_rootPath; }
+bool FileSystemModel::showHidden() const { return m_showHidden; }
+int FileSystemModel::fileCount() const { return m_fileCount; }
+int FileSystemModel::folderCount() const { return m_folderCount; }
 
-    if (!m_showHidden && name.startsWith('.'))
+void FileSystemModel::setRootPath(const QString &path)
+{
+    if (m_rootPath == path)
+        return;
+
+    // Stop watching old directory
+    if (!m_rootPath.isEmpty())
+        m_watcher.removePath(m_rootPath);
+
+    m_rootPath = path;
+
+    // Watch new directory
+    if (!m_rootPath.isEmpty())
+        m_watcher.addPath(m_rootPath);
+
+    reload();
+    emit rootPathChanged();
+}
+
+void FileSystemModel::setShowHidden(bool show)
+{
+    if (m_showHidden == show)
+        return;
+    m_showHidden = show;
+    reload();
+    emit showHiddenChanged();
+}
+
+void FileSystemModel::sortByColumn(const QString &column, bool ascending)
+{
+    QDir::SortFlags flags = QDir::DirsFirst | QDir::IgnoreCase;
+    if (column == "name")
+        flags |= QDir::Name;
+    else if (column == "size")
+        flags |= QDir::Size;
+    else if (column == "modified")
+        flags |= QDir::Time;
+    else if (column == "type")
+        flags |= QDir::Type;
+    else
+        flags |= QDir::Name;
+
+    if (!ascending)
+        flags |= QDir::Reversed;
+
+    m_sortFlags = flags;
+    reload();
+}
+
+void FileSystemModel::refresh()
+{
+    reload();
+}
+
+QString FileSystemModel::filePath(int row) const
+{
+    if (row < 0 || row >= m_entries.size())
+        return {};
+    return m_entries.at(row).absoluteFilePath();
+}
+
+bool FileSystemModel::isDir(int row) const
+{
+    if (row < 0 || row >= m_entries.size())
         return false;
-
-    return true;
+    return m_entries.at(row).isDir();
 }
 
-void FileSystemModel::updateCounts()
+QString FileSystemModel::fileName(int row) const
 {
-    QModelIndex ri = rootIndex();
-    int files = 0;
-    int folders = 0;
-    int rows = rowCount(ri);
-    for (int i = 0; i < rows; ++i) {
-        QModelIndex child = index(i, 0, ri);
-        if (child.isValid() && m_fsModel->isDir(mapToSource(child)))
+    if (row < 0 || row >= m_entries.size())
+        return {};
+    return m_entries.at(row).fileName();
+}
+
+void FileSystemModel::reload()
+{
+    beginResetModel();
+    m_entries.clear();
+
+    if (!m_rootPath.isEmpty()) {
+        QDir dir(m_rootPath);
+        QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot;
+        if (m_showHidden)
+            filters |= QDir::Hidden;
+
+        m_entries = dir.entryInfoList(filters, m_sortFlags);
+    }
+
+    // Count
+    int files = 0, folders = 0;
+    for (const auto &info : m_entries) {
+        if (info.isDir())
             ++folders;
         else
             ++files;
     }
-    if (m_fileCount != files || m_folderCount != folders) {
-        m_fileCount = files;
-        m_folderCount = folders;
-        emit countsChanged();
-    }
+    m_fileCount = files;
+    m_folderCount = folders;
+
+    endResetModel();
+    emit countsChanged();
 }

@@ -18,35 +18,11 @@ Item {
     property alias listViewItem: listView
     property alias detailedViewItem: detailedView
 
-    // Compute rootIndex, update when path changes or directory loads
-    property var currentRootIndex: undefined
-
-    function refreshRootIndex() {
-        root.currentRootIndex = root.fsModel ? root.fsModel.rootIndex() : undefined
-    }
-
-    Connections {
-        target: fsModel
-        function onRootPathChanged() { root.refreshRootIndex() }
-        function onCountsChanged() { root.refreshRootIndex() }
-    }
-
-    Component.onCompleted: refreshRootIndex()
-
-    // Also refresh after a short delay to handle async directory loading
-    Timer {
-        id: rootIndexTimer
-        interval: 100
-        onTriggered: root.refreshRootIndex()
-    }
-    onFsModelChanged: rootIndexTimer.restart()
-
     FileGridView {
         id: gridView
         anchors.fill: parent
         visible: root.viewMode === "grid"
-        fsModel: root.fsModel
-        fsRootIndex: root.currentRootIndex
+        model: root.fsModel
         currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
@@ -58,8 +34,7 @@ Item {
         id: listView
         anchors.fill: parent
         visible: root.viewMode === "list"
-        fsModel: root.fsModel
-        fsRootIndex: root.currentRootIndex
+        model: root.fsModel
         currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
@@ -72,7 +47,6 @@ Item {
         anchors.fill: parent
         visible: root.viewMode === "detailed"
         viewModel: root.fsModel
-        viewRootIndex: root.currentRootIndex
         currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)

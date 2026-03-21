@@ -1,13 +1,9 @@
 import QtQuick
 import QtQuick.Controls
-import QtQml.Models
 import HyprFM
 
 ListView {
     id: root
-
-    property var fsModel: null
-    property var fsRootIndex: undefined
 
     property var selectedIndices: []
     property int lastSelectedIndex: -1
@@ -59,12 +55,7 @@ ListView {
         lastSelectedIndex = -1
     }
 
-    // Column header-like spacer for alignment reference (list has no header)
-    model: DelegateModel {
-        model: root.fsModel
-        rootIndex: root.fsRootIndex
-
-        delegate: Item {
+    delegate: Item {
         id: rowItem
         width: root.width
         height: 32
@@ -193,7 +184,6 @@ ListView {
             color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
         }
     }
-    } // end DelegateModel
 
     // ── Drop area: accept files dropped onto this view ──────────────────────
     DropArea {
