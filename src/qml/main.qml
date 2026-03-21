@@ -11,7 +11,7 @@ ApplicationWindow {
     title: "HyprFM"
     color: Theme.base
 
-    // Sync fsModel when active tab changes
+    // ── Sync fsModel when active tab changes ────────────────────────────────
     Connections {
         target: tabModel
         function onActiveIndexChanged() {
@@ -20,7 +20,6 @@ ApplicationWindow {
         }
     }
 
-    // Sync fsModel when active tab navigates
     Connections {
         target: tabModel.activeTab
         function onCurrentPathChanged() {
@@ -29,6 +28,382 @@ ApplicationWindow {
         }
     }
 
+    // ── Helper: collect selected file paths from active view ─────────────────
+    function getSelectedPaths() {
+        var paths = []
+        var view = fileViewContainer
+        if (!view) return paths
+
+        // Access the active sub-view's selectedIndices
+        var subView = null
+        var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+        if (vm === "grid")          subView = view.gridViewItem
+        else if (vm === "list")     subView = view.listViewItem
+        else if (vm === "detailed") subView = view.detailedViewItem
+
+        if (!subView || !subView.selectedIndices) return paths
+
+        var indices = subView.selectedIndices
+        for (var i = 0; i < indices.length; i++) {
+            var idx = fsModel.index(indices[i], 0, fsModel.rootIndex())
+            var fp = fsModel.filePath(idx)
+            if (fp !== "") paths.push(fp)
+        }
+        return paths
+    }
+
+    // ── Helper: list of all file paths in current directory (for preview cycling)
+    function getDirectoryFiles() {
+        var files = []
+        var count = fsModel.rowCount(fsModel.rootIndex())
+        for (var i = 0; i < count; i++) {
+            var idx = fsModel.index(i, 0, fsModel.rootIndex())
+            files.push(fsModel.filePath(idx))
+        }
+        return files
+    }
+
+    // ── Rename dialog ───────────────────────────────────────────────────────
+    property string renameTargetPath: ""
+
+    Dialog {
+        id: renameDialog
+        title: "Rename"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        anchors.centerIn: parent
+        width: 360
+
+        background: Rectangle {
+            color: Theme.mantle
+            radius: Theme.radiusMedium
+            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
+            border.width: 1
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            Text {
+                text: "New name:"
+                color: Theme.text
+                font.pixelSize: Theme.fontNormal
+            }
+
+            TextField {
+                id: renameField
+                Layout.fillWidth: true
+                color: Theme.text
+                background: Rectangle {
+                    color: Theme.surface
+                    radius: Theme.radiusSmall
+                    border.color: renameField.activeFocus ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.2)
+                    border.width: 1
+                }
+            }
+        }
+
+        onAccepted: {
+            if (renameTargetPath !== "" && renameField.text.trim() !== "") {
+                fileOps.rename(renameTargetPath, renameField.text.trim())
+            }
+        }
+    }
+
+    // ── New Folder dialog ───────────────────────────────────────────────────
+    property string newItemParentPath: ""
+
+    Dialog {
+        id: newFolderDialog
+        title: "New Folder"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        anchors.centerIn: parent
+        width: 360
+
+        background: Rectangle {
+            color: Theme.mantle
+            radius: Theme.radiusMedium
+            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
+            border.width: 1
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            Text {
+                text: "Folder name:"
+                color: Theme.text
+                font.pixelSize: Theme.fontNormal
+            }
+
+            TextField {
+                id: newFolderField
+                Layout.fillWidth: true
+                color: Theme.text
+                background: Rectangle {
+                    color: Theme.surface
+                    radius: Theme.radiusSmall
+                    border.color: newFolderField.activeFocus ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.2)
+                    border.width: 1
+                }
+            }
+        }
+
+        onAccepted: {
+            if (newItemParentPath !== "" && newFolderField.text.trim() !== "") {
+                fileOps.createFolder(newItemParentPath, newFolderField.text.trim())
+            }
+        }
+    }
+
+    // ── New File dialog ─────────────────────────────────────────────────────
+    Dialog {
+        id: newFileDialog
+        title: "New File"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        anchors.centerIn: parent
+        width: 360
+
+        background: Rectangle {
+            color: Theme.mantle
+            radius: Theme.radiusMedium
+            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
+            border.width: 1
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            Text {
+                text: "File name:"
+                color: Theme.text
+                font.pixelSize: Theme.fontNormal
+            }
+
+            TextField {
+                id: newFileField
+                Layout.fillWidth: true
+                color: Theme.text
+                background: Rectangle {
+                    color: Theme.surface
+                    radius: Theme.radiusSmall
+                    border.color: newFileField.activeFocus ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.2)
+                    border.width: 1
+                }
+            }
+        }
+
+        onAccepted: {
+            if (newItemParentPath !== "" && newFileField.text.trim() !== "") {
+                fileOps.createFile(newItemParentPath, newFileField.text.trim())
+            }
+        }
+    }
+
+    // ── Context Menu ────────────────────────────────────────────────────────
+    ContextMenu {
+        id: contextMenu
+
+        onOpenRequested: (path) => fileOps.openFile(path)
+
+        onCutRequested: (paths) => clipboard.cut(paths)
+
+        onCopyRequested: (paths) => clipboard.copy(paths)
+
+        onPasteRequested: (destPath) => {
+            var items = clipboard.take()
+            if (!items || items.length === 0) return
+            if (clipboard.isCut)
+                fileOps.moveFiles(items, destPath)
+            else
+                fileOps.copyFiles(items, destPath)
+        }
+
+        onCopyPathRequested: (path) => fileOps.copyPathToClipboard(path)
+
+        onRenameRequested: (path) => {
+            root.renameTargetPath = path
+            var name = path.substring(path.lastIndexOf("/") + 1)
+            renameField.text = name
+            renameDialog.open()
+        }
+
+        onTrashRequested: (paths) => fileOps.trashFiles(paths)
+
+        onDeleteRequested: (paths) => fileOps.deleteFiles(paths)
+
+        onOpenInTerminalRequested: (path) => {
+            Qt.openUrlExternally("exec:xterm -e bash -c 'cd \"" + path + "\"; exec bash'")
+        }
+
+        onNewFolderRequested: (parentPath) => {
+            root.newItemParentPath = parentPath
+            newFolderField.text = ""
+            newFolderDialog.open()
+        }
+
+        onNewFileRequested: (parentPath) => {
+            root.newItemParentPath = parentPath
+            newFileField.text = ""
+            newFileDialog.open()
+        }
+
+        onPropertiesRequested: (path) => {
+            // Basic: open file manager properties or show info
+            fileOps.openFile(path)
+        }
+    }
+
+    // ── Keyboard Shortcuts ──────────────────────────────────────────────────
+
+    // Tab management
+    Shortcut {
+        sequence: config.shortcut("new_tab")
+        onActivated: tabModel.addTab(tabModel.activeTab ? tabModel.activeTab.currentPath : "")
+    }
+
+    Shortcut {
+        sequence: config.shortcut("close_tab")
+        onActivated: {
+            if (tabModel.count > 1) tabModel.removeTab(tabModel.activeIndex)
+        }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("reopen_tab")
+        onActivated: tabModel.reopenLastTab()
+    }
+
+    // Navigation
+    Shortcut {
+        sequence: config.shortcut("back")
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.goBack() }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("forward")
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.goForward() }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("parent")
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.goUp() }
+    }
+
+    // Toggle hidden files
+    Shortcut {
+        sequence: config.shortcut("toggle_hidden")
+        onActivated: fsModel.showHidden = !fsModel.showHidden
+    }
+
+    // Toggle path bar focus (Ctrl+L-like)
+    Shortcut {
+        sequence: config.shortcut("path_bar")
+        onActivated: {
+            // Placeholder: in full implementation, focus the breadcrumb/path input
+        }
+    }
+
+    // Toggle sidebar
+    Shortcut {
+        sequence: config.shortcut("toggle_sidebar")
+        onActivated: config.sidebarVisible = !config.sidebarVisible
+    }
+
+    // View mode switching
+    Shortcut {
+        sequence: config.shortcut("grid_view")
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "grid" }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("list_view")
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "list" }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("detailed_view")
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "detailed" }
+    }
+
+    // File operations
+    Shortcut {
+        sequence: config.shortcut("copy")
+        onActivated: {
+            var paths = getSelectedPaths()
+            if (paths.length > 0) clipboard.copy(paths)
+        }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("cut")
+        onActivated: {
+            var paths = getSelectedPaths()
+            if (paths.length > 0) clipboard.cut(paths)
+        }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("paste")
+        onActivated: {
+            if (!clipboard.hasContent) return
+            var dest = tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+            if (dest === "") return
+            var items = clipboard.take()
+            if (!items || items.length === 0) return
+            if (clipboard.isCut)
+                fileOps.moveFiles(items, dest)
+            else
+                fileOps.copyFiles(items, dest)
+        }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("trash")
+        onActivated: {
+            var paths = getSelectedPaths()
+            if (paths.length > 0) fileOps.trashFiles(paths)
+        }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("select_all")
+        onActivated: {
+            // Select all items in the current view
+            var count = fsModel.rowCount(fsModel.rootIndex())
+            if (count <= 0) return
+            var indices = []
+            for (var i = 0; i < count; i++) indices.push(i)
+            var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+            if (vm === "grid" && fileViewContainer.gridViewItem)
+                fileViewContainer.gridViewItem.selectedIndices = indices
+            else if (vm === "list" && fileViewContainer.listViewItem)
+                fileViewContainer.listViewItem.selectedIndices = indices
+            else if (vm === "detailed" && fileViewContainer.detailedViewItem)
+                fileViewContainer.detailedViewItem.selectedIndices = indices
+        }
+    }
+
+    // Quick preview (spacebar)
+    Shortcut {
+        sequence: "Space"
+        onActivated: {
+            if (quickPreview.active) {
+                quickPreview.active = false
+                return
+            }
+            var paths = getSelectedPaths()
+            if (paths.length === 0) return
+            quickPreview.filePath = paths[0]
+            quickPreview.directoryFiles = getDirectoryFiles()
+            quickPreview.active = true
+            quickPreview.forceActiveFocus()
+        }
+    }
+
+    // ── Layout ──────────────────────────────────────────────────────────────
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -63,6 +438,7 @@ ApplicationWindow {
 
             // File view
             FileViewContainer {
+                id: fileViewContainer
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 fsModel: fsModel
@@ -75,6 +451,15 @@ ApplicationWindow {
                         fileOps.openFile(filePath)
                     }
                 }
+
+                onContextMenuRequested: (filePath, isDirectory, position) => {
+                    contextMenu.targetPath = filePath
+                    contextMenu.targetIsDir = isDirectory
+                    contextMenu.isEmptySpace = (filePath === "")
+                    var sel = getSelectedPaths()
+                    contextMenu.selectedPaths = (sel.length > 1) ? sel : (filePath !== "" ? [filePath] : [])
+                    contextMenu.popup(position.x, position.y)
+                }
             }
         }
 
@@ -84,5 +469,13 @@ ApplicationWindow {
             itemCount: fsModel.fileCount + fsModel.folderCount
             folderCount: fsModel.folderCount
         }
+    }
+
+    // ── Quick Preview overlay (on top of everything) ─────────────────────────
+    QuickPreview {
+        id: quickPreview
+        anchors.fill: parent
+        z: 100
+        onClosed: quickPreview.active = false
     }
 }

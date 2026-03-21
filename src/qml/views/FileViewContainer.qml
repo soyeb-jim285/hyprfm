@@ -11,6 +11,11 @@ Item {
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
 
+    // Expose sub-views so main.qml can access selection state
+    property alias gridViewItem: gridView
+    property alias listViewItem: listView
+    property alias detailedViewItem: detailedView
+
     // Recompute rootIndex whenever fsModel or its rootPath changes
     property var currentRootIndex: fsModel ? fsModel.rootIndex() : null
 

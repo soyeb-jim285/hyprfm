@@ -28,6 +28,8 @@ qt_add_qml_module(hyprfm
         qml/views/FileGridView.qml
         qml/views/FileListView.qml
         qml/views/FileDetailedView.qml
+        qml/components/ContextMenu.qml
+        qml/components/QuickPreview.qml
 )
 
 target_link_libraries(hyprfm PRIVATE
