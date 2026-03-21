@@ -11,6 +11,24 @@ ApplicationWindow {
     title: "HyprFM"
     color: Theme.base
 
+    // Sync fsModel when active tab changes
+    Connections {
+        target: tabModel
+        function onActiveIndexChanged() {
+            if (tabModel.activeTab)
+                fsModel.setRootPath(tabModel.activeTab.currentPath)
+        }
+    }
+
+    // Sync fsModel when active tab navigates
+    Connections {
+        target: tabModel.activeTab
+        function onCurrentPathChanged() {
+            if (tabModel.activeTab)
+                fsModel.setRootPath(tabModel.activeTab.currentPath)
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -43,11 +61,20 @@ ApplicationWindow {
                 }
             }
 
-            // File view placeholder
-            Rectangle {
+            // File view
+            FileViewContainer {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                color: Theme.base
+                fsModel: fsModel
+                viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+
+                onFileActivated: (filePath, isDirectory) => {
+                    if (isDirectory) {
+                        if (tabModel.activeTab) tabModel.activeTab.navigateTo(filePath)
+                    } else {
+                        fileOps.openFile(filePath)
+                    }
+                }
             }
         }
 

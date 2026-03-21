@@ -39,6 +39,8 @@ public:
     Q_INVOKABLE QString filePath(int row) const;
     Q_INVOKABLE bool isDir(int row) const;
     Q_INVOKABLE QString fileName(int row) const;
+    Q_INVOKABLE QModelIndex rootIndex() const;
+    Q_INVOKABLE void sortByColumn(const QString &column, bool ascending);
 
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;

@@ -44,6 +44,27 @@ void FileSystemModel::setShowHidden(bool show)
     updateCounts();
 }
 
+QModelIndex FileSystemModel::rootIndex() const
+{
+    QModelIndex srcRoot = m_fsModel->index(m_rootPath);
+    return mapFromSource(srcRoot);
+}
+
+void FileSystemModel::sortByColumn(const QString &column, bool ascending)
+{
+    Qt::SortOrder order = ascending ? Qt::AscendingOrder : Qt::DescendingOrder;
+    if (column == "name")
+        QSortFilterProxyModel::sort(0, order);
+    else if (column == "size")
+        QSortFilterProxyModel::sort(1, order);
+    else if (column == "modified")
+        QSortFilterProxyModel::sort(3, order);
+    else if (column == "type")
+        QSortFilterProxyModel::sort(2, order);
+    else
+        QSortFilterProxyModel::sort(0, order);
+}
+
 QString FileSystemModel::filePath(int row) const
 {
     QModelIndex idx = index(row, 0);

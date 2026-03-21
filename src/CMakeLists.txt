@@ -24,6 +24,10 @@ qt_add_qml_module(hyprfm
         qml/components/FileTabBar.qml
         qml/components/Breadcrumb.qml
         qml/components/Toolbar.qml
+        qml/views/FileViewContainer.qml
+        qml/views/FileGridView.qml
+        qml/views/FileListView.qml
+        qml/views/FileDetailedView.qml
 )
 
 target_link_libraries(hyprfm PRIVATE
