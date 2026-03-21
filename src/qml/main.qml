@@ -31,6 +31,9 @@ ApplicationWindow {
         }
     }
 
+    // ── Sidebar visibility (local property; config.sidebarVisible is read-only) ─
+    property bool sidebarVisible: config.sidebarVisible
+
     // ── Selection state for StatusBar ────────────────────────────────────────
     property int currentSelectedCount: 0
     property string currentSelectedSize: ""
@@ -246,9 +249,10 @@ ApplicationWindow {
         onCopyRequested: (paths) => clipboard.copy(paths)
 
         onPasteRequested: (destPath) => {
+            var wasCut = clipboard.isCut
             var items = clipboard.take()
             if (!items || items.length === 0) return
-            if (clipboard.isCut)
+            if (wasCut)
                 fileOps.moveFiles(items, destPath)
             else
                 fileOps.copyFiles(items, destPath)
@@ -294,19 +298,19 @@ ApplicationWindow {
     // Tab management
     Shortcut {
         sequence: config.shortcut("new_tab")
-        onActivated: tabModel.addTab(tabModel.activeTab ? tabModel.activeTab.currentPath : "")
+        onActivated: tabModel.addTab()
     }
 
     Shortcut {
         sequence: config.shortcut("close_tab")
         onActivated: {
-            if (tabModel.count > 1) tabModel.removeTab(tabModel.activeIndex)
+            if (tabModel.count > 1) tabModel.closeTab(tabModel.activeIndex)
         }
     }
 
     Shortcut {
         sequence: config.shortcut("reopen_tab")
-        onActivated: tabModel.reopenLastTab()
+        onActivated: tabModel.reopenClosedTab()
     }
 
     // Navigation
@@ -342,7 +346,7 @@ ApplicationWindow {
     // Toggle sidebar
     Shortcut {
         sequence: config.shortcut("toggle_sidebar")
-        onActivated: config.sidebarVisible = !config.sidebarVisible
+        onActivated: root.sidebarVisible = !root.sidebarVisible
     }
 
     // View mode switching
@@ -384,9 +388,10 @@ ApplicationWindow {
             if (!clipboard.hasContent) return
             var dest = tabModel.activeTab ? tabModel.activeTab.currentPath : ""
             if (dest === "") return
+            var wasCut = clipboard.isCut
             var items = clipboard.take()
             if (!items || items.length === 0) return
-            if (clipboard.isCut)
+            if (wasCut)
                 fileOps.moveFiles(items, dest)
             else
                 fileOps.copyFiles(items, dest)
@@ -462,7 +467,7 @@ ApplicationWindow {
             Sidebar {
                 width: config.sidebarWidth
                 Layout.fillHeight: true
-                visible: config.sidebarVisible
+                visible: root.sidebarVisible
                 currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
                 onBookmarkClicked: (path) => {
                     if (tabModel.activeTab) tabModel.activeTab.navigateTo(path)

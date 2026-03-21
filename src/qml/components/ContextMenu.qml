@@ -197,10 +197,10 @@ Menu {
         model: config.customContextActions
         delegate: MenuItem {
             required property var modelData
-            text: modelData.label ?? ""
+            text: modelData.name ?? ""
             onTriggered: {
                 if (modelData.command) {
-                    Qt.openUrlExternally("exec:" + modelData.command.replace("%f", root.targetPath))
+                    Qt.openUrlExternally("exec:" + modelData.command.replace("{file}", root.targetPath))
                 }
             }
         }
