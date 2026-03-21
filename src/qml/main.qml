@@ -443,6 +443,7 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 fsModel: fsModel
                 viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+                currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
 
                 onFileActivated: (filePath, isDirectory) => {
                     if (isDirectory) {
@@ -477,5 +478,23 @@ ApplicationWindow {
         anchors.fill: parent
         z: 100
         onClosed: quickPreview.active = false
+    }
+
+    // ── Toast notifications ──────────────────────────────────────────────────
+    Toast {
+        id: toast
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
+    }
+
+    Connections {
+        target: fileOps
+        function onOperationFinished(success, error) {
+            if (success)
+                toast.show("Operation completed successfully", "success")
+            else
+                toast.show(error || "Operation failed", "error")
+        }
     }
 }
