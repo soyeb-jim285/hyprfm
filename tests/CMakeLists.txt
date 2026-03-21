@@ -22,3 +22,11 @@ target_compile_definitions(tst_themeloader PRIVATE
 )
 target_link_libraries(tst_themeloader PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME tst_themeloader COMMAND tst_themeloader)
+
+add_executable(tst_tabmodel tst_tabmodel.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/tabmodel.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/tablistmodel.cpp
+)
+target_include_directories(tst_tabmodel PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_tabmodel PRIVATE Qt6::Test Qt6::Core)
+add_test(NAME tst_tabmodel COMMAND tst_tabmodel)
