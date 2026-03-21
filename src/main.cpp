@@ -13,6 +13,7 @@
 #include "models/filesystemmodel.h"
 #include "models/tablistmodel.h"
 #include "models/bookmarkmodel.h"
+#include "providers/thumbnailprovider.h"
 
 int main(int argc, char *argv[])
 {
@@ -58,6 +59,9 @@ int main(int argc, char *argv[])
     QObject::connect(&app, &QGuiApplication::lastWindowClosed, &app, &QGuiApplication::quit);
 
     QQmlApplicationEngine engine;
+
+    // Register image providers
+    engine.addImageProvider("thumbnail", new ThumbnailProvider);
 
     // Register context properties
     engine.rootContext()->setContextProperty("config", config);

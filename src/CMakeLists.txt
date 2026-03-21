@@ -8,6 +8,7 @@ qt_add_executable(hyprfm
     models/tablistmodel.cpp
     models/bookmarkmodel.cpp
     models/filesystemmodel.cpp
+    providers/thumbnailprovider.cpp
 )
 
 set_source_files_properties(qml/theme/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -30,6 +31,8 @@ qt_add_qml_module(hyprfm
         qml/views/FileDetailedView.qml
         qml/components/ContextMenu.qml
         qml/components/QuickPreview.qml
+        qml/components/Toast.qml
+        qml/components/RubberBand.qml
 )
 
 target_link_libraries(hyprfm PRIVATE
