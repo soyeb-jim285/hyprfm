@@ -11,6 +11,7 @@ Item {
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
+    signal selectionChanged()
 
     // Expose sub-views so main.qml can access selection state
     property alias gridViewItem: gridView
@@ -37,6 +38,7 @@ Item {
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
         onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
+        onSelectedIndicesChanged: root.selectionChanged()
     }
 
     FileListView {
@@ -49,6 +51,7 @@ Item {
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
         onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
+        onSelectedIndicesChanged: root.selectionChanged()
     }
 
     FileDetailedView {
@@ -64,5 +67,6 @@ Item {
         onSortRequested: (col, asc) => {
             if (root.fsModel) root.fsModel.sortByColumn(col, asc)
         }
+        onSelectedIndicesChanged: root.selectionChanged()
     }
 }

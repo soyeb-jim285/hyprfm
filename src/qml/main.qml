@@ -11,12 +11,15 @@ ApplicationWindow {
     title: "HyprFM"
     color: Theme.base
 
-    // ── Sync fsModel when active tab changes ────────────────────────────────
+    // ── Sync fsModel when active tab changes; quit on last tab closed ───────
     Connections {
         target: tabModel
         function onActiveIndexChanged() {
             if (tabModel.activeTab)
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
+        }
+        function onLastTabClosed() {
+            Qt.quit()
         }
     }
 
@@ -26,6 +29,36 @@ ApplicationWindow {
             if (tabModel.activeTab)
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
         }
+    }
+
+    // ── Selection state for StatusBar ────────────────────────────────────────
+    property int currentSelectedCount: 0
+    property string currentSelectedSize: ""
+
+    function updateSelectionStatus() {
+        var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+        var subView = null
+        if (vm === "grid")          subView = fileViewContainer.gridViewItem
+        else if (vm === "list")     subView = fileViewContainer.listViewItem
+        else if (vm === "detailed") subView = fileViewContainer.detailedViewItem
+
+        if (!subView || !subView.selectedIndices) {
+            currentSelectedCount = 0
+            currentSelectedSize = ""
+            return
+        }
+
+        var indices = subView.selectedIndices
+        currentSelectedCount = indices.length
+
+        if (indices.length === 0) {
+            currentSelectedSize = ""
+            return
+        }
+
+        // Size display is omitted here as it requires per-file stat
+        // (fsModel.data is not Q_INVOKABLE; count alone suffices for the status bar)
+        currentSelectedSize = ""
     }
 
     // ── Helper: collect selected file paths from active view ─────────────────
@@ -453,6 +486,8 @@ ApplicationWindow {
                     }
                 }
 
+                onSelectionChanged: root.updateSelectionStatus()
+
                 onContextMenuRequested: (filePath, isDirectory, position) => {
                     contextMenu.targetPath = filePath
                     contextMenu.targetIsDir = isDirectory
@@ -466,9 +501,12 @@ ApplicationWindow {
 
         // Status bar
         StatusBar {
+            id: statusBar
             Layout.fillWidth: true
             itemCount: fsModel.fileCount + fsModel.folderCount
             folderCount: fsModel.folderCount
+            selectedCount: root.currentSelectedCount
+            selectedSize: root.currentSelectedSize
         }
     }
 
