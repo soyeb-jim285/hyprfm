@@ -7,6 +7,7 @@ Item {
     // "grid" | "list" | "detailed"
     property string viewMode: "grid"
     property var fsModel: null
+    property string currentPath: ""
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
@@ -32,6 +33,7 @@ Item {
         visible: root.viewMode === "grid"
         model: root.fsModel
         rootIndex: root.currentRootIndex
+        currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
         onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
@@ -43,6 +45,7 @@ Item {
         visible: root.viewMode === "list"
         model: root.fsModel
         rootIndex: root.currentRootIndex
+        currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
         onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
@@ -54,6 +57,7 @@ Item {
         visible: root.viewMode === "detailed"
         viewModel: root.fsModel
         viewRootIndex: root.currentRootIndex
+        currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
         onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)

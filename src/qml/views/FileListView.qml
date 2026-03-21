@@ -8,6 +8,9 @@ ListView {
     property var selectedIndices: []
     property int lastSelectedIndex: -1
 
+    // Current directory path (used as drop target)
+    property string currentPath: ""
+
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
 
@@ -67,8 +70,15 @@ ListView {
 
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
+        // ── Drag support ──────────────────────────────────────────────────
+        Drag.active: listDragHandler.active
+        Drag.mimeData: ({ "text/uri-list": "file://" + rowItem.filePath })
+        Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
+        Drag.dragType: Drag.Automatic
+
         Rectangle {
             anchors.fill: parent
+            opacity: rowItem.Drag.active ? 0.5 : 1.0
             color: {
                 if (rowItem.isSelected)
                     return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
@@ -153,12 +163,50 @@ ListView {
             }
         }
 
+        // DragHandler for initiating drag
+        DragHandler {
+            id: listDragHandler
+            onActiveChanged: {
+                if (active) {
+                    if (!rowItem.isSelected)
+                        root.selectIndex(rowItem.index, false, false)
+                    rowItem.Drag.start()
+                } else {
+                    rowItem.Drag.drop()
+                }
+            }
+        }
+
         // Separator line
         Rectangle {
             anchors.bottom: parent.bottom
             width: parent.width
             height: 1
             color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
+        }
+    }
+
+    // ── Drop area: accept files dropped onto this view ──────────────────────
+    DropArea {
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+        z: -2
+
+        onDropped: (drop) => {
+            if (!root.currentPath) return
+            var urls = drop.urls
+            var paths = []
+            for (var i = 0; i < urls.length; i++) {
+                var s = urls[i].toString()
+                if (s.startsWith("file://"))
+                    paths.push(s.substring(7))
+            }
+            if (paths.length === 0) return
+            if (drop.proposedAction === Qt.MoveAction)
+                fileOps.moveFiles(paths, root.currentPath)
+            else
+                fileOps.copyFiles(paths, root.currentPath)
+            drop.acceptProposedAction()
         }
     }
 

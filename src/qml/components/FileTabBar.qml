@@ -29,19 +29,52 @@ Rectangle {
 
                     delegate: Rectangle {
                         id: tabDelegate
+
+                        required property int index
+                        required property var model
+
                         width: Math.min(200, Math.max(100, tabRow.parent.width / Math.max(tabModel.count, 1) - 1))
                         height: root.height
-                        color: index === tabModel.activeIndex ? Theme.base : "transparent"
+                        color: tabDelegate.index === tabModel.activeIndex ? Theme.base
+                             : tabDropArea.containsDrag ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
+                             : "transparent"
                         radius: Theme.radiusSmall
 
                         // Bottom fill to blend with content below when active
                         Rectangle {
-                            visible: index === tabModel.activeIndex
+                            visible: tabDelegate.index === tabModel.activeIndex
                             anchors.bottom: parent.bottom
                             anchors.left: parent.left
                             anchors.right: parent.right
                             height: Theme.radiusSmall
                             color: Theme.base
+                        }
+
+                        // ── Drop area on tab header ───────────────────────
+                        DropArea {
+                            id: tabDropArea
+                            anchors.fill: parent
+                            keys: ["text/uri-list"]
+
+                            onDropped: (drop) => {
+                                // model.path is the tab's current directory
+                                var destPath = tabDelegate.model.path
+                                if (!destPath) return
+
+                                var urls = drop.urls
+                                var paths = []
+                                for (var i = 0; i < urls.length; i++) {
+                                    var s = urls[i].toString()
+                                    if (s.startsWith("file://"))
+                                        paths.push(s.substring(7))
+                                }
+                                if (paths.length === 0) return
+                                if (drop.proposedAction === Qt.MoveAction)
+                                    fileOps.moveFiles(paths, destPath)
+                                else
+                                    fileOps.copyFiles(paths, destPath)
+                                drop.acceptProposedAction()
+                            }
                         }
 
                         RowLayout {
