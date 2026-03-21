@@ -35,7 +35,19 @@ int main(int argc, char *argv[])
     // Create backend instances
     ConfigManager *config = new ConfigManager(configPath, &app);
 
-    const QString themesDir = QCoreApplication::applicationDirPath() + "/../themes";
+    // Look for themes in multiple locations
+    QString themesDir;
+    QStringList searchPaths = {
+        QCoreApplication::applicationDirPath() + "/../themes",        // installed layout
+        QCoreApplication::applicationDirPath() + "/../../themes",     // build dir (build/src/)
+        QStringLiteral(HYPRFM_SOURCE_DIR) + "/themes",               // source dir via compile def
+    };
+    for (const auto &path : searchPaths) {
+        if (QDir(path).exists()) {
+            themesDir = path;
+            break;
+        }
+    }
     ThemeLoader *theme = new ThemeLoader(&app);
     theme->loadTheme(config->theme(), themesDir);
 

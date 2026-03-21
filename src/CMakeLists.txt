@@ -18,7 +18,7 @@ qt_add_qml_module(hyprfm
     URI HyprFM
     VERSION 1.0
     QML_FILES
-        qml/main.qml
+        qml/Main.qml
         qml/theme/Theme.qml
         qml/components/StatusBar.qml
         qml/components/OperationsBar.qml
@@ -49,4 +49,8 @@ target_link_libraries(hyprfm PRIVATE
 target_include_directories(hyprfm PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+
+target_compile_definitions(hyprfm PRIVATE
+    HYPRFM_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
 )
