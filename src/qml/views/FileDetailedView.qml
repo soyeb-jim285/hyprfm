@@ -14,8 +14,11 @@ Item {
     property string currentPath: ""
 
     // Exposed model/rootIndex bound by FileViewContainer
-    property alias viewModel: listView.model
-    property alias viewRootIndex: listView.rootIndex
+    property var viewModel
+    property var viewRootIndex
+
+    onViewModelChanged: listView.model = viewModel
+    onViewRootIndexChanged: listView.rootIndex = viewRootIndex
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
