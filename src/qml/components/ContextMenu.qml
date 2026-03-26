@@ -41,8 +41,8 @@ Item {
     property Item blurSource: null
 
     function popup(x, y) {
-        var menuW = menuColumn.width + 16
-        var menuH = menuColumn.height + 16
+        var menuW = menuColumn.width + 12
+        var menuH = menuColumn.height + 12
         menuContainer.x = Math.min(x, root.width - menuW - 8)
         menuContainer.y = Math.min(y, root.height - menuH - 8)
         root.visible = true
@@ -109,8 +109,8 @@ Item {
         id: menuContainer
         x: 0
         y: 0
-        width: menuColumn.width + 16
-        height: menuColumn.height + 16
+        width: menuColumn.width + 12
+        height: menuColumn.height + 12
 
         opacity: 0
         scale: 0.88

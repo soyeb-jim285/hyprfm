@@ -64,7 +64,8 @@ Rectangle {
 
                     delegate: Rectangle {
                         id: bookmarkDelegate
-                        width: parent.width
+                        width: parent.width - Theme.spacing
+                        anchors.horizontalCenter: parent.horizontalCenter
                         height: 32
                         color: {
                             if (model.path === root.currentPath) return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
@@ -143,7 +144,8 @@ Rectangle {
 
                     delegate: Rectangle {
                         id: deviceDelegate
-                        width: parent.width
+                        width: parent.width - Theme.spacing
+                        anchors.horizontalCenter: parent.horizontalCenter
                         height: deviceContent.implicitHeight + 8
                         color: deviceHoverArea.containsMouse
                             ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
