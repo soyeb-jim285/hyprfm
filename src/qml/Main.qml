@@ -493,8 +493,9 @@ ApplicationWindow {
                 onSelectionChanged: root.updateSelectionStatus()
 
                 onContextMenuRequested: (filePath, isDirectory, position) => {
-                    contextMenu.targetPath = filePath
-                    contextMenu.targetIsDir = isDirectory
+                    var currentDir = tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+                    contextMenu.targetPath = filePath !== "" ? filePath : currentDir
+                    contextMenu.targetIsDir = filePath !== "" ? isDirectory : true
                     contextMenu.isEmptySpace = (filePath === "")
                     var sel = getSelectedPaths()
                     contextMenu.selectedPaths = (sel.length > 1) ? sel : (filePath !== "" ? [filePath] : [])
