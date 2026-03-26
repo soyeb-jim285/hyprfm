@@ -247,6 +247,7 @@ ApplicationWindow {
     // ── Context Menu ────────────────────────────────────────────────────────
     ContextMenu {
         id: contextMenu
+        blurSource: mainContent
 
         onOpenRequested: (path) => fileOps.openFile(path)
 
@@ -441,6 +442,7 @@ ApplicationWindow {
 
     // ── Layout ──────────────────────────────────────────────────────────────
     ColumnLayout {
+        id: mainContent
         anchors.fill: parent
         spacing: 0
 
