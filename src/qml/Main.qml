@@ -108,46 +108,169 @@ ApplicationWindow {
     // ── Rename dialog ───────────────────────────────────────────────────────
     property string renameTargetPath: ""
 
-    Dialog {
+    Item {
         id: renameDialog
-        title: "Rename"
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        anchors.centerIn: parent
-        width: 360
+        anchors.fill: parent
+        visible: false
+        z: 1000
 
-        background: Rectangle {
-            color: Theme.mantle
-            radius: Theme.radiusMedium
-            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
-            border.width: 1
+        function open() {
+            visible = true
+            renameBox.opacity = 0
+            renameBox.scale = 0.88
+            renameBox.yOffset = -8
+            renameOpenAnim.start()
+            renameField.forceActiveFocus()
         }
+        function accept() {
+            if (renameTargetPath !== "" && renameField.text.trim() !== "")
+                fileOps.rename(renameTargetPath, renameField.text.trim())
+            renameCloseAnim.start()
+        }
+        function reject() { renameCloseAnim.start() }
 
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 8
-
-            Text {
-                text: "New name:"
-                color: Theme.text
-                font.pixelSize: Theme.fontNormal
+        ParallelAnimation {
+            id: renameOpenAnim
+            NumberAnimation {
+                target: renameBox; property: "opacity"
+                from: 0; to: 1; duration: 180
+                easing.type: Easing.OutCubic
             }
-
-            TextField {
-                id: renameField
-                Layout.fillWidth: true
-                color: Theme.text
-                background: Rectangle {
-                    color: Theme.surface
-                    radius: Theme.radiusSmall
-                    border.color: renameField.activeFocus ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.2)
-                    border.width: 1
+            NumberAnimation {
+                target: renameBox; property: "scale"
+                from: 0.88; to: 1; duration: 250
+                easing.type: Easing.OutBack
+                easing.overshoot: 0.8
+            }
+            NumberAnimation {
+                target: renameBox; property: "yOffset"
+                from: -8; to: 0; duration: 220
+                easing.type: Easing.OutCubic
+            }
+        }
+        SequentialAnimation {
+            id: renameCloseAnim
+            ParallelAnimation {
+                NumberAnimation {
+                    target: renameBox; property: "opacity"
+                    to: 0; duration: 120
+                    easing.type: Easing.InCubic
+                }
+                NumberAnimation {
+                    target: renameBox; property: "scale"
+                    to: 0.92; duration: 120
+                    easing.type: Easing.InCubic
+                }
+                NumberAnimation {
+                    target: renameBox; property: "yOffset"
+                    to: -4; duration: 120
+                    easing.type: Easing.InCubic
                 }
             }
+            ScriptAction { script: renameDialog.visible = false }
         }
 
-        onAccepted: {
-            if (renameTargetPath !== "" && renameField.text.trim() !== "") {
-                fileOps.rename(renameTargetPath, renameField.text.trim())
+        MouseArea {
+            anchors.fill: parent
+            onClicked: renameDialog.reject()
+        }
+
+        Item {
+            id: renameBox
+            width: 340
+            height: renameContent.implicitHeight + 40
+            anchors.centerIn: parent
+
+            opacity: 0
+            scale: 0.88
+            transformOrigin: Item.Center
+
+            property real yOffset: 0
+            transform: Translate { y: renameBox.yOffset }
+
+            Rectangle {
+                anchors.fill: parent
+                color: Theme.mantle
+                radius: Theme.radiusMedium
+                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                border.width: 1
+            }
+
+            Column {
+                id: renameContent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 20
+                spacing: 12
+
+                Text {
+                    text: "Rename"
+                    color: Theme.text
+                    font.pixelSize: Theme.fontNormal
+                    font.weight: Font.DemiBold
+                }
+
+                Text {
+                    text: "New name:"
+                    color: Theme.subtext
+                    font.pixelSize: Theme.fontSmall
+                }
+
+                TextField {
+                    id: renameField
+                    width: parent.width
+                    color: Theme.text
+                    font.pixelSize: Theme.fontNormal
+                    padding: 8
+                    background: Rectangle {
+                        color: Theme.surface
+                        radius: Theme.radiusSmall
+                        border.color: renameField.activeFocus ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.15)
+                        border.width: 1
+                    }
+                    Keys.onReturnPressed: renameDialog.accept()
+                    Keys.onEscapePressed: renameDialog.reject()
+                }
+
+                Item { width: 1; height: 4 }
+
+                Row {
+                    anchors.right: parent.right
+                    spacing: 12
+
+                    Text {
+                        text: "Cancel"
+                        color: Theme.subtext
+                        font.pixelSize: Theme.fontSmall
+                        anchors.verticalCenter: parent.verticalCenter
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: renameDialog.reject()
+                        }
+                    }
+
+                    Rectangle {
+                        width: okRenameText.implicitWidth + 24
+                        height: 28
+                        radius: Theme.radiusSmall
+                        color: Theme.accent
+                        Text {
+                            id: okRenameText
+                            text: "Rename"
+                            color: Theme.mantle
+                            font.pixelSize: Theme.fontSmall
+                            font.weight: Font.DemiBold
+                            anchors.centerIn: parent
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: renameDialog.accept()
+                        }
+                    }
+                }
             }
         }
     }
@@ -155,91 +278,337 @@ ApplicationWindow {
     // ── New Folder dialog ───────────────────────────────────────────────────
     property string newItemParentPath: ""
 
-    Dialog {
+    Item {
         id: newFolderDialog
-        title: "New Folder"
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        anchors.centerIn: parent
-        width: 360
+        anchors.fill: parent
+        visible: false
+        z: 1000
 
-        background: Rectangle {
-            color: Theme.mantle
-            radius: Theme.radiusMedium
-            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
-            border.width: 1
+        function open() {
+            visible = true
+            folderBox.opacity = 0
+            folderBox.scale = 0.88
+            folderBox.yOffset = -8
+            folderOpenAnim.start()
+            newFolderField.forceActiveFocus()
         }
+        function accept() {
+            if (newItemParentPath !== "" && newFolderField.text.trim() !== "")
+                fileOps.createFolder(newItemParentPath, newFolderField.text.trim())
+            folderCloseAnim.start()
+        }
+        function reject() { folderCloseAnim.start() }
 
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 8
-
-            Text {
-                text: "Folder name:"
-                color: Theme.text
-                font.pixelSize: Theme.fontNormal
+        ParallelAnimation {
+            id: folderOpenAnim
+            NumberAnimation {
+                target: folderBox; property: "opacity"
+                from: 0; to: 1; duration: 180
+                easing.type: Easing.OutCubic
             }
-
-            TextField {
-                id: newFolderField
-                Layout.fillWidth: true
-                color: Theme.text
-                background: Rectangle {
-                    color: Theme.surface
-                    radius: Theme.radiusSmall
-                    border.color: newFolderField.activeFocus ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.2)
-                    border.width: 1
+            NumberAnimation {
+                target: folderBox; property: "scale"
+                from: 0.88; to: 1; duration: 250
+                easing.type: Easing.OutBack
+                easing.overshoot: 0.8
+            }
+            NumberAnimation {
+                target: folderBox; property: "yOffset"
+                from: -8; to: 0; duration: 220
+                easing.type: Easing.OutCubic
+            }
+        }
+        SequentialAnimation {
+            id: folderCloseAnim
+            ParallelAnimation {
+                NumberAnimation {
+                    target: folderBox; property: "opacity"
+                    to: 0; duration: 120
+                    easing.type: Easing.InCubic
+                }
+                NumberAnimation {
+                    target: folderBox; property: "scale"
+                    to: 0.92; duration: 120
+                    easing.type: Easing.InCubic
+                }
+                NumberAnimation {
+                    target: folderBox; property: "yOffset"
+                    to: -4; duration: 120
+                    easing.type: Easing.InCubic
                 }
             }
+            ScriptAction { script: newFolderDialog.visible = false }
         }
 
-        onAccepted: {
-            if (newItemParentPath !== "" && newFolderField.text.trim() !== "") {
-                fileOps.createFolder(newItemParentPath, newFolderField.text.trim())
+        MouseArea {
+            anchors.fill: parent
+            onClicked: newFolderDialog.reject()
+        }
+
+        Item {
+            id: folderBox
+            width: 340
+            height: folderContent.implicitHeight + 40
+            anchors.centerIn: parent
+
+            opacity: 0
+            scale: 0.88
+            transformOrigin: Item.Center
+
+            property real yOffset: 0
+            transform: Translate { y: folderBox.yOffset }
+
+            Rectangle {
+                anchors.fill: parent
+                color: Theme.mantle
+                radius: Theme.radiusMedium
+                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                border.width: 1
+            }
+
+            Column {
+                id: folderContent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 20
+                spacing: 12
+
+                Text {
+                    text: "New Folder"
+                    color: Theme.text
+                    font.pixelSize: Theme.fontNormal
+                    font.weight: Font.DemiBold
+                }
+
+                Text {
+                    text: "Folder name:"
+                    color: Theme.subtext
+                    font.pixelSize: Theme.fontSmall
+                }
+
+                TextField {
+                    id: newFolderField
+                    width: parent.width
+                    color: Theme.text
+                    font.pixelSize: Theme.fontNormal
+                    padding: 8
+                    background: Rectangle {
+                        color: Theme.surface
+                        radius: Theme.radiusSmall
+                        border.color: newFolderField.activeFocus ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.15)
+                        border.width: 1
+                    }
+                    Keys.onReturnPressed: newFolderDialog.accept()
+                    Keys.onEscapePressed: newFolderDialog.reject()
+                }
+
+                Item { width: 1; height: 4 }
+
+                Row {
+                    anchors.right: parent.right
+                    spacing: 12
+
+                    Text {
+                        text: "Cancel"
+                        color: Theme.subtext
+                        font.pixelSize: Theme.fontSmall
+                        anchors.verticalCenter: parent.verticalCenter
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: newFolderDialog.reject()
+                        }
+                    }
+
+                    Rectangle {
+                        width: okFolderText.implicitWidth + 24
+                        height: 28
+                        radius: Theme.radiusSmall
+                        color: Theme.accent
+                        Text {
+                            id: okFolderText
+                            text: "Create"
+                            color: Theme.mantle
+                            font.pixelSize: Theme.fontSmall
+                            font.weight: Font.DemiBold
+                            anchors.centerIn: parent
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: newFolderDialog.accept()
+                        }
+                    }
+                }
             }
         }
     }
 
     // ── New File dialog ─────────────────────────────────────────────────────
-    Dialog {
+    Item {
         id: newFileDialog
-        title: "New File"
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        anchors.centerIn: parent
-        width: 360
+        anchors.fill: parent
+        visible: false
+        z: 1000
 
-        background: Rectangle {
-            color: Theme.mantle
-            radius: Theme.radiusMedium
-            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
-            border.width: 1
+        function open() {
+            visible = true
+            fileBox.opacity = 0
+            fileBox.scale = 0.88
+            fileBox.yOffset = -8
+            fileOpenAnim.start()
+            newFileField.forceActiveFocus()
         }
+        function accept() {
+            if (newItemParentPath !== "" && newFileField.text.trim() !== "")
+                fileOps.createFile(newItemParentPath, newFileField.text.trim())
+            fileCloseAnim.start()
+        }
+        function reject() { fileCloseAnim.start() }
 
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 8
-
-            Text {
-                text: "File name:"
-                color: Theme.text
-                font.pixelSize: Theme.fontNormal
+        ParallelAnimation {
+            id: fileOpenAnim
+            NumberAnimation {
+                target: fileBox; property: "opacity"
+                from: 0; to: 1; duration: 180
+                easing.type: Easing.OutCubic
             }
-
-            TextField {
-                id: newFileField
-                Layout.fillWidth: true
-                color: Theme.text
-                background: Rectangle {
-                    color: Theme.surface
-                    radius: Theme.radiusSmall
-                    border.color: newFileField.activeFocus ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.2)
-                    border.width: 1
+            NumberAnimation {
+                target: fileBox; property: "scale"
+                from: 0.88; to: 1; duration: 250
+                easing.type: Easing.OutBack
+                easing.overshoot: 0.8
+            }
+            NumberAnimation {
+                target: fileBox; property: "yOffset"
+                from: -8; to: 0; duration: 220
+                easing.type: Easing.OutCubic
+            }
+        }
+        SequentialAnimation {
+            id: fileCloseAnim
+            ParallelAnimation {
+                NumberAnimation {
+                    target: fileBox; property: "opacity"
+                    to: 0; duration: 120
+                    easing.type: Easing.InCubic
+                }
+                NumberAnimation {
+                    target: fileBox; property: "scale"
+                    to: 0.92; duration: 120
+                    easing.type: Easing.InCubic
+                }
+                NumberAnimation {
+                    target: fileBox; property: "yOffset"
+                    to: -4; duration: 120
+                    easing.type: Easing.InCubic
                 }
             }
+            ScriptAction { script: newFileDialog.visible = false }
         }
 
-        onAccepted: {
-            if (newItemParentPath !== "" && newFileField.text.trim() !== "") {
-                fileOps.createFile(newItemParentPath, newFileField.text.trim())
+        MouseArea {
+            anchors.fill: parent
+            onClicked: newFileDialog.reject()
+        }
+
+        Item {
+            id: fileBox
+            width: 340
+            height: fileContent.implicitHeight + 40
+            anchors.centerIn: parent
+
+            opacity: 0
+            scale: 0.88
+            transformOrigin: Item.Center
+
+            property real yOffset: 0
+            transform: Translate { y: fileBox.yOffset }
+
+            Rectangle {
+                anchors.fill: parent
+                color: Theme.mantle
+                radius: Theme.radiusMedium
+                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                border.width: 1
+            }
+
+            Column {
+                id: fileContent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 20
+                spacing: 12
+
+                Text {
+                    text: "New File"
+                    color: Theme.text
+                    font.pixelSize: Theme.fontNormal
+                    font.weight: Font.DemiBold
+                }
+
+                Text {
+                    text: "File name:"
+                    color: Theme.subtext
+                    font.pixelSize: Theme.fontSmall
+                }
+
+                TextField {
+                    id: newFileField
+                    width: parent.width
+                    color: Theme.text
+                    font.pixelSize: Theme.fontNormal
+                    padding: 8
+                    background: Rectangle {
+                        color: Theme.surface
+                        radius: Theme.radiusSmall
+                        border.color: newFileField.activeFocus ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.15)
+                        border.width: 1
+                    }
+                    Keys.onReturnPressed: newFileDialog.accept()
+                    Keys.onEscapePressed: newFileDialog.reject()
+                }
+
+                Item { width: 1; height: 4 }
+
+                Row {
+                    anchors.right: parent.right
+                    spacing: 12
+
+                    Text {
+                        text: "Cancel"
+                        color: Theme.subtext
+                        font.pixelSize: Theme.fontSmall
+                        anchors.verticalCenter: parent.verticalCenter
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: newFileDialog.reject()
+                        }
+                    }
+
+                    Rectangle {
+                        width: okFileText.implicitWidth + 24
+                        height: 28
+                        radius: Theme.radiusSmall
+                        color: Theme.accent
+                        Text {
+                            id: okFileText
+                            text: "Create"
+                            color: Theme.mantle
+                            font.pixelSize: Theme.fontSmall
+                            font.weight: Font.DemiBold
+                            anchors.centerIn: parent
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: newFileDialog.accept()
+                        }
+                    }
+                }
             }
         }
     }
