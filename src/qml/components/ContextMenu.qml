@@ -86,18 +86,46 @@ Item {
             sourceItem: root.blurSource
             sourceRect: Qt.rect(menuContainer.x, menuContainer.y, menuContainer.width, menuContainer.height)
             visible: false
+            live: true
         }
 
-        // Blur it
+        // First blur pass
         FastBlur {
-            id: blurredBg
+            id: blurPass1
             anchors.fill: parent
             source: bgCapture
-            radius: 96
+            radius: 64
             visible: false
         }
 
-        // Clip the blur to rounded rect
+        // Second blur pass for heavier frosted effect
+        FastBlur {
+            id: blurPass2
+            anchors.fill: parent
+            source: blurPass1
+            radius: 64
+            visible: false
+        }
+
+        // Desaturate + brighten the blur for frosted look
+        Desaturate {
+            id: desaturated
+            anchors.fill: parent
+            source: blurPass2
+            desaturation: 0.3
+            visible: false
+        }
+
+        BrightnessContrast {
+            id: adjusted
+            anchors.fill: parent
+            source: desaturated
+            brightness: 0.05
+            contrast: -0.1
+            visible: false
+        }
+
+        // Clip to rounded rect
         Rectangle {
             id: clipMask
             anchors.fill: parent
@@ -107,16 +135,23 @@ Item {
 
         OpacityMask {
             anchors.fill: parent
-            source: blurredBg
+            source: adjusted
             maskSource: clipMask
         }
 
-        // Tinted overlay on top of blur
+        // Light tint overlay — low opacity to let blur show through
         Rectangle {
             anchors.fill: parent
             radius: Theme.radiusLarge
-            color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.55)
-            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+            color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.35)
+        }
+
+        // Subtle border
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.radiusLarge
+            color: "transparent"
+            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
             border.width: 1
         }
 
