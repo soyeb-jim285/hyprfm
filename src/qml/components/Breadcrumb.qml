@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
+import Qt.labs.platform as Platform
 import HyprFM
 
 Item {
@@ -23,6 +25,14 @@ Item {
     height: 28
     clip: true
 
+    // Background MouseArea: double-click empty space enters edit mode
+    MouseArea {
+        anchors.fill: parent
+        visible: !root.editMode
+        z: -1
+        onDoubleClicked: root.startEditing()
+    }
+
     // Clickable path segments (display mode)
     Flickable {
         id: segmentsFlickable
@@ -38,12 +48,40 @@ Item {
             height: parent.height
             spacing: 0
 
+            // Home icon (replaces "/" root segment)
+            Rectangle {
+                height: segmentsRow.height
+                width: homeIcon.width + Theme.spacing
+                color: homeHover.containsMouse
+                    ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                    : "transparent"
+                radius: Theme.radiusSmall
+
+                Image {
+                    id: homeIcon
+                    anchors.centerIn: parent
+                    width: 16
+                    height: 16
+                    source: "image://icon/user-home"
+                    sourceSize: Qt.size(16, 16)
+                }
+
+                MouseArea {
+                    id: homeHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.navigateRequested(Platform.StandardPaths.writableLocation(Platform.StandardPaths.HomeLocation))
+                    onDoubleClicked: root.startEditing()
+                }
+            }
+
             Repeater {
                 id: segmentsRepeater
                 model: {
-                    if (!root.path || root.path === "/") return ["/"]
+                    if (!root.path || root.path === "/") return []
                     const parts = root.path.split("/").filter(p => p !== "")
-                    const result = ["/"]
+                    const result = []
                     let accumulated = ""
                     for (const part of parts) {
                         accumulated += "/" + part
@@ -56,9 +94,8 @@ Item {
                     height: segmentsRow.height
                     spacing: 0
 
-                    // Separator (except before root)
+                    // Separator
                     Text {
-                        visible: index > 0
                         text: " / "
                         color: Theme.muted
                         font.pixelSize: Theme.fontNormal
@@ -79,7 +116,7 @@ Item {
                         Text {
                             id: segLabel
                             anchors.centerIn: parent
-                            text: typeof modelData === "string" ? modelData : modelData.label
+                            text: modelData.label
                             color: Theme.text
                             font.pixelSize: Theme.fontNormal
                             verticalAlignment: Text.AlignVCenter
@@ -90,10 +127,7 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                const target = typeof modelData === "string" ? "/" : modelData.fullPath
-                                root.navigateRequested(target)
-                            }
+                            onClicked: root.navigateRequested(modelData.fullPath)
                             onDoubleClicked: root.startEditing()
                         }
                     }

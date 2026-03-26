@@ -84,10 +84,12 @@ Rectangle {
                             spacing: 4
 
                             // Folder icon
-                            Text {
-                                text: "📁"
-                                font.pixelSize: Theme.fontSmall
-                                verticalAlignment: Text.AlignVCenter
+                            Image {
+                                width: 16
+                                height: 16
+                                source: "image://icon/folder"
+                                sourceSize: Qt.size(16, 16)
+                                Layout.alignment: Qt.AlignVCenter
                             }
 
                             // Tab title

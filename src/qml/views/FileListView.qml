@@ -16,6 +16,21 @@ ListView {
 
     clip: true
 
+    focus: visible
+    keyNavigationEnabled: false  // We handle keys manually
+
+    function moveSelection(delta) {
+        var current = selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1
+        var next = Math.max(0, Math.min(count - 1, current + delta))
+        if (next === current && current >= 0) return
+        selectedIndices = [next]
+        lastSelectedIndex = next
+        positionViewAtIndex(next, ListView.Contain)
+    }
+
+    Keys.onUpPressed: moveSelection(-1)
+    Keys.onDownPressed: moveSelection(1)
+
     // Elastic overscroll
     boundsMovement: Flickable.FollowBoundsBehavior
     boundsBehavior: Flickable.DragAndOvershootBounds

@@ -18,6 +18,25 @@ GridView {
     cellWidth: 110
     cellHeight: 110
 
+    focus: visible
+    keyNavigationEnabled: false  // We handle keys manually
+
+    readonly property int columnsPerRow: Math.max(1, Math.floor(width / cellWidth))
+
+    function moveSelection(delta) {
+        var current = selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1
+        var next = Math.max(0, Math.min(count - 1, current + delta))
+        if (next === current && current >= 0) return
+        selectedIndices = [next]
+        lastSelectedIndex = next
+        positionViewAtIndex(next, GridView.Contain)
+    }
+
+    Keys.onLeftPressed: moveSelection(-1)
+    Keys.onRightPressed: moveSelection(1)
+    Keys.onUpPressed: moveSelection(-columnsPerRow)
+    Keys.onDownPressed: moveSelection(columnsPerRow)
+
     // Elastic overscroll
     boundsMovement: Flickable.FollowBoundsBehavior
     boundsBehavior: Flickable.DragAndOvershootBounds

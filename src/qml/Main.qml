@@ -326,6 +326,11 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: "Backspace"
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.goBack() }
+    }
+
+    Shortcut {
         sequence: config.shortcut("forward")
         onActivated: { if (tabModel.activeTab) tabModel.activeTab.goForward() }
     }
@@ -504,6 +509,20 @@ ApplicationWindow {
             folderCount: fsModel.folderCount
             selectedCount: root.currentSelectedCount
             selectedSize: root.currentSelectedSize
+        }
+    }
+
+    // ── Mouse back/forward button support ────────────────────────────────────
+    MouseArea {
+        anchors.fill: parent
+        z: -100
+        acceptedButtons: Qt.BackButton | Qt.ForwardButton
+        propagateComposedEvents: true
+        onClicked: (mouse) => {
+            if (mouse.button === Qt.BackButton && tabModel.activeTab)
+                tabModel.activeTab.goBack()
+            else if (mouse.button === Qt.ForwardButton && tabModel.activeTab)
+                tabModel.activeTab.goForward()
         }
     }
 
