@@ -19,6 +19,8 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"cut", "Ctrl+X"},
     {"paste", "Ctrl+V"},
     {"rename", "F2"},
+    {"new_folder", "Ctrl+Shift+N"},
+    {"new_file", "Ctrl+Alt+N"},
     {"trash", "Delete"},
     {"permanent_delete", "Shift+Delete"},
     {"toggle_hidden", "Ctrl+H"},

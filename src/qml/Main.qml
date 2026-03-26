@@ -211,12 +211,6 @@ ApplicationWindow {
                     font.weight: Font.DemiBold
                 }
 
-                Text {
-                    text: "New name:"
-                    color: Theme.subtext
-                    font.pixelSize: Theme.fontSmall
-                }
-
                 TextField {
                     id: renameField
                     width: parent.width
@@ -232,8 +226,6 @@ ApplicationWindow {
                     Keys.onReturnPressed: renameDialog.accept()
                     Keys.onEscapePressed: renameDialog.reject()
                 }
-
-                Item { width: 1; height: 4 }
 
                 Row {
                     anchors.right: parent.right
@@ -381,12 +373,6 @@ ApplicationWindow {
                     font.weight: Font.DemiBold
                 }
 
-                Text {
-                    text: "Folder name:"
-                    color: Theme.subtext
-                    font.pixelSize: Theme.fontSmall
-                }
-
                 TextField {
                     id: newFolderField
                     width: parent.width
@@ -402,8 +388,6 @@ ApplicationWindow {
                     Keys.onReturnPressed: newFolderDialog.accept()
                     Keys.onEscapePressed: newFolderDialog.reject()
                 }
-
-                Item { width: 1; height: 4 }
 
                 Row {
                     anchors.right: parent.right
@@ -549,12 +533,6 @@ ApplicationWindow {
                     font.weight: Font.DemiBold
                 }
 
-                Text {
-                    text: "File name:"
-                    color: Theme.subtext
-                    font.pixelSize: Theme.fontSmall
-                }
-
                 TextField {
                     id: newFileField
                     width: parent.width
@@ -570,8 +548,6 @@ ApplicationWindow {
                     Keys.onReturnPressed: newFileDialog.accept()
                     Keys.onEscapePressed: newFileDialog.reject()
                 }
-
-                Item { width: 1; height: 4 }
 
                 Row {
                     anchors.right: parent.right
@@ -790,6 +766,43 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcut("select_all")
         onActivated: fileViewContainer.selectAll()
+    }
+
+    Shortcut {
+        sequence: config.shortcut("rename")
+        onActivated: {
+            var paths = getSelectedPaths()
+            if (paths.length === 1) {
+                root.renameTargetPath = paths[0]
+                var name = paths[0].substring(paths[0].lastIndexOf("/") + 1)
+                renameField.text = name
+                renameDialog.open()
+            }
+        }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("new_folder")
+        onActivated: {
+            var dest = tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+            if (dest !== "") {
+                root.newItemParentPath = dest
+                newFolderField.text = ""
+                newFolderDialog.open()
+            }
+        }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("new_file")
+        onActivated: {
+            var dest = tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+            if (dest !== "") {
+                root.newItemParentPath = dest
+                newFileField.text = ""
+                newFileDialog.open()
+            }
+        }
     }
 
     // Quick preview (spacebar)
