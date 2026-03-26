@@ -67,9 +67,7 @@ Menu {
         background: Rectangle {
             implicitHeight: 30
             implicitWidth: 200
-            color: menuItem.highlighted
-                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
-                : "transparent"
+            color: menuItem.highlighted ? Theme.surface : "transparent"
             radius: Theme.radiusSmall
         }
     }
