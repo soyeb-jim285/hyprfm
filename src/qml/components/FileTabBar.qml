@@ -77,6 +77,18 @@ Rectangle {
                             }
                         }
 
+                        // Tab background click area
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                            onClicked: (mouse) => {
+                                if (mouse.button === Qt.MiddleButton)
+                                    tabModel.closeTab(tabDelegate.index)
+                                else
+                                    tabModel.activeIndex = tabDelegate.index
+                            }
+                        }
+
                         RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: Theme.spacing
@@ -96,7 +108,7 @@ Rectangle {
                             Text {
                                 Layout.fillWidth: true
                                 text: model.title || "New Tab"
-                                color: index === tabModel.activeIndex ? Theme.text : Theme.subtext
+                                color: tabDelegate.index === tabModel.activeIndex ? Theme.text : Theme.subtext
                                 font.pixelSize: Theme.fontNormal
                                 elide: Text.ElideRight
                                 verticalAlignment: Text.AlignVCenter
@@ -109,7 +121,8 @@ Rectangle {
                                 height: 18
                                 radius: 9
                                 color: closeHover.containsMouse ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.8) : "transparent"
-                                visible: tabModel.count > 1 || closeHover.containsMouse
+                                visible: tabModel.count > 1
+                                Layout.alignment: Qt.AlignVCenter
 
                                 Text {
                                     anchors.centerIn: parent
@@ -123,24 +136,7 @@ Rectangle {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        mouse.accepted = true
-                                        tabModel.closeTab(index)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Tab click and middle-click (behind everything)
-                        MouseArea {
-                            anchors.fill: parent
-                            z: -1
-                            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                            onClicked: (mouse) => {
-                                if (mouse.button === Qt.MiddleButton) {
-                                    tabModel.closeTab(index)
-                                } else {
-                                    tabModel.activeIndex = index
+                                    onClicked: tabModel.closeTab(tabDelegate.index)
                                 }
                             }
                         }
