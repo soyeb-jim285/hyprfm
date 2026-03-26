@@ -77,9 +77,11 @@ Rectangle {
                             }
                         }
 
-                        // Tab background click area
+                        // Tab content: icon + title area (clickable for switching)
                         MouseArea {
+                            id: tabClickArea
                             anchors.fill: parent
+                            anchors.rightMargin: closeBtn.visible ? closeBtn.width + 8 : 0
                             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
                             onClicked: (mouse) => {
                                 if (mouse.button === Qt.MiddleButton)
@@ -87,57 +89,56 @@ Rectangle {
                                 else
                                     tabModel.activeIndex = tabDelegate.index
                             }
-                        }
 
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: Theme.spacing
-                            anchors.rightMargin: 4
-                            spacing: 4
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.spacing
+                                spacing: 4
 
-                            // Folder icon
-                            Image {
-                                width: 16
-                                height: 16
-                                source: "image://icon/folder"
-                                sourceSize: Qt.size(16, 16)
-                                Layout.alignment: Qt.AlignVCenter
-                            }
-
-                            // Tab title
-                            Text {
-                                Layout.fillWidth: true
-                                text: model.title || "New Tab"
-                                color: tabDelegate.index === tabModel.activeIndex ? Theme.text : Theme.subtext
-                                font.pixelSize: Theme.fontNormal
-                                elide: Text.ElideRight
-                                verticalAlignment: Text.AlignVCenter
-                            }
-
-                            // Close button
-                            Rectangle {
-                                id: closeBtn
-                                width: 18
-                                height: 18
-                                radius: 9
-                                color: closeHover.containsMouse ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.8) : "transparent"
-                                visible: tabModel.count > 1
-                                Layout.alignment: Qt.AlignVCenter
+                                Image {
+                                    width: 16
+                                    height: 16
+                                    source: "image://icon/folder"
+                                    sourceSize: Qt.size(16, 16)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
 
                                 Text {
-                                    anchors.centerIn: parent
-                                    text: "✕"
-                                    font.pixelSize: Theme.fontSmall - 1
-                                    color: closeHover.containsMouse ? Theme.base : Theme.muted
+                                    width: parent.width - 20 - parent.spacing
+                                    text: model.title || "New Tab"
+                                    color: tabDelegate.index === tabModel.activeIndex ? Theme.text : Theme.subtext
+                                    font.pixelSize: Theme.fontNormal
+                                    elide: Text.ElideRight
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
+                            }
+                        }
 
-                                MouseArea {
-                                    id: closeHover
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: tabModel.closeTab(tabDelegate.index)
-                                }
+                        // Close button — separate, not overlapped by tab click area
+                        Rectangle {
+                            id: closeBtn
+                            width: 18
+                            height: 18
+                            radius: 9
+                            anchors.right: parent.right
+                            anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: closeHover.containsMouse ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.8) : "transparent"
+                            visible: tabModel.count > 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✕"
+                                font.pixelSize: Theme.fontSmall - 1
+                                color: closeHover.containsMouse ? Theme.base : Theme.muted
+                            }
+
+                            MouseArea {
+                                id: closeHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: tabModel.closeTab(tabDelegate.index)
                             }
                         }
                     }
