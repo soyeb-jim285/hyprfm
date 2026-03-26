@@ -76,12 +76,12 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
-        // Solid dark background with subtle border
+        // Semi-transparent background
         Rectangle {
             anchors.fill: parent
             radius: Theme.radiusLarge
-            color: Theme.crust
-            border.color: Theme.overlay
+            color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.75)
+            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
             border.width: 1
         }
 
