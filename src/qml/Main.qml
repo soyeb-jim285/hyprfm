@@ -589,12 +589,550 @@ ApplicationWindow {
         }
     }
 
+    // ── Properties dialog ──────────────────────────────────────────────────
+    Item {
+        id: propertiesDialog
+        anchors.fill: parent
+        visible: false
+        z: 1000
+
+        property var props: ({})
+        property var apps: []
+        property int currentTab: 0  // 0=General, 1=Permissions, 2=Open With
+
+        function showProperties(path) {
+            props = fsModel.fileProperties(path)
+            currentTab = 0
+            if (!props.isDir && props.mimeType)
+                apps = fsModel.availableApps(props.mimeType)
+            else
+                apps = []
+            visible = true
+            propsBox.opacity = 0
+            propsBox.scale = 0.88
+            propsBox.yOffset = -8
+            propsOpenAnim.start()
+        }
+        function close() { propsCloseAnim.start() }
+
+        ParallelAnimation {
+            id: propsOpenAnim
+            NumberAnimation {
+                target: propsBox; property: "opacity"
+                from: 0; to: 1; duration: 180
+                easing.type: Easing.OutCubic
+            }
+            NumberAnimation {
+                target: propsBox; property: "scale"
+                from: 0.88; to: 1; duration: 250
+                easing.type: Easing.OutBack
+                easing.overshoot: 0.8
+            }
+            NumberAnimation {
+                target: propsBox; property: "yOffset"
+                from: -8; to: 0; duration: 220
+                easing.type: Easing.OutCubic
+            }
+        }
+        SequentialAnimation {
+            id: propsCloseAnim
+            ParallelAnimation {
+                NumberAnimation {
+                    target: propsBox; property: "opacity"
+                    to: 0; duration: 120
+                    easing.type: Easing.InCubic
+                }
+                NumberAnimation {
+                    target: propsBox; property: "scale"
+                    to: 0.92; duration: 120
+                    easing.type: Easing.InCubic
+                }
+                NumberAnimation {
+                    target: propsBox; property: "yOffset"
+                    to: -4; duration: 120
+                    easing.type: Easing.InCubic
+                }
+            }
+            ScriptAction { script: propertiesDialog.visible = false }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: propertiesDialog.close()
+        }
+
+        Item {
+            id: propsBox
+            width: 420
+            height: propsOuterCol.height
+            anchors.centerIn: parent
+            opacity: 0; scale: 0.88; transformOrigin: Item.Center
+            property real yOffset: 0
+            transform: Translate { y: propsBox.yOffset }
+
+            // Access dropdown options
+            property var accessOptions: ["None", "Read only", "Read & Write", "Read, Write & Execute"]
+
+            Rectangle {
+                anchors.fill: parent
+                color: Theme.mantle
+                radius: Theme.radiusMedium
+                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                border.width: 1
+            }
+
+            Column {
+                id: propsOuterCol
+                width: parent.width
+                spacing: 0
+
+                // ── Hero: icon + name + kind + size ──
+                Item {
+                    width: parent.width; height: 88
+                    Rectangle {
+                        id: propsIconBg; width: 52; height: 52; radius: 12
+                        color: Theme.surface
+                        anchors.left: parent.left; anchors.leftMargin: 24; anchors.verticalCenter: parent.verticalCenter
+                        Image {
+                            anchors.centerIn: parent; width: 32; height: 32
+                            source: propertiesDialog.props.iconName ? ("image://icon/" + propertiesDialog.props.iconName) : ""
+                            sourceSize: Qt.size(32, 32); smooth: true
+                        }
+                    }
+                    Column {
+                        anchors.left: propsIconBg.right; anchors.leftMargin: 14
+                        anchors.right: parent.right; anchors.rightMargin: 24
+                        anchors.verticalCenter: parent.verticalCenter; spacing: 2
+                        Text {
+                            text: propertiesDialog.props.name || ""; color: Theme.text
+                            font.pixelSize: 15; font.weight: Font.DemiBold
+                            elide: Text.ElideMiddle; width: parent.width
+                        }
+                        Text {
+                            text: { var p = propertiesDialog.props; return !p.mimeDescription ? "" : p.isDir ? "Folder" : p.mimeDescription }
+                            color: Theme.subtext; font.pixelSize: Theme.fontSmall; elide: Text.ElideRight; width: parent.width
+                        }
+                    }
+                }
+
+                // ── Tab bar ──
+                Item {
+                    width: parent.width; height: 36
+                    Row {
+                        anchors.left: parent.left; anchors.leftMargin: 20; spacing: 0
+                        Repeater {
+                            model: ["General", "Permissions"]
+                            delegate: Item {
+                                width: tabText.implicitWidth + 24; height: 36
+                                Text {
+                                    id: tabText; text: modelData; anchors.centerIn: parent
+                                    font.pixelSize: Theme.fontSmall
+                                    font.weight: propertiesDialog.currentTab === index ? Font.DemiBold : Font.Normal
+                                    color: propertiesDialog.currentTab === index ? Theme.accent : Theme.subtext
+                                }
+                                Rectangle {
+                                    width: parent.width; height: 2; anchors.bottom: parent.bottom
+                                    color: Theme.accent; visible: propertiesDialog.currentTab === index
+                                    radius: 1
+                                }
+                                MouseArea {
+                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: propertiesDialog.currentTab = index
+                                }
+                            }
+                        }
+                    }
+                    Rectangle { width: parent.width; height: 1; anchors.bottom: parent.bottom; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+                }
+
+                // ── Tab content slider ──
+                Item {
+                    id: tabSlider
+                    width: parent.width
+                    height: propertiesDialog.currentTab === 0 ? generalTab.height : permissionsTab.height
+                    clip: true
+                    Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+
+                    Row {
+                        id: tabSliderRow
+                        x: -propertiesDialog.currentTab * tabSlider.width
+                        Behavior on x { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+
+                // ══════════════════════════════════════════════
+                // TAB 0: General
+                // ══════════════════════════════════════════════
+                Column {
+                    id: generalTab
+                    width: tabSlider.width; spacing: 0
+
+                    // helper component for a property row
+                    component PropRow: Item {
+                        property string label
+                        property string value
+                        property bool show: true
+                        width: parent.width; height: show ? 28 : 0; visible: show
+                        Text { text: label; color: Theme.subtext; font.pixelSize: Theme.fontSmall; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: 80 }
+                        Text { text: value; color: Theme.text; font.pixelSize: Theme.fontSmall; anchors.left: parent.left; anchors.leftMargin: 88; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideMiddle }
+                    }
+
+                    Item { width: 1; height: 8 }
+
+                    // Info rows
+                    Column {
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
+
+                        PropRow { label: "Kind"; value: { var p = propertiesDialog.props; return p.isDir ? "Folder" : (p.mimeDescription || "") } }
+                        PropRow { label: "Location"; value: propertiesDialog.props.parentDir || "" }
+                        PropRow { label: "Link target"; value: propertiesDialog.props.symlinkTarget || ""; show: propertiesDialog.props.isSymlink || false }
+                    }
+
+                    // Separator
+                    Rectangle { width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+
+                    // Timestamps
+                    Column {
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
+
+                        PropRow { label: "Created"; value: propertiesDialog.props.created || "" }
+                        PropRow { label: "Modified"; value: propertiesDialog.props.modified || "" }
+                        PropRow { label: "Accessed"; value: propertiesDialog.props.accessed || "" }
+                    }
+
+                    Rectangle { width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+
+                    // Size section
+                    Column {
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
+
+                        PropRow { label: "Size"; value: propertiesDialog.props.sizeText || "" }
+                        PropRow { label: "Content"; value: propertiesDialog.props.contentText || ""; show: propertiesDialog.props.isDir || false }
+                    }
+
+                    Rectangle { width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+
+                    // Disk usage
+                    Column {
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 4
+                        visible: propertiesDialog.props.diskTotal !== undefined
+
+                        Item { width: 1; height: 4 }
+
+                        PropRow { label: "Capacity"; value: propertiesDialog.props.diskTotal || "" }
+
+                        // Usage bar
+                        Item {
+                            width: parent.width; height: 28
+                            Text { text: "Usage"; color: Theme.subtext; font.pixelSize: Theme.fontSmall; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: 80 }
+                            Column {
+                                anchors.left: parent.left; anchors.leftMargin: 88
+                                anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: 4
+
+                                // Bar
+                                Rectangle {
+                                    width: parent.width; height: 6; radius: 3
+                                    color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                                    Rectangle {
+                                        width: parent.width * (propertiesDialog.props.diskUsedPercent || 0)
+                                        height: parent.height; radius: 3
+                                        color: (propertiesDialog.props.diskUsedPercent || 0) > 0.9 ? "#e74c3c" : Theme.accent
+                                    }
+                                }
+
+                                // Label
+                                Text {
+                                    text: (propertiesDialog.props.diskUsed || "") + " used (" + (propertiesDialog.props.diskUsedPctText || "") + ")  |  " +
+                                          (propertiesDialog.props.diskFree || "") + " free (" + (propertiesDialog.props.diskFreePctText || "") + ")"
+                                    color: Theme.subtext; font.pixelSize: 10
+                                }
+                            }
+                        }
+
+                        Item { width: 1; height: 4 }
+                    }
+
+                    // Open With (files only)
+                    Rectangle {
+                        width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter
+                        color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
+                        visible: !(propertiesDialog.props.isDir) && propertiesDialog.apps.length > 0
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: openWithInner.height
+                        visible: !(propertiesDialog.props.isDir) && propertiesDialog.apps.length > 0
+
+                        property bool expanded: false
+
+                        Column {
+                            id: openWithInner
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.leftMargin: 24; anchors.rightMargin: 24
+                            spacing: 0
+
+                            Item { width: 1; height: 6 }
+
+                            // Current default app button
+                            Rectangle {
+                                width: parent.width; height: 32; radius: Theme.radiusSmall
+                                color: owBtnMa.containsMouse ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05) : "transparent"
+
+                                Text {
+                                    text: "Open with"
+                                    color: Theme.subtext; font.pixelSize: Theme.fontSmall
+                                    anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                                    width: 80
+                                }
+
+                                Text {
+                                    id: owCurrentApp
+                                    text: {
+                                        var apps = propertiesDialog.apps
+                                        for (var i = 0; i < apps.length; i++)
+                                            if (apps[i].isDefault) return apps[i].name
+                                        return apps.length > 0 ? apps[0].name : ""
+                                    }
+                                    color: Theme.text; font.pixelSize: Theme.fontSmall
+                                    anchors.left: parent.left; anchors.leftMargin: 88
+                                    anchors.right: owChevron.left; anchors.rightMargin: 4
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    elide: Text.ElideRight
+                                }
+
+                                Item {
+                                    id: owChevron
+                                    width: 12; height: 12
+                                    anchors.right: parent.right; anchors.rightMargin: 4
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    rotation: parent.parent.parent.expanded ? 180 : 0
+                                    Behavior on rotation { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                                    IconChevronDown { anchors.centerIn: parent; size: 12; color: Theme.subtext }
+                                }
+
+                                MouseArea {
+                                    id: owBtnMa; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: parent.parent.parent.expanded = !parent.parent.parent.expanded
+                                }
+                            }
+
+                            // Animated expanding list
+                            Item {
+                                width: parent.width
+                                height: parent.parent.expanded ? owAppList.height + 8 : 0
+                                clip: true
+                                Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+                                Rectangle {
+                                    id: owListBg
+                                    width: parent.width; height: owAppList.height + 8
+                                    radius: Theme.radiusSmall
+                                    color: Theme.surface
+                                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                                    border.width: 1
+
+                                    Column {
+                                        id: owAppList
+                                        width: parent.width - 8
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.top: parent.top; anchors.topMargin: 4
+                                        spacing: 2
+
+                                        Repeater {
+                                            model: propertiesDialog.apps
+                                            delegate: Rectangle {
+                                                width: parent.width; height: 30; radius: 4
+                                                color: owItemMa.containsMouse
+                                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
+                                                    : "transparent"
+
+                                                Image {
+                                                    id: owAppIcon
+                                                    source: modelData.iconName ? ("image://icon/" + modelData.iconName) : ""
+                                                    sourceSize: Qt.size(18, 18)
+                                                    width: 18; height: 18
+                                                    anchors.left: parent.left; anchors.leftMargin: 10
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    visible: modelData.iconName && status === Image.Ready
+                                                }
+
+                                                Text {
+                                                    text: modelData.name
+                                                    color: modelData.isDefault ? Theme.accent : Theme.text
+                                                    font.pixelSize: Theme.fontSmall
+                                                    font.weight: modelData.isDefault ? Font.DemiBold : Font.Normal
+                                                    anchors.left: owAppIcon.visible ? owAppIcon.right : parent.left
+                                                    anchors.leftMargin: owAppIcon.visible ? 8 : 10
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    anchors.right: owItemBadge.left; anchors.rightMargin: 4
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                IconCheck {
+                                                    id: owItemBadge
+                                                    visible: modelData.isDefault
+                                                    size: 14; color: Theme.accent
+                                                    anchors.right: parent.right; anchors.rightMargin: 10
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                }
+
+                                                MouseArea {
+                                                    id: owItemMa; anchors.fill: parent; hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        if (!modelData.isDefault) {
+                                                            fsModel.setDefaultApp(propertiesDialog.props.mimeType, modelData.desktopFile)
+                                                            propertiesDialog.apps = fsModel.availableApps(propertiesDialog.props.mimeType)
+                                                        }
+                                                        openWithInner.parent.expanded = false
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Item { width: 1; height: 6 }
+                        }
+                    }
+                }
+
+                // ══════════════════════════════════════════════
+                // TAB 1: Permissions
+                // ══════════════════════════════════════════════
+                Column {
+                    id: permissionsTab
+                    width: tabSlider.width; spacing: 0
+
+                    Item { width: 1; height: 12 }
+
+                    // Helper component for permission group
+                    component PermGroup: Column {
+                        property string groupLabel
+                        property string userName
+                        property int accessIdx: 0
+                        signal accessChanged(int newIdx)
+                        width: parent.width; spacing: 4
+                        anchors.leftMargin: 24; anchors.rightMargin: 24
+
+                        // Group header
+                        Text {
+                            text: groupLabel
+                            color: Theme.text; font.pixelSize: Theme.fontSmall; font.weight: Font.DemiBold
+                            leftPadding: 24
+                        }
+
+                        // User name (if any)
+                        Text {
+                            text: userName; visible: userName !== ""
+                            color: Theme.subtext; font.pixelSize: Theme.fontSmall
+                            leftPadding: 36
+                        }
+
+                        // Access selector row
+                        Item {
+                            width: parent.width; height: 28
+                            Text { text: "Access:"; color: Theme.subtext; font.pixelSize: Theme.fontSmall; anchors.left: parent.left; anchors.leftMargin: 36; anchors.verticalCenter: parent.verticalCenter }
+
+                            // Dropdown-style selector
+                            Rectangle {
+                                anchors.left: parent.left; anchors.leftMargin: 108
+                                anchors.right: parent.right; anchors.rightMargin: 24
+                                height: 26; radius: Theme.radiusSmall
+                                color: Theme.surface
+                                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12); border.width: 1
+
+                                Text {
+                                    text: propsBox.accessOptions[accessIdx] || "None"
+                                    color: Theme.text; font.pixelSize: Theme.fontSmall
+                                    anchors.left: parent.left; anchors.leftMargin: 8; anchors.verticalCenter: parent.verticalCenter
+                                }
+                                IconChevronDown {
+                                    size: 12; color: Theme.subtext
+                                    anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
+                                }
+                                MouseArea {
+                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        var next = (accessIdx + 1) % 4
+                                        accessChanged(next)
+                                    }
+                                }
+                            }
+                        }
+
+                        Item { width: 1; height: 4 }
+                    }
+
+                    PermGroup {
+                        groupLabel: "Owner"
+                        userName: propertiesDialog.props.owner || ""
+                        accessIdx: propertiesDialog.props.ownerAccess || 0
+                        onAccessChanged: (idx) => {
+                            fsModel.setFilePermissions(propertiesDialog.props.path, idx, propertiesDialog.props.groupAccess || 0, propertiesDialog.props.otherAccess || 0)
+                            propertiesDialog.props = fsModel.fileProperties(propertiesDialog.props.path)
+                        }
+                    }
+
+                    Rectangle { width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+
+                    PermGroup {
+                        groupLabel: "Group"
+                        userName: propertiesDialog.props.group || ""
+                        accessIdx: propertiesDialog.props.groupAccess || 0
+                        onAccessChanged: (idx) => {
+                            fsModel.setFilePermissions(propertiesDialog.props.path, propertiesDialog.props.ownerAccess || 0, idx, propertiesDialog.props.otherAccess || 0)
+                            propertiesDialog.props = fsModel.fileProperties(propertiesDialog.props.path)
+                        }
+                    }
+
+                    Rectangle { width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+
+                    PermGroup {
+                        groupLabel: "Others"
+                        userName: ""
+                        accessIdx: propertiesDialog.props.otherAccess || 0
+                        onAccessChanged: (idx) => {
+                            fsModel.setFilePermissions(propertiesDialog.props.path, propertiesDialog.props.ownerAccess || 0, propertiesDialog.props.groupAccess || 0, idx)
+                            propertiesDialog.props = fsModel.fileProperties(propertiesDialog.props.path)
+                        }
+                    }
+
+                    Item { width: 1; height: 8 }
+                }
+
+                    } // Row (tabSliderRow)
+                } // Item (tabSlider)
+
+                // ── Close button ──
+                Item {
+                    width: parent.width; height: 48
+                    Rectangle {
+                        width: propsCloseText.implicitWidth + 28; height: 30; radius: Theme.radiusSmall
+                        color: Theme.accent
+                        anchors.right: parent.right; anchors.rightMargin: 20; anchors.verticalCenter: parent.verticalCenter
+                        Text { id: propsCloseText; text: "Close"; color: Theme.mantle; font.pixelSize: Theme.fontSmall; font.weight: Font.DemiBold; anchors.centerIn: parent }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: propertiesDialog.close() }
+                    }
+                }
+            }
+        }
+    }
+
     // ── Context Menu ────────────────────────────────────────────────────────
     ContextMenu {
         id: contextMenu
         blurSource: mainContent
 
+        fileModel: fsModel
+
         onOpenRequested: (path) => fileOps.openFile(path)
+        onOpenWithRequested: (path, desktopFile) => fileOps.openFileWith(path, desktopFile)
 
         onCutRequested: (paths) => clipboard.cut(paths)
 
@@ -642,8 +1180,7 @@ ApplicationWindow {
         onSelectAllRequested: fileViewContainer.selectAll()
 
         onPropertiesRequested: (path) => {
-            // Basic: open file manager properties or show info
-            fileOps.openFile(path)
+            propertiesDialog.showProperties(path)
         }
     }
 

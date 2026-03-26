@@ -54,6 +54,8 @@ ConfigManager::ConfigManager(const QString &configPath, QObject *parent)
 void ConfigManager::setDefaults()
 {
     m_theme = "catppuccin-mocha";
+    m_iconTheme = "Adwaita";
+    m_builtinIcons = true;
     m_defaultView = "grid";
     m_showHidden = false;
     m_sortBy = "name";
@@ -78,6 +80,10 @@ void ConfigManager::loadConfig()
 
         if (auto v = config["general"]["theme"].value<std::string>())
             m_theme = QString::fromStdString(*v);
+        if (auto v = config["general"]["icon_theme"].value<std::string>())
+            m_iconTheme = QString::fromStdString(*v);
+        if (auto v = config["general"]["builtin_icons"].value<bool>())
+            m_builtinIcons = *v;
         if (auto v = config["general"]["default_view"].value<std::string>())
             m_defaultView = QString::fromStdString(*v);
         if (auto v = config["general"]["show_hidden"].value<bool>())
@@ -147,6 +153,8 @@ void ConfigManager::loadConfig()
 }
 
 QString ConfigManager::theme() const { return m_theme; }
+QString ConfigManager::iconTheme() const { return m_iconTheme; }
+bool ConfigManager::builtinIcons() const { return m_builtinIcons; }
 QString ConfigManager::defaultView() const { return m_defaultView; }
 bool ConfigManager::showHidden() const { return m_showHidden; }
 QString ConfigManager::sortBy() const { return m_sortBy; }

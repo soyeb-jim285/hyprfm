@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QList>
 #include <QString>
+#include <QVariantMap>
 
 class FileSystemModel : public QAbstractListModel
 {
@@ -49,6 +50,11 @@ public:
     Q_INVOKABLE QString fileName(int row) const;
     Q_INVOKABLE void sortByColumn(const QString &column, bool ascending);
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE QVariantMap fileProperties(const QString &path) const;
+    Q_INVOKABLE QVariantList availableApps(const QString &mimeType) const;
+    Q_INVOKABLE QString defaultApp(const QString &mimeType) const;
+    Q_INVOKABLE void setDefaultApp(const QString &mimeType, const QString &desktopFile);
+    Q_INVOKABLE bool setFilePermissions(const QString &path, int ownerAccess, int groupAccess, int otherAccess);
 
 signals:
     void rootPathChanged();

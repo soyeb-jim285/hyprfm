@@ -34,6 +34,15 @@ qt_add_qml_module(hyprfm
         qml/components/QuickPreview.qml
         qml/components/Toast.qml
         qml/components/RubberBand.qml
+        qml/icons/IconCheck.qml
+        qml/icons/IconChevronRight.qml
+        qml/icons/IconChevronDown.qml
+        qml/icons/IconChevronLeft.qml
+        qml/icons/IconChevronUp.qml
+        qml/icons/IconX.qml
+        qml/icons/IconGrid.qml
+        qml/icons/IconList.qml
+        qml/icons/IconAlignJustify.qml
 )
 
 target_link_libraries(hyprfm PRIVATE

@@ -125,10 +125,9 @@ Rectangle {
                             color: closeHover.hovered ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.8) : "transparent"
                             visible: tabModel.count > 1
 
-                            Text {
+                            IconX {
                                 anchors.centerIn: parent
-                                text: "✕"
-                                font.pixelSize: Theme.fontSmall - 1
+                                size: 12
                                 color: closeHover.hovered ? Theme.base : Theme.muted
                             }
 

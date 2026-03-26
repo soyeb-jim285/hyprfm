@@ -30,11 +30,10 @@ Rectangle {
                 : "transparent"
             opacity: root.activeTab && root.activeTab.canGoBack ? 1.0 : 0.4
 
-            Text {
+            IconChevronLeft {
                 anchors.centerIn: parent
-                text: "←"
+                size: 18
                 color: Theme.text
-                font.pixelSize: Theme.fontLarge
             }
 
             MouseArea {
@@ -57,11 +56,10 @@ Rectangle {
                 : "transparent"
             opacity: root.activeTab && root.activeTab.canGoForward ? 1.0 : 0.4
 
-            Text {
+            IconChevronRight {
                 anchors.centerIn: parent
-                text: "→"
+                size: 18
                 color: Theme.text
-                font.pixelSize: Theme.fontLarge
             }
 
             MouseArea {
@@ -81,11 +79,10 @@ Rectangle {
             radius: Theme.radiusSmall
             color: upHover.containsMouse ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
 
-            Text {
+            IconChevronUp {
                 anchors.centerIn: parent
-                text: "↑"
+                size: 18
                 color: Theme.text
-                font.pixelSize: Theme.fontLarge
             }
 
             MouseArea {
@@ -114,30 +111,39 @@ Rectangle {
             spacing: 2
 
             Repeater {
-                model: [
-                    { mode: "grid",     icon: "▦" },
-                    { mode: "list",     icon: "≡" },
-                    { mode: "detailed", icon: "☰" }
-                ]
+                model: ["grid", "list", "detailed"]
 
                 delegate: Rectangle {
                     width: 30
                     height: 30
                     radius: Theme.radiusSmall
+                    property bool isActive: root.activeTab && root.activeTab.viewMode === modelData
                     color: {
-                        const isActive = root.activeTab && root.activeTab.viewMode === modelData.mode
                         if (isActive) return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
                         if (vmHover.containsMouse) return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
                         return "transparent"
                     }
 
-                    Text {
+                    property color iconColor: isActive ? Theme.accent : Theme.subtext
+
+                    Loader {
                         anchors.centerIn: parent
-                        text: modelData.icon
-                        color: root.activeTab && root.activeTab.viewMode === modelData.mode
-                            ? Theme.accent
-                            : Theme.subtext
-                        font.pixelSize: Theme.fontNormal
+                        sourceComponent: modelData === "grid" ? gridIcon
+                                       : modelData === "list" ? listIcon
+                                       : detailedIcon
+                    }
+
+                    Component {
+                        id: gridIcon
+                        IconGrid { size: 16; color: iconColor }
+                    }
+                    Component {
+                        id: listIcon
+                        IconList { size: 16; color: iconColor }
+                    }
+                    Component {
+                        id: detailedIcon
+                        IconAlignJustify { size: 16; color: iconColor }
                     }
 
                     MouseArea {
@@ -146,7 +152,7 @@ Rectangle {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (root.activeTab) root.activeTab.viewMode = modelData.mode
+                            if (root.activeTab) root.activeTab.viewMode = modelData
                         }
                     }
                 }

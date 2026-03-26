@@ -16,6 +16,7 @@ Item {
     property var selectedPaths: []
 
     signal openRequested(string path)
+    signal openWithRequested(string path, string desktopFile)
     signal cutRequested(var paths)
     signal copyRequested(var paths)
     signal pasteRequested(string destPath)
@@ -39,8 +40,10 @@ Item {
     }
 
     property Item blurSource: null
+    property var fileModel: null
 
     function popup(x, y) {
+        openWithApps = []
         var menuW = menuColumn.width + 12
         var menuH = menuColumn.height + 12
         menuContainer.x = Math.min(x, root.width - menuW - 8)
@@ -141,19 +144,40 @@ Item {
                 delegate: Loader {
                     id: delegateLoader
                     width: menuColumn.width
-                    sourceComponent: modelData.separator ? separatorComponent : itemComponent
+                    sourceComponent: modelData.separator ? separatorComponent
+                                   : modelData.isOpenWith ? openWithComponent
+                                   : itemComponent
                     property var itemData: modelData
                     property int itemIndex: index
-
                 }
             }
         }
     }
 
+    // ── Open With apps cache (populated when menu opens) ──────────────────
+    property var openWithApps: []
+
     function buildModel() {
         var items = []
         if (!isEmptySpace && targetPath !== "") {
             items.push({ text: "Open", shortcut: "Return", action: "open" })
+            if (!targetIsDir && fileModel) {
+                var props = fileModel.fileProperties(targetPath)
+                var mime = props["mimeType"] || ""
+                if (mime !== "") {
+                    var apps = fileModel.availableApps(mime)
+                    if (apps.length > 0) {
+                        openWithApps = apps
+                        items.push({ text: "Open With", shortcut: "", action: "openwith_toggle", isOpenWith: true })
+                    } else {
+                        openWithApps = []
+                    }
+                } else {
+                    openWithApps = []
+                }
+            } else {
+                openWithApps = []
+            }
             if (targetIsDir)
                 items.push({ text: "Open in Terminal", shortcut: "", action: "terminal" })
             items.push({ separator: true })
@@ -179,10 +203,11 @@ Item {
         return items
     }
 
-    function executeAction(action) {
+    function executeAction(action, extraData) {
         root.close()
         switch (action) {
         case "open": openRequested(targetPath); break
+        case "openwith": openWithRequested(targetPath, extraData); break
         case "cut": cutRequested(effectivePaths); break
         case "copy": copyRequested(effectivePaths); break
         case "copypath": copyPathRequested(targetPath); break
@@ -237,7 +262,140 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     if (itemData && itemData.action)
-                        root.executeAction(itemData.action)
+                        root.executeAction(itemData.action, itemData.desktopFile || "")
+                }
+            }
+        }
+    }
+
+    // ── Expandable "Open With" button + animated app list ────────────────
+    Component {
+        id: openWithComponent
+        Column {
+            id: openWithCol
+            width: parent ? parent.width : 260
+
+            property bool expanded: false
+
+            // The "Open With" button row
+            Rectangle {
+                width: parent.width
+                height: 32
+                radius: Theme.radiusMedium
+                color: owMa.containsMouse
+                    ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                    : "transparent"
+                Behavior on color {
+                    ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
+                }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 16
+                    Text {
+                        text: "Open With"
+                        font.pixelSize: Theme.fontNormal
+                        color: Theme.text
+                        Layout.fillWidth: true
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    Item {
+                        Layout.preferredWidth: 14
+                        Layout.preferredHeight: 14
+                        Layout.alignment: Qt.AlignVCenter
+                        rotation: openWithCol.expanded ? 0 : -90
+                        Behavior on rotation {
+                            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                        }
+                        IconChevronDown {
+                            anchors.centerIn: parent
+                            size: 14
+                            color: Theme.muted
+                        }
+                    }
+                }
+                MouseArea {
+                    id: owMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: openWithCol.expanded = !openWithCol.expanded
+                }
+            }
+
+            // Animated expandable app list
+            Item {
+                width: parent.width
+                height: openWithCol.expanded ? appColumn.height : 0
+                clip: true
+                Behavior on height {
+                    NumberAnimation {
+                        duration: 200
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                Column {
+                    id: appColumn
+                    width: parent.width
+                    spacing: 2
+
+                    Repeater {
+                        model: root.openWithApps
+                        delegate: Rectangle {
+                            width: appColumn.width
+                            height: 30
+                            radius: Theme.radiusMedium
+                            opacity: openWithCol.expanded ? 1 : 0
+                            Behavior on opacity {
+                                NumberAnimation {
+                                    duration: 150
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
+                            color: appItemMa.containsMouse
+                                ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                                : "transparent"
+                            Behavior on color {
+                                ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
+                            }
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 24
+                                anchors.rightMargin: 12
+                                spacing: 8
+                                Image {
+                                    source: modelData.iconName ? ("image://icon/" + modelData.iconName) : ""
+                                    sourceSize: Qt.size(18, 18)
+                                    Layout.preferredWidth: 18
+                                    Layout.preferredHeight: 18
+                                    Layout.alignment: Qt.AlignVCenter
+                                    visible: modelData.iconName && status === Image.Ready
+                                }
+                                Text {
+                                    text: modelData.name
+                                    font.pixelSize: Theme.fontSmall
+                                    color: Theme.text
+                                    Layout.fillWidth: true
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                IconCheck {
+                                    visible: modelData.isDefault
+                                    size: 14
+                                    color: Theme.accent
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                            }
+                            MouseArea {
+                                id: appItemMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.executeAction("openwith", modelData.desktopFile)
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -125,11 +125,14 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                             }
 
-                            Text {
+                            IconChevronDown {
                                 visible: root.sortColumn === modelData.key
-                                text: root.sortAscending ? "▲" : "▼"
+                                size: 12
                                 color: Theme.accent
-                                font.pixelSize: 9
+                                rotation: root.sortAscending ? 180 : 0
+                                Behavior on rotation {
+                                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                                }
                                 anchors.verticalCenter: parent.verticalCenter
                             }
                         }

@@ -17,8 +17,15 @@ GridView {
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
 
     clip: true
-    cellWidth: 110
-    cellHeight: 110
+
+    property real iconScale: 1.0
+    readonly property real minScale: 0.6
+    readonly property real maxScale: 2.5
+    readonly property int baseCellSize: 110
+    readonly property int baseIconSize: 48
+
+    cellWidth: Math.round(baseCellSize * iconScale)
+    cellHeight: Math.round(baseCellSize * iconScale)
 
     focus: visible
     keyNavigationEnabled: false
@@ -294,7 +301,9 @@ GridView {
                         : delegateItem.isSelected ? 2 : 0
 
             Column {
-                anchors.centerIn: parent
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: 8
                 spacing: 6
 
                 readonly property bool isImage: !delegateItem.isDir &&
@@ -303,8 +312,8 @@ GridView {
                 Image {
                     visible: parent.isImage
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 48
-                    height: 48
+                    width: Math.round(root.baseIconSize * root.iconScale)
+                    height: Math.round(root.baseIconSize * root.iconScale)
                     fillMode: Image.PreserveAspectFit
                     source: parent.isImage
                         ? ("image://thumbnail/" + delegateItem.filePath)
@@ -315,10 +324,10 @@ GridView {
                 Image {
                     visible: !parent.isImage
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 48
-                    height: 48
+                    width: Math.round(root.baseIconSize * root.iconScale)
+                    height: Math.round(root.baseIconSize * root.iconScale)
                     source: "image://icon/" + delegateItem.fileIconName
-                    sourceSize: Qt.size(48, 48)
+                    sourceSize: Qt.size(Math.round(root.baseIconSize * root.iconScale), Math.round(root.baseIconSize * root.iconScale))
                     asynchronous: true
                 }
 
@@ -458,6 +467,16 @@ GridView {
         property point dragStart
         property bool rubberBandActive: false
         property bool rubberBandJustFinished: false
+
+        onWheel: (wheel) => {
+            if (wheel.modifiers & Qt.ControlModifier) {
+                var step = wheel.angleDelta.y > 0 ? 0.1 : -0.1
+                root.iconScale = Math.max(root.minScale, Math.min(root.maxScale, root.iconScale + step))
+                wheel.accepted = true
+            } else {
+                wheel.accepted = false
+            }
+        }
 
         onPressed: (mouse) => {
             // Check if clicking on a delegate item

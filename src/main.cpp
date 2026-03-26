@@ -99,10 +99,7 @@ int main(int argc, char *argv[])
 
     // Register image providers
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
-    engine.addImageProvider("icon", new IconProvider);
-
-    // Use system icon theme (Adwaita, Papirus, etc.)
-    QIcon::setThemeName(QIcon::themeName().isEmpty() ? "Adwaita" : QIcon::themeName());
+    engine.addImageProvider("icon", new IconProvider(config->iconTheme()));
 
     // Register context properties
     engine.rootContext()->setContextProperty("config", config);

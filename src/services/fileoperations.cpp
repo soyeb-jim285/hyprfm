@@ -94,6 +94,14 @@ void FileOperations::openFile(const QString &path)
             proc, &QProcess::deleteLater);
 }
 
+void FileOperations::openFileWith(const QString &path, const QString &desktopFile)
+{
+    auto *proc = new QProcess(this);
+    proc->start("gtk-launch", {desktopFile, path});
+    connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+            proc, &QProcess::deleteLater);
+}
+
 void FileOperations::copyPathToClipboard(const QString &path)
 {
     auto *proc = new QProcess(this);

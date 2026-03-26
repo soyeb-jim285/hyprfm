@@ -12,6 +12,8 @@ class ConfigManager : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString theme READ theme NOTIFY configChanged)
+    Q_PROPERTY(QString iconTheme READ iconTheme NOTIFY configChanged)
+    Q_PROPERTY(bool builtinIcons READ builtinIcons NOTIFY configChanged)
     Q_PROPERTY(QString defaultView READ defaultView NOTIFY configChanged)
     Q_PROPERTY(bool showHidden READ showHidden NOTIFY configChanged)
     Q_PROPERTY(QString sortBy READ sortBy NOTIFY configChanged)
@@ -28,6 +30,8 @@ public:
     explicit ConfigManager(const QString &configPath, QObject *parent = nullptr);
 
     QString theme() const;
+    QString iconTheme() const;
+    bool builtinIcons() const;
     QString defaultView() const;
     bool showHidden() const;
     QString sortBy() const;
@@ -53,6 +57,8 @@ private:
     QFileSystemWatcher m_watcher;
 
     QString m_theme;
+    QString m_iconTheme;
+    bool m_builtinIcons;
     QString m_defaultView;
     bool m_showHidden;
     QString m_sortBy;

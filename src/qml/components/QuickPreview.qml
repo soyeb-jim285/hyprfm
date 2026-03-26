@@ -124,11 +124,11 @@ Item {
                 }
 
                 // Arrow navigation hints
-                Text {
-                    text: "← →"
-                    color: Theme.muted
-                    font.pixelSize: Theme.fontSmall
+                Row {
+                    spacing: 4
                     visible: root.directoryFiles.length > 1
+                    IconChevronLeft { size: 14; color: Theme.muted }
+                    IconChevronRight { size: 14; color: Theme.muted }
                 }
 
                 // Close button
@@ -139,11 +139,10 @@ Item {
                         ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.2)
                         : "transparent"
 
-                    Text {
+                    IconX {
                         anchors.centerIn: parent
-                        text: "✕"
+                        size: 16
                         color: Theme.error
-                        font.pixelSize: Theme.fontNormal
                     }
 
                     MouseArea {
