@@ -80,7 +80,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: Theme.radiusLarge
-            color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.75)
+            color: Theme.crust
             border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
             border.width: 1
         }

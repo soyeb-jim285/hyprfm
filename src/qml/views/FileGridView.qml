@@ -365,10 +365,11 @@ GridView {
                     if (!root.isDragging) root.interactive = true
                     root.forceActiveFocus()
                     if (mouse.button === Qt.RightButton) {
+                        var mapped = ma.mapToItem(null, mouse.x, mouse.y)
                         root.contextMenuRequested(
                             delegateItem.filePath,
                             delegateItem.isDir,
-                            Qt.point(mouse.x + delegateItem.x, mouse.y + delegateItem.y)
+                            Qt.point(mapped.x, mapped.y)
                         )
                         return
                     }
@@ -464,7 +465,8 @@ GridView {
 
         onClicked: (mouse) => {
             if (mouse.button === Qt.RightButton) {
-                root.contextMenuRequested("", false, Qt.point(mouse.x, mouse.y))
+                var mp = bgMa.mapToItem(null, mouse.x, mouse.y)
+                root.contextMenuRequested("", false, Qt.point(mp.x, mp.y))
                 return
             }
             if (!rubberBandActive)

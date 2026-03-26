@@ -338,10 +338,11 @@ Item {
 
                         onClicked: (mouse) => {
                             if (mouse.button === Qt.RightButton) {
+                                var mapped = rowMa.mapToItem(null, mouse.x, mouse.y)
                                 root.contextMenuRequested(
                                     detRow.filePath,
                                     detRow.isDir,
-                                    Qt.point(mouse.x, mouse.y + detRow.y - listView.contentY + 28)
+                                    Qt.point(mapped.x, mapped.y)
                                 )
                                 return
                             }
@@ -419,7 +420,8 @@ Item {
 
                 onClicked: (mouse) => {
                     if (mouse.button === Qt.RightButton) {
-                        root.contextMenuRequested("", false, Qt.point(mouse.x, mouse.y))
+                        var mp = bgMa.mapToItem(null, mouse.x, mouse.y)
+                        root.contextMenuRequested("", false, Qt.point(mp.x, mp.y))
                         return
                     }
                     if (!rubberBandActive)

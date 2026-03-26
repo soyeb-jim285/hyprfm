@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QProcess>
 #include <QDebug>
+#include <QLoggingCategory>
 
 #include "services/configmanager.h"
 #include "services/themeloader.h"
@@ -22,6 +23,9 @@
 
 int main(int argc, char *argv[])
 {
+    // Suppress harmless portal registration warning on non-sandboxed apps
+    QLoggingCategory::setFilterRules("qt.qpa.services.warning=false");
+
     QGuiApplication app(argc, argv);
     app.setApplicationName("HyprFM");
     app.setOrganizationName("hyprfm");

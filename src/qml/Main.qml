@@ -9,7 +9,7 @@ ApplicationWindow {
     height: 768
     visible: true
     title: "HyprFM"
-    color: Theme.base
+    color: "transparent"
 
     // ── Sync fsModel when active tab changes; quit on last tab closed ───────
     Connections {
@@ -475,11 +475,15 @@ ApplicationWindow {
                 }
             }
 
-            // File view
-            FileViewContainer {
-                id: fileViewContainer
+            // File view (semi-transparent — Hyprland compositor blurs behind this)
+            Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                color: Qt.rgba(Theme.base.r, Theme.base.g, Theme.base.b, 0.65)
+
+            FileViewContainer {
+                id: fileViewContainer
+                anchors.fill: parent
                 fileModel: fsModel
                 viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                 currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
@@ -504,6 +508,7 @@ ApplicationWindow {
                     contextMenu.popup(position.x, position.y)
                 }
             }
+            } // Rectangle wrapper
         }
 
         // Status bar
