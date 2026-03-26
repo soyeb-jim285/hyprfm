@@ -27,14 +27,22 @@ void FileOperations::copyFiles(const QStringList &sources, const QString &destin
 
 void FileOperations::moveFiles(const QStringList &sources, const QString &destination)
 {
-    QStringList args = {"--progress", "--remove-source-files", "-r"};
-    for (const auto &src : sources)
-        args.append(src);
-    args.append(destination + "/");
+    // Use rsync to merge, then remove empty source dirs with a shell command
+    QStringList args = {"-c", ""};
+    // Build: rsync -a --remove-source-files src1 src2 dest/ && find src1 src2 -type d -empty -delete
+    QString rsyncCmd = "rsync -a --progress --remove-source-files";
+    QString findCmd = "find";
+    for (const auto &src : sources) {
+        rsyncCmd += " " + QString("'%1'").arg(src);
+        findCmd += " " + QString("'%1'").arg(src);
+    }
+    rsyncCmd += " " + QString("'%1/'").arg(destination);
+    findCmd += " -type d -empty -delete 2>/dev/null";
+    args[1] = rsyncCmd + " && " + findCmd;
 
     m_statusText = QString("Moving %1 item(s)...").arg(sources.size());
     emit statusTextChanged();
-    runProcess("rsync", args);
+    runProcess("sh", args);
 }
 
 void FileOperations::trashFiles(const QStringList &paths)
@@ -73,7 +81,8 @@ void FileOperations::createFolder(const QString &parentPath, const QString &name
 void FileOperations::createFile(const QString &parentPath, const QString &name)
 {
     QFile f(QDir(parentPath).filePath(name));
-    f.open(QIODevice::WriteOnly);
+    if (!f.open(QIODevice::WriteOnly))
+        return;
     f.close();
 }
 
