@@ -76,12 +76,12 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
-        // Semi-transparent background — Hyprland blurs behind this
+        // Solid dark background with subtle border
         Rectangle {
             anchors.fill: parent
             radius: Theme.radiusLarge
-            color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.7)
-            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+            color: Theme.crust
+            border.color: Theme.overlay
             border.width: 1
         }
 
