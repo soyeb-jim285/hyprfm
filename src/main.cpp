@@ -25,6 +25,7 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName("HyprFM");
     app.setOrganizationName("hyprfm");
+    app.setDesktopFileName("hyprfm");
 
     QQuickStyle::setStyle("Basic");
 

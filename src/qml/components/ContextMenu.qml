@@ -1,10 +1,9 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt5Compat.GraphicalEffects
 import HyprFM
 
-// Custom frosted-glass context menu rendered as an in-window overlay
+// Custom context menu — Hyprland compositor handles blur via windowrule
 Item {
     id: root
     anchors.fill: parent
@@ -39,11 +38,9 @@ Item {
         return idx > 0 ? p.substring(0, idx) : "/"
     }
 
-    // The source to blur (set this to the main content area id)
     property Item blurSource: null
 
     function popup(x, y) {
-        // Clamp position so menu stays within window
         var menuW = menuColumn.width + 16
         var menuH = menuColumn.height + 16
         menuContainer.x = Math.min(x, root.width - menuW - 8)
@@ -64,7 +61,7 @@ Item {
         onWheel: (wheel) => { wheel.accepted = true }
     }
 
-    // ── Menu container with frosted glass ──────────────────────────────────
+    // ── Menu container ────────────────────────────────────────────────────
     Item {
         id: menuContainer
         x: 0
@@ -79,63 +76,11 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
-        // Grab background at 1/4 resolution (downsampling = kawase-like softness)
-        ShaderEffectSource {
-            id: bgCapture
-            anchors.fill: parent
-            sourceItem: root.blurSource
-            sourceRect: Qt.rect(menuContainer.x, menuContainer.y, menuContainer.width, menuContainer.height)
-            textureSize: Qt.size(menuContainer.width / 4, menuContainer.height / 4)
-            visible: false
-            live: true
-        }
-
-        // 10 blur passes on downsampled image
-        FastBlur { id: bp1; anchors.fill: parent; source: bgCapture; radius: 32; visible: false }
-        FastBlur { id: bp2; anchors.fill: parent; source: bp1; radius: 32; visible: false }
-        FastBlur { id: bp3; anchors.fill: parent; source: bp2; radius: 32; visible: false }
-        FastBlur { id: bp4; anchors.fill: parent; source: bp3; radius: 32; visible: false }
-        FastBlur { id: bp5; anchors.fill: parent; source: bp4; radius: 32; visible: false }
-        FastBlur { id: bp6; anchors.fill: parent; source: bp5; radius: 32; visible: false }
-        FastBlur { id: bp7; anchors.fill: parent; source: bp6; radius: 32; visible: false }
-        FastBlur { id: bp8; anchors.fill: parent; source: bp7; radius: 32; visible: false }
-        FastBlur { id: bp9; anchors.fill: parent; source: bp8; radius: 32; visible: false }
-        FastBlur { id: bp10; anchors.fill: parent; source: bp9; radius: 32; visible: false }
-
-        HueSaturation {
-            id: vibrant
-            anchors.fill: parent
-            source: bp10
-            saturation: 0.15
-            visible: false
-        }
-
-        // Clip to rounded rect
-        Rectangle {
-            id: clipMask
-            anchors.fill: parent
-            radius: Theme.radiusLarge
-            visible: false
-        }
-
-        OpacityMask {
-            anchors.fill: parent
-            source: vibrant
-            maskSource: clipMask
-        }
-
-        // Light tint overlay — low opacity to let blur show through
+        // Semi-transparent background — Hyprland blurs behind this
         Rectangle {
             anchors.fill: parent
             radius: Theme.radiusLarge
-            color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.35)
-        }
-
-        // Subtle border
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.radiusLarge
-            color: "transparent"
+            color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.7)
             border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
             border.width: 1
         }
@@ -146,11 +91,9 @@ Item {
             anchors.centerIn: parent
             width: 260
             spacing: 2
-            padding: 0
 
-            // Build items based on context
             Repeater {
-                model: root.buildModel()
+                model: root.visible ? root.buildModel() : []
                 delegate: Loader {
                     width: menuColumn.width
                     sourceComponent: modelData.separator ? separatorComponent : itemComponent
@@ -160,15 +103,9 @@ Item {
         }
     }
 
-    // Rebuild the model whenever visibility changes
-    onVisibleChanged: if (visible) menuRepeater.model = buildModel()
-    property alias menuRepeater: menuColumn.children
-
     function buildModel() {
         var items = []
-
         if (!isEmptySpace && targetPath !== "") {
-            // File/folder context
             items.push({ text: "Open", shortcut: "Return", action: "open" })
             if (targetIsDir)
                 items.push({ text: "Open in Terminal", shortcut: "", action: "terminal" })
@@ -182,7 +119,6 @@ Item {
             items.push({ separator: true })
             items.push({ text: "Properties", shortcut: "", action: "properties" })
         } else {
-            // Empty space context
             items.push({ text: "New Folder...", shortcut: "Shift+Ctrl+N", action: "newfolder" })
             items.push({ text: "New File...", shortcut: "", action: "newfile" })
             items.push({ separator: true })
@@ -193,7 +129,6 @@ Item {
             items.push({ text: "Open in Terminal", shortcut: "", action: "terminal" })
             items.push({ text: "Properties", shortcut: "", action: "properties" })
         }
-
         return items
     }
 
@@ -216,10 +151,8 @@ Item {
         }
     }
 
-    // ── Item component ────────────────────────────────────────────────────
     Component {
         id: itemComponent
-
         Rectangle {
             height: 32
             width: parent ? parent.width : 260
@@ -227,17 +160,14 @@ Item {
             color: itemMa.containsMouse
                 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
                 : "transparent"
-
             Behavior on color {
                 ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
             }
-
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 12
                 anchors.rightMargin: 12
                 spacing: 16
-
                 Text {
                     text: itemData ? itemData.text : ""
                     font.pixelSize: Theme.fontNormal
@@ -245,7 +175,6 @@ Item {
                     Layout.fillWidth: true
                     verticalAlignment: Text.AlignVCenter
                 }
-
                 Text {
                     text: itemData ? (itemData.shortcut || "") : ""
                     font.pixelSize: Theme.fontSmall
@@ -254,7 +183,6 @@ Item {
                     verticalAlignment: Text.AlignVCenter
                 }
             }
-
             MouseArea {
                 id: itemMa
                 anchors.fill: parent
@@ -268,10 +196,8 @@ Item {
         }
     }
 
-    // ── Separator component ───────────────────────────────────────────────
     Component {
         id: separatorComponent
-
         Item {
             height: 9
             width: parent ? parent.width : 260
