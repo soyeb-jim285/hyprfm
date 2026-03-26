@@ -138,7 +138,10 @@ Menu {
         onTriggered: root.deleteRequested(root.effectivePaths)
     }
 
-    StyledSeparator {}
+    StyledSeparator {
+        visible: !isEmptySpace && root.effectivePaths.length > 0
+        height: visible ? implicitHeight : 0
+    }
 
     StyledMenuItem {
         text: "Open in Terminal"
