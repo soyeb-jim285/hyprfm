@@ -79,49 +79,48 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
-        // Grab the background behind the menu
+        // Grab background at 1/4 resolution (downsampling = kawase-like softness)
         ShaderEffectSource {
             id: bgCapture
             anchors.fill: parent
             sourceItem: root.blurSource
             sourceRect: Qt.rect(menuContainer.x, menuContainer.y, menuContainer.width, menuContainer.height)
+            textureSize: Qt.size(menuContainer.width / 4, menuContainer.height / 4)
             visible: false
             live: true
         }
 
-        // First blur pass
+        // 3 blur passes on downsampled image (matches Hyprland: size=8, passes=3)
         FastBlur {
             id: blurPass1
             anchors.fill: parent
             source: bgCapture
-            radius: 64
+            radius: 32
             visible: false
         }
 
-        // Second blur pass for heavier frosted effect
         FastBlur {
             id: blurPass2
             anchors.fill: parent
             source: blurPass1
-            radius: 64
+            radius: 32
             visible: false
         }
 
-        // Desaturate + brighten the blur for frosted look
-        Desaturate {
-            id: desaturated
+        FastBlur {
+            id: blurPass3
             anchors.fill: parent
             source: blurPass2
-            desaturation: 0.3
+            radius: 32
             visible: false
         }
 
-        BrightnessContrast {
-            id: adjusted
+        // Add vibrancy back (matches Hyprland vibrancy: 0.1696)
+        HueSaturation {
+            id: vibrant
             anchors.fill: parent
-            source: desaturated
-            brightness: 0.05
-            contrast: -0.1
+            source: blurPass3
+            saturation: 0.15
             visible: false
         }
 
@@ -135,7 +134,7 @@ Item {
 
         OpacityMask {
             anchors.fill: parent
-            source: adjusted
+            source: vibrant
             maskSource: clipMask
         }
 
