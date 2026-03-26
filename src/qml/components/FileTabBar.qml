@@ -114,31 +114,35 @@ Rectangle {
                             }
                         }
 
-                        // Close button — separate, not overlapped by tab click area
+                        // Close button — on top of everything
                         Rectangle {
                             id: closeBtn
-                            width: 18
-                            height: 18
-                            radius: 9
+                            width: 24
+                            height: 24
+                            radius: 12
                             anchors.right: parent.right
                             anchors.rightMargin: 4
                             anchors.verticalCenter: parent.verticalCenter
+                            z: 100
                             color: closeHover.containsMouse ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.8) : "transparent"
                             visible: tabModel.count > 1
 
                             Text {
                                 anchors.centerIn: parent
                                 text: "✕"
-                                font.pixelSize: Theme.fontSmall - 1
+                                font.pixelSize: Theme.fontSmall
                                 color: closeHover.containsMouse ? Theme.base : Theme.muted
                             }
 
-                            MouseArea {
+                            TapHandler {
+                                onTapped: {
+                                    tabModel.closeTab(tabDelegate.index)
+                                }
+                            }
+
+                            HoverHandler {
                                 id: closeHover
-                                anchors.fill: parent
-                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: tabModel.closeTab(tabDelegate.index)
                             }
                         }
                     }
