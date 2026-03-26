@@ -164,6 +164,7 @@ ListView {
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
 
                 onClicked: (mouse) => {
+                    root.forceActiveFocus()
                     if (mouse.button === Qt.RightButton) {
                         root.contextMenuRequested(
                             rowItem.filePath,

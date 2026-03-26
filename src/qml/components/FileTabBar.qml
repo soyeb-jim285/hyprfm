@@ -131,19 +131,15 @@ Rectangle {
                             }
                         }
 
-                        // Tab click and middle-click
+                        // Tab click and middle-click (behind everything)
                         MouseArea {
                             anchors.fill: parent
+                            z: -1
                             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
                             onClicked: (mouse) => {
                                 if (mouse.button === Qt.MiddleButton) {
                                     tabModel.closeTab(index)
                                 } else {
-                                    tabModel.activeIndex = index
-                                }
-                            }
-                            onPressed: (mouse) => {
-                                if (mouse.button === Qt.LeftButton) {
                                     tabModel.activeIndex = index
                                 }
                             }

@@ -180,6 +180,7 @@ GridView {
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 onClicked: (mouse) => {
+                    root.forceActiveFocus()
                     if (mouse.button === Qt.RightButton) {
                         root.contextMenuRequested(
                             delegateItem.filePath,
@@ -239,6 +240,7 @@ GridView {
         property point dragStart
 
         onClicked: (mouse) => {
+            root.forceActiveFocus()
             if (mouse.button === Qt.RightButton) {
                 root.contextMenuRequested("", false, Qt.point(mouse.x, mouse.y))
                 return
@@ -248,8 +250,10 @@ GridView {
         }
 
         onPressed: (mouse) => {
-            dragStart = Qt.point(mouse.x, mouse.y)
-            rubberBand.begin(dragStart)
+            if (mouse.button === Qt.LeftButton) {
+                dragStart = Qt.point(mouse.x, mouse.y)
+                rubberBand.begin(dragStart)
+            }
         }
 
         onPositionChanged: (mouse) => {

@@ -95,7 +95,7 @@ void FileOperations::copyPathToClipboard(const QString &path)
 
 void FileOperations::openInTerminal(const QString &dirPath)
 {
-    QString terminal = qEnvironmentVariable("TERMINAL", "foot");
+    QString terminal = qEnvironmentVariable("TERMINAL", "kitty");
     auto *proc = new QProcess(this);
     proc->setWorkingDirectory(dirPath);
     proc->start(terminal, {});
