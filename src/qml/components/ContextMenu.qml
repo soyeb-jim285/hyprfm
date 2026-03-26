@@ -39,15 +39,19 @@ Menu {
         id: styledItem
         property color textColor: Theme.text
         property string shortcutText: ""
+        leftPadding: 6
+        rightPadding: 6
+        topPadding: 2
+        bottomPadding: 2
         contentItem: RowLayout {
-            spacing: 24
+            spacing: 16
             Text {
                 text: styledItem.text
                 font.pixelSize: Theme.fontNormal
                 color: styledItem.enabled ? styledItem.textColor : Theme.muted
                 verticalAlignment: Text.AlignVCenter
                 Layout.fillWidth: true
-                leftPadding: 12
+                leftPadding: 8
             }
             Text {
                 text: styledItem.shortcutText
@@ -55,14 +59,14 @@ Menu {
                 color: Theme.muted
                 verticalAlignment: Text.AlignVCenter
                 visible: styledItem.shortcutText !== ""
-                rightPadding: 12
+                rightPadding: 8
             }
         }
         background: Rectangle {
-            implicitHeight: 32
+            implicitHeight: 30
             implicitWidth: 240
             color: styledItem.highlighted ? Theme.surface : "transparent"
-            radius: Theme.radiusSmall
+            radius: Theme.radiusMedium
         }
     }
 
