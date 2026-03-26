@@ -391,18 +391,83 @@ Item {
                 }
             }
 
-            // Click empty area clears selection
+            // ── Rubber-band selection + empty space clicks ───────────────
             MouseArea {
+                id: bgMa
                 anchors.fill: parent
-                z: -1
+                z: 10
+                preventStealing: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                property point dragStart
+                property bool rubberBandActive: false
+
+                onPressed: (mouse) => {
+                    var idx = listView.indexAt(mouse.x + listView.contentX, mouse.y + listView.contentY)
+                    if (idx >= 0) {
+                        mouse.accepted = false
+                        return
+                    }
+                    root.forceActiveFocus()
+                    if (mouse.button === Qt.LeftButton) {
+                        listView.interactive = false
+                        dragStart = Qt.point(mouse.x, mouse.y)
+                        detailedRubberBand.begin(dragStart)
+                        rubberBandActive = true
+                    }
+                }
+
                 onClicked: (mouse) => {
                     if (mouse.button === Qt.RightButton) {
                         root.contextMenuRequested("", false, Qt.point(mouse.x, mouse.y))
                         return
                     }
-                    root.clearSelection()
+                    if (!rubberBandActive)
+                        root.clearSelection()
                 }
+
+                onPositionChanged: (mouse) => {
+                    if (rubberBandActive) {
+                        detailedRubberBand.update(Qt.point(mouse.x, mouse.y))
+                        selectIntersecting()
+                    }
+                }
+
+                onReleased: {
+                    detailedRubberBand.end()
+                    rubberBandActive = false
+                    listView.interactive = true
+                }
+
+                function selectIntersecting() {
+                    var rb = detailedRubberBand.selectionRect
+                    if (rb.width < 4 && rb.height < 4) return
+
+                    var newSel = []
+                    var c = listView.count
+                    for (var i = 0; i < c; i++) {
+                        var item = listView.itemAtIndex(i)
+                        if (!item) continue
+                        var itemPos = listView.mapFromItem(item, 0, 0)
+                        var itemRect = Qt.rect(itemPos.x, itemPos.y, item.width, item.height)
+                        if (rectsIntersect(rb, itemRect))
+                            newSel.push(i)
+                    }
+                    root.selectedIndices = newSel
+                }
+
+                function rectsIntersect(a, b) {
+                    return a.x < b.x + b.width  &&
+                           a.x + a.width  > b.x &&
+                           a.y < b.y + b.height &&
+                           a.y + a.height > b.y
+                }
+            }
+
+            RubberBand {
+                id: detailedRubberBand
+                anchors.fill: parent
+                z: 11
             }
         }
     }

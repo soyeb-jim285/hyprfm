@@ -220,17 +220,82 @@ ListView {
         }
     }
 
-    // Click on empty area clears selection
+    // ── Rubber-band selection + empty space clicks ───────────────────────────
     MouseArea {
+        id: bgMa
         anchors.fill: parent
-        z: -1
+        z: 10
+        preventStealing: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+        property point dragStart
+        property bool rubberBandActive: false
+
+        onPressed: (mouse) => {
+            var idx = root.indexAt(mouse.x + root.contentX, mouse.y + root.contentY)
+            if (idx >= 0) {
+                mouse.accepted = false
+                return
+            }
+            root.forceActiveFocus()
+            if (mouse.button === Qt.LeftButton) {
+                root.interactive = false
+                dragStart = Qt.point(mouse.x, mouse.y)
+                rubberBand.begin(dragStart)
+                rubberBandActive = true
+            }
+        }
+
         onClicked: (mouse) => {
             if (mouse.button === Qt.RightButton) {
                 root.contextMenuRequested("", false, Qt.point(mouse.x, mouse.y))
                 return
             }
-            root.clearSelection()
+            if (!rubberBandActive)
+                root.clearSelection()
         }
+
+        onPositionChanged: (mouse) => {
+            if (rubberBandActive) {
+                rubberBand.update(Qt.point(mouse.x, mouse.y))
+                selectIntersecting()
+            }
+        }
+
+        onReleased: {
+            rubberBand.end()
+            rubberBandActive = false
+            root.interactive = true
+        }
+
+        function selectIntersecting() {
+            var rb = rubberBand.selectionRect
+            if (rb.width < 4 && rb.height < 4) return
+
+            var newSel = []
+            var c = root.count
+            for (var i = 0; i < c; i++) {
+                var item = root.itemAtIndex(i)
+                if (!item) continue
+                var itemPos = root.mapFromItem(item, 0, 0)
+                var itemRect = Qt.rect(itemPos.x, itemPos.y, item.width, item.height)
+                if (rectsIntersect(rb, itemRect))
+                    newSel.push(i)
+            }
+            root.selectedIndices = newSel
+        }
+
+        function rectsIntersect(a, b) {
+            return a.x < b.x + b.width  &&
+                   a.x + a.width  > b.x &&
+                   a.y < b.y + b.height &&
+                   a.y + a.height > b.y
+        }
+    }
+
+    RubberBand {
+        id: rubberBand
+        anchors.fill: parent
+        z: 11
     }
 }
