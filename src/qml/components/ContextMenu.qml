@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import HyprFM
 
 Menu {
@@ -21,6 +22,7 @@ Menu {
     signal openInTerminalRequested(string path)
     signal newFolderRequested(string parentPath)
     signal newFileRequested(string parentPath)
+    signal selectAllRequested()
     signal propertiesRequested(string path)
 
     property var effectivePaths: (selectedPaths.length > 0) ? selectedPaths : (targetPath !== "" ? [targetPath] : [])
@@ -32,21 +34,33 @@ Menu {
         return idx > 0 ? p.substring(0, idx) : "/"
     }
 
-    // Shared styling component for menu items
+    // ── Styled components ─────────────────────────────────────────────────
     component StyledMenuItem: MenuItem {
         id: styledItem
         property color textColor: Theme.text
-        contentItem: Text {
-            leftPadding: 12
-            rightPadding: 12
-            text: styledItem.text
-            font.pixelSize: Theme.fontNormal
-            color: styledItem.enabled ? styledItem.textColor : Theme.muted
-            verticalAlignment: Text.AlignVCenter
+        property string shortcutText: ""
+        contentItem: RowLayout {
+            spacing: 24
+            Text {
+                text: styledItem.text
+                font.pixelSize: Theme.fontNormal
+                color: styledItem.enabled ? styledItem.textColor : Theme.muted
+                verticalAlignment: Text.AlignVCenter
+                Layout.fillWidth: true
+                leftPadding: 12
+            }
+            Text {
+                text: styledItem.shortcutText
+                font.pixelSize: Theme.fontSmall
+                color: Theme.muted
+                verticalAlignment: Text.AlignVCenter
+                visible: styledItem.shortcutText !== ""
+                rightPadding: 12
+            }
         }
         background: Rectangle {
-            implicitHeight: 30
-            implicitWidth: 200
+            implicitHeight: 32
+            implicitWidth: 240
             color: styledItem.highlighted ? Theme.surface : "transparent"
             radius: Theme.radiusSmall
         }
@@ -57,24 +71,34 @@ Menu {
             implicitHeight: 1
             color: Theme.overlay
         }
-        background: Rectangle {
-            color: "transparent"
-        }
+        background: Rectangle { color: "transparent" }
     }
 
     background: Rectangle {
-        implicitWidth: 220
+        implicitWidth: 260
         color: Theme.crust
         radius: Theme.radiusMedium
         border.color: Theme.overlay
         border.width: 1
     }
 
+    // ══════════════════════════════════════════════════════════════════════
+    // RIGHT-CLICK ON FILE/FOLDER
+    // ══════════════════════════════════════════════════════════════════════
+
     StyledMenuItem {
         text: "Open"
+        shortcutText: "Return"
         visible: !isEmptySpace && targetPath !== ""
         height: visible ? implicitHeight : 0
         onTriggered: root.openRequested(root.targetPath)
+    }
+
+    StyledMenuItem {
+        text: "Open in Terminal"
+        visible: !isEmptySpace && targetIsDir
+        height: visible ? implicitHeight : 0
+        onTriggered: root.openInTerminalRequested(root.targetPath)
     }
 
     StyledSeparator {
@@ -84,6 +108,7 @@ Menu {
 
     StyledMenuItem {
         text: "Cut"
+        shortcutText: "Ctrl+X"
         visible: !isEmptySpace && root.effectivePaths.length > 0
         height: visible ? implicitHeight : 0
         onTriggered: root.cutRequested(root.effectivePaths)
@@ -91,17 +116,10 @@ Menu {
 
     StyledMenuItem {
         text: "Copy"
+        shortcutText: "Ctrl+C"
         visible: !isEmptySpace && root.effectivePaths.length > 0
         height: visible ? implicitHeight : 0
         onTriggered: root.copyRequested(root.effectivePaths)
-    }
-
-    StyledMenuItem {
-        text: "Paste"
-        enabled: clipboard.hasContent
-        visible: clipboard.hasContent
-        height: visible ? implicitHeight : 0
-        onTriggered: root.pasteRequested(root.effectiveDir)
     }
 
     StyledMenuItem {
@@ -117,7 +135,8 @@ Menu {
     }
 
     StyledMenuItem {
-        text: "Rename"
+        text: "Rename..."
+        shortcutText: "F2"
         visible: !isEmptySpace && targetPath !== ""
         height: visible ? implicitHeight : 0
         onTriggered: root.renameRequested(root.targetPath)
@@ -125,39 +144,10 @@ Menu {
 
     StyledMenuItem {
         text: "Move to Trash"
+        shortcutText: "Delete"
         visible: !isEmptySpace && root.effectivePaths.length > 0
         height: visible ? implicitHeight : 0
         onTriggered: root.trashRequested(root.effectivePaths)
-    }
-
-    StyledMenuItem {
-        text: "Delete"
-        textColor: Theme.error
-        visible: !isEmptySpace && root.effectivePaths.length > 0
-        height: visible ? implicitHeight : 0
-        onTriggered: root.deleteRequested(root.effectivePaths)
-    }
-
-    StyledSeparator {
-        visible: !isEmptySpace && root.effectivePaths.length > 0
-        height: visible ? implicitHeight : 0
-    }
-
-    StyledMenuItem {
-        text: "Open in Terminal"
-        onTriggered: root.openInTerminalRequested(root.effectiveDir)
-    }
-
-    StyledSeparator {}
-
-    StyledMenuItem {
-        text: "New Folder"
-        onTriggered: root.newFolderRequested(root.effectiveDir)
-    }
-
-    StyledMenuItem {
-        text: "New File"
-        onTriggered: root.newFileRequested(root.effectiveDir)
     }
 
     StyledSeparator {
@@ -172,7 +162,67 @@ Menu {
         onTriggered: root.propertiesRequested(root.targetPath)
     }
 
-    // Custom actions from config
+    // ══════════════════════════════════════════════════════════════════════
+    // RIGHT-CLICK ON EMPTY SPACE
+    // ══════════════════════════════════════════════════════════════════════
+
+    StyledMenuItem {
+        text: "New Folder..."
+        shortcutText: "Shift+Ctrl+N"
+        visible: isEmptySpace
+        height: visible ? implicitHeight : 0
+        onTriggered: root.newFolderRequested(root.effectiveDir)
+    }
+
+    StyledMenuItem {
+        text: "New File..."
+        visible: isEmptySpace
+        height: visible ? implicitHeight : 0
+        onTriggered: root.newFileRequested(root.effectiveDir)
+    }
+
+    StyledSeparator {
+        visible: isEmptySpace
+        height: visible ? implicitHeight : 0
+    }
+
+    StyledMenuItem {
+        text: "Paste"
+        shortcutText: "Ctrl+V"
+        visible: isEmptySpace
+        enabled: clipboard.hasContent
+        height: visible ? implicitHeight : 0
+        onTriggered: root.pasteRequested(root.effectiveDir)
+    }
+
+    StyledMenuItem {
+        text: "Select All"
+        shortcutText: "Ctrl+A"
+        visible: isEmptySpace
+        height: visible ? implicitHeight : 0
+        onTriggered: root.selectAllRequested()
+    }
+
+    StyledSeparator {
+        visible: isEmptySpace
+        height: visible ? implicitHeight : 0
+    }
+
+    StyledMenuItem {
+        text: "Open in Terminal"
+        visible: isEmptySpace
+        height: visible ? implicitHeight : 0
+        onTriggered: root.openInTerminalRequested(root.effectiveDir)
+    }
+
+    StyledMenuItem {
+        text: "Properties"
+        visible: isEmptySpace
+        height: visible ? implicitHeight : 0
+        onTriggered: root.propertiesRequested(root.effectiveDir)
+    }
+
+    // ── Custom actions from config ────────────────────────────────────────
     Instantiator {
         model: config.customContextActions
         delegate: StyledMenuItem {

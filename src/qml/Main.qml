@@ -293,6 +293,8 @@ ApplicationWindow {
             newFileDialog.open()
         }
 
+        onSelectAllRequested: fileViewContainer.selectAll()
+
         onPropertiesRequested: (path) => {
             // Basic: open file manager properties or show info
             fileOps.openFile(path)
