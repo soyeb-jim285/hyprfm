@@ -432,34 +432,47 @@ GridView {
         }
     }
 
-    // ── Rubber-band selection ────────────────────────────────────────────────
+    // ── Rubber-band selection + empty space clicks ───────────────────────────
+    // z:10 so it receives presses BEFORE the Flickable can steal them
     MouseArea {
         id: bgMa
         anchors.fill: parent
-        z: -1
+        z: 10
+        preventStealing: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
 
         property point dragStart
+        property bool rubberBandActive: false
+
+        onPressed: (mouse) => {
+            // Check if clicking on a delegate item
+            var idx = root.indexAt(mouse.x + root.contentX, mouse.y + root.contentY)
+            if (idx >= 0) {
+                // On an item — reject so delegate's MouseArea gets it
+                mouse.accepted = false
+                return
+            }
+            // Empty space
+            root.forceActiveFocus()
+            if (mouse.button === Qt.LeftButton) {
+                root.interactive = false
+                dragStart = Qt.point(mouse.x, mouse.y)
+                rubberBand.begin(dragStart)
+                rubberBandActive = true
+            }
+        }
 
         onClicked: (mouse) => {
-            root.forceActiveFocus()
             if (mouse.button === Qt.RightButton) {
                 root.contextMenuRequested("", false, Qt.point(mouse.x, mouse.y))
                 return
             }
-            if (!rubberBand.visible)
+            if (!rubberBandActive)
                 root.clearSelection()
         }
 
-        onPressed: (mouse) => {
-            if (mouse.button === Qt.LeftButton) {
-                dragStart = Qt.point(mouse.x, mouse.y)
-                rubberBand.begin(dragStart)
-            }
-        }
-
         onPositionChanged: (mouse) => {
-            if (pressed) {
+            if (rubberBandActive) {
                 rubberBand.update(Qt.point(mouse.x, mouse.y))
                 selectIntersecting()
             }
@@ -467,6 +480,8 @@ GridView {
 
         onReleased: {
             rubberBand.end()
+            rubberBandActive = false
+            root.interactive = true
         }
 
         function selectIntersecting() {
@@ -474,8 +489,8 @@ GridView {
             if (rb.width < 4 && rb.height < 4) return
 
             var newSel = []
-            var count = root.count
-            for (var i = 0; i < count; i++) {
+            var c = root.count
+            for (var i = 0; i < c; i++) {
                 var item = root.itemAtIndex(i)
                 if (!item) continue
                 var itemPos = root.mapFromItem(item, 0, 0)
@@ -497,6 +512,6 @@ GridView {
     RubberBand {
         id: rubberBand
         anchors.fill: parent
-        z: 1
+        z: 11
     }
 }
