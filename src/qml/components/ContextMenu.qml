@@ -46,12 +46,55 @@ Item {
         menuContainer.x = Math.min(x, root.width - menuW - 8)
         menuContainer.y = Math.min(y, root.height - menuH - 8)
         root.visible = true
-        menuContainer.opacity = 1
-        menuContainer.scale = 1
+        openAnim.start()
     }
 
     function close() {
-        root.visible = false
+        closeAnim.start()
+    }
+
+    // ── Open animation ────────────────────────────────────────────────────
+    ParallelAnimation {
+        id: openAnim
+        NumberAnimation {
+            target: menuContainer; property: "opacity"
+            from: 0; to: 1; duration: 180
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: menuContainer; property: "scale"
+            from: 0.88; to: 1; duration: 250
+            easing.type: Easing.OutBack
+            easing.overshoot: 0.8
+        }
+        NumberAnimation {
+            target: menuContainer; property: "yOffset"
+            from: -8; to: 0; duration: 220
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    // ── Close animation ───────────────────────────────────────────────────
+    SequentialAnimation {
+        id: closeAnim
+        ParallelAnimation {
+            NumberAnimation {
+                target: menuContainer; property: "opacity"
+                to: 0; duration: 120
+                easing.type: Easing.InCubic
+            }
+            NumberAnimation {
+                target: menuContainer; property: "scale"
+                to: 0.92; duration: 120
+                easing.type: Easing.InCubic
+            }
+            NumberAnimation {
+                target: menuContainer; property: "yOffset"
+                to: -4; duration: 120
+                easing.type: Easing.InCubic
+            }
+        }
+        ScriptAction { script: root.visible = false }
     }
 
     // Click outside to close
@@ -70,13 +113,14 @@ Item {
         height: menuColumn.height + 16
 
         opacity: 0
-        scale: 0.92
+        scale: 0.88
         transformOrigin: Item.TopLeft
 
-        Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        // Vertical slide offset driven by animation
+        property real yOffset: 0
+        transform: Translate { y: menuContainer.yOffset }
 
-        // Semi-transparent background
+        // Background
         Rectangle {
             anchors.fill: parent
             radius: Theme.radiusLarge
@@ -85,7 +129,7 @@ Item {
             border.width: 1
         }
 
-        // ── Menu items ────────────────────────────────────────────────────
+        // ── Menu items with staggered entrance ──────────────────────────
         Column {
             id: menuColumn
             anchors.centerIn: parent
@@ -95,9 +139,12 @@ Item {
             Repeater {
                 model: root.visible ? root.buildModel() : []
                 delegate: Loader {
+                    id: delegateLoader
                     width: menuColumn.width
                     sourceComponent: modelData.separator ? separatorComponent : itemComponent
                     property var itemData: modelData
+                    property int itemIndex: index
+
                 }
             }
         }
