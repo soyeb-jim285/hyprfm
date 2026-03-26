@@ -90,36 +90,22 @@ Item {
             live: true
         }
 
-        // 3 blur passes on downsampled image (matches Hyprland: size=8, passes=3)
-        FastBlur {
-            id: blurPass1
-            anchors.fill: parent
-            source: bgCapture
-            radius: 32
-            visible: false
-        }
+        // 10 blur passes on downsampled image
+        FastBlur { id: bp1; anchors.fill: parent; source: bgCapture; radius: 32; visible: false }
+        FastBlur { id: bp2; anchors.fill: parent; source: bp1; radius: 32; visible: false }
+        FastBlur { id: bp3; anchors.fill: parent; source: bp2; radius: 32; visible: false }
+        FastBlur { id: bp4; anchors.fill: parent; source: bp3; radius: 32; visible: false }
+        FastBlur { id: bp5; anchors.fill: parent; source: bp4; radius: 32; visible: false }
+        FastBlur { id: bp6; anchors.fill: parent; source: bp5; radius: 32; visible: false }
+        FastBlur { id: bp7; anchors.fill: parent; source: bp6; radius: 32; visible: false }
+        FastBlur { id: bp8; anchors.fill: parent; source: bp7; radius: 32; visible: false }
+        FastBlur { id: bp9; anchors.fill: parent; source: bp8; radius: 32; visible: false }
+        FastBlur { id: bp10; anchors.fill: parent; source: bp9; radius: 32; visible: false }
 
-        FastBlur {
-            id: blurPass2
-            anchors.fill: parent
-            source: blurPass1
-            radius: 32
-            visible: false
-        }
-
-        FastBlur {
-            id: blurPass3
-            anchors.fill: parent
-            source: blurPass2
-            radius: 32
-            visible: false
-        }
-
-        // Add vibrancy back (matches Hyprland vibrancy: 0.1696)
         HueSaturation {
             id: vibrant
             anchors.fill: parent
-            source: blurPass3
+            source: bp10
             saturation: 0.15
             visible: false
         }
