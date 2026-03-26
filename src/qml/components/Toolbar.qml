@@ -142,7 +142,7 @@ Rectangle {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (root.activeTab) root.activeTab.setViewMode(modelData.mode)
+                            if (root.activeTab) root.activeTab.viewMode = modelData.mode
                         }
                     }
                 }
