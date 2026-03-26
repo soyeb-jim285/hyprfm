@@ -60,6 +60,9 @@ void ConfigManager::setDefaults()
     m_sidebarWidth = 200;
     m_sidebarVisible = true;
     m_bookmarks = {"~/Documents", "~/Downloads", "~/Pictures", "~/Projects"};
+    m_radiusSmall = 4;
+    m_radiusMedium = 8;
+    m_radiusLarge = 12;
     m_shortcuts = s_defaultShortcuts;
 }
 
@@ -88,6 +91,14 @@ void ConfigManager::loadConfig()
             m_sidebarWidth = static_cast<int>(*v);
         if (auto v = config["sidebar"]["visible"].value<bool>())
             m_sidebarVisible = *v;
+
+        // Appearance
+        if (auto v = config["appearance"]["radius_small"].value<int64_t>())
+            m_radiusSmall = static_cast<int>(*v);
+        if (auto v = config["appearance"]["radius_medium"].value<int64_t>())
+            m_radiusMedium = static_cast<int>(*v);
+        if (auto v = config["appearance"]["radius_large"].value<int64_t>())
+            m_radiusLarge = static_cast<int>(*v);
 
         if (auto arr = config["bookmarks"]["paths"].as_array()) {
             m_bookmarks.clear();
@@ -142,6 +153,9 @@ QString ConfigManager::sidebarPosition() const { return m_sidebarPosition; }
 int ConfigManager::sidebarWidth() const { return m_sidebarWidth; }
 bool ConfigManager::sidebarVisible() const { return m_sidebarVisible; }
 QStringList ConfigManager::bookmarks() const { return m_bookmarks; }
+int ConfigManager::radiusSmall() const { return m_radiusSmall; }
+int ConfigManager::radiusMedium() const { return m_radiusMedium; }
+int ConfigManager::radiusLarge() const { return m_radiusLarge; }
 QVariantList ConfigManager::customContextActions() const { return m_customContextActions; }
 
 QString ConfigManager::shortcut(const QString &action) const

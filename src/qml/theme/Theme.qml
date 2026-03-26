@@ -15,9 +15,9 @@ QtObject {
     readonly property color warning: theme.warning
     readonly property color error: theme.error
 
-    readonly property int radiusSmall: 4
-    readonly property int radiusMedium: 8
-    readonly property int radiusLarge: 12
+    readonly property int radiusSmall: config.radiusSmall
+    readonly property int radiusMedium: config.radiusMedium
+    readonly property int radiusLarge: config.radiusLarge
     readonly property int spacing: 8
     readonly property int fontSmall: 11
     readonly property int fontNormal: 13

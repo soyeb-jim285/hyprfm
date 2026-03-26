@@ -60,6 +60,6 @@ Item {
         color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.10)
         border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.7)
         border.width: 1
-        radius: 2
+        radius: Theme.radiusSmall
     }
 }

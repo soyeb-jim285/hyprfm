@@ -20,6 +20,9 @@ class ConfigManager : public QObject
     Q_PROPERTY(int sidebarWidth READ sidebarWidth NOTIFY configChanged)
     Q_PROPERTY(bool sidebarVisible READ sidebarVisible NOTIFY configChanged)
     Q_PROPERTY(QStringList bookmarks READ bookmarks NOTIFY configChanged)
+    Q_PROPERTY(int radiusSmall READ radiusSmall NOTIFY configChanged)
+    Q_PROPERTY(int radiusMedium READ radiusMedium NOTIFY configChanged)
+    Q_PROPERTY(int radiusLarge READ radiusLarge NOTIFY configChanged)
 
 public:
     explicit ConfigManager(const QString &configPath, QObject *parent = nullptr);
@@ -33,6 +36,9 @@ public:
     int sidebarWidth() const;
     bool sidebarVisible() const;
     QStringList bookmarks() const;
+    int radiusSmall() const;
+    int radiusMedium() const;
+    int radiusLarge() const;
     QVariantList customContextActions() const;
     Q_INVOKABLE QString shortcut(const QString &action) const;
 
@@ -55,6 +61,9 @@ private:
     int m_sidebarWidth;
     bool m_sidebarVisible;
     QStringList m_bookmarks;
+    int m_radiusSmall;
+    int m_radiusMedium;
+    int m_radiusLarge;
     QVariantList m_customContextActions;
     QMap<QString, QString> m_shortcuts;
     static QMap<QString, QString> s_defaultShortcuts;
