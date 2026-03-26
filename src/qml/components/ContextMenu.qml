@@ -5,13 +5,11 @@ import HyprFM
 Menu {
     id: root
 
-    // Properties set by caller before opening
     property string targetPath: ""
     property bool targetIsDir: false
     property bool isEmptySpace: false
     property var selectedPaths: []
 
-    // Signals for each action
     signal openRequested(string path)
     signal cutRequested(var paths)
     signal copyRequested(var paths)
@@ -25,86 +23,80 @@ Menu {
     signal newFileRequested(string parentPath)
     signal propertiesRequested(string path)
 
-    // Helpers
     property var effectivePaths: (selectedPaths.length > 0) ? selectedPaths : (targetPath !== "" ? [targetPath] : [])
     property string effectiveDir: {
         if (isEmptySpace) return targetPath
         if (targetIsDir) return targetPath
-        // parent directory of a file
         var p = targetPath
         var idx = p.lastIndexOf("/")
         return idx > 0 ? p.substring(0, idx) : "/"
     }
 
-    // ── Palette-based styling — forces all MenuItems to use our colors ──────
-    palette {
-        window: Theme.crust           // menu background
-        text: Theme.text              // item text
-        highlightedText: Theme.text   // highlighted item text
-        highlight: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
-        mid: Theme.muted              // disabled text
-        windowText: Theme.text
+    // Shared styling component for menu items
+    component StyledMenuItem: MenuItem {
+        id: styledItem
+        property color textColor: Theme.text
+        contentItem: Text {
+            leftPadding: 12
+            rightPadding: 12
+            text: styledItem.text
+            font.pixelSize: Theme.fontNormal
+            color: styledItem.enabled ? styledItem.textColor : Theme.muted
+            verticalAlignment: Text.AlignVCenter
+        }
+        background: Rectangle {
+            implicitHeight: 30
+            implicitWidth: 200
+            color: styledItem.highlighted ? Theme.surface : "transparent"
+            radius: Theme.radiusSmall
+        }
+    }
+
+    component StyledSeparator: MenuSeparator {
+        contentItem: Rectangle {
+            implicitHeight: 1
+            color: Theme.overlay
+        }
+        background: Rectangle {
+            color: "transparent"
+        }
     }
 
     background: Rectangle {
         implicitWidth: 220
         color: Theme.crust
         radius: Theme.radiusMedium
-        border.color: Theme.surface
+        border.color: Theme.overlay
         border.width: 1
     }
 
-    delegate: MenuItem {
-        id: menuItem
-        contentItem: Text {
-            leftPadding: 12
-            rightPadding: 12
-            text: menuItem.text
-            font.pixelSize: Theme.fontNormal
-            color: menuItem.enabled ? Theme.text : Theme.muted
-            verticalAlignment: Text.AlignVCenter
-        }
-        background: Rectangle {
-            implicitHeight: 30
-            implicitWidth: 200
-            color: menuItem.highlighted ? Theme.surface : "transparent"
-            radius: Theme.radiusSmall
-        }
-    }
-
-    // ── Standard items ──────────────────────────────────────────────────────
-
-    MenuItem {
+    StyledMenuItem {
         text: "Open"
         visible: !isEmptySpace && targetPath !== ""
         height: visible ? implicitHeight : 0
         onTriggered: root.openRequested(root.targetPath)
     }
 
-    MenuSeparator {
+    StyledSeparator {
         visible: !isEmptySpace && targetPath !== ""
         height: visible ? implicitHeight : 0
-        contentItem: Rectangle {
-            implicitHeight: 1
-            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
-        }
     }
 
-    MenuItem {
+    StyledMenuItem {
         text: "Cut"
         visible: !isEmptySpace && root.effectivePaths.length > 0
         height: visible ? implicitHeight : 0
         onTriggered: root.cutRequested(root.effectivePaths)
     }
 
-    MenuItem {
+    StyledMenuItem {
         text: "Copy"
         visible: !isEmptySpace && root.effectivePaths.length > 0
         height: visible ? implicitHeight : 0
         onTriggered: root.copyRequested(root.effectivePaths)
     }
 
-    MenuItem {
+    StyledMenuItem {
         text: "Paste"
         enabled: clipboard.hasContent
         visible: clipboard.hasContent
@@ -112,112 +104,81 @@ Menu {
         onTriggered: root.pasteRequested(root.effectiveDir)
     }
 
-    MenuItem {
+    StyledMenuItem {
         text: "Copy Path"
         visible: !isEmptySpace && targetPath !== ""
         height: visible ? implicitHeight : 0
         onTriggered: root.copyPathRequested(root.targetPath)
     }
 
-    MenuSeparator {
+    StyledSeparator {
         visible: !isEmptySpace && root.effectivePaths.length > 0
         height: visible ? implicitHeight : 0
-        contentItem: Rectangle {
-            implicitHeight: 1
-            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
-        }
     }
 
-    MenuItem {
+    StyledMenuItem {
         text: "Rename"
         visible: !isEmptySpace && targetPath !== ""
         height: visible ? implicitHeight : 0
         onTriggered: root.renameRequested(root.targetPath)
     }
 
-    MenuItem {
+    StyledMenuItem {
         text: "Move to Trash"
         visible: !isEmptySpace && root.effectivePaths.length > 0
         height: visible ? implicitHeight : 0
         onTriggered: root.trashRequested(root.effectivePaths)
     }
 
-    MenuItem {
+    StyledMenuItem {
         text: "Delete"
+        textColor: Theme.error
         visible: !isEmptySpace && root.effectivePaths.length > 0
         height: visible ? implicitHeight : 0
-        contentItem: Text {
-            leftPadding: 12
-            rightPadding: 12
-            text: "Delete"
-            font.pixelSize: Theme.fontNormal
-            color: Theme.error
-            verticalAlignment: Text.AlignVCenter
-        }
-        background: Rectangle {
-            implicitHeight: 30
-            color: parent.highlighted
-                ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.15)
-                : "transparent"
-            radius: Theme.radiusSmall
-        }
         onTriggered: root.deleteRequested(root.effectivePaths)
     }
 
-    MenuSeparator {
-        contentItem: Rectangle {
-            implicitHeight: 1
-            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
-        }
-    }
+    StyledSeparator {}
 
-    MenuItem {
+    StyledMenuItem {
         text: "Open in Terminal"
         onTriggered: root.openInTerminalRequested(root.effectiveDir)
     }
 
-    MenuSeparator {
-        contentItem: Rectangle {
-            implicitHeight: 1
-            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
-        }
-    }
+    StyledSeparator {}
 
-    MenuItem {
+    StyledMenuItem {
         text: "New Folder"
         onTriggered: root.newFolderRequested(root.effectiveDir)
     }
 
-    MenuItem {
+    StyledMenuItem {
         text: "New File"
         onTriggered: root.newFileRequested(root.effectiveDir)
     }
 
-    MenuSeparator {
+    StyledSeparator {
         visible: !isEmptySpace && targetPath !== ""
         height: visible ? implicitHeight : 0
-        contentItem: Rectangle {
-            implicitHeight: 1
-            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
-        }
     }
 
-    MenuItem {
+    StyledMenuItem {
         text: "Properties"
         visible: !isEmptySpace && targetPath !== ""
         height: visible ? implicitHeight : 0
         onTriggered: root.propertiesRequested(root.targetPath)
     }
 
-    // ── Custom actions from config ──────────────────────────────────────────
+    // Custom actions from config
     Instantiator {
         model: config.customContextActions
-        delegate: MenuItem {
+        delegate: StyledMenuItem {
             required property var modelData
             text: modelData.name ?? ""
             onTriggered: {
                 if (modelData.command) {
-                    Qt.openUrlExternally("exec:" + modelData.command.replace("{file}", root.targetPath))
+                    var cmd = modelData.command.replace("{file}", root.targetPath)
+                    fileOps.openFile(cmd)
                 }
             }
         }
