@@ -36,29 +36,40 @@ Menu {
         return idx > 0 ? p.substring(0, idx) : "/"
     }
 
-    // ── Background styling ──────────────────────────────────────────────────
+    // ── Palette-based styling — forces all MenuItems to use our colors ──────
+    palette {
+        window: Theme.crust           // menu background
+        text: Theme.text              // item text
+        highlightedText: Theme.text   // highlighted item text
+        highlight: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
+        mid: Theme.muted              // disabled text
+        windowText: Theme.text
+    }
+
     background: Rectangle {
         implicitWidth: 220
-        implicitHeight: 36
-        color: Theme.mantle
+        color: Theme.crust
         radius: Theme.radiusMedium
-        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
+        border.color: Theme.surface
         border.width: 1
     }
 
-    // ── Delegate (item styling) ─────────────────────────────────────────────
     delegate: MenuItem {
         id: menuItem
         contentItem: Text {
-            leftPadding: 8
+            leftPadding: 12
+            rightPadding: 12
             text: menuItem.text
             font.pixelSize: Theme.fontNormal
             color: menuItem.enabled ? Theme.text : Theme.muted
             verticalAlignment: Text.AlignVCenter
         }
         background: Rectangle {
-            implicitHeight: 32
-            color: menuItem.highlighted ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : "transparent"
+            implicitHeight: 30
+            implicitWidth: 200
+            color: menuItem.highlighted
+                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
+                : "transparent"
             radius: Theme.radiusSmall
         }
     }
@@ -138,11 +149,19 @@ Menu {
         visible: !isEmptySpace && root.effectivePaths.length > 0
         height: visible ? implicitHeight : 0
         contentItem: Text {
-            leftPadding: 8
+            leftPadding: 12
+            rightPadding: 12
             text: "Delete"
             font.pixelSize: Theme.fontNormal
             color: Theme.error
             verticalAlignment: Text.AlignVCenter
+        }
+        background: Rectangle {
+            implicitHeight: 30
+            color: parent.highlighted
+                ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.15)
+                : "transparent"
+            radius: Theme.radiusSmall
         }
         onTriggered: root.deleteRequested(root.effectivePaths)
     }
