@@ -93,7 +93,7 @@ Item {
             id: blurredBg
             anchors.fill: parent
             source: bgCapture
-            radius: 48
+            radius: 96
             visible: false
         }
 
