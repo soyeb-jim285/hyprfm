@@ -251,6 +251,11 @@ GridView {
             onDropped: (drop) => {
                 var paths = root.parseDragPaths(drop)
                 if (paths.length === 0) return
+                // Don't move into itself or its own parent
+                var dominated = paths.some(function(p) {
+                    return delegateItem.filePath === p || delegateItem.filePath.startsWith(p + "/")
+                })
+                if (dominated) return
                 fileOps.moveFiles(paths, delegateItem.filePath)
                 drop.accept()
             }
@@ -416,6 +421,12 @@ GridView {
             if (!root.currentPath) return
             var paths = root.parseDragPaths(drop)
             if (paths.length === 0) return
+            // Don't move files into the directory they're already in
+            var allSameDir = paths.every(function(p) {
+                var parentDir = p.substring(0, p.lastIndexOf("/"))
+                return parentDir === root.currentPath
+            })
+            if (allSameDir) return
             fileOps.moveFiles(paths, root.currentPath)
             drop.accept()
         }
