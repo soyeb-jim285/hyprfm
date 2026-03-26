@@ -6,6 +6,17 @@ import HyprFM
 Menu {
     id: root
 
+    // Fade + scale animation on open/close
+    enter: Transition {
+        ParallelAnimation {
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 150; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "scale"; from: 0.92; to: 1.0; duration: 150; easing.type: Easing.OutCubic }
+        }
+    }
+    exit: Transition {
+        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 100; easing.type: Easing.InCubic }
+    }
+
     property string targetPath: ""
     property bool targetIsDir: false
     property bool isEmptySpace: false
@@ -65,24 +76,32 @@ Menu {
         background: Rectangle {
             implicitHeight: 30
             implicitWidth: 240
-            color: styledItem.highlighted ? Theme.surface : "transparent"
+            color: styledItem.highlighted
+                ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                : "transparent"
             radius: Theme.radiusMedium
+
+            Behavior on color {
+                ColorAnimation { duration: 150; easing.type: Easing.OutCubic }
+            }
         }
     }
 
     component StyledSeparator: MenuSeparator {
+        topPadding: 4
+        bottomPadding: 4
         contentItem: Rectangle {
             implicitHeight: 1
-            color: Theme.overlay
+            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
         }
         background: Rectangle { color: "transparent" }
     }
 
     background: Rectangle {
         implicitWidth: 260
-        color: Theme.crust
-        radius: Theme.radiusMedium
-        border.color: Theme.overlay
+        color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.75)
+        radius: Theme.radiusLarge
+        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
         border.width: 1
     }
 
