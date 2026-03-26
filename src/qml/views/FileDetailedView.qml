@@ -6,12 +6,14 @@ Item {
     id: root
 
     property var selectedIndices: []
-    property int lastSelectedIndex: -1
+    property int lastSelectedIndex: -1   // anchor for shift-selection
+    property int cursorIndex: -1         // moving end for keyboard navigation
     property string sortColumn: "name"
     property bool sortAscending: true
 
     // Current directory path (used as drop target)
     property string currentPath: ""
+    onCurrentPathChanged: clearSelection()
 
     // Model bound by FileViewContainer
     property var viewModel
@@ -42,11 +44,13 @@ Item {
             selectedIndices = [idx]
             lastSelectedIndex = idx
         }
+        cursorIndex = idx
     }
 
     function clearSelection() {
         selectedIndices = []
         lastSelectedIndex = -1
+        cursorIndex = -1
     }
 
     function selectAll() {
@@ -171,17 +175,26 @@ Item {
             focus: visible
             keyNavigationEnabled: false
 
-            function moveSelection(delta) {
-                var current = root.selectedIndices.length > 0 ? root.selectedIndices[root.selectedIndices.length - 1] : -1
+            function moveSelection(delta, extend) {
+                var current = root.cursorIndex >= 0 ? root.cursorIndex : (root.selectedIndices.length > 0 ? root.selectedIndices[root.selectedIndices.length - 1] : -1)
                 var next = Math.max(0, Math.min(count - 1, current + delta))
                 if (next === current && current >= 0) return
-                root.selectedIndices = [next]
-                root.lastSelectedIndex = next
+                if (extend && root.lastSelectedIndex >= 0) {
+                    var lo = Math.min(next, root.lastSelectedIndex)
+                    var hi = Math.max(next, root.lastSelectedIndex)
+                    var newSel = []
+                    for (var i = lo; i <= hi; i++) newSel.push(i)
+                    root.selectedIndices = newSel
+                } else {
+                    root.selectedIndices = [next]
+                    root.lastSelectedIndex = next
+                }
+                root.cursorIndex = next
                 positionViewAtIndex(next, ListView.Contain)
             }
 
-            Keys.onUpPressed: moveSelection(-1)
-            Keys.onDownPressed: moveSelection(1)
+            Keys.onUpPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
+            Keys.onDownPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
 
             // Elastic overscroll
             boundsMovement: Flickable.FollowBoundsBehavior
@@ -402,6 +415,7 @@ Item {
 
                 property point dragStart
                 property bool rubberBandActive: false
+                property bool rubberBandJustFinished: false
 
                 onPressed: (mouse) => {
                     var idx = listView.indexAt(mouse.x + listView.contentX, mouse.y + listView.contentY)
@@ -424,8 +438,11 @@ Item {
                         root.contextMenuRequested("", false, Qt.point(mp.x, mp.y))
                         return
                     }
-                    if (!rubberBandActive)
-                        root.clearSelection()
+                    if (rubberBandJustFinished) {
+                        rubberBandJustFinished = false
+                        return
+                    }
+                    root.clearSelection()
                 }
 
                 onPositionChanged: (mouse) => {
@@ -436,8 +453,10 @@ Item {
                 }
 
                 onReleased: {
+                    var wasRubberBand = rubberBandActive && detailedRubberBand.visible
                     detailedRubberBand.end()
                     rubberBandActive = false
+                    rubberBandJustFinished = wasRubberBand
                     listView.interactive = true
                 }
 

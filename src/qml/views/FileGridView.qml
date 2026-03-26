@@ -6,10 +6,12 @@ GridView {
     id: root
 
     property var selectedIndices: []
-    property int lastSelectedIndex: -1
+    property int lastSelectedIndex: -1   // anchor for shift-selection
+    property int cursorIndex: -1         // moving end for keyboard navigation
 
     // Current directory path (used as drop target)
     property string currentPath: ""
+    onCurrentPathChanged: clearSelection()
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
@@ -23,19 +25,28 @@ GridView {
 
     readonly property int columnsPerRow: Math.max(1, Math.floor(width / cellWidth))
 
-    function moveSelection(delta) {
-        var current = selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1
+    function moveSelection(delta, extend) {
+        var current = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
         var next = Math.max(0, Math.min(count - 1, current + delta))
         if (next === current && current >= 0) return
-        selectedIndices = [next]
-        lastSelectedIndex = next
+        if (extend && lastSelectedIndex >= 0) {
+            var lo = Math.min(next, lastSelectedIndex)
+            var hi = Math.max(next, lastSelectedIndex)
+            var newSel = []
+            for (var i = lo; i <= hi; i++) newSel.push(i)
+            selectedIndices = newSel
+        } else {
+            selectedIndices = [next]
+            lastSelectedIndex = next
+        }
+        cursorIndex = next
         positionViewAtIndex(next, GridView.Contain)
     }
 
-    Keys.onLeftPressed: moveSelection(-1)
-    Keys.onRightPressed: moveSelection(1)
-    Keys.onUpPressed: moveSelection(-columnsPerRow)
-    Keys.onDownPressed: moveSelection(columnsPerRow)
+    Keys.onLeftPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
+    Keys.onRightPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
+    Keys.onUpPressed: (event) => moveSelection(-columnsPerRow, event.modifiers & Qt.ShiftModifier)
+    Keys.onDownPressed: (event) => moveSelection(columnsPerRow, event.modifiers & Qt.ShiftModifier)
 
     // Elastic overscroll
     boundsMovement: Flickable.FollowBoundsBehavior
@@ -69,11 +80,13 @@ GridView {
             selectedIndices = [idx]
             lastSelectedIndex = idx
         }
+        cursorIndex = idx
     }
 
     function clearSelection() {
         selectedIndices = []
         lastSelectedIndex = -1
+        cursorIndex = -1
     }
 
     function selectAll() {
@@ -444,6 +457,7 @@ GridView {
 
         property point dragStart
         property bool rubberBandActive: false
+        property bool rubberBandJustFinished: false
 
         onPressed: (mouse) => {
             // Check if clicking on a delegate item
@@ -469,8 +483,11 @@ GridView {
                 root.contextMenuRequested("", false, Qt.point(mp.x, mp.y))
                 return
             }
-            if (!rubberBandActive)
-                root.clearSelection()
+            if (rubberBandJustFinished) {
+                rubberBandJustFinished = false
+                return
+            }
+            root.clearSelection()
         }
 
         onPositionChanged: (mouse) => {
@@ -481,8 +498,10 @@ GridView {
         }
 
         onReleased: {
+            var wasRubberBand = rubberBandActive && rubberBand.visible
             rubberBand.end()
             rubberBandActive = false
+            rubberBandJustFinished = wasRubberBand
             root.interactive = true
         }
 
