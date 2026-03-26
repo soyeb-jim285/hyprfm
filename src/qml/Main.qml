@@ -98,10 +98,9 @@ ApplicationWindow {
     // ── Helper: list of all file paths in current directory (for preview cycling)
     function getDirectoryFiles() {
         var files = []
-        var count = fsModel.rowCount(fsModel.rootIndex())
+        var count = fsModel.rowCount()
         for (var i = 0; i < count; i++) {
-            var idx = fsModel.index(i, 0, fsModel.rootIndex())
-            files.push(fsModel.filePath(idx))
+            files.push(fsModel.filePath(i))
         }
         return files
     }
@@ -279,7 +278,7 @@ ApplicationWindow {
         onDeleteRequested: (paths) => fileOps.deleteFiles(paths)
 
         onOpenInTerminalRequested: (path) => {
-            Qt.openUrlExternally("exec:xterm -e bash -c 'cd \"" + path + "\"; exec bash'")
+            fileOps.openInTerminal(path)
         }
 
         onNewFolderRequested: (parentPath) => {
@@ -345,9 +344,7 @@ ApplicationWindow {
     // Toggle path bar focus (Ctrl+L-like)
     Shortcut {
         sequence: config.shortcut("path_bar")
-        onActivated: {
-            // Placeholder: in full implementation, focus the breadcrumb/path input
-        }
+        onActivated: toolbar.startEditing()
     }
 
     // Toggle sidebar
@@ -415,20 +412,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: config.shortcut("select_all")
-        onActivated: {
-            // Select all items in the current view
-            var count = fsModel.rowCount(fsModel.rootIndex())
-            if (count <= 0) return
-            var indices = []
-            for (var i = 0; i < count; i++) indices.push(i)
-            var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-            if (vm === "grid" && fileViewContainer.gridViewItem)
-                fileViewContainer.gridViewItem.selectedIndices = indices
-            else if (vm === "list" && fileViewContainer.listViewItem)
-                fileViewContainer.listViewItem.selectedIndices = indices
-            else if (vm === "detailed" && fileViewContainer.detailedViewItem)
-                fileViewContainer.detailedViewItem.selectedIndices = indices
-        }
+        onActivated: fileViewContainer.selectAll()
     }
 
     // Quick preview (spacebar)
@@ -460,6 +444,7 @@ ApplicationWindow {
 
         // Toolbar with breadcrumb and view mode toggle
         Toolbar {
+            id: toolbar
             Layout.fillWidth: true
             activeTab: tabModel.activeTab
         }

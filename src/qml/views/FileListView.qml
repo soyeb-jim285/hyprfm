@@ -55,6 +55,12 @@ ListView {
         lastSelectedIndex = -1
     }
 
+    function selectAll() {
+        var all = []
+        for (var i = 0; i < count; i++) all.push(i)
+        selectedIndices = all
+    }
+
     delegate: Item {
         id: rowItem
         width: root.width
@@ -71,7 +77,7 @@ ListView {
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
         // ── Drag support ──────────────────────────────────────────────────
-        Drag.active: listDragHandler.active
+        Drag.active: false
         Drag.mimeData: ({ "text/uri-list": "file://" + rowItem.filePath })
         Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
         Drag.dragType: Drag.Automatic
@@ -165,20 +171,6 @@ ListView {
             }
         }
 
-        // DragHandler for initiating drag
-        DragHandler {
-            id: listDragHandler
-            onActiveChanged: {
-                if (active) {
-                    if (!rowItem.isSelected)
-                        root.selectIndex(rowItem.index, false, false)
-                    rowItem.Drag.start()
-                } else {
-                    rowItem.Drag.drop()
-                }
-            }
-        }
-
         // Separator line
         Rectangle {
             anchors.bottom: parent.bottom
@@ -216,6 +208,13 @@ ListView {
     MouseArea {
         anchors.fill: parent
         z: -1
-        onClicked: root.clearSelection()
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: (mouse) => {
+            if (mouse.button === Qt.RightButton) {
+                root.contextMenuRequested("", false, Qt.point(mouse.x, mouse.y))
+                return
+            }
+            root.clearSelection()
+        }
     }
 }

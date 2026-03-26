@@ -13,6 +13,12 @@ Item {
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
     signal selectionChanged()
 
+    function selectAll() {
+        if (viewMode === "grid") gridView.selectAll()
+        else if (viewMode === "list") listView.selectAll()
+        else detailedView.selectAll()
+    }
+
     // Expose sub-views so main.qml can access selection state
     property alias gridViewItem: gridView
     property alias listViewItem: listView

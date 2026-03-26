@@ -7,6 +7,10 @@ Rectangle {
 
     property var activeTab: null
 
+    function startEditing() {
+        breadcrumb.startEditing()
+    }
+
     height: 44
     color: Theme.base
 
@@ -149,16 +153,6 @@ Rectangle {
             }
         }
 
-        // Ctrl+L shortcut to enter edit mode on breadcrumb
-        Item {
-            width: 0
-            height: 0
-            focus: false
-
-            Shortcut {
-                sequence: "Ctrl+L"
-                onActivated: breadcrumb.startEditing()
-            }
-        }
+        // Ctrl+L is handled by Main.qml's path_bar shortcut via toolbar.startEditing()
     }
 }

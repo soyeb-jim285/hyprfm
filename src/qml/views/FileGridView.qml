@@ -60,6 +60,12 @@ GridView {
         lastSelectedIndex = -1
     }
 
+    function selectAll() {
+        var all = []
+        for (var i = 0; i < count; i++) all.push(i)
+        selectedIndices = all
+    }
+
     // Helper: collect file:// URIs for the current selection (or given path)
     function uriListForPaths(paths) {
         return paths.map(function(p) { return "file://" + p }).join("\n")
@@ -79,7 +85,7 @@ GridView {
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
         // ── Drag support ─────────────────────────────────────────────────────
-        Drag.active: dragHandler.active
+        Drag.active: false
         Drag.mimeData: {
             var paths = root.selectedIndices.length > 1 && delegateItem.isSelected
                 ? root.selectedIndices.map(function(i) {
@@ -154,9 +160,6 @@ GridView {
                 anchors.fill: parent
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
-                drag.target: delegateItem
-                drag.threshold: 8
-
                 onClicked: (mouse) => {
                     if (mouse.button === Qt.RightButton) {
                         root.contextMenuRequested(
@@ -179,24 +182,7 @@ GridView {
                 }
             }
 
-            // DragHandler for initiating drag with the Drag attached property
-            DragHandler {
-                id: dragHandler
-                onActiveChanged: {
-                    if (active) {
-                        // Make sure this item is selected
-                        if (!delegateItem.isSelected)
-                            root.selectIndex(delegateItem.index, false, false)
-                        delegateItem.Drag.start()
-                    } else {
-                        delegateItem.Drag.drop()
-                        // Reset position
-                        delegateItem.x = 0
-                        delegateItem.y = 0
-                    }
-                }
-            }
-        }
+}
     }
 
     // ── Drop area: accept files dropped onto this view ───────────────────────
@@ -229,11 +215,15 @@ GridView {
         id: bgMa
         anchors.fill: parent
         z: -1
-        acceptedButtons: Qt.LeftButton
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
 
         property point dragStart
 
         onClicked: (mouse) => {
+            if (mouse.button === Qt.RightButton) {
+                root.contextMenuRequested("", false, Qt.point(mouse.x, mouse.y))
+                return
+            }
             if (!rubberBand.visible)
                 root.clearSelection()
         }

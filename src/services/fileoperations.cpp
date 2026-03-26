@@ -93,6 +93,16 @@ void FileOperations::copyPathToClipboard(const QString &path)
             proc, &QProcess::deleteLater);
 }
 
+void FileOperations::openInTerminal(const QString &dirPath)
+{
+    QString terminal = qEnvironmentVariable("TERMINAL", "foot");
+    auto *proc = new QProcess(this);
+    proc->setWorkingDirectory(dirPath);
+    proc->start(terminal, {});
+    connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+            proc, &QProcess::deleteLater);
+}
+
 void FileOperations::runProcess(const QString &program, const QStringList &args)
 {
     if (m_process) {

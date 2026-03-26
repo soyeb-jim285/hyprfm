@@ -27,6 +27,7 @@ public:
     Q_INVOKABLE void createFile(const QString &parentPath, const QString &name);
     Q_INVOKABLE void openFile(const QString &path);
     Q_INVOKABLE void copyPathToClipboard(const QString &path);
+    Q_INVOKABLE void openInTerminal(const QString &dirPath);
 
 signals:
     void busyChanged();

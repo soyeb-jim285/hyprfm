@@ -19,8 +19,8 @@ public:
     Q_INVOKABLE void copy(const QStringList &paths);
     Q_INVOKABLE void cut(const QStringList &paths);
     Q_INVOKABLE void clear();
-    bool contains(const QString &path) const;
-    QStringList take();
+    Q_INVOKABLE bool contains(const QString &path) const;
+    Q_INVOKABLE QStringList take();
 
 signals:
     void changed();

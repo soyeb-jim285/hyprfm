@@ -49,6 +49,12 @@ Item {
         lastSelectedIndex = -1
     }
 
+    function selectAll() {
+        var all = []
+        for (var i = 0; i < listView.count; i++) all.push(i)
+        selectedIndices = all
+    }
+
     function clickHeader(col) {
         if (sortColumn === col) {
             sortAscending = !sortAscending
@@ -192,7 +198,7 @@ Item {
                 readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
                 // ── Drag support ──────────────────────────────────────────
-                Drag.active: detDragHandler.active
+                Drag.active: false
                 Drag.mimeData: ({ "text/uri-list": "file://" + detRow.filePath })
                 Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
                 Drag.dragType: Drag.Automatic
@@ -338,20 +344,6 @@ Item {
                     }
                 }
 
-                // DragHandler for initiating drag
-                DragHandler {
-                    id: detDragHandler
-                    onActiveChanged: {
-                        if (active) {
-                            if (!detRow.isSelected)
-                                root.selectIndex(detRow.index, false, false)
-                            detRow.Drag.start()
-                        } else {
-                            detRow.Drag.drop()
-                        }
-                    }
-                }
-
                 Rectangle {
                     anchors.bottom: parent.bottom
                     width: parent.width
@@ -388,7 +380,14 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 z: -1
-                onClicked: root.clearSelection()
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onClicked: (mouse) => {
+                    if (mouse.button === Qt.RightButton) {
+                        root.contextMenuRequested("", false, Qt.point(mouse.x, mouse.y))
+                        return
+                    }
+                    root.clearSelection()
+                }
             }
         }
     }

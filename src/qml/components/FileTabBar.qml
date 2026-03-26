@@ -133,15 +133,14 @@ Rectangle {
                         MouseArea {
                             anchors.fill: parent
                             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                            onClicked: {
+                            onClicked: (mouse) => {
                                 if (mouse.button === Qt.MiddleButton) {
                                     tabModel.closeTab(index)
                                 } else {
                                     tabModel.activeIndex = index
                                 }
                             }
-                            // Don't capture close button area
-                            onPressed: {
+                            onPressed: (mouse) => {
                                 if (mouse.button === Qt.LeftButton) {
                                     tabModel.activeIndex = index
                                 }
