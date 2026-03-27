@@ -120,6 +120,7 @@ ListView {
                     return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05)
                 return "transparent"
             }
+            Behavior on color { ColorAnimation { duration: Theme.animDuration } }
             border.color: rowItem.isSelected ? Theme.accent : "transparent"
             border.width: rowItem.isSelected ? 1 : 0
 

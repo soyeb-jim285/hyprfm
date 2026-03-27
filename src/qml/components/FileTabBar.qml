@@ -147,25 +147,18 @@ Rectangle {
         }
 
         // Add tab button
-        Rectangle {
+        HoverRect {
+            id: addBtn
             width: 40
             height: root.height
-            color: addHover.containsMouse ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
+            onClicked: tabModel.addTab()
 
             Text {
                 anchors.centerIn: parent
                 text: "+"
-                color: addHover.containsMouse ? Theme.text : Theme.subtext
+                color: addBtn.hovered ? Theme.text : Theme.subtext
                 font.pixelSize: Theme.fontLarge
                 verticalAlignment: Text.AlignVCenter
-            }
-
-            MouseArea {
-                id: addHover
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: tabModel.addTab()
             }
         }
     }

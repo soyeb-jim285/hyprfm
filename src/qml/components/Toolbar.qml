@@ -35,69 +35,35 @@ Rectangle {
                 spacing: 4
 
                 // Back button
-                Rectangle {
+                HoverRect {
                     width: 32; height: 32
-                    radius: Theme.radiusSmall
-                    color: backHover.containsMouse && root.activeTab && root.activeTab.canGoBack
-                        ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
-                    opacity: root.activeTab && root.activeTab.canGoBack ? 1.0 : 0.4
-                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
-
+                    hoverEnabled: root.activeTab && root.activeTab.canGoBack
+                    opacity: hoverEnabled ? 1.0 : 0.4
+                    onClicked: { if (root.activeTab) root.activeTab.goBack() }
                     IconChevronLeft { anchors.centerIn: parent; size: 18; color: Theme.text }
-                    MouseArea {
-                        id: backHover; anchors.fill: parent; hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        enabled: root.activeTab ? root.activeTab.canGoBack : false
-                        onClicked: { if (root.activeTab) root.activeTab.goBack() }
-                    }
                 }
 
                 // Forward button
-                Rectangle {
+                HoverRect {
                     width: 32; height: 32
-                    radius: Theme.radiusSmall
-                    color: fwdHover.containsMouse && root.activeTab && root.activeTab.canGoForward
-                        ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
-                    opacity: root.activeTab && root.activeTab.canGoForward ? 1.0 : 0.4
-                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
-
+                    hoverEnabled: root.activeTab && root.activeTab.canGoForward
+                    opacity: hoverEnabled ? 1.0 : 0.4
+                    onClicked: { if (root.activeTab) root.activeTab.goForward() }
                     IconChevronRight { anchors.centerIn: parent; size: 18; color: Theme.text }
-                    MouseArea {
-                        id: fwdHover; anchors.fill: parent; hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        enabled: root.activeTab ? root.activeTab.canGoForward : false
-                        onClicked: { if (root.activeTab) root.activeTab.goForward() }
-                    }
                 }
 
                 // Up button
-                Rectangle {
+                HoverRect {
                     width: 32; height: 32
-                    radius: Theme.radiusSmall
-                    color: upHover.containsMouse ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
-                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
-
+                    onClicked: { if (root.activeTab) root.activeTab.goUp() }
                     IconChevronUp { anchors.centerIn: parent; size: 18; color: Theme.text }
-                    MouseArea {
-                        id: upHover; anchors.fill: parent; hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: { if (root.activeTab) root.activeTab.goUp() }
-                    }
                 }
 
                 // Home button
-                Rectangle {
+                HoverRect {
                     width: 32; height: 32
-                    radius: Theme.radiusSmall
-                    color: homeHover.containsMouse ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
-                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
-
+                    onClicked: root.homeClicked()
                     IconHome { anchors.centerIn: parent; size: 18; color: Theme.text }
-                    MouseArea {
-                        id: homeHover; anchors.fill: parent; hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.homeClicked()
-                    }
                 }
 
                 // Breadcrumb / address bar
@@ -113,18 +79,10 @@ Rectangle {
                 }
 
                 // Search button
-                Rectangle {
+                HoverRect {
                     width: 32; height: 32
-                    radius: Theme.radiusSmall
-                    color: searchHover.containsMouse ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
-                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
-
+                    onClicked: root.searchClicked()
                     IconSearch { anchors.centerIn: parent; size: 18; color: Theme.text }
-                    MouseArea {
-                        id: searchHover; anchors.fill: parent; hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.searchClicked()
-                    }
                 }
             }
         }
@@ -223,6 +181,7 @@ Rectangle {
                                     return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05)
                                 return "transparent"
                             }
+                            Behavior on color { ColorAnimation { duration: Theme.animDuration } }
                             radius: Theme.radiusSmall
                             border.width: tabDelegate.index === tabModel.activeIndex ? 1 : 0
                             border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
@@ -312,6 +271,7 @@ Rectangle {
                                 color: closeHover.hovered
                                     ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.8)
                                     : "transparent"
+                                Behavior on color { ColorAnimation { duration: Theme.animDuration } }
 
                                 IconX {
                                     anchors.centerIn: parent; size: 10

@@ -48,31 +48,13 @@ Rectangle {
                 font.weight: Font.Bold
             }
 
-            Rectangle {
+            HoverRect {
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.spacing
                 anchors.verticalCenter: parent.verticalCenter
-                width: 28
-                height: 28
-                radius: Theme.radiusSmall
-                color: collapseHover.containsMouse
-                    ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                    : "transparent"
-                Behavior on color { ColorAnimation { duration: Theme.animDuration } }
-
-                IconPanelLeft {
-                    anchors.centerIn: parent
-                    size: 16
-                    color: Theme.subtext
-                }
-
-                MouseArea {
-                    id: collapseHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.collapseClicked()
-                }
+                width: 28; height: 28
+                onClicked: root.collapseClicked()
+                IconPanelLeft { anchors.centerIn: parent; size: 16; color: Theme.subtext }
             }
         }
 
@@ -101,6 +83,7 @@ Rectangle {
                             return "transparent"
                         }
                         radius: Theme.radiusSmall
+                        Behavior on color { ColorAnimation { duration: Theme.animDuration } }
 
                         Row {
                             anchors.left: parent.left
@@ -171,6 +154,7 @@ Rectangle {
                             ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
                             : "transparent"
                         radius: Theme.radiusSmall
+                        Behavior on color { ColorAnimation { duration: Theme.animDuration } }
 
                         Column {
                             id: deviceContent

@@ -89,39 +89,27 @@ Item {
                         height: parent.height
                         width: segRect.width
 
-                    Rectangle {
-                        id: segRect
-                        height: 24
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: segLabel.width + Theme.spacing
                         property bool isLast: model.index === segmentsRepeater.count - 1
-                        color: !isLast && segHover.containsMouse
-                            ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                            : "transparent"
-                        radius: Theme.radiusSmall
 
-                        Behavior on color { ColorAnimation { duration: Theme.animDuration } }
-
-                        Text {
-                            id: segLabel
-                            anchors.centerIn: parent
-                            text: modelData.label
-                            color: segRect.isLast ? Theme.text : Theme.overlay
-                            font.pixelSize: Theme.fontNormal
-                            font.weight: Font.Bold
-                            verticalAlignment: Text.AlignVCenter
-                        }
-
-                        MouseArea {
-                            id: segHover
-                            anchors.fill: parent
-                            hoverEnabled: !segRect.isLast
-                            cursorShape: segRect.isLast ? Qt.ArrowCursor : Qt.PointingHandCursor
-                            enabled: !segRect.isLast
+                        HoverRect {
+                            id: segRect
+                            height: 24
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: segLabel.width + Theme.spacing
+                            hoverEnabled: !parent.isLast
                             onClicked: root.navigateRequested(modelData.fullPath)
                             onDoubleClicked: root.startEditing()
+
+                            Text {
+                                id: segLabel
+                                anchors.centerIn: parent
+                                text: modelData.label
+                                color: parent.parent.isLast ? Theme.text : Theme.overlay
+                                font.pixelSize: Theme.fontNormal
+                                font.weight: Font.Bold
+                                verticalAlignment: Text.AlignVCenter
+                            }
                         }
-                    }
                     }
                 }
             }

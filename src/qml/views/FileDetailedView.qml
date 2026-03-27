@@ -109,6 +109,7 @@ Item {
                             color: hdrMa.containsMouse
                                 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
                                 : "transparent"
+                            Behavior on color { ColorAnimation { duration: Theme.animDuration } }
                         }
 
                         Row {
@@ -268,6 +269,7 @@ Item {
                             return "transparent"
                         return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.025)
                     }
+                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
                     border.color: detRow.isSelected ? Theme.accent : "transparent"
                     border.width: detRow.isSelected ? 1 : 0
 
