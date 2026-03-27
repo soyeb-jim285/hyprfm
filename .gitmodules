@@ -1,3 +1,6 @@
 [submodule "src/qml/icons"]
 	path = src/qml/icons
 	url = https://github.com/soyeb-jim285/quill-icons.git
+[submodule "src/qml/quill"]
+	path = src/qml/quill
+	url = https://github.com/soyeb-jim285/quill.git
