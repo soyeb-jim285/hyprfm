@@ -438,7 +438,7 @@ ApplicationWindow {
         Item {
             id: fileBox
             width: 340
-            height: fileContent.implicitHeight + 40
+            height: fileCard.implicitHeight
             anchors.centerIn: parent
 
             opacity: 0
@@ -448,79 +448,37 @@ ApplicationWindow {
             property real yOffset: 0
             transform: Translate { y: fileBox.yOffset }
 
-            Rectangle {
+            Quill.Card {
+                id: fileCard
                 anchors.fill: parent
-                color: Theme.mantle
-                radius: Theme.radiusMedium
-                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                border.width: 1
-            }
+                title: "New File"
+                padding: 20
 
-            Column {
-                id: fileContent
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 20
-                spacing: 12
-
-                Text {
-                    text: "New File"
-                    color: Theme.text
-                    font.pixelSize: Theme.fontNormal
-                    font.weight: Font.DemiBold
-                }
-
-                TextField {
+                Quill.TextField {
                     id: newFileField
-                    width: parent.width
-                    color: Theme.text
-                    font.pixelSize: Theme.fontNormal
-                    padding: 8
-                    background: Rectangle {
-                        color: Theme.surface
-                        radius: Theme.radiusSmall
-                        border.color: newFileField.activeFocus ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.15)
-                        border.width: 1
-                    }
+                    Layout.fillWidth: true
+                    autoFocus: true
+                    placeholder: "File name"
                     Keys.onReturnPressed: newFileDialog.accept()
                     Keys.onEscapePressed: newFileDialog.reject()
                 }
 
-                Row {
-                    anchors.right: parent.right
+                RowLayout {
+                    Layout.alignment: Qt.AlignRight
                     spacing: 12
 
-                    Text {
+                    Quill.Button {
                         text: "Cancel"
-                        color: Theme.subtext
-                        font.pixelSize: Theme.fontSmall
-                        anchors.verticalCenter: parent.verticalCenter
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: newFileDialog.reject()
-                        }
+                        variant: "ghost"
+                        size: "small"
+                        onClicked: newFileDialog.reject()
                     }
 
-                    Rectangle {
-                        width: okFileText.implicitWidth + 24
-                        height: 28
-                        radius: Theme.radiusSmall
-                        color: Theme.accent
-                        Text {
-                            id: okFileText
-                            text: "Create"
-                            color: Theme.mantle
-                            font.pixelSize: Theme.fontSmall
-                            font.weight: Font.DemiBold
-                            anchors.centerIn: parent
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: newFileDialog.accept()
-                        }
+                    Quill.Button {
+                        text: "Create"
+                        variant: "primary"
+                        size: "small"
+                        onClicked: newFileDialog.accept()
                     }
                 }
             }
