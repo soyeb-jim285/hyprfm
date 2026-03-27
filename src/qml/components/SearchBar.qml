@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import HyprFM
 
-Rectangle {
+Item {
     id: root
 
     property string searchQuery: ""
@@ -14,10 +14,7 @@ Rectangle {
     signal enterPressed()
     signal navigateDown()
 
-    color: Theme.surface
-    radius: Theme.radiusSmall
-    border.width: searchInput.activeFocus ? 1 : 0
-    border.color: Theme.accent
+    height: 28
 
     function focusInput() {
         searchInput.forceActiveFocus()
@@ -28,64 +25,72 @@ Rectangle {
         root.searchQuery = ""
     }
 
-    RowLayout {
+    Rectangle {
         anchors.fill: parent
-        anchors.leftMargin: 8
-        anchors.rightMargin: 4
-        spacing: 6
+        color: Theme.surface
+        radius: Theme.radiusSmall
+        border.width: searchInput.activeFocus ? 1 : 0
+        border.color: Theme.accent
 
-        // Search icon
-        IconSearch {
-            size: 16
-            color: Theme.accent
-        }
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 4
+            spacing: 6
 
-        // Text input
-        TextInput {
-            id: searchInput
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            verticalAlignment: TextInput.AlignVCenter
-            color: Theme.text
-            selectionColor: Theme.accent
-            selectedTextColor: Theme.base
-            font.pointSize: Theme.fontNormal
-            clip: true
-
-            onTextChanged: {
-                root.searchQuery = text
-                root.queryChanged(text)
+            // Search icon
+            IconSearch {
+                size: 16
+                color: Theme.accent
             }
 
-            Keys.onEscapePressed: root.searchClosed()
-            Keys.onReturnPressed: root.enterPressed()
-            Keys.onEnterPressed: root.enterPressed()
-            Keys.onDownPressed: root.navigateDown()
-            Keys.onUpPressed: root.navigateDown()
+            // Text input
+            TextInput {
+                id: searchInput
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                verticalAlignment: TextInput.AlignVCenter
+                color: Theme.text
+                selectionColor: Theme.accent
+                selectedTextColor: Theme.base
+                font.pointSize: Theme.fontNormal
+                clip: true
 
-            // Placeholder text
-            Text {
-                anchors.fill: parent
-                verticalAlignment: Text.AlignVCenter
-                text: "Search files..."
-                color: Theme.muted
-                font: searchInput.font
-                visible: !searchInput.text && !searchInput.activeFocus
+                onTextChanged: {
+                    root.searchQuery = text
+                    root.queryChanged(text)
+                }
+
+                Keys.onEscapePressed: root.searchClosed()
+                Keys.onReturnPressed: root.enterPressed()
+                Keys.onEnterPressed: root.enterPressed()
+                Keys.onDownPressed: root.navigateDown()
+                Keys.onUpPressed: root.navigateDown()
+
+                // Placeholder text
+                Text {
+                    anchors.fill: parent
+                    verticalAlignment: Text.AlignVCenter
+                    text: "Search files..."
+                    color: Theme.muted
+                    font: searchInput.font
+                    visible: !searchInput.text && !searchInput.activeFocus
+                }
             }
-        }
 
-        // Filter button
-        HoverRect {
-            width: 28; height: 28
-            color: root.filterPanelOpen
-                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
-                : "transparent"
-            onClicked: root.filterToggled()
+            // Filter button
+            HoverRect {
+                width: 28; height: 28
+                color: root.filterPanelOpen
+                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
+                    : "transparent"
+                onClicked: root.filterToggled()
 
-            IconFilter {
-                anchors.centerIn: parent
-                size: 14
-                color: root.filterPanelOpen ? Theme.accent : Theme.subtext
+                IconFilter {
+                    anchors.centerIn: parent
+                    size: 14
+                    color: root.filterPanelOpen ? Theme.accent : Theme.subtext
+                }
             }
         }
     }
