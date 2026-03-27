@@ -6,6 +6,7 @@ Rectangle {
     id: root
 
     property var activeTab: null
+    property bool isRecentsView: false
 
     function startEditing() {
         breadcrumb.startEditing()
@@ -59,13 +60,6 @@ Rectangle {
                     IconChevronUp { anchors.centerIn: parent; size: 18; color: Theme.text }
                 }
 
-                // Home button
-                HoverRect {
-                    width: 32; height: 32
-                    onClicked: root.homeClicked()
-                    IconHome { anchors.centerIn: parent; size: 18; color: Theme.text }
-                }
-
                 // Breadcrumb / address bar
                 Breadcrumb {
                     id: breadcrumb
@@ -73,6 +67,7 @@ Rectangle {
                     Layout.fillHeight: true
                     path: root.activeTab ? root.activeTab.currentPath : ""
                     activeTab: root.activeTab
+                    isRecentsView: root.isRecentsView
                     onNavigateRequested: (targetPath) => {
                         if (root.activeTab) root.activeTab.navigateTo(targetPath)
                     }

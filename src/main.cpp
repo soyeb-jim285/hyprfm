@@ -18,6 +18,7 @@
 #include "models/tablistmodel.h"
 #include "models/bookmarkmodel.h"
 #include "models/devicemodel.h"
+#include "models/recentfilesmodel.h"
 #include "providers/thumbnailprovider.h"
 #include "providers/iconprovider.h"
 #include <QIcon>
@@ -82,6 +83,9 @@ int main(int argc, char *argv[])
     // Connect lastWindowClosed to quit
     QObject::connect(&app, &QGuiApplication::lastWindowClosed, &app, &QGuiApplication::quit);
 
+    // Create RecentFilesModel
+    RecentFilesModel *recentFiles = new RecentFilesModel(configDir + "/recents.json", &app);
+
     // Create DeviceModel
     DeviceModel *devices = new DeviceModel(&app);
 
@@ -123,6 +127,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("dragHelper", dragHelper);
     engine.rootContext()->setContextProperty("fsModel", fsModel);
     engine.rootContext()->setContextProperty("devices", devices);
+    engine.rootContext()->setContextProperty("recentFiles", recentFiles);
 
     engine.loadFromModule("HyprFM", "Main");
 

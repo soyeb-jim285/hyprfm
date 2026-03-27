@@ -7,11 +7,19 @@ Rectangle {
     id: root
 
     property string currentPath: ""
+    property bool isRecentsView: false
     signal bookmarkClicked(string path)
+    signal recentsClicked()
     signal collapseClicked()
 
     color: Theme.mantle
     clip: false
+
+    Component { id: iconHome; IconHome { size: 18; color: Theme.subtext } }
+    Component { id: iconClock; IconClock { size: 18; color: Theme.subtext } }
+    Component { id: iconTrash; IconTrash { size: 18; color: Theme.subtext } }
+    Component { id: iconImage; IconImage { size: 18; color: Theme.subtext } }
+    Component { id: iconDownload; IconDownload { size: 18; color: Theme.subtext } }
 
     // Inverse rounded corner — top right
     Shape {
@@ -47,24 +55,6 @@ Rectangle {
         }
     }
 
-    // Map common folder names to freedesktop icon names
-    function folderIconName(name) {
-        const lower = name.toLowerCase()
-        if (lower === "home" || lower === "~") return "user-home"
-        if (lower === "documents" || lower === "docs") return "folder-documents"
-        if (lower === "downloads") return "folder-download"
-        if (lower === "pictures" || lower === "photos" || lower === "images") return "folder-pictures"
-        if (lower === "music" || lower === "audio") return "folder-music"
-        if (lower === "videos" || lower === "movies") return "folder-videos"
-        if (lower === "desktop") return "user-desktop"
-        if (lower === "trash") return "user-trash"
-        if (lower === "projects" || lower === "code" || lower === "dev") return "folder-development"
-        if (lower === "games") return "folder-games"
-        if (lower === "public") return "folder-publicshare"
-        if (lower === "templates") return "folder-templates"
-        return "folder"
-    }
-
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -94,7 +84,7 @@ Rectangle {
             }
         }
 
-        // Bookmarks section
+        // Quick access section
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -104,18 +94,41 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.top: parent.top
 
-                // Bookmark entries
+                // Quick access entries
                 Repeater {
-                    model: bookmarks
+                    model: ListModel {
+                        ListElement { name: "Home"; iconType: "home" }
+                        ListElement { name: "Recents"; iconType: "clock" }
+                        ListElement { name: "Trash"; iconType: "trash" }
+                        ListElement { name: "Pictures"; iconType: "image" }
+                        ListElement { name: "Downloads"; iconType: "download" }
+                    }
 
                     delegate: Rectangle {
-                        id: bookmarkDelegate
+                        id: quickAccessDelegate
+
+                        readonly property string resolvedPath: {
+                            const home = fsModel.homePath()
+                            if (model.name === "Home") return home
+                            if (model.name === "Recents") return ""
+                            if (model.name === "Trash") return home + "/.local/share/Trash/files"
+                            if (model.name === "Pictures") return home + "/Pictures"
+                            if (model.name === "Downloads") return home + "/Downloads"
+                            return ""
+                        }
+
                         width: parent.width - Theme.spacing
                         anchors.horizontalCenter: parent.horizontalCenter
                         height: 32
+                        readonly property bool isActive: {
+                            if (model.name === "Recents") return root.isRecentsView
+                            if (resolvedPath === "") return false
+                            return !root.isRecentsView && resolvedPath === root.currentPath
+                        }
+
                         color: {
-                            if (model.path === root.currentPath) return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
-                            if (hoverArea.containsMouse) return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
+                            if (isActive) return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+                            if (qaHoverArea.containsMouse) return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
                             return "transparent"
                         }
                         radius: Theme.radiusSmall
@@ -129,17 +142,22 @@ Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: Theme.spacing
 
-                            Image {
-                                width: 18
-                                height: 18
-                                source: "image://icon/" + root.folderIconName(model.name)
-                                sourceSize: Qt.size(18, 18)
+                            Loader {
+                                width: 18; height: 18
                                 anchors.verticalCenter: parent.verticalCenter
+                                sourceComponent: {
+                                    if (model.iconType === "home") return iconHome
+                                    if (model.iconType === "clock") return iconClock
+                                    if (model.iconType === "trash") return iconTrash
+                                    if (model.iconType === "image") return iconImage
+                                    if (model.iconType === "download") return iconDownload
+                                    return iconHome
+                                }
                             }
 
                             Text {
                                 text: model.name
-                                color: model.path === root.currentPath ? Theme.accent : Theme.text
+                                color: quickAccessDelegate.isActive ? Theme.accent : Theme.text
                                 font.pixelSize: Theme.fontNormal
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
@@ -148,16 +166,21 @@ Rectangle {
                         }
 
                         MouseArea {
-                            id: hoverArea
+                            id: qaHoverArea
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.bookmarkClicked(model.path)
+                            onClicked: {
+                                if (model.name === "Recents")
+                                    root.recentsClicked()
+                                else
+                                    root.bookmarkClicked(quickAccessDelegate.resolvedPath)
+                            }
                         }
                     }
                 }
 
-                // Separator between bookmarks and devices
+                // Separator between quick access and devices
                 Rectangle {
                     width: parent.width - Theme.spacing * 2
                     anchors.horizontalCenter: parent.horizontalCenter

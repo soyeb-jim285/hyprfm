@@ -13,12 +13,16 @@ ApplicationWindow {
     title: "HyprFM"
     color: "transparent"
 
+    property bool isRecentsView: false
+
     // ── Sync fsModel when active tab changes; quit on last tab closed ───────
     Connections {
         target: tabModel
         function onActiveIndexChanged() {
-            if (tabModel.activeTab)
+            if (tabModel.activeTab) {
+                root.isRecentsView = false
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
+            }
         }
         function onLastTabClosed() {
             Qt.quit()
@@ -29,8 +33,10 @@ ApplicationWindow {
         target: tabModel.activeTab ?? null
         ignoreUnknownSignals: true
         function onCurrentPathChanged() {
-            if (tabModel.activeTab)
+            if (tabModel.activeTab) {
+                root.isRecentsView = false
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
+            }
         }
     }
 
@@ -1177,8 +1183,13 @@ ApplicationWindow {
             Layout.fillHeight: true
             visible: root.sidebarVisible
             currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+            isRecentsView: root.isRecentsView
             onBookmarkClicked: (path) => {
+                root.isRecentsView = false
                 if (tabModel.activeTab) tabModel.activeTab.navigateTo(path)
+            }
+            onRecentsClicked: {
+                root.isRecentsView = true
             }
             onCollapseClicked: root.sidebarVisible = !root.sidebarVisible
         }
@@ -1197,6 +1208,7 @@ ApplicationWindow {
                 id: toolbar
                 Layout.fillWidth: true
                 activeTab: tabModel.activeTab
+                isRecentsView: root.isRecentsView
                 onHomeClicked: {
                     if (tabModel.activeTab)
                         tabModel.activeTab.navigateTo(fsModel.homePath())
@@ -1245,7 +1257,7 @@ ApplicationWindow {
                 FileViewContainer {
                     id: fileViewContainer
                     anchors.fill: parent
-                    fileModel: fsModel
+                    fileModel: root.isRecentsView ? recentFiles : fsModel
                     viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                     currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
 
@@ -1254,6 +1266,7 @@ ApplicationWindow {
                             if (tabModel.activeTab) tabModel.activeTab.navigateTo(filePath)
                         } else {
                             fileOps.openFile(filePath)
+                            recentFiles.addRecent(filePath)
                         }
                     }
 
@@ -1273,8 +1286,8 @@ ApplicationWindow {
 
             StatusBar {
                 Layout.fillWidth: true
-                itemCount: fsModel.fileCount + fsModel.folderCount
-                folderCount: fsModel.folderCount
+                itemCount: root.isRecentsView ? recentFiles.count : fsModel.fileCount + fsModel.folderCount
+                folderCount: root.isRecentsView ? 0 : fsModel.folderCount
                 selectedCount: root.currentSelectedCount
                 selectedSize: root.currentSelectedSize
             }

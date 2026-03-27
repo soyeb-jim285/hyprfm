@@ -9,6 +9,7 @@ Item {
 
     property string path: ""
     property var activeTab: null
+    property bool isRecentsView: false
 
     signal navigateRequested(string path)
 
@@ -21,6 +22,36 @@ Item {
     }
 
     property bool editMode: false
+
+    // Icon components for breadcrumb context
+    Component { id: bcIconHome; IconHome { size: 18; color: Theme.text } }
+    Component { id: bcIconClock; IconClock { size: 18; color: Theme.text } }
+    Component { id: bcIconTrash; IconTrash { size: 18; color: Theme.text } }
+    Component { id: bcIconImage; IconImage { size: 18; color: Theme.text } }
+    Component { id: bcIconDownload; IconDownload { size: 18; color: Theme.text } }
+    Component { id: bcIconFileText; IconFileText { size: 18; color: Theme.text } }
+    Component { id: bcIconMusic; IconMusic { size: 18; color: Theme.text } }
+    Component { id: bcIconVideo; IconVideo { size: 18; color: Theme.text } }
+    Component { id: bcIconMonitor; IconMonitor { size: 18; color: Theme.text } }
+    Component { id: bcIconFolder; IconFolder { size: 18; color: Theme.text } }
+    Component { id: bcIconSettings; IconSettings { size: 18; color: Theme.text } }
+    Component { id: bcIconRocket; IconRocket { size: 18; color: Theme.text } }
+
+    function iconForLabel(label) {
+        const l = label.toLowerCase()
+        if (l === "home") return bcIconHome
+        if (l === "recents") return bcIconClock
+        if (l === "trash") return bcIconTrash
+        if (l === "pictures" || l === "photos" || l === "images") return bcIconImage
+        if (l === "downloads") return bcIconDownload
+        if (l === "documents" || l === "docs") return bcIconFileText
+        if (l === "music" || l === "audio") return bcIconMusic
+        if (l === "videos" || l === "movies") return bcIconVideo
+        if (l === "desktop") return bcIconMonitor
+        if (l === ".config" || l === "config" || l === ".local") return bcIconSettings
+        if (l === "projects" || l === "code" || l === "dev" || l === "src") return bcIconRocket
+        return bcIconFolder
+    }
 
     height: 28
     clip: true
@@ -46,14 +77,38 @@ Item {
         Row {
             id: segmentsRow
             height: parent.height
-            spacing: 0
+            spacing: 4
+
+            // Dynamic context icon
+            Loader {
+                width: 18; height: 18
+                anchors.verticalCenter: parent.verticalCenter
+                sourceComponent: {
+                    if (segmentsRepeater.count === 0) return bcIconFolder
+                    var firstLabel = segmentsRepeater.model[0] ? segmentsRepeater.model[0].label : ""
+                    return root.iconForLabel(firstLabel)
+                }
+            }
 
             Repeater {
                 id: segmentsRepeater
                 model: {
+                    if (root.isRecentsView) return [{ label: "Recents", fullPath: "" }]
                     if (!root.path || root.path === "/") return []
                     var homeUrl = Platform.StandardPaths.writableLocation(Platform.StandardPaths.HomeLocation)
                     const homePath = homeUrl.toString().replace("file://", "")
+                    const trashPath = homePath + "/.local/share/Trash/files"
+                    if (root.path === trashPath) return [{ label: "Trash", fullPath: trashPath }]
+                    if (root.path.startsWith(trashPath + "/")) {
+                        const sub = root.path.substring(trashPath.length + 1).split("/")
+                        const result = [{ label: "Trash", fullPath: trashPath }]
+                        let acc = trashPath
+                        for (const part of sub) {
+                            acc += "/" + part
+                            result.push({ label: part, fullPath: acc })
+                        }
+                        return result
+                    }
                     const parts = root.path.split("/").filter(p => p !== "")
                     const result = []
                     let accumulated = ""

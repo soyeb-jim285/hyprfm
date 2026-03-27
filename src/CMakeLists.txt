@@ -10,6 +10,7 @@ qt_add_executable(hyprfm
     models/bookmarkmodel.cpp
     models/filesystemmodel.cpp
     models/devicemodel.cpp
+    models/recentfilesmodel.cpp
     providers/thumbnailprovider.cpp
 )
 
@@ -49,6 +50,17 @@ qt_add_qml_module(hyprfm
         qml/icons/IconSearch.qml
         qml/icons/IconPanelLeft.qml
         qml/icons/IconPlus.qml
+        qml/icons/IconClock.qml
+        qml/icons/IconTrash.qml
+        qml/icons/IconImage.qml
+        qml/icons/IconDownload.qml
+        qml/icons/IconFolder.qml
+        qml/icons/IconFileText.qml
+        qml/icons/IconMusic.qml
+        qml/icons/IconVideo.qml
+        qml/icons/IconMonitor.qml
+        qml/icons/IconRocket.qml
+        qml/icons/IconSettings.qml
 )
 
 # Make Quill module discoverable at runtime
