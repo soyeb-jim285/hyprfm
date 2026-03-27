@@ -22,6 +22,9 @@
 #include "models/bookmarkmodel.h"
 #include "models/devicemodel.h"
 #include "models/recentfilesmodel.h"
+#include "models/searchresultsmodel.h"
+#include "models/searchproxymodel.h"
+#include "services/searchservice.h"
 #include "providers/thumbnailprovider.h"
 #include "providers/iconprovider.h"
 #include <QIcon>
@@ -89,6 +92,13 @@ int main(int argc, char *argv[])
     fsModel->setRootPath(QStandardPaths::writableLocation(QStandardPaths::HomeLocation));
     fsModel->setShowHidden(config->showHidden());
 
+    SearchResultsModel *searchResults = new SearchResultsModel(&app);
+    SearchProxyModel *searchProxy = new SearchProxyModel(&app);
+    searchProxy->setSourceModel(fsModel);
+
+    SearchService *searchService = new SearchService(&app);
+    searchService->setResultsModel(searchResults);
+
     // Connect config changes to reload theme, bookmarks, and showHidden
     QObject::connect(config, &ConfigManager::configChanged, [=]() {
         theme->loadTheme(config->theme(), themesDir);
@@ -144,6 +154,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("fsModel", fsModel);
     engine.rootContext()->setContextProperty("devices", devices);
     engine.rootContext()->setContextProperty("recentFiles", recentFiles);
+    engine.rootContext()->setContextProperty("searchProxy", searchProxy);
+    engine.rootContext()->setContextProperty("searchResults", searchResults);
+    engine.rootContext()->setContextProperty("searchService", searchService);
 
     engine.loadFromModule("HyprFM", "Main");
 

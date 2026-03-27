@@ -11,6 +11,9 @@ qt_add_executable(hyprfm
     models/filesystemmodel.cpp
     models/devicemodel.cpp
     models/recentfilesmodel.cpp
+    models/searchresultsmodel.cpp
+    models/searchproxymodel.cpp
+    services/searchservice.cpp
     providers/thumbnailprovider.cpp
 )
 
@@ -61,6 +64,8 @@ qt_add_qml_module(hyprfm
         qml/icons/IconMonitor.qml
         qml/icons/IconRocket.qml
         qml/icons/IconSettings.qml
+        qml/components/SearchBar.qml
+        qml/components/FilterPanel.qml
 )
 
 # Make Quill module discoverable at runtime
