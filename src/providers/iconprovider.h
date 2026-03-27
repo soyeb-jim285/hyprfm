@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QImage>
 #include <QIcon>
+#include <QProcess>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QDebug>
@@ -49,6 +50,11 @@ public:
                     m_fallbackDirs.append(path);
             }
         }
+
+        // Check if rsvg-convert is available
+        QProcess check;
+        check.start("rsvg-convert", {"--version"});
+        m_hasRsvg = check.waitForFinished(1000) && check.exitCode() == 0;
     }
 
     QImage requestImage(const QString &id, QSize *size, const QSize &requestedSize) override
@@ -102,11 +108,15 @@ public:
         img.fill(Qt::transparent);
 
         if (svgPath.endsWith(".svg") || svgPath.endsWith(".svgz")) {
-            QSvgRenderer renderer(svgPath);
-            if (renderer.isValid()) {
-                QPainter painter(&img);
-                renderer.render(&painter);
-                painter.end();
+            if (m_hasRsvg) {
+                img = renderWithRsvg(svgPath, iconSize);
+            } else {
+                QSvgRenderer renderer(svgPath);
+                if (renderer.isValid()) {
+                    QPainter painter(&img);
+                    renderer.render(&painter);
+                    painter.end();
+                }
             }
         } else {
             QImage loaded(svgPath);
@@ -132,6 +142,32 @@ public:
     }
 
 private:
+    QImage renderWithRsvg(const QString &svgPath, const QSize &iconSize) const
+    {
+        QProcess proc;
+        proc.start("rsvg-convert",
+                    {"-w", QString::number(iconSize.width()),
+                     "-h", QString::number(iconSize.height()),
+                     "--keep-aspect-ratio",
+                     "-f", "png",
+                     svgPath});
+
+        if (!proc.waitForFinished(2000) || proc.exitCode() != 0) {
+            QImage empty(iconSize, QImage::Format_ARGB32_Premultiplied);
+            empty.fill(Qt::transparent);
+            return empty;
+        }
+
+        QImage img;
+        img.loadFromData(proc.readAllStandardOutput(), "PNG");
+        if (img.isNull()) {
+            QImage empty(iconSize, QImage::Format_ARGB32_Premultiplied);
+            empty.fill(Qt::transparent);
+            return empty;
+        }
+        return img;
+    }
+
     QString findIconIn(const QString &name, int size, const QStringList &themeDirs) const
     {
         static const QStringList categories = {
@@ -190,4 +226,5 @@ private:
 
     QStringList m_primaryDirs;
     QStringList m_fallbackDirs;
+    bool m_hasRsvg = false;
 };
