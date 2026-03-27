@@ -58,6 +58,7 @@ Rectangle {
                 color: collapseHover.containsMouse
                     ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
                     : "transparent"
+                Behavior on color { ColorAnimation { duration: Theme.animDuration } }
 
                 IconPanelLeft {
                     anchors.centerIn: parent

@@ -22,4 +22,8 @@ QtObject {
     readonly property int fontSmall: 11
     readonly property int fontNormal: 13
     readonly property int fontLarge: 16
+
+    readonly property int animDurationFast: 100
+    readonly property int animDuration: 200
+    readonly property int animDurationSlow: 350
 }

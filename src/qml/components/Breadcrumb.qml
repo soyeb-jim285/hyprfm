@@ -48,44 +48,23 @@ Item {
             height: parent.height
             spacing: 0
 
-            // Home icon (replaces "/" root segment)
-            Rectangle {
-                height: segmentsRow.height
-                width: homeIcon.width + Theme.spacing
-                color: homeHover.containsMouse
-                    ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                    : "transparent"
-                radius: Theme.radiusSmall
-
-                Image {
-                    id: homeIcon
-                    anchors.centerIn: parent
-                    width: 16
-                    height: 16
-                    source: "image://icon/user-home"
-                    sourceSize: Qt.size(16, 16)
-                }
-
-                MouseArea {
-                    id: homeHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.navigateRequested(Platform.StandardPaths.writableLocation(Platform.StandardPaths.HomeLocation))
-                    onDoubleClicked: root.startEditing()
-                }
-            }
-
             Repeater {
                 id: segmentsRepeater
                 model: {
                     if (!root.path || root.path === "/") return []
+                    var homeUrl = Platform.StandardPaths.writableLocation(Platform.StandardPaths.HomeLocation)
+                    const homePath = homeUrl.toString().replace("file://", "")
                     const parts = root.path.split("/").filter(p => p !== "")
                     const result = []
                     let accumulated = ""
                     for (const part of parts) {
                         accumulated += "/" + part
-                        result.push({ label: part, fullPath: accumulated })
+                        if (accumulated === homePath) {
+                            result.length = 0
+                            result.push({ label: "Home", fullPath: accumulated })
+                        } else {
+                            result.push({ label: part, fullPath: accumulated })
+                        }
                     }
                     return result
                 }
@@ -94,9 +73,10 @@ Item {
                     height: segmentsRow.height
                     spacing: 0
 
-                    // Separator
+                    // Separator (hidden for first segment)
                     Text {
                         text: " / "
+                        visible: model.index > 0
                         color: Theme.muted
                         font.pixelSize: Theme.fontNormal
                         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
@@ -105,31 +85,43 @@ Item {
                     }
 
                     // Segment button
-                    Rectangle {
+                    Item {
                         height: parent.height
+                        width: segRect.width
+
+                    Rectangle {
+                        id: segRect
+                        height: 24
+                        anchors.verticalCenter: parent.verticalCenter
                         width: segLabel.width + Theme.spacing
-                        color: segHover.containsMouse
+                        property bool isLast: model.index === segmentsRepeater.count - 1
+                        color: !isLast && segHover.containsMouse
                             ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
                             : "transparent"
                         radius: Theme.radiusSmall
+
+                        Behavior on color { ColorAnimation { duration: Theme.animDuration } }
 
                         Text {
                             id: segLabel
                             anchors.centerIn: parent
                             text: modelData.label
-                            color: Theme.text
+                            color: segRect.isLast ? Theme.text : Theme.overlay
                             font.pixelSize: Theme.fontNormal
+                            font.weight: Font.Bold
                             verticalAlignment: Text.AlignVCenter
                         }
 
                         MouseArea {
                             id: segHover
                             anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
+                            hoverEnabled: !segRect.isLast
+                            cursorShape: segRect.isLast ? Qt.ArrowCursor : Qt.PointingHandCursor
+                            enabled: !segRect.isLast
                             onClicked: root.navigateRequested(modelData.fullPath)
                             onDoubleClicked: root.startEditing()
                         }
+                    }
                     }
                 }
             }

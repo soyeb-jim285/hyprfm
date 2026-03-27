@@ -41,6 +41,7 @@ Rectangle {
                     color: backHover.containsMouse && root.activeTab && root.activeTab.canGoBack
                         ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
                     opacity: root.activeTab && root.activeTab.canGoBack ? 1.0 : 0.4
+                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
 
                     IconChevronLeft { anchors.centerIn: parent; size: 18; color: Theme.text }
                     MouseArea {
@@ -58,6 +59,7 @@ Rectangle {
                     color: fwdHover.containsMouse && root.activeTab && root.activeTab.canGoForward
                         ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
                     opacity: root.activeTab && root.activeTab.canGoForward ? 1.0 : 0.4
+                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
 
                     IconChevronRight { anchors.centerIn: parent; size: 18; color: Theme.text }
                     MouseArea {
@@ -73,6 +75,7 @@ Rectangle {
                     width: 32; height: 32
                     radius: Theme.radiusSmall
                     color: upHover.containsMouse ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
+                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
 
                     IconChevronUp { anchors.centerIn: parent; size: 18; color: Theme.text }
                     MouseArea {
@@ -87,6 +90,7 @@ Rectangle {
                     width: 32; height: 32
                     radius: Theme.radiusSmall
                     color: homeHover.containsMouse ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
+                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
 
                     IconHome { anchors.centerIn: parent; size: 18; color: Theme.text }
                     MouseArea {
@@ -113,6 +117,7 @@ Rectangle {
                     width: 32; height: 32
                     radius: Theme.radiusSmall
                     color: searchHover.containsMouse ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent"
+                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
 
                     IconSearch { anchors.centerIn: parent; size: 18; color: Theme.text }
                     MouseArea {
