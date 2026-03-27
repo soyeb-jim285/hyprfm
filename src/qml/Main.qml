@@ -878,12 +878,13 @@ ApplicationWindow {
                 // ── Close button ──
                 Item {
                     width: parent.width; height: 48
-                    Rectangle {
-                        width: propsCloseText.implicitWidth + 28; height: 30; radius: Theme.radiusSmall
-                        color: Theme.accent
-                        anchors.right: parent.right; anchors.rightMargin: 20; anchors.verticalCenter: parent.verticalCenter
-                        Text { id: propsCloseText; text: "Close"; color: Theme.mantle; font.pixelSize: Theme.fontSmall; font.weight: Font.DemiBold; anchors.centerIn: parent }
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: propertiesDialog.close() }
+                    Quill.Button {
+                        text: "Close"
+                        variant: "primary"
+                        size: "small"
+                        anchors.right: parent.right; anchors.rightMargin: 20
+                        anchors.verticalCenter: parent.verticalCenter
+                        onClicked: propertiesDialog.close()
                     }
                 }
             }
