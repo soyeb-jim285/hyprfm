@@ -90,7 +90,8 @@ Rectangle {
                 Loader {
                     id: searchBarLoader
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    Layout.preferredHeight: 28
+                    Layout.alignment: Qt.AlignVCenter
                     visible: root.searchMode
                     active: root.searchMode
                     sourceComponent: SearchBar {
