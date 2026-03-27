@@ -82,3 +82,13 @@ add_executable(tst_thumbnailprovider tst_thumbnailprovider.cpp
 target_include_directories(tst_thumbnailprovider PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_thumbnailprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick)
 add_test(NAME tst_thumbnailprovider COMMAND tst_thumbnailprovider)
+
+add_executable(tst_searchresultsmodel tst_searchresultsmodel.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/searchresultsmodel.cpp
+)
+target_include_directories(tst_searchresultsmodel PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/third_party
+)
+target_link_libraries(tst_searchresultsmodel PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+add_test(NAME tst_searchresultsmodel COMMAND tst_searchresultsmodel)
