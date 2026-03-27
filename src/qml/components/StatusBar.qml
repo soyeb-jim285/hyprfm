@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Shapes
 import HyprFM
 
 Rectangle {
@@ -12,6 +13,41 @@ Rectangle {
 
     height: 28
     color: Theme.mantle
+    clip: false
+
+    // Inverse rounded corner — top left
+    Shape {
+        z: 1; width: Theme.radiusMedium; height: Theme.radiusMedium
+        anchors.bottom: parent.top; anchors.left: parent.left
+        ShapePath {
+            fillColor: Theme.mantle; strokeColor: "transparent"
+            startX: 0; startY: Theme.radiusMedium
+            PathLine { x: Theme.radiusMedium; y: Theme.radiusMedium }
+            PathArc {
+                x: 0; y: 0
+                radiusX: Theme.radiusMedium; radiusY: Theme.radiusMedium
+                direction: PathArc.Clockwise
+            }
+            PathLine { x: 0; y: Theme.radiusMedium }
+        }
+    }
+
+    // Inverse rounded corner — top right
+    Shape {
+        z: 1; width: Theme.radiusMedium; height: Theme.radiusMedium
+        anchors.bottom: parent.top; anchors.right: parent.right
+        ShapePath {
+            fillColor: Theme.mantle; strokeColor: "transparent"
+            startX: Theme.radiusMedium; startY: Theme.radiusMedium
+            PathLine { x: 0; y: Theme.radiusMedium }
+            PathArc {
+                x: Theme.radiusMedium; y: 0
+                radiusX: Theme.radiusMedium; radiusY: Theme.radiusMedium
+                direction: PathArc.Counterclockwise
+            }
+            PathLine { x: Theme.radiusMedium; y: Theme.radiusMedium }
+        }
+    }
 
     RowLayout {
         anchors.fill: parent

@@ -1255,6 +1255,14 @@ ApplicationWindow {
                     }
                 }
             }
+
+            StatusBar {
+                Layout.fillWidth: true
+                itemCount: fsModel.fileCount + fsModel.folderCount
+                folderCount: fsModel.folderCount
+                selectedCount: root.currentSelectedCount
+                selectedSize: root.currentSelectedSize
+            }
             }
         }
     }
