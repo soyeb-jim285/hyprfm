@@ -367,7 +367,7 @@ Item {
                                 if (!detRow.isSelected)
                                     root.selectIndex(detRow.index, false, false)
                                 var paths = root.selectedIndices.length > 1
-                                    ? root.selectedIndices.map(function(i) { return fsModel.filePath(i) })
+                                    ? root.selectedIndices.map(function(i) { return (searchProxy && searchProxy.searchActive ? searchProxy.filePath(i) : fsModel.filePath(i)) })
                                     : [detRow.filePath]
                                 detRow.dragStarted = true
                                 dragHelper.startDrag(paths, detRow.fileIconName, paths.length)

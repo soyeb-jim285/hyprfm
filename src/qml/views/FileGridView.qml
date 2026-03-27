@@ -17,16 +17,15 @@ GridView {
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
 
     clip: true
+    // Zoom controls column count, not icon size
+    property int columnCount: 7
+    readonly property int minColumns: 3
+    readonly property int maxColumns: 12
+    readonly property int labelHeight: 18  // single line of text below icon
 
-    property real iconScale: 1.0
-    readonly property real minScale: 0.6
-    readonly property real maxScale: 2.5
-    readonly property int baseCellSize: 95
-    readonly property int baseIconSize: 48
-
-    readonly property int columnsPerRow: Math.max(1, Math.floor(width / Math.round(baseCellSize * iconScale)))
-    cellWidth: Math.floor(width / columnsPerRow)
-    cellHeight: Math.round(baseCellSize * iconScale)
+    cellWidth: Math.floor(width / columnCount)
+    cellHeight: cellWidth  // square cells
+    readonly property int iconSize: cellHeight - 8 - labelHeight - 1  // 8px top, 0px gap, 1px bottom
 
     focus: visible
     keyNavigationEnabled: false
@@ -51,8 +50,8 @@ GridView {
 
     Keys.onLeftPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
     Keys.onRightPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
-    Keys.onUpPressed: (event) => moveSelection(-columnsPerRow, event.modifiers & Qt.ShiftModifier)
-    Keys.onDownPressed: (event) => moveSelection(columnsPerRow, event.modifiers & Qt.ShiftModifier)
+    Keys.onUpPressed: (event) => moveSelection(-columnCount, event.modifiers & Qt.ShiftModifier)
+    Keys.onDownPressed: (event) => moveSelection(columnCount, event.modifiers & Qt.ShiftModifier)
 
     // Elastic overscroll
     boundsMovement: Flickable.FollowBoundsBehavior
@@ -136,7 +135,7 @@ GridView {
     // Start a drag from a delegate — uses C++ QDrag for system-wide DnD
     function beginDrag(filePath, iconName, fileName, mouseX, mouseY) {
         var paths = selectedIndices.length > 1
-            ? selectedIndices.map(function(i) { return fsModel.filePath(i) })
+            ? selectedIndices.map(function(i) { return (searchProxy && searchProxy.searchActive ? searchProxy.filePath(i) : fsModel.filePath(i)) })
             : [filePath]
         dragIconName = iconName
         dragFileName = selectedIndices.length > 1
@@ -187,7 +186,6 @@ GridView {
         required property string fileIconName
 
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
-        property alias contentRect: selectionRect
 
         // Per-folder drop target
         DropArea {
@@ -209,61 +207,57 @@ GridView {
             }
         }
 
-        // Content column first, so selection rect can size to it
-        Column {
-            id: contentCol
+        readonly property bool isImage: !delegateItem.isDir &&
+            /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(delegateItem.filePath)
+
+        Image {
+            id: thumbImg
+            visible: delegateItem.isImage
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
-            anchors.topMargin: 4
-            spacing: 4
-
-            readonly property bool isImage: !delegateItem.isDir &&
-                /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(delegateItem.filePath)
-
-            Image {
-                visible: parent.isImage
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.round(root.baseIconSize * root.iconScale)
-                height: Math.round(root.baseIconSize * root.iconScale)
-                fillMode: Image.PreserveAspectFit
-                source: parent.isImage
-                    ? ("image://thumbnail/" + delegateItem.filePath)
-                    : ""
-                asynchronous: true
-            }
-
-            Image {
-                visible: !parent.isImage
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.round(root.baseIconSize * root.iconScale)
-                height: Math.round(root.baseIconSize * root.iconScale)
-                source: "image://icon/" + delegateItem.fileIconName
-                sourceSize: Qt.size(Math.round(root.baseIconSize * root.iconScale), Math.round(root.baseIconSize * root.iconScale))
-                asynchronous: true
-            }
-
-            Text {
-                id: labelText
-                width: root.cellWidth - 16
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: delegateItem.fileName
-                color: Theme.text
-                font.pointSize: Theme.fontSmall
-                elide: Text.ElideRight
-                horizontalAlignment: Text.AlignHCenter
-                maximumLineCount: 2
-                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-            }
+            anchors.topMargin: 8
+            width: root.iconSize
+            height: root.iconSize
+            fillMode: Image.PreserveAspectFit
+            source: delegateItem.isImage
+                ? ("image://thumbnail/" + delegateItem.filePath)
+                : ""
+            asynchronous: true
         }
+
+        Image {
+            id: iconImg
+            visible: !delegateItem.isImage
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 8
+            width: root.iconSize
+            height: root.iconSize
+            source: "image://icon/" + delegateItem.fileIconName
+            sourceSize: Qt.size(root.iconSize, root.iconSize)
+            asynchronous: true
+        }
+
+        Text {
+            id: labelText
+            width: parent.width - 4
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: (iconImg.visible ? iconImg : thumbImg).bottom
+            anchors.topMargin: 0
+            text: delegateItem.fileName
+            color: Theme.text
+            font.pointSize: Theme.fontSmall
+            elide: Text.ElideMiddle
+            horizontalAlignment: Text.AlignHCenter
+            maximumLineCount: 1
+        }
+
 
         // Selection/hover rect wraps tightly around the content
         Rectangle {
             id: selectionRect
-            anchors.horizontalCenter: contentCol.horizontalCenter
-            anchors.top: contentCol.top
-            anchors.topMargin: -4
-            width: Math.max(contentCol.width, labelText.paintedWidth) + 12
-            height: contentCol.height + 8
+            anchors.fill: parent
+            anchors.margins: 0
             radius: Theme.radiusMedium
             z: -1
             opacity: (root.isDragging && delegateItem.isSelected) ? 0.4 : 1.0
@@ -408,29 +402,18 @@ GridView {
 
         onWheel: (wheel) => {
             if (wheel.modifiers & Qt.ControlModifier) {
-                var step = wheel.angleDelta.y > 0 ? 0.1 : -0.1
-                root.iconScale = Math.max(root.minScale, Math.min(root.maxScale, root.iconScale + step))
+                // Scroll up = zoom in = fewer columns (bigger icons)
+                var step = wheel.angleDelta.y > 0 ? -1 : 1
+                root.columnCount = Math.max(root.minColumns, Math.min(root.maxColumns, root.columnCount + step))
                 wheel.accepted = true
             } else {
                 wheel.accepted = false
             }
         }
 
-        // Check if a point (in GridView coords) hits a delegate's content area
-        function hitTestContent(mx, my) {
-            var idx = root.indexAt(mx + root.contentX, my + root.contentY)
-            if (idx < 0) return false
-            var item = root.itemAtIndex(idx)
-            if (!item || !item.contentRect) return false
-            var local = root.mapToItem(item.contentRect, mx, my)
-            return local.x >= 0 && local.x <= item.contentRect.width &&
-                   local.y >= 0 && local.y <= item.contentRect.height
-        }
-
         onPressed: (mouse) => {
-            // Check if clicking on a delegate's content area
-            if (hitTestContent(mouse.x, mouse.y)) {
-                // On an item's content — reject so delegate's MouseArea gets it
+            var idx = root.indexAt(mouse.x + root.contentX, mouse.y + root.contentY)
+            if (idx >= 0) {
                 mouse.accepted = false
                 return
             }

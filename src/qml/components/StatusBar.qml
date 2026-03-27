@@ -10,6 +10,7 @@ Rectangle {
     property int folderCount: 0
     property int selectedCount: 0
     property string selectedSize: ""
+    property string searchStatus: ""
 
     height: 28
     color: Theme.mantle
@@ -69,6 +70,14 @@ Rectangle {
             visible: statusBar.selectedCount > 0
             text: statusBar.selectedCount + " selected" + (statusBar.selectedSize ? " \u2014 " + statusBar.selectedSize : "")
             color: Theme.subtext
+            font.pointSize: Theme.fontSmall
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        Text {
+            visible: statusBar.searchStatus !== ""
+            text: statusBar.searchStatus
+            color: Theme.accent
             font.pointSize: Theme.fontSmall
             verticalAlignment: Text.AlignVCenter
         }

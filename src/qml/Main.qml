@@ -36,6 +36,7 @@ ApplicationWindow {
             if (tabModel.activeTab) {
                 root.isRecentsView = false
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
+                if (root.searchMode) root.closeSearch()
             }
         }
     }
@@ -71,6 +72,11 @@ ApplicationWindow {
 
     // ── Sidebar visibility (local property; config.sidebarVisible is read-only) ─
     property bool sidebarVisible: config.sidebarVisible
+
+    // ── Search state ──────────────────────────────────────────────────────────
+    property bool searchMode: false
+    property string searchScope: "local"
+    property var debounceTimer: null
 
     // ── Selection state for StatusBar ────────────────────────────────────────
     property int currentSelectedCount: 0
@@ -119,7 +125,7 @@ ApplicationWindow {
 
         var indices = subView.selectedIndices
         for (var i = 0; i < indices.length; i++) {
-            var fp = fsModel.filePath(indices[i])
+            var fp = root.searchMode ? searchProxy.filePath(indices[i]) : fsModel.filePath(indices[i])
             if (fp !== "") paths.push(fp)
         }
         return paths
@@ -128,11 +134,80 @@ ApplicationWindow {
     // ── Helper: list of all file paths in current directory (for preview cycling)
     function getDirectoryFiles() {
         var files = []
-        var count = fsModel.rowCount()
+        var activeModel = root.searchMode ? searchProxy : fsModel
+        var count = activeModel.rowCount()
         for (var i = 0; i < count; i++) {
-            files.push(fsModel.filePath(i))
+            files.push(activeModel.filePath(i))
         }
         return files
+    }
+
+    // ── Search helpers ────────────────────────────────────────────────────────
+    function openSearch() {
+        searchMode = true
+        toolbar.searchMode = true
+    }
+
+    function closeSearch() {
+        searchMode = false
+        toolbar.searchMode = false
+        searchProxy.clearSearch()
+        searchService.cancelSearch()
+        searchScope = "local"
+        searchProxy.setSourceModel(fsModel)
+    }
+
+    function handleSearchQuery(query) {
+        if (searchScope === "local") {
+            searchProxy.setSearchQuery(query)
+        } else {
+            if (debounceTimer) debounceTimer.destroy()
+            debounceTimer = Qt.createQmlObject(
+                'import QtQuick; Timer { interval: 500; running: true; onTriggered: { parent.triggerRecursiveSearch(); destroy() } }',
+                root
+            )
+        }
+    }
+
+    function triggerRecursiveSearch() {
+        var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
+        if (query === "") return
+        searchProxy.setSourceModel(searchResults)
+        searchService.startSearch(
+            tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
+            query,
+            fsModel.showHidden
+        )
+    }
+
+    function handleSearchEnter() {
+        if (searchScope === "recursive") {
+            var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
+            if (query === "") return
+            searchProxy.setSourceModel(searchResults)
+            searchService.startSearch(
+                tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
+                query,
+                fsModel.showHidden
+            )
+        }
+    }
+
+    function handleScopeChange(scope) {
+        searchScope = scope
+        searchService.cancelSearch()
+        var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
+        if (scope === "local") {
+            searchProxy.setSourceModel(fsModel)
+            searchProxy.setSearchQuery(query)
+        } else if (query !== "") {
+            searchProxy.setSourceModel(searchResults)
+            searchService.startSearch(
+                tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
+                query,
+                fsModel.showHidden
+            )
+        }
     }
 
     // ── Rename dialog ───────────────────────────────────────────────────────
@@ -1171,6 +1246,15 @@ ApplicationWindow {
         }
     }
 
+    // Search
+    Shortcut {
+        sequence: "Ctrl+F"
+        onActivated: {
+            if (root.searchMode) root.closeSearch()
+            else root.openSearch()
+        }
+    }
+
     // ── Layout ──────────────────────────────────────────────────────────────
     RowLayout {
         id: mainContent
@@ -1212,6 +1296,24 @@ ApplicationWindow {
                 onHomeClicked: {
                     if (tabModel.activeTab)
                         tabModel.activeTab.navigateTo(fsModel.homePath())
+                }
+                onSearchClicked: root.openSearch()
+                onSearchClosed: root.closeSearch()
+                onSearchQueryChanged: (query) => root.handleSearchQuery(query)
+                onSearchScopeChanged: (scope) => root.handleScopeChange(scope)
+                onSearchEnterPressed: root.handleSearchEnter()
+                onSearchFilterToggled: {
+                    if (toolbar.filterPanel) {
+                        toolbar.filterPanel.visible = !toolbar.filterPanel.visible
+                    }
+                }
+                onTypeFilterChanged: (filter) => searchProxy.setFileTypeFilter(filter)
+                onDateFilterChanged: (filter) => searchProxy.setDateFilter(filter)
+                onSizeFilterChanged: (filter) => searchProxy.setSizeFilter(filter)
+                onClearAllFilters: {
+                    searchProxy.setFileTypeFilter("")
+                    searchProxy.setDateFilter("")
+                    searchProxy.setSizeFilter("")
                 }
             }
 
@@ -1257,7 +1359,7 @@ ApplicationWindow {
                 FileViewContainer {
                     id: fileViewContainer
                     anchors.fill: parent
-                    fileModel: root.isRecentsView ? recentFiles : fsModel
+                    fileModel: root.isRecentsView ? recentFiles : (root.searchMode ? searchProxy : fsModel)
                     viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                     currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
 
@@ -1286,8 +1388,14 @@ ApplicationWindow {
 
             StatusBar {
                 Layout.fillWidth: true
-                itemCount: root.isRecentsView ? recentFiles.count : fsModel.fileCount + fsModel.folderCount
-                folderCount: root.isRecentsView ? 0 : fsModel.folderCount
+                itemCount: root.isRecentsView ? recentFiles.count
+                    : (root.searchMode ? searchProxy.rowCount() : fsModel.fileCount + fsModel.folderCount)
+                folderCount: root.isRecentsView ? 0 : (root.searchMode ? 0 : fsModel.folderCount)
+                searchStatus: root.searchMode && searchService.isSearching
+                    ? "Searching... " + searchService.resultCount + " results"
+                    : (root.searchMode && searchProxy.searchActive
+                        ? searchProxy.rowCount() + " results"
+                        : "")
                 selectedCount: root.currentSelectedCount
                 selectedSize: root.currentSelectedSize
             }

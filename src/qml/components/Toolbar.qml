@@ -7,13 +7,25 @@ Rectangle {
 
     property var activeTab: null
     property bool isRecentsView: false
+    property bool searchMode: false
+    property alias searchBar: searchBarLoader.item
+    property alias filterPanel: filterPanelLoader.item
 
     function startEditing() {
-        breadcrumb.startEditing()
+        if (!searchMode) breadcrumb.startEditing()
     }
 
     signal searchClicked()
     signal homeClicked()
+    signal searchQueryChanged(string query)
+    signal searchScopeChanged(string scope)
+    signal searchFilterToggled()
+    signal searchClosed()
+    signal searchEnterPressed()
+    signal typeFilterChanged(string filter)
+    signal dateFilterChanged(string filter)
+    signal sizeFilterChanged(string filter)
+    signal clearAllFilters()
 
     implicitHeight: toolbarColumn.implicitHeight
     color: Theme.mantle
@@ -60,11 +72,12 @@ Rectangle {
                     IconChevronUp { anchors.centerIn: parent; size: 18; color: Theme.text }
                 }
 
-                // Breadcrumb / address bar
+                // Breadcrumb / address bar (hidden in search mode)
                 Breadcrumb {
                     id: breadcrumb
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    visible: !root.searchMode
                     path: root.activeTab ? root.activeTab.currentPath : ""
                     activeTab: root.activeTab
                     isRecentsView: root.isRecentsView
@@ -73,11 +86,54 @@ Rectangle {
                     }
                 }
 
-                // Search button
+                // Search bar (shown in search mode)
+                Loader {
+                    id: searchBarLoader
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: root.searchMode
+                    active: root.searchMode
+                    sourceComponent: SearchBar {
+                        onQueryChanged: (query) => root.searchQueryChanged(query)
+                        onScopeChanged: (scope) => root.searchScopeChanged(scope)
+                        onFilterToggled: root.searchFilterToggled()
+                        onSearchClosed: root.searchClosed()
+                        onEnterPressed: root.searchEnterPressed()
+                    }
+                    onLoaded: item.focusInput()
+                }
+
+                // Search button (hidden in search mode)
                 HoverRect {
                     width: 32; height: 32
+                    visible: !root.searchMode
                     onClicked: root.searchClicked()
                     IconSearch { anchors.centerIn: parent; size: 18; color: Theme.text }
+                }
+            }
+        }
+
+        // ── Filter panel (slides in when toggled) ──
+        Item {
+            Layout.fillWidth: true
+            Layout.preferredHeight: root.searchMode && filterPanelLoader.item && filterPanelLoader.item.visible
+                ? filterPanelLoader.item.implicitHeight : 0
+            clip: true
+
+            Behavior on Layout.preferredHeight {
+                NumberAnimation { duration: 200; easing.type: Easing.InOutCubic }
+            }
+
+            Loader {
+                id: filterPanelLoader
+                anchors.fill: parent
+                active: root.searchMode
+                sourceComponent: FilterPanel {
+                    visible: false
+                    onTypeFilterChanged: (filter) => root.typeFilterChanged(filter)
+                    onDateFilterChanged: (filter) => root.dateFilterChanged(filter)
+                    onSizeFilterChanged: (filter) => root.sizeFilterChanged(filter)
+                    onClearAllFilters: root.clearAllFilters()
                 }
             }
         }
