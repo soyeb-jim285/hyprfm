@@ -105,7 +105,6 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 color: Theme.base
-
                 // Top separator
                 Rectangle {
                     anchors.top: parent.top
@@ -118,14 +117,12 @@ Rectangle {
                 RowLayout {
                     id: tabRow
                     anchors.fill: parent
-                    anchors.leftMargin: Theme.spacing
-                    anchors.rightMargin: Theme.spacing
-                    anchors.topMargin: 1
-                    spacing: 2
+                    spacing: 0
 
                     // Track how many tabs are closing so others can grow immediately
                     property int closingCount: 0
                     property int effectiveCount: Math.max(tabModel.count - closingCount, 1)
+                    property int hoveredIndex: -1
 
                     Repeater {
                         id: tabRepeater
@@ -138,7 +135,7 @@ Rectangle {
                             required property var model
 
                             Layout.fillHeight: true
-                            Layout.preferredWidth: closing ? 0 : (tabRow.width - Theme.spacing * 2) / tabRow.effectiveCount
+                            Layout.preferredWidth: closing ? 0 : tabRow.width / tabRow.effectiveCount
                             property bool closing: false
 
                             Behavior on Layout.preferredWidth {
@@ -174,17 +171,7 @@ Rectangle {
                                 }
                             }
 
-                            color: {
-                                if (tabDelegate.index === tabModel.activeIndex)
-                                    return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                                if (tabDelegateHover.containsMouse)
-                                    return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05)
-                                return "transparent"
-                            }
-                            Behavior on color { ColorAnimation { duration: Theme.animDuration } }
-                            radius: Theme.radiusSmall
-                            border.width: tabDelegate.index === tabModel.activeIndex ? 1 : 0
-                            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                            color: "transparent"
 
                             // Drop area on tab
                             DropArea {
@@ -231,10 +218,31 @@ Rectangle {
                                 }
                             }
 
-                            MouseArea {
+                            // Separator between tabs
+                            Rectangle {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 1
+                                height: parent.height * 0.5
+                                color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
+                                visible: tabDelegate.index < tabModel.count - 1
+                                opacity: (tabDelegate.index === tabModel.activeIndex
+                                    || tabDelegate.index + 1 === tabModel.activeIndex
+                                    || tabDelegate.index === tabRow.hoveredIndex
+                                    || tabDelegate.index + 1 === tabRow.hoveredIndex) ? 0 : 1
+                                Behavior on opacity { NumberAnimation { duration: Theme.animDuration } }
+                            }
+
+                            HoverHandler {
                                 id: tabDelegateHover
+                                onHoveredChanged: {
+                                    if (hovered) tabRow.hoveredIndex = tabDelegate.index
+                                    else if (tabRow.hoveredIndex === tabDelegate.index) tabRow.hoveredIndex = -1
+                                }
+                            }
+
+                            MouseArea {
                                 anchors.fill: parent
-                                hoverEnabled: true
                                 acceptedButtons: Qt.LeftButton | Qt.MiddleButton
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: (mouse) => {
@@ -245,13 +253,29 @@ Rectangle {
                                 }
                             }
 
+                            // Inner highlight
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 5
+                                radius: Theme.radiusSmall
+                                color: {
+                                    if (tabDelegate.index === tabModel.activeIndex)
+                                        return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                                    if (tabDelegateHover.hovered)
+                                        return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05)
+                                    return "transparent"
+                                }
+                                Behavior on color { ColorAnimation { duration: Theme.animDuration } }
+                                border.width: tabDelegate.index === tabModel.activeIndex ? 1 : 0
+                                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                            }
+
                             // Tab label
                             Text {
                                 anchors.left: parent.left
-                                anchors.leftMargin: 10
-                                anchors.right: closeBtn.visible ? closeBtn.left : parent.right
-                                anchors.rightMargin: closeBtn.visible ? 4 : 10
+                                anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
+                                horizontalAlignment: Text.AlignHCenter
                                 text: tabDelegate.model.title || "New Tab"
                                 color: tabDelegate.index === tabModel.activeIndex ? Theme.text : Theme.subtext
                                 font.pixelSize: Theme.fontNormal
@@ -260,14 +284,14 @@ Rectangle {
                                 verticalAlignment: Text.AlignVCenter
                             }
 
-                            // Close button — anchored to right edge so it moves with the tab
+                            // Close button — only visible on hover
                             Rectangle {
                                 id: closeBtn
                                 width: 20; height: 20; radius: 10
                                 anchors.right: parent.right
                                 anchors.rightMargin: 6
                                 anchors.verticalCenter: parent.verticalCenter
-                                visible: tabModel.count > 1
+                                visible: tabModel.count > 1 && tabDelegateHover.hovered
                                 color: closeHover.hovered
                                     ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.8)
                                     : "transparent"
