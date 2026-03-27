@@ -12,6 +12,7 @@ Rectangle {
     signal filterToggled()
     signal searchClosed()
     signal enterPressed()
+    signal navigateDown()
 
     color: Theme.surface
     radius: Theme.radiusSmall
@@ -59,6 +60,8 @@ Rectangle {
             Keys.onEscapePressed: root.searchClosed()
             Keys.onReturnPressed: root.enterPressed()
             Keys.onEnterPressed: root.enterPressed()
+            Keys.onDownPressed: root.navigateDown()
+            Keys.onUpPressed: root.navigateDown()
 
             // Placeholder text
             Text {
@@ -79,26 +82,10 @@ Rectangle {
                 : "transparent"
             onClicked: root.filterToggled()
 
-            IconSettings {
+            IconFilter {
                 anchors.centerIn: parent
                 size: 14
                 color: root.filterPanelOpen ? Theme.accent : Theme.subtext
-            }
-        }
-
-        // Esc hint
-        Rectangle {
-            Layout.preferredWidth: escLabel.implicitWidth + 12
-            Layout.preferredHeight: 20
-            radius: 3
-            color: Theme.mantle
-
-            Text {
-                id: escLabel
-                anchors.centerIn: parent
-                text: "Esc"
-                font.pointSize: Theme.fontSmall - 1
-                color: Theme.muted
             }
         }
     }

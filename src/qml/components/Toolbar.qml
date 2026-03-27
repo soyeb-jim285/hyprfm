@@ -21,6 +21,7 @@ Rectangle {
     signal searchFilterToggled()
     signal searchClosed()
     signal searchEnterPressed()
+    signal searchNavigateDown()
     signal typeFilterChanged(string filter)
     signal dateFilterChanged(string filter)
     signal sizeFilterChanged(string filter)
@@ -97,6 +98,7 @@ Rectangle {
                         onFilterToggled: root.searchFilterToggled()
                         onSearchClosed: root.searchClosed()
                         onEnterPressed: root.searchEnterPressed()
+                        onNavigateDown: root.searchNavigateDown()
                     }
                     onLoaded: item.focusInput()
                 }

@@ -1296,6 +1296,14 @@ ApplicationWindow {
                 onSearchClosed: root.closeSearch()
                 onSearchQueryChanged: (query) => root.handleSearchQuery(query)
                 onSearchEnterPressed: root.handleSearchEnter()
+                onSearchNavigateDown: {
+                    var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+                    var subView = null
+                    if (vm === "grid")          subView = fileViewContainer.gridViewItem
+                    else if (vm === "list")     subView = fileViewContainer.listViewItem
+                    else if (vm === "detailed") subView = fileViewContainer.detailedViewItem
+                    if (subView) subView.forceActiveFocus()
+                }
                 onSearchFilterToggled: {
                     if (toolbar.filterPanel) {
                         toolbar.filterPanel.visible = !toolbar.filterPanel.visible

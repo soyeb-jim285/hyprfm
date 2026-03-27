@@ -25,7 +25,7 @@ GridView {
 
     cellWidth: Math.floor(width / columnCount)
     cellHeight: cellWidth  // square cells
-    readonly property int iconSize: cellHeight - 8 - labelHeight - 1  // 8px top, 0px gap, 1px bottom
+    readonly property int iconSize: cellHeight - 8 - labelHeight - 5  // 8px top, 0px gap, 5px bottom
 
     focus: visible
     keyNavigationEnabled: false
@@ -251,7 +251,7 @@ GridView {
 
         Text {
             id: labelText
-            width: parent.width - 4
+            width: parent.width - 12
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: (iconImg.visible ? iconImg : thumbImg).bottom
             anchors.topMargin: 0
