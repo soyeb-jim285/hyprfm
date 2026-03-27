@@ -6,11 +6,11 @@ Rectangle {
     id: root
 
     property string searchQuery: ""
-    property string scope: "local"  // "local" | "recursive"
+    property string searchScope: "local"  // "local" | "recursive"
     property bool filterPanelOpen: false
 
     signal queryChanged(string query)
-    signal scopeChanged(string scope)
+    signal searchScopeUpdated(string scope)
     signal filterToggled()
     signal searchClosed()
     signal enterPressed()
@@ -89,22 +89,22 @@ Rectangle {
                     Layout.preferredWidth: localLabel.implicitWidth + 16
                     Layout.preferredHeight: 22
                     radius: Theme.radiusSmall
-                    color: root.scope === "local" ? Theme.accent : "transparent"
+                    color: root.searchScope === "local" ? Theme.accent : "transparent"
 
                     Text {
                         id: localLabel
                         anchors.centerIn: parent
                         text: "Current"
                         font.pointSize: Theme.fontSmall
-                        color: root.scope === "local" ? Theme.base : Theme.subtext
+                        color: root.searchScope === "local" ? Theme.base : Theme.subtext
                     }
 
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            root.scope = "local"
-                            root.scopeChanged("local")
+                            root.searchScope = "local"
+                            root.searchScopeUpdated("local")
                         }
                     }
                 }
@@ -113,22 +113,22 @@ Rectangle {
                     Layout.preferredWidth: recursiveLabel.implicitWidth + 16
                     Layout.preferredHeight: 22
                     radius: Theme.radiusSmall
-                    color: root.scope === "recursive" ? Theme.accent : "transparent"
+                    color: root.searchScope === "recursive" ? Theme.accent : "transparent"
 
                     Text {
                         id: recursiveLabel
                         anchors.centerIn: parent
                         text: "Recursive"
                         font.pointSize: Theme.fontSmall
-                        color: root.scope === "recursive" ? Theme.base : Theme.subtext
+                        color: root.searchScope === "recursive" ? Theme.base : Theme.subtext
                     }
 
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            root.scope = "recursive"
-                            root.scopeChanged("recursive")
+                            root.searchScope = "recursive"
+                            root.searchScopeUpdated("recursive")
                         }
                     }
                 }

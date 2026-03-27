@@ -95,7 +95,7 @@ Rectangle {
                     active: root.searchMode
                     sourceComponent: SearchBar {
                         onQueryChanged: (query) => root.searchQueryChanged(query)
-                        onScopeChanged: (scope) => root.searchScopeChanged(scope)
+                        onSearchScopeUpdated: (scope) => root.searchScopeChanged(scope)
                         onFilterToggled: root.searchFilterToggled()
                         onSearchClosed: root.searchClosed()
                         onEnterPressed: root.searchEnterPressed()
