@@ -66,8 +66,11 @@ target_include_directories(hyprfm PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 
+set(HYPRFM_DATA_DIR "${CMAKE_SOURCE_DIR}" CACHE STRING "Runtime data directory for themes and QML")
+
 target_compile_definitions(hyprfm PRIVATE
     HYPRFM_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    HYPRFM_DATA_DIR="${HYPRFM_DATA_DIR}"
 )
 
 install(TARGETS hyprfm DESTINATION bin)

@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
     QStringList searchPaths = {
         QCoreApplication::applicationDirPath() + "/../themes",        // installed layout
         QCoreApplication::applicationDirPath() + "/../../themes",     // build dir (build/src/)
-        QStringLiteral(HYPRFM_SOURCE_DIR) + "/themes",               // source dir via compile def
+        QStringLiteral(HYPRFM_DATA_DIR) + "/themes",                 // data dir via compile def
     };
     for (const auto &path : searchPaths) {
         if (QDir(path).exists()) {
@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
 
     // Add Quill module import path (directory must match module name case)
-    engine.addImportPath(QStringLiteral(HYPRFM_SOURCE_DIR "/src/qml"));
+    engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR "/src/qml"));
 
     // Register image providers
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
