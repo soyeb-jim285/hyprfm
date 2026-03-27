@@ -921,6 +921,9 @@ ApplicationWindow {
         blurSource: mainContent
 
         fileModel: fsModel
+        currentViewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+        currentSortBy: tabModel.activeTab ? tabModel.activeTab.sortBy : "name"
+        currentSortAscending: tabModel.activeTab ? tabModel.activeTab.sortAscending : true
 
         onOpenRequested: (path) => fileOps.openFile(path)
         onOpenWithRequested: (path, desktopFile) => fileOps.openFileWith(path, desktopFile)
@@ -972,6 +975,18 @@ ApplicationWindow {
 
         onPropertiesRequested: (path) => {
             propertiesDialog.showProperties(path)
+        }
+
+        onViewModeRequested: (mode) => {
+            if (tabModel.activeTab) tabModel.activeTab.viewMode = mode
+        }
+
+        onSortRequested: (column, ascending) => {
+            if (tabModel.activeTab) {
+                tabModel.activeTab.sortBy = column
+                tabModel.activeTab.sortAscending = ascending
+            }
+            if (fsModel) fsModel.sortByColumn(column, ascending)
         }
     }
 

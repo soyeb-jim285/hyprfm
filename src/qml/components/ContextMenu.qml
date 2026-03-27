@@ -29,6 +29,12 @@ Item {
     signal newFileRequested(string parentPath)
     signal selectAllRequested()
     signal propertiesRequested(string path)
+    signal viewModeRequested(string mode)
+    signal sortRequested(string column, bool ascending)
+
+    property string currentViewMode: "grid"
+    property string currentSortBy: "name"
+    property bool currentSortAscending: true
 
     property var effectivePaths: (selectedPaths.length > 0) ? selectedPaths : (targetPath !== "" ? [targetPath] : [])
     property string effectiveDir: {
@@ -146,6 +152,7 @@ Item {
                     width: menuColumn.width
                     sourceComponent: modelData.separator ? separatorComponent
                                    : modelData.isOpenWith ? openWithComponent
+                                   : modelData.isSubmenu ? submenuComponent
                                    : itemComponent
                     property var itemData: modelData
                     property int itemIndex: index
@@ -197,6 +204,25 @@ Item {
                 items.push({ text: "Paste", shortcut: "Ctrl+V", action: "paste" })
             items.push({ text: "Select All", shortcut: "Ctrl+A", action: "selectall" })
             items.push({ separator: true })
+            items.push({ text: "View", shortcut: "", action: "view_toggle", isSubmenu: true,
+                submenuItems: [
+                    { text: "Grid", shortcut: "Ctrl+1", action: "view_grid", checked: currentViewMode === "grid" },
+                    { text: "List", shortcut: "Ctrl+2", action: "view_list", checked: currentViewMode === "list" },
+                    { text: "Detailed", shortcut: "Ctrl+3", action: "view_detailed", checked: currentViewMode === "detailed" }
+                ]
+            })
+            items.push({ text: "Sort By", shortcut: "", action: "sort_toggle", isSubmenu: true,
+                submenuItems: [
+                    { text: "Name", shortcut: "", action: "sort_name", checked: currentSortBy === "name" },
+                    { text: "Size", shortcut: "", action: "sort_size", checked: currentSortBy === "size" },
+                    { text: "Date Modified", shortcut: "", action: "sort_modified", checked: currentSortBy === "modified" },
+                    { text: "Type", shortcut: "", action: "sort_type", checked: currentSortBy === "type" },
+                    { separator: true },
+                    { text: "Ascending", shortcut: "", action: "sort_asc", checked: currentSortAscending },
+                    { text: "Descending", shortcut: "", action: "sort_desc", checked: !currentSortAscending }
+                ]
+            })
+            items.push({ separator: true })
             items.push({ text: "Open in Terminal", shortcut: "", action: "terminal" })
             items.push({ text: "Properties", shortcut: "", action: "properties" })
         }
@@ -220,6 +246,15 @@ Item {
         case "newfolder": newFolderRequested(effectiveDir); break
         case "newfile": newFileRequested(effectiveDir); break
         case "properties": propertiesRequested(targetPath); break
+        case "view_grid": viewModeRequested("grid"); break
+        case "view_list": viewModeRequested("list"); break
+        case "view_detailed": viewModeRequested("detailed"); break
+        case "sort_name": sortRequested("name", currentSortAscending); break
+        case "sort_size": sortRequested("size", currentSortAscending); break
+        case "sort_modified": sortRequested("modified", currentSortAscending); break
+        case "sort_type": sortRequested("type", currentSortAscending); break
+        case "sort_asc": sortRequested(currentSortBy, true); break
+        case "sort_desc": sortRequested(currentSortBy, false); break
         }
     }
 
@@ -397,6 +432,155 @@ Item {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // ── Expandable submenu (View / Sort By) ─────────────────────────────
+    Component {
+        id: submenuComponent
+        Column {
+            id: submenuCol
+            width: parent ? parent.width : 260
+
+            property bool expanded: false
+
+            // Header row
+            Rectangle {
+                width: parent.width
+                height: 32
+                radius: Theme.radiusMedium
+                color: submenuMa.containsMouse
+                    ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                    : "transparent"
+                Behavior on color {
+                    ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
+                }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 16
+                    Text {
+                        text: itemData ? itemData.text : ""
+                        font.pixelSize: Theme.fontNormal
+                        color: Theme.text
+                        Layout.fillWidth: true
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    Item {
+                        Layout.preferredWidth: 14
+                        Layout.preferredHeight: 14
+                        Layout.alignment: Qt.AlignVCenter
+                        rotation: submenuCol.expanded ? 0 : -90
+                        Behavior on rotation {
+                            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                        }
+                        IconChevronDown {
+                            anchors.centerIn: parent
+                            size: 14
+                            color: Theme.muted
+                        }
+                    }
+                }
+                MouseArea {
+                    id: submenuMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: submenuCol.expanded = !submenuCol.expanded
+                }
+            }
+
+            // Animated expandable items
+            Item {
+                width: parent.width
+                height: submenuCol.expanded ? submenuInnerCol.height : 0
+                clip: true
+                Behavior on height {
+                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                }
+
+                Column {
+                    id: submenuInnerCol
+                    width: parent.width
+                    spacing: 2
+
+                    Repeater {
+                        model: (itemData && itemData.submenuItems) ? itemData.submenuItems : []
+                        delegate: Loader {
+                            width: submenuInnerCol.width
+                            sourceComponent: modelData.separator ? submenuSeparatorComponent : submenuItemComponent
+                            property var subItemData: modelData
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: submenuItemComponent
+        Rectangle {
+            width: parent ? parent.width : 260
+            height: 30
+            radius: Theme.radiusMedium
+            opacity: 1
+            color: subItemMa.containsMouse
+                ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                : "transparent"
+            Behavior on color {
+                ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
+            }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 24
+                anchors.rightMargin: 12
+                spacing: 8
+                Text {
+                    text: subItemData ? subItemData.text : ""
+                    font.pixelSize: Theme.fontSmall
+                    color: Theme.text
+                    Layout.fillWidth: true
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Text {
+                    text: subItemData ? (subItemData.shortcut || "") : ""
+                    font.pixelSize: 11
+                    color: Theme.muted
+                    visible: text !== ""
+                    verticalAlignment: Text.AlignVCenter
+                }
+                IconCheck {
+                    visible: subItemData ? !!subItemData.checked : false
+                    size: 14
+                    color: Theme.accent
+                    Layout.alignment: Qt.AlignVCenter
+                }
+            }
+            MouseArea {
+                id: subItemMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (subItemData && subItemData.action)
+                        root.executeAction(subItemData.action, "")
+                }
+            }
+        }
+    }
+
+    Component {
+        id: submenuSeparatorComponent
+        Item {
+            height: 9
+            width: parent ? parent.width : 260
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width - 32
+                height: 1
+                color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
             }
         }
     }
