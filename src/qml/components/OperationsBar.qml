@@ -1,7 +1,7 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import HyprFM
+import "../quill" as Quill
 
 Rectangle {
     id: root
@@ -27,28 +27,9 @@ Rectangle {
             elide: Text.ElideMiddle
         }
 
-        ProgressBar {
-            id: progressBar
+        Quill.ProgressBar {
             Layout.fillWidth: true
             value: fileOps.progress
-            from: 0.0
-            to: 1.0
-
-            background: Rectangle {
-                implicitHeight: 4
-                color: Theme.surface
-                radius: 2
-            }
-
-            contentItem: Item {
-                implicitHeight: 4
-                Rectangle {
-                    width: progressBar.visualPosition * parent.width
-                    height: parent.height
-                    radius: 2
-                    color: Theme.accent
-                }
-            }
         }
     }
 }
