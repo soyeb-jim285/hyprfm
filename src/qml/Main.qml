@@ -196,8 +196,10 @@ ApplicationWindow {
         if (vm === "grid")          subView = fileViewContainer.gridViewItem
         else if (vm === "list")     subView = fileViewContainer.listViewItem
         else if (vm === "detailed") subView = fileViewContainer.detailedViewItem
-        if (subView && subView.selectedIndices !== undefined)
+        if (subView && subView.selectedIndices !== undefined) {
             subView.selectedIndices = [0]
+            subView.forceActiveFocus()
+        }
     }
 
     Connections {
