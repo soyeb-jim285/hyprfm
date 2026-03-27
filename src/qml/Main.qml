@@ -661,7 +661,7 @@ ApplicationWindow {
                     }
 
                     // Separator
-                    Rectangle { width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
                     // Timestamps
                     Column {
@@ -673,7 +673,7 @@ ApplicationWindow {
                         PropRow { label: "Accessed"; value: propertiesDialog.props.accessed || "" }
                     }
 
-                    Rectangle { width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
                     // Size section
                     Column {
@@ -684,7 +684,7 @@ ApplicationWindow {
                         PropRow { label: "Content"; value: propertiesDialog.props.contentText || ""; show: propertiesDialog.props.isDir || false }
                     }
 
-                    Rectangle { width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
                     // Disk usage
                     Column {
@@ -728,11 +728,7 @@ ApplicationWindow {
                     }
 
                     // Open With (files only)
-                    Rectangle {
-                        width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter
-                        color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
-                        visible: !(propertiesDialog.props.isDir) && propertiesDialog.apps.length > 0
-                    }
+                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter; visible: !(propertiesDialog.props.isDir) && propertiesDialog.apps.length > 0 }
 
                     Item {
                         width: parent.width
@@ -952,7 +948,7 @@ ApplicationWindow {
                         }
                     }
 
-                    Rectangle { width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
                     PermGroup {
                         groupLabel: "Group"
@@ -964,7 +960,7 @@ ApplicationWindow {
                         }
                     }
 
-                    Rectangle { width: parent.width - 48; height: 1; anchors.horizontalCenter: parent.horizontalCenter; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
                     PermGroup {
                         groupLabel: "Others"
