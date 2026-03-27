@@ -904,35 +904,11 @@ ApplicationWindow {
                         }
 
                         // Access selector row
-                        Item {
-                            width: parent.width; height: 28
-                            Text { text: "Access:"; color: Theme.subtext; font.pixelSize: Theme.fontSmall; anchors.left: parent.left; anchors.leftMargin: 36; anchors.verticalCenter: parent.verticalCenter }
-
-                            // Dropdown-style selector
-                            Rectangle {
-                                anchors.left: parent.left; anchors.leftMargin: 108
-                                anchors.right: parent.right; anchors.rightMargin: 24
-                                height: 26; radius: Theme.radiusSmall
-                                color: Theme.surface
-                                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12); border.width: 1
-
-                                Text {
-                                    text: propsBox.accessOptions[accessIdx] || "None"
-                                    color: Theme.text; font.pixelSize: Theme.fontSmall
-                                    anchors.left: parent.left; anchors.leftMargin: 8; anchors.verticalCenter: parent.verticalCenter
-                                }
-                                IconChevronDown {
-                                    size: 12; color: Theme.subtext
-                                    anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
-                                }
-                                MouseArea {
-                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        var next = (accessIdx + 1) % 4
-                                        accessChanged(next)
-                                    }
-                                }
-                            }
+                        Quill.Dropdown {
+                            model: propsBox.accessOptions
+                            currentIndex: accessIdx
+                            label: "Access"
+                            onSelected: (index, value) => accessChanged(index)
                         }
 
                         Item { width: 1; height: 4 }
