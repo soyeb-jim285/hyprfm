@@ -55,6 +55,7 @@ public:
     Q_INVOKABLE QString defaultApp(const QString &mimeType) const;
     Q_INVOKABLE void setDefaultApp(const QString &mimeType, const QString &desktopFile);
     Q_INVOKABLE bool setFilePermissions(const QString &path, int ownerAccess, int groupAccess, int otherAccess);
+    Q_INVOKABLE QString homePath() const;
 
 signals:
     void rootPathChanged();

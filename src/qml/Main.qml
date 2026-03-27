@@ -1150,37 +1150,37 @@ ApplicationWindow {
     }
 
     // ── Layout ──────────────────────────────────────────────────────────────
-    ColumnLayout {
+    RowLayout {
         id: mainContent
         anchors.fill: parent
         spacing: 0
 
-        // Tab bar
-        FileTabBar {
-            Layout.fillWidth: true
+        // Sidebar (full height)
+        Sidebar {
+            width: config.sidebarWidth
+            Layout.fillHeight: true
+            visible: root.sidebarVisible
+            currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+            onBookmarkClicked: (path) => {
+                if (tabModel.activeTab) tabModel.activeTab.navigateTo(path)
+            }
+            onCollapseClicked: root.sidebarVisible = !root.sidebarVisible
         }
 
-        // Toolbar with breadcrumb and view mode toggle
-        Toolbar {
-            id: toolbar
-            Layout.fillWidth: true
-            activeTab: tabModel.activeTab
-        }
-
-        // Main content area
-        RowLayout {
+        // Right panel: toolbar + content
+        ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
 
-            // Sidebar with bookmarks
-            Sidebar {
-                width: config.sidebarWidth
-                Layout.fillHeight: true
-                visible: root.sidebarVisible
-                currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
-                onBookmarkClicked: (path) => {
-                    if (tabModel.activeTab) tabModel.activeTab.navigateTo(path)
+            // Toolbar with integrated tabs
+            Toolbar {
+                id: toolbar
+                Layout.fillWidth: true
+                activeTab: tabModel.activeTab
+                onHomeClicked: {
+                    if (tabModel.activeTab)
+                        tabModel.activeTab.navigateTo(fsModel.homePath())
                 }
             }
 
@@ -1190,44 +1190,34 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 color: Qt.rgba(Theme.base.r, Theme.base.g, Theme.base.b, 0.65)
 
-            FileViewContainer {
-                id: fileViewContainer
-                anchors.fill: parent
-                fileModel: fsModel
-                viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-                currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+                FileViewContainer {
+                    id: fileViewContainer
+                    anchors.fill: parent
+                    fileModel: fsModel
+                    viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+                    currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
 
-                onFileActivated: (filePath, isDirectory) => {
-                    if (isDirectory) {
-                        if (tabModel.activeTab) tabModel.activeTab.navigateTo(filePath)
-                    } else {
-                        fileOps.openFile(filePath)
+                    onFileActivated: (filePath, isDirectory) => {
+                        if (isDirectory) {
+                            if (tabModel.activeTab) tabModel.activeTab.navigateTo(filePath)
+                        } else {
+                            fileOps.openFile(filePath)
+                        }
+                    }
+
+                    onSelectionChanged: root.updateSelectionStatus()
+
+                    onContextMenuRequested: (filePath, isDirectory, position) => {
+                        var currentDir = tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+                        contextMenu.targetPath = filePath !== "" ? filePath : currentDir
+                        contextMenu.targetIsDir = filePath !== "" ? isDirectory : true
+                        contextMenu.isEmptySpace = (filePath === "")
+                        var sel = getSelectedPaths()
+                        contextMenu.selectedPaths = (sel.length > 1) ? sel : (filePath !== "" ? [filePath] : [])
+                        contextMenu.popup(position.x, position.y)
                     }
                 }
-
-                onSelectionChanged: root.updateSelectionStatus()
-
-                onContextMenuRequested: (filePath, isDirectory, position) => {
-                    var currentDir = tabModel.activeTab ? tabModel.activeTab.currentPath : ""
-                    contextMenu.targetPath = filePath !== "" ? filePath : currentDir
-                    contextMenu.targetIsDir = filePath !== "" ? isDirectory : true
-                    contextMenu.isEmptySpace = (filePath === "")
-                    var sel = getSelectedPaths()
-                    contextMenu.selectedPaths = (sel.length > 1) ? sel : (filePath !== "" ? [filePath] : [])
-                    contextMenu.popup(position.x, position.y)
-                }
             }
-            } // Rectangle wrapper
-        }
-
-        // Status bar
-        StatusBar {
-            id: statusBar
-            Layout.fillWidth: true
-            itemCount: fsModel.fileCount + fsModel.folderCount
-            folderCount: fsModel.folderCount
-            selectedCount: root.currentSelectedCount
-            selectedSize: root.currentSelectedSize
         }
     }
 

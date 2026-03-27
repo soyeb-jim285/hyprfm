@@ -43,6 +43,10 @@ qt_add_qml_module(hyprfm
         qml/icons/IconGrid.qml
         qml/icons/IconList.qml
         qml/icons/IconAlignJustify.qml
+        qml/icons/IconHome.qml
+        qml/icons/IconSearch.qml
+        qml/icons/IconPanelLeft.qml
+        qml/icons/IconPlus.qml
 )
 
 # Make Quill module discoverable at runtime

@@ -40,6 +40,7 @@ signals:
     void lastTabClosed();
 
 private:
+    void connectTab(int row, TabModel *tab);
     QList<TabModel *> m_tabs;
     int m_activeIndex = 0;
 

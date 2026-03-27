@@ -485,3 +485,8 @@ bool FileSystemModel::setFilePermissions(const QString &path, int ownerAccess, i
 
     return QFile::setPermissions(path, perms);
 }
+
+QString FileSystemModel::homePath() const
+{
+    return QDir::homePath();
+}

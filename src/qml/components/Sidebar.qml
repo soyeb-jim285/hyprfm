@@ -7,6 +7,7 @@ Rectangle {
 
     property string currentPath: ""
     signal bookmarkClicked(string path)
+    signal collapseClicked()
 
     color: Theme.mantle
 
@@ -32,6 +33,48 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
+        // App header: "hyprfm" + collapse button
+        Item {
+            Layout.fillWidth: true
+            height: 44
+
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.spacing + 4
+                anchors.verticalCenter: parent.verticalCenter
+                text: "hyprfm"
+                color: Theme.text
+                font.pixelSize: Theme.fontLarge
+                font.weight: Font.Bold
+            }
+
+            Rectangle {
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.spacing
+                anchors.verticalCenter: parent.verticalCenter
+                width: 28
+                height: 28
+                radius: Theme.radiusSmall
+                color: collapseHover.containsMouse
+                    ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                    : "transparent"
+
+                IconPanelLeft {
+                    anchors.centerIn: parent
+                    size: 16
+                    color: Theme.subtext
+                }
+
+                MouseArea {
+                    id: collapseHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.collapseClicked()
+                }
+            }
+        }
+
         // Bookmarks section
         Item {
             Layout.fillWidth: true
@@ -41,22 +84,6 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-
-                // Section header
-                Item {
-                    width: parent.width
-                    height: 32
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: Theme.spacing
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "BOOKMARKS"
-                        color: Theme.muted
-                        font.pixelSize: Theme.fontSmall - 1
-                        font.letterSpacing: 1.0
-                    }
-                }
 
                 // Bookmark entries
                 Repeater {
@@ -109,6 +136,14 @@ Rectangle {
                         }
                     }
                 }
+
+                // Separator between bookmarks and devices
+                Rectangle {
+                    width: parent.width - Theme.spacing * 2
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    height: 1
+                    color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                }
             }
         }
 
@@ -121,22 +156,6 @@ Rectangle {
                 id: devicesColumn
                 anchors.left: parent.left
                 anchors.right: parent.right
-
-                // Section header
-                Item {
-                    width: parent.width
-                    height: 32
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: Theme.spacing
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "DEVICES"
-                        color: Theme.muted
-                        font.pixelSize: Theme.fontSmall - 1
-                        font.letterSpacing: 1.0
-                    }
-                }
 
                 // Device entries
                 Repeater {

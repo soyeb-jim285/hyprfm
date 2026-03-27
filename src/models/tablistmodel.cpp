@@ -3,7 +3,20 @@
 TabListModel::TabListModel(QObject *parent)
     : QAbstractListModel(parent)
 {
-    m_tabs.append(new TabModel(this));
+    auto *tab = new TabModel(this);
+    m_tabs.append(tab);
+    connectTab(0, tab);
+}
+
+void TabListModel::connectTab(int row, TabModel *tab)
+{
+    connect(tab, &TabModel::currentPathChanged, this, [this, tab]() {
+        int idx = m_tabs.indexOf(tab);
+        if (idx >= 0) {
+            QModelIndex mi = index(idx);
+            emit dataChanged(mi, mi, {TitleRole, PathRole});
+        }
+    });
 }
 
 int TabListModel::rowCount(const QModelIndex &) const
@@ -63,6 +76,7 @@ void TabListModel::addTab()
     beginInsertRows(QModelIndex(), m_tabs.size(), m_tabs.size());
     auto *tab = new TabModel(this);
     m_tabs.append(tab);
+    connectTab(m_tabs.size() - 1, tab);
     endInsertRows();
     setActiveIndex(m_tabs.size() - 1);
     emit countChanged();
@@ -108,6 +122,7 @@ void TabListModel::reopenClosedTab()
     tab->navigateTo(info.path);
     tab->setViewMode(info.viewMode);
     m_tabs.append(tab);
+    connectTab(m_tabs.size() - 1, tab);
     endInsertRows();
     setActiveIndex(m_tabs.size() - 1);
     emit countChanged();
