@@ -45,6 +45,11 @@ qt_add_qml_module(hyprfm
         qml/icons/IconAlignJustify.qml
 )
 
+# Make Quill module discoverable at runtime
+set_target_properties(hyprfm PROPERTIES
+    QT_QML_IMPORT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/qml"
+)
+
 target_link_libraries(hyprfm PRIVATE
     Qt6::Core
     Qt6::Gui
