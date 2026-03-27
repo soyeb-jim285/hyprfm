@@ -223,6 +223,7 @@ ApplicationWindow {
                     id: renameField
                     Layout.fillWidth: true
                     autoFocus: true
+                    variant: "filled"
                     placeholder: "Enter new name"
                     Keys.onReturnPressed: renameDialog.accept()
                     Keys.onEscapePressed: renameDialog.reject()
@@ -345,6 +346,7 @@ ApplicationWindow {
                     id: newFolderField
                     Layout.fillWidth: true
                     autoFocus: true
+                    variant: "filled"
                     placeholder: "Folder name"
                     Keys.onReturnPressed: newFolderDialog.accept()
                     Keys.onEscapePressed: newFolderDialog.reject()
@@ -465,6 +467,7 @@ ApplicationWindow {
                     id: newFileField
                     Layout.fillWidth: true
                     autoFocus: true
+                    variant: "filled"
                     placeholder: "File name"
                     Keys.onReturnPressed: newFileDialog.accept()
                     Keys.onEscapePressed: newFileDialog.reject()
