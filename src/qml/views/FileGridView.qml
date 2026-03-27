@@ -24,13 +24,12 @@ GridView {
     readonly property int baseCellSize: 110
     readonly property int baseIconSize: 48
 
-    cellWidth: Math.round(baseCellSize * iconScale)
+    readonly property int columnsPerRow: Math.max(1, Math.floor(width / Math.round(baseCellSize * iconScale)))
+    cellWidth: Math.floor(width / columnsPerRow)
     cellHeight: Math.round(baseCellSize * iconScale)
 
     focus: visible
     keyNavigationEnabled: false
-
-    readonly property int columnsPerRow: Math.max(1, Math.floor(width / cellWidth))
 
     function moveSelection(delta, extend) {
         var current = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
