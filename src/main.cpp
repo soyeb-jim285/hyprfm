@@ -97,8 +97,9 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
 
-    // Add Quill module import path (directory must match module name case)
-    engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR "/src/qml"));
+    // Add import paths for installed modules
+    engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR));            // HyprFM module
+    engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR "/src/qml")); // Quill module
 
     // Register image providers
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
