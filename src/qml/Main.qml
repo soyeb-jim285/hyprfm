@@ -56,6 +56,7 @@ ApplicationWindow {
         Q.Theme.radiusSm = Qt.binding(() => Theme.radiusSmall)
         Q.Theme.radius = Qt.binding(() => Theme.radiusMedium)
         Q.Theme.radiusLg = Qt.binding(() => Theme.radiusLarge)
+        Q.Theme.fontFamily = Qt.application.font.family
         Q.Theme.fontSizeSmall = Qt.binding(() => Theme.fontSmall)
         Q.Theme.fontSize = Qt.binding(() => Theme.fontNormal)
         Q.Theme.fontSizeLarge = Qt.binding(() => Theme.fontLarge)
