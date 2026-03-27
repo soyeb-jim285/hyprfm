@@ -17,19 +17,21 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install dependencies
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
+          modules: 'qtshadertools qtwayland'
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             cmake \
             ninja-build \
-            qt6-base-dev \
-            qt6-declarative-dev \
-            qml6-module-qtquick-controls \
-            qml6-module-qtquick-layouts \
-            qt6-svg-dev \
-            qt6-wayland-dev \
             libgl-dev \
+            libxkbcommon-dev \
+            libdbus-1-dev \
             rsync \
             xdg-utils \
             file \
@@ -57,7 +59,6 @@ jobs:
       - name: Build AppImage
         if: startsWith(github.ref, 'refs/tags/v')
         env:
-          QMAKE: /usr/bin/qmake6
           TAG_NAME: ${{ github.ref_name }}
         run: |
           OUTPUT="HyprFM-${TAG_NAME}-x86_64.AppImage" \
