@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import HyprFM
-import "quill" as Quill
+import Quill as Q
 
 ApplicationWindow {
     id: root
@@ -40,25 +40,25 @@ ApplicationWindow {
         }
 
         // Bridge HyprFM theme into Quill theme singleton
-        Quill.Theme.background = Qt.binding(() => Theme.base)
-        Quill.Theme.backgroundAlt = Qt.binding(() => Theme.mantle)
-        Quill.Theme.backgroundDeep = Qt.binding(() => Theme.crust)
-        Quill.Theme.surface0 = Qt.binding(() => Theme.surface)
-        Quill.Theme.surface1 = Qt.binding(() => Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1))
-        Quill.Theme.surface2 = Qt.binding(() => Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.15))
-        Quill.Theme.textPrimary = Qt.binding(() => Theme.text)
-        Quill.Theme.textSecondary = Qt.binding(() => Theme.subtext)
-        Quill.Theme.textTertiary = Qt.binding(() => Theme.muted)
-        Quill.Theme.primary = Qt.binding(() => Theme.accent)
-        Quill.Theme.success = Qt.binding(() => Theme.success)
-        Quill.Theme.warning = Qt.binding(() => Theme.warning)
-        Quill.Theme.error = Qt.binding(() => Theme.error)
-        Quill.Theme.radiusSm = Qt.binding(() => Theme.radiusSmall)
-        Quill.Theme.radius = Qt.binding(() => Theme.radiusMedium)
-        Quill.Theme.radiusLg = Qt.binding(() => Theme.radiusLarge)
-        Quill.Theme.fontSizeSmall = Qt.binding(() => Theme.fontSmall)
-        Quill.Theme.fontSize = Qt.binding(() => Theme.fontNormal)
-        Quill.Theme.fontSizeLarge = Qt.binding(() => Theme.fontLarge)
+        Q.Theme.background = Qt.binding(() => Theme.base)
+        Q.Theme.backgroundAlt = Qt.binding(() => Theme.mantle)
+        Q.Theme.backgroundDeep = Qt.binding(() => Theme.crust)
+        Q.Theme.surface0 = Qt.binding(() => Theme.surface)
+        Q.Theme.surface1 = Qt.binding(() => Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1))
+        Q.Theme.surface2 = Qt.binding(() => Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.15))
+        Q.Theme.textPrimary = Qt.binding(() => Theme.text)
+        Q.Theme.textSecondary = Qt.binding(() => Theme.subtext)
+        Q.Theme.textTertiary = Qt.binding(() => Theme.muted)
+        Q.Theme.primary = Qt.binding(() => Theme.accent)
+        Q.Theme.success = Qt.binding(() => Theme.success)
+        Q.Theme.warning = Qt.binding(() => Theme.warning)
+        Q.Theme.error = Qt.binding(() => Theme.error)
+        Q.Theme.radiusSm = Qt.binding(() => Theme.radiusSmall)
+        Q.Theme.radius = Qt.binding(() => Theme.radiusMedium)
+        Q.Theme.radiusLg = Qt.binding(() => Theme.radiusLarge)
+        Q.Theme.fontSizeSmall = Qt.binding(() => Theme.fontSmall)
+        Q.Theme.fontSize = Qt.binding(() => Theme.fontNormal)
+        Q.Theme.fontSizeLarge = Qt.binding(() => Theme.fontLarge)
     }
 
     // ── Sidebar visibility (local property; config.sidebarVisible is read-only) ─
@@ -210,13 +210,13 @@ ApplicationWindow {
             property real yOffset: 0
             transform: Translate { y: renameBox.yOffset }
 
-            Quill.Card {
+            Q.Card {
                 id: renameCard
                 anchors.fill: parent
                 title: "Rename"
                 padding: 20
 
-                Quill.TextField {
+                Q.TextField {
                     id: renameField
                     Layout.fillWidth: true
                     autoFocus: true
@@ -229,14 +229,14 @@ ApplicationWindow {
                     Layout.alignment: Qt.AlignRight
                     spacing: 12
 
-                    Quill.Button {
+                    Q.Button {
                         text: "Cancel"
                         variant: "ghost"
                         size: "small"
                         onClicked: renameDialog.reject()
                     }
 
-                    Quill.Button {
+                    Q.Button {
                         text: "Rename"
                         variant: "primary"
                         size: "small"
@@ -330,13 +330,13 @@ ApplicationWindow {
             property real yOffset: 0
             transform: Translate { y: folderBox.yOffset }
 
-            Quill.Card {
+            Q.Card {
                 id: folderCard
                 anchors.fill: parent
                 title: "New Folder"
                 padding: 20
 
-                Quill.TextField {
+                Q.TextField {
                     id: newFolderField
                     Layout.fillWidth: true
                     autoFocus: true
@@ -349,14 +349,14 @@ ApplicationWindow {
                     Layout.alignment: Qt.AlignRight
                     spacing: 12
 
-                    Quill.Button {
+                    Q.Button {
                         text: "Cancel"
                         variant: "ghost"
                         size: "small"
                         onClicked: newFolderDialog.reject()
                     }
 
-                    Quill.Button {
+                    Q.Button {
                         text: "Create"
                         variant: "primary"
                         size: "small"
@@ -448,13 +448,13 @@ ApplicationWindow {
             property real yOffset: 0
             transform: Translate { y: fileBox.yOffset }
 
-            Quill.Card {
+            Q.Card {
                 id: fileCard
                 anchors.fill: parent
                 title: "New File"
                 padding: 20
 
-                Quill.TextField {
+                Q.TextField {
                     id: newFileField
                     Layout.fillWidth: true
                     autoFocus: true
@@ -467,14 +467,14 @@ ApplicationWindow {
                     Layout.alignment: Qt.AlignRight
                     spacing: 12
 
-                    Quill.Button {
+                    Q.Button {
                         text: "Cancel"
                         variant: "ghost"
                         size: "small"
                         onClicked: newFileDialog.reject()
                     }
 
-                    Quill.Button {
+                    Q.Button {
                         text: "Create"
                         variant: "primary"
                         size: "small"
@@ -612,7 +612,7 @@ ApplicationWindow {
                 }
 
                 // ── Tab bar ──
-                Quill.Tabs {
+                Q.Tabs {
                     model: ["General", "Permissions"]
                     currentIndex: propertiesDialog.currentTab
                     onTabChanged: (index) => propertiesDialog.currentTab = index
@@ -661,7 +661,7 @@ ApplicationWindow {
                     }
 
                     // Separator
-                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
+                    Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
                     // Timestamps
                     Column {
@@ -673,7 +673,7 @@ ApplicationWindow {
                         PropRow { label: "Accessed"; value: propertiesDialog.props.accessed || "" }
                     }
 
-                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
+                    Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
                     // Size section
                     Column {
@@ -684,7 +684,7 @@ ApplicationWindow {
                         PropRow { label: "Content"; value: propertiesDialog.props.contentText || ""; show: propertiesDialog.props.isDir || false }
                     }
 
-                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
+                    Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
                     // Disk usage
                     Column {
@@ -728,7 +728,7 @@ ApplicationWindow {
                     }
 
                     // Open With (files only)
-                    Quill.Collapsible {
+                    Q.Collapsible {
                         visible: !(propertiesDialog.props.isDir) && propertiesDialog.apps.length > 0
                         title: {
                             var apps = propertiesDialog.apps
@@ -825,7 +825,7 @@ ApplicationWindow {
                         }
 
                         // Access selector row
-                        Quill.Dropdown {
+                        Q.Dropdown {
                             model: propsBox.accessOptions
                             currentIndex: accessIdx
                             label: "Access"
@@ -845,7 +845,7 @@ ApplicationWindow {
                         }
                     }
 
-                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
+                    Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
                     PermGroup {
                         groupLabel: "Group"
@@ -857,7 +857,7 @@ ApplicationWindow {
                         }
                     }
 
-                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
+                    Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
                     PermGroup {
                         groupLabel: "Others"
@@ -878,7 +878,7 @@ ApplicationWindow {
                 // ── Close button ──
                 Item {
                     width: parent.width; height: 48
-                    Quill.Button {
+                    Q.Button {
                         text: "Close"
                         variant: "primary"
                         size: "small"
