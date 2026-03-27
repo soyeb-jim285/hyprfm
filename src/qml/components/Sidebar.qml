@@ -70,7 +70,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Hyprfm"
                 color: Theme.text
-                font.pixelSize: Theme.fontLarge
+                font.pointSize: Theme.fontLarge
                 font.weight: Font.Bold
             }
 
@@ -158,7 +158,7 @@ Rectangle {
                             Text {
                                 text: model.name
                                 color: quickAccessDelegate.isActive ? Theme.accent : Theme.text
-                                font.pixelSize: Theme.fontNormal
+                                font.pointSize: Theme.fontNormal
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                                 width: parent.width - 32 - Theme.spacing
@@ -247,7 +247,7 @@ Rectangle {
                                     Text {
                                         text: model.deviceName
                                         color: Theme.text
-                                        font.pixelSize: Theme.fontNormal
+                                        font.pointSize: Theme.fontNormal
                                         verticalAlignment: Text.AlignVCenter
                                         elide: Text.ElideRight
                                         width: parent.width - 24 - Theme.spacing
@@ -309,7 +309,7 @@ Rectangle {
                                     return fmt(model.freeSpace) + " free of " + fmt(model.totalSize)
                                 }
                                 color: Theme.muted
-                                font.pixelSize: Theme.fontSmall - 1
+                                font.pointSize: Theme.fontSmall - 1
                                 elide: Text.ElideRight
                             }
                         }

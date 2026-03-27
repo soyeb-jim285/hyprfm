@@ -107,7 +107,7 @@ Rectangle {
                                 width: parent.width - 20 - parent.spacing
                                 text: model.title || "New Tab"
                                 color: tabDelegate.index === tabModel.activeIndex ? Theme.text : Theme.subtext
-                                font.pixelSize: Theme.fontNormal
+                                font.pointSize: Theme.fontNormal
                                 elide: Text.ElideRight
                                 anchors.verticalCenter: parent.verticalCenter
                             }
@@ -157,7 +157,7 @@ Rectangle {
                 anchors.centerIn: parent
                 text: "+"
                 color: addBtn.hovered ? Theme.text : Theme.subtext
-                font.pixelSize: Theme.fontLarge
+                font.pointSize: Theme.fontLarge
                 verticalAlignment: Text.AlignVCenter
             }
         }

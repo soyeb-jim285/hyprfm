@@ -277,14 +277,14 @@ Item {
                 spacing: 16
                 Text {
                     text: itemData ? itemData.text : ""
-                    font.pixelSize: Theme.fontNormal
+                    font.pointSize: Theme.fontNormal
                     color: Theme.text
                     Layout.fillWidth: true
                     verticalAlignment: Text.AlignVCenter
                 }
                 Text {
                     text: itemData ? (itemData.shortcut || "") : ""
-                    font.pixelSize: Theme.fontSmall
+                    font.pointSize: Theme.fontSmall
                     color: Theme.muted
                     visible: text !== ""
                     verticalAlignment: Text.AlignVCenter
@@ -330,7 +330,7 @@ Item {
                     spacing: 16
                     Text {
                         text: "Open With"
-                        font.pixelSize: Theme.fontNormal
+                        font.pointSize: Theme.fontNormal
                         color: Theme.text
                         Layout.fillWidth: true
                         verticalAlignment: Text.AlignVCenter
@@ -410,7 +410,7 @@ Item {
                                 }
                                 Text {
                                     text: modelData.name
-                                    font.pixelSize: Theme.fontSmall
+                                    font.pointSize: Theme.fontSmall
                                     color: Theme.text
                                     Layout.fillWidth: true
                                     verticalAlignment: Text.AlignVCenter
@@ -463,7 +463,7 @@ Item {
                     spacing: 16
                     Text {
                         text: itemData ? itemData.text : ""
-                        font.pixelSize: Theme.fontNormal
+                        font.pointSize: Theme.fontNormal
                         color: Theme.text
                         Layout.fillWidth: true
                         verticalAlignment: Text.AlignVCenter
@@ -539,7 +539,7 @@ Item {
                 spacing: 8
                 Text {
                     text: subItemData ? subItemData.text : ""
-                    font.pixelSize: Theme.fontSmall
+                    font.pointSize: Theme.fontSmall
                     color: Theme.text
                     Layout.fillWidth: true
                     verticalAlignment: Text.AlignVCenter

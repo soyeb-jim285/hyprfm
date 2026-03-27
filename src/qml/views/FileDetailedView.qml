@@ -121,7 +121,7 @@ Item {
                             Text {
                                 text: modelData.label
                                 color: root.sortColumn === modelData.key ? Theme.accent : Theme.subtext
-                                font.pixelSize: Theme.fontSmall
+                                font.pointSize: Theme.fontSmall
                                 font.bold: root.sortColumn === modelData.key
                                 anchors.verticalCenter: parent.verticalCenter
                             }
@@ -295,7 +295,7 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: detRow.fileName
                                 color: Theme.text
-                                font.pixelSize: Theme.fontSmall
+                                font.pointSize: Theme.fontSmall
                                 elide: Text.ElideRight
                             }
                         }
@@ -306,7 +306,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: detRow.fileSizeText
                             color: Theme.subtext
-                            font.pixelSize: Theme.fontSmall
+                            font.pointSize: Theme.fontSmall
                             horizontalAlignment: Text.AlignRight
                             rightPadding: 8
                         }
@@ -317,7 +317,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: detRow.fileModifiedText
                             color: Theme.subtext
-                            font.pixelSize: Theme.fontSmall
+                            font.pointSize: Theme.fontSmall
                             horizontalAlignment: Text.AlignRight
                             rightPadding: 8
                         }
@@ -328,7 +328,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: detRow.fileType
                             color: Theme.subtext
-                            font.pixelSize: Theme.fontSmall
+                            font.pointSize: Theme.fontSmall
                             elide: Text.ElideRight
                             rightPadding: 4
                         }
@@ -339,7 +339,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: detRow.permString
                             color: Theme.muted
-                            font.pixelSize: Theme.fontSmall
+                            font.pointSize: Theme.fontSmall
                             font.family: "monospace"
                         }
                     }

@@ -19,9 +19,9 @@ QtObject {
     readonly property int radiusMedium: config.radiusMedium
     readonly property int radiusLarge: config.radiusLarge
     readonly property int spacing: 8
-    readonly property int fontSmall: 11
-    readonly property int fontNormal: 13
-    readonly property int fontLarge: 16
+    readonly property int fontSmall: 9
+    readonly property int fontNormal: 10
+    readonly property int fontLarge: 12
 
     readonly property int animDurationFast: 100
     readonly property int animDuration: 200

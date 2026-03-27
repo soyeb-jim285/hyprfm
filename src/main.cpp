@@ -8,6 +8,9 @@
 #include <QProcess>
 #include <QDebug>
 #include <QLoggingCategory>
+#include <QSurfaceFormat>
+#include <QFont>
+#include <QQuickWindow>
 
 #include "services/configmanager.h"
 #include "services/themeloader.h"
@@ -28,12 +31,25 @@ int main(int argc, char *argv[])
     // Suppress harmless portal registration warning on non-sandboxed apps
     QLoggingCategory::setFilterRules("qt.qpa.services.warning=false");
 
+    // Enable multisampling for smoother Shape/path rendering
+    QSurfaceFormat fmt;
+    fmt.setSamples(4);
+    QSurfaceFormat::setDefaultFormat(fmt);
+
     QGuiApplication app(argc, argv);
     app.setApplicationName("HyprFM");
     app.setOrganizationName("hyprfm");
     app.setDesktopFileName("hyprfm");
 
     QQuickStyle::setStyle("Basic");
+
+    // Use native text rendering (FreeType/fontconfig) for crisp fonts matching GTK apps
+    QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
+
+    // Match system font (Adwaita Sans 11pt) for consistent rendering with GTK apps
+    QFont defaultFont("Adwaita Sans", 11);
+    defaultFont.setHintingPreference(QFont::PreferFullHinting);
+    app.setFont(defaultFont);
 
     // Ensure config directory exists
     const QString configDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation)

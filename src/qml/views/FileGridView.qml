@@ -264,7 +264,7 @@ GridView {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: delegateItem.fileName
                     color: Theme.text
-                    font.pixelSize: Theme.fontSmall
+                    font.pointSize: Theme.fontSmall
                     elide: Text.ElideRight
                     horizontalAlignment: Text.AlignHCenter
                     maximumLineCount: 2

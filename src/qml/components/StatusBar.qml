@@ -61,7 +61,7 @@ Rectangle {
                 return statusBar.itemCount + " items (" + statusBar.folderCount + " folders, " + files + " files)"
             }
             color: Theme.subtext
-            font.pixelSize: Theme.fontSmall
+            font.pointSize: Theme.fontSmall
             verticalAlignment: Text.AlignVCenter
         }
 
@@ -69,7 +69,7 @@ Rectangle {
             visible: statusBar.selectedCount > 0
             text: statusBar.selectedCount + " selected" + (statusBar.selectedSize ? " \u2014 " + statusBar.selectedSize : "")
             color: Theme.subtext
-            font.pixelSize: Theme.fontSmall
+            font.pointSize: Theme.fontSmall
             verticalAlignment: Text.AlignVCenter
         }
     }

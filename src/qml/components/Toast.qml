@@ -52,7 +52,7 @@ Item {
                         anchors.centerIn: parent
                         text: toastItem.message
                         color: Theme.text
-                        font.pixelSize: Theme.fontNormal
+                        font.pointSize: Theme.fontNormal
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter
                         width: Math.min(implicitWidth, 340)

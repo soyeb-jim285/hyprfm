@@ -23,7 +23,7 @@ Rectangle {
             Layout.fillWidth: true
             text: fileOps.statusText
             color: Theme.subtext
-            font.pixelSize: Theme.fontSmall
+            font.pointSize: Theme.fontSmall
             elide: Text.ElideMiddle
         }
 

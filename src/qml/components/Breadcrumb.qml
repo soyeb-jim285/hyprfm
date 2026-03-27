@@ -133,7 +133,7 @@ Item {
                         text: " / "
                         visible: model.index > 0
                         color: Theme.muted
-                        font.pixelSize: Theme.fontNormal
+                        font.pointSize: Theme.fontNormal
                         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                         height: parent.height
                         verticalAlignment: Text.AlignVCenter
@@ -160,7 +160,7 @@ Item {
                                 anchors.centerIn: parent
                                 text: modelData.label
                                 color: parent.parent.isLast ? Theme.text : Theme.overlay
-                                font.pixelSize: Theme.fontNormal
+                                font.pointSize: Theme.fontNormal
                                 font.weight: Font.Bold
                                 verticalAlignment: Text.AlignVCenter
                             }
@@ -187,7 +187,7 @@ Item {
             anchors.rightMargin: Theme.spacing
             verticalAlignment: TextInput.AlignVCenter
             color: Theme.text
-            font.pixelSize: Theme.fontNormal
+            font.pointSize: Theme.fontNormal
             selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
 
             Keys.onReturnPressed: {

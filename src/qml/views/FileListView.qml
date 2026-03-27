@@ -142,7 +142,7 @@ ListView {
                     anchors.verticalCenter: parent.verticalCenter
                     text: rowItem.fileName
                     color: Theme.text
-                    font.pixelSize: Theme.fontNormal
+                    font.pointSize: Theme.fontNormal
                     elide: Text.ElideRight
                 }
 
@@ -152,7 +152,7 @@ ListView {
                     anchors.verticalCenter: parent.verticalCenter
                     text: rowItem.fileSizeText
                     color: Theme.subtext
-                    font.pixelSize: Theme.fontSmall
+                    font.pointSize: Theme.fontSmall
                     horizontalAlignment: Text.AlignRight
                 }
 
@@ -162,7 +162,7 @@ ListView {
                     anchors.verticalCenter: parent.verticalCenter
                     text: rowItem.fileModifiedText
                     color: Theme.subtext
-                    font.pixelSize: Theme.fontSmall
+                    font.pointSize: Theme.fontSmall
                     horizontalAlignment: Text.AlignRight
                 }
             }

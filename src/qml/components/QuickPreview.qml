@@ -118,7 +118,7 @@ Item {
                     Layout.fillWidth: true
                     text: root.fileName
                     color: Theme.text
-                    font.pixelSize: Theme.fontLarge
+                    font.pointSize: Theme.fontLarge
                     font.bold: true
                     elide: Text.ElideMiddle
                 }
@@ -183,7 +183,7 @@ Item {
                             anchors.centerIn: parent
                             text: "Loading…"
                             color: Theme.muted
-                            font.pixelSize: Theme.fontNormal
+                            font.pointSize: Theme.fontNormal
                         }
                     }
                 }
@@ -204,7 +204,7 @@ Item {
                         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                         color: Theme.text
                         font.family: "monospace"
-                        font.pixelSize: Theme.fontSmall
+                        font.pointSize: Theme.fontSmall
                         // For MVP: show file path info; a C++ helper is needed for
                         // reading file content in production.
                         text: root.isText ? "Text preview for:\n" + root.filePath + "\n\n(File content reading requires a C++ helper in production builds.)" : ""
@@ -230,14 +230,14 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "Preview not available"
                             color: Theme.subtext
-                            font.pixelSize: Theme.fontNormal
+                            font.pointSize: Theme.fontNormal
                         }
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: root.fileName
                             color: Theme.muted
-                            font.pixelSize: Theme.fontSmall
+                            font.pointSize: Theme.fontSmall
                         }
                     }
                 }
@@ -250,7 +250,7 @@ Item {
                     ? (root.currentIndex() + 1) + " / " + root.directoryFiles.length + "  ·  Use ← → to navigate"
                     : ""
                 color: Theme.muted
-                font.pixelSize: Theme.fontSmall
+                font.pointSize: Theme.fontSmall
                 horizontalAlignment: Text.AlignRight
             }
         }

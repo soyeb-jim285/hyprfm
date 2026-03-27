@@ -624,7 +624,7 @@ ApplicationWindow {
                         }
                         Text {
                             text: { var p = propertiesDialog.props; return !p.mimeDescription ? "" : p.isDir ? "Folder" : p.mimeDescription }
-                            color: Theme.subtext; font.pixelSize: Theme.fontSmall; elide: Text.ElideRight; width: parent.width
+                            color: Theme.subtext; font.pointSize: Theme.fontSmall; elide: Text.ElideRight; width: parent.width
                         }
                     }
                 }
@@ -664,8 +664,8 @@ ApplicationWindow {
                         property string value
                         property bool show: true
                         width: parent.width; height: show ? 28 : 0; visible: show
-                        Text { text: label; color: Theme.subtext; font.pixelSize: Theme.fontSmall; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: 80 }
-                        Text { text: value; color: Theme.text; font.pixelSize: Theme.fontSmall; anchors.left: parent.left; anchors.leftMargin: 88; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideMiddle }
+                        Text { text: label; color: Theme.subtext; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: 80 }
+                        Text { text: value; color: Theme.text; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.leftMargin: 88; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideMiddle }
                     }
 
                     Item { width: 1; height: 8 }
@@ -719,7 +719,7 @@ ApplicationWindow {
                         // Usage bar
                         Item {
                             width: parent.width; height: 28
-                            Text { text: "Usage"; color: Theme.subtext; font.pixelSize: Theme.fontSmall; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: 80 }
+                            Text { text: "Usage"; color: Theme.subtext; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: 80 }
                             Column {
                                 anchors.left: parent.left; anchors.leftMargin: 88
                                 anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: 4
@@ -780,7 +780,7 @@ ApplicationWindow {
                                 Text {
                                     text: modelData.name
                                     color: modelData.isDefault ? Theme.accent : Theme.text
-                                    font.pixelSize: Theme.fontSmall
+                                    font.pointSize: Theme.fontSmall
                                     font.weight: modelData.isDefault ? Font.DemiBold : Font.Normal
                                     anchors.left: owAppIcon.visible ? owAppIcon.right : parent.left
                                     anchors.leftMargin: owAppIcon.visible ? 8 : 10
@@ -832,14 +832,14 @@ ApplicationWindow {
                         // Group header
                         Text {
                             text: groupLabel
-                            color: Theme.text; font.pixelSize: Theme.fontSmall; font.weight: Font.DemiBold
+                            color: Theme.text; font.pointSize: Theme.fontSmall; font.weight: Font.DemiBold
                             leftPadding: 24
                         }
 
                         // User name (if any)
                         Text {
                             text: userName; visible: userName !== ""
-                            color: Theme.subtext; font.pixelSize: Theme.fontSmall
+                            color: Theme.subtext; font.pointSize: Theme.fontSmall
                             leftPadding: 36
                         }
 
@@ -848,7 +848,7 @@ ApplicationWindow {
                             width: parent.width; height: 34
                             Text {
                                 text: "Access"
-                                color: Theme.subtext; font.pixelSize: Theme.fontSmall
+                                color: Theme.subtext; font.pointSize: Theme.fontSmall
                                 anchors.left: parent.left; anchors.leftMargin: 36
                                 anchors.verticalCenter: parent.verticalCenter
                             }

@@ -273,7 +273,7 @@ Rectangle {
                                 horizontalAlignment: Text.AlignHCenter
                                 text: tabDelegate.model.title || "New Tab"
                                 color: tabDelegate.index === tabModel.activeIndex ? Theme.text : Theme.subtext
-                                font.pixelSize: Theme.fontNormal
+                                font.pointSize: Theme.fontNormal
                                 font.weight: tabDelegate.index === tabModel.activeIndex ? Font.Medium : Font.Normal
                                 elide: Text.ElideRight
                                 verticalAlignment: Text.AlignVCenter
