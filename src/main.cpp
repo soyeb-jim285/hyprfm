@@ -97,6 +97,9 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
 
+    // Add Quill module import path
+    engine.addImportPath(QStringLiteral(HYPRFM_SOURCE_DIR "/src/qml"));
+
     // Register image providers
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
     engine.addImageProvider("icon", new IconProvider(config->iconTheme()));
