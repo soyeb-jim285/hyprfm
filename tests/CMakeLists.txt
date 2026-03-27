@@ -104,3 +104,14 @@ target_include_directories(tst_searchproxymodel PRIVATE
 )
 target_link_libraries(tst_searchproxymodel PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg Qt6::SvgWidgets)
 add_test(NAME tst_searchproxymodel COMMAND tst_searchproxymodel)
+
+add_executable(tst_searchservice tst_searchservice.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/searchservice.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/searchresultsmodel.cpp
+)
+target_include_directories(tst_searchservice PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/third_party
+)
+target_link_libraries(tst_searchservice PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+add_test(NAME tst_searchservice COMMAND tst_searchservice)
