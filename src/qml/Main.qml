@@ -154,12 +154,12 @@ ApplicationWindow {
         searchProxy.clearSearch()
         searchService.cancelSearch()
         searchScope = "local"
-        searchProxy.setSourceModel(fsModel)
+        searchProxy.switchSourceModel(fsModel)
     }
 
     function handleSearchQuery(query) {
         if (searchScope === "local") {
-            searchProxy.setSearchQuery(query)
+            searchProxy.searchQuery = query
         } else {
             if (debounceTimer) debounceTimer.destroy()
             debounceTimer = Qt.createQmlObject(
@@ -172,7 +172,7 @@ ApplicationWindow {
     function triggerRecursiveSearch() {
         var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
         if (query === "") return
-        searchProxy.setSourceModel(searchResults)
+        searchProxy.switchSourceModel(searchResults)
         searchService.startSearch(
             tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
             query,
@@ -184,7 +184,7 @@ ApplicationWindow {
         if (searchScope === "recursive") {
             var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
             if (query === "") return
-            searchProxy.setSourceModel(searchResults)
+            searchProxy.switchSourceModel(searchResults)
             searchService.startSearch(
                 tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
                 query,
@@ -198,10 +198,10 @@ ApplicationWindow {
         searchService.cancelSearch()
         var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
         if (scope === "local") {
-            searchProxy.setSourceModel(fsModel)
-            searchProxy.setSearchQuery(query)
+            searchProxy.switchSourceModel(fsModel)
+            searchProxy.searchQuery = query
         } else if (query !== "") {
-            searchProxy.setSourceModel(searchResults)
+            searchProxy.switchSourceModel(searchResults)
             searchService.startSearch(
                 tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
                 query,
@@ -1307,13 +1307,13 @@ ApplicationWindow {
                         toolbar.filterPanel.visible = !toolbar.filterPanel.visible
                     }
                 }
-                onTypeFilterChanged: (filter) => searchProxy.setFileTypeFilter(filter)
-                onDateFilterChanged: (filter) => searchProxy.setDateFilter(filter)
-                onSizeFilterChanged: (filter) => searchProxy.setSizeFilter(filter)
+                onTypeFilterChanged: (filter) => searchProxy.fileTypeFilter = filter
+                onDateFilterChanged: (filter) => searchProxy.dateFilter = filter
+                onSizeFilterChanged: (filter) => searchProxy.sizeFilter = filter
                 onClearAllFilters: {
-                    searchProxy.setFileTypeFilter("")
-                    searchProxy.setDateFilter("")
-                    searchProxy.setSizeFilter("")
+                    searchProxy.fileTypeFilter = ""
+                    searchProxy.dateFilter = ""
+                    searchProxy.sizeFilter = ""
                 }
             }
 

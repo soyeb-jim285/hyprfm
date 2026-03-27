@@ -70,6 +70,11 @@ bool SearchProxyModel::searchActive() const
 
 bool SearchProxyModel::isGlobPattern() const { return m_isGlob; }
 
+void SearchProxyModel::switchSourceModel(QAbstractItemModel *model)
+{
+    setSourceModel(model);
+}
+
 void SearchProxyModel::clearSearch()
 {
     m_searchQuery.clear();

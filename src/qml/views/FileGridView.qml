@@ -21,7 +21,7 @@ GridView {
     property int columnCount: 7
     readonly property int minColumns: 3
     readonly property int maxColumns: 12
-    readonly property int labelHeight: 18  // single line of text below icon
+    readonly property int labelHeight: 32  // two lines of text below icon
 
     cellWidth: Math.floor(width / columnCount)
     cellHeight: cellWidth  // square cells
@@ -238,18 +238,43 @@ GridView {
             asynchronous: true
         }
 
+        // Hidden text to check if name fits in 2 lines
+        Text {
+            id: measureText
+            visible: false
+            width: labelText.width
+            font: labelText.font
+            text: delegateItem.fileName
+            wrapMode: Text.WrapAnywhere
+            maximumLineCount: 3
+        }
+
         Text {
             id: labelText
             width: parent.width - 4
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: (iconImg.visible ? iconImg : thumbImg).bottom
             anchors.topMargin: 0
-            text: delegateItem.fileName
+            text: {
+                var name = delegateItem.fileName
+                // If it fits in 2 lines, show as-is
+                if (measureText.lineCount <= 2) return name
+                // Middle-elide: keep last 6 chars (extension + some context)
+                var keep = Math.min(6, Math.floor(name.length / 4))
+                var maxFront = name.length - keep - 3
+                // Approximate: 2 lines worth of chars
+                var charsPerLine = Math.floor(labelText.width / (labelText.font.pixelSize * 0.55))
+                var frontChars = Math.min(maxFront, charsPerLine * 2 - keep - 3)
+                if (frontChars < 1) frontChars = 1
+                return name.substring(0, frontChars) + "\u2026" + name.substring(name.length - keep)
+            }
             color: Theme.text
             font.pointSize: Theme.fontSmall
-            elide: Text.ElideMiddle
             horizontalAlignment: Text.AlignHCenter
-            maximumLineCount: 1
+            maximumLineCount: 2
+            wrapMode: Text.WrapAnywhere
+            clip: true
+            height: root.labelHeight
         }
 
 

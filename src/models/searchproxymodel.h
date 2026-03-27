@@ -31,6 +31,7 @@ public:
     bool isGlobPattern() const;
 
     Q_INVOKABLE void clearSearch();
+    Q_INVOKABLE void switchSourceModel(QAbstractItemModel *model);
     Q_INVOKABLE QString filePath(int row) const;
     Q_INVOKABLE bool isDir(int row) const;
     Q_INVOKABLE QString fileName(int row) const;
