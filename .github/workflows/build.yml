@@ -21,7 +21,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.3'
-          modules: 'qtshadertools qtwayland'
+          modules: 'qtshadertools'
 
       - name: Install system dependencies
         run: |
