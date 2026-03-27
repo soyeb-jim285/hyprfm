@@ -810,7 +810,6 @@ ApplicationWindow {
                         property int accessIdx: 0
                         signal accessChanged(int newIdx)
                         width: parent.width; spacing: 4
-                        anchors.leftMargin: 24; anchors.rightMargin: 24
 
                         // Group header
                         Text {
@@ -827,11 +826,22 @@ ApplicationWindow {
                         }
 
                         // Access selector row
-                        Q.Dropdown {
-                            model: propsBox.accessOptions
-                            currentIndex: accessIdx
-                            label: "Access"
-                            onSelected: (index, value) => accessChanged(index)
+                        Item {
+                            width: parent.width; height: 34
+                            Text {
+                                text: "Access"
+                                color: Theme.subtext; font.pixelSize: Theme.fontSmall
+                                anchors.left: parent.left; anchors.leftMargin: 36
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Q.Dropdown {
+                                model: propsBox.accessOptions
+                                currentIndex: accessIdx
+                                label: ""
+                                anchors.left: parent.left; anchors.leftMargin: 100
+                                anchors.right: parent.right; anchors.rightMargin: 24
+                                onSelected: (index, value) => accessChanged(index)
+                            }
                         }
 
                         Item { width: 1; height: 4 }
