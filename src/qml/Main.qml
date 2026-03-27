@@ -509,6 +509,7 @@ ApplicationWindow {
         function showProperties(path) {
             props = fsModel.fileProperties(path)
             currentTab = 0
+            propsTabs.currentIndex = 0
             if (!props.isDir && props.mimeType)
                 apps = fsModel.availableApps(props.mimeType)
             else
@@ -623,6 +624,7 @@ ApplicationWindow {
 
                 // ── Tab bar ──
                 Q.Tabs {
+                    id: propsTabs
                     width: parent.width
                     model: ["General", "Permissions"]
                     currentIndex: propertiesDialog.currentTab
