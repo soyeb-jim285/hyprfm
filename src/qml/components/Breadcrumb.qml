@@ -173,7 +173,10 @@ Item {
 
     // Edit mode text input
     Rectangle {
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        height: 28
         visible: root.editMode
         color: Theme.surface
         radius: Theme.radiusSmall
