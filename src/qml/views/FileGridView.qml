@@ -21,7 +21,7 @@ GridView {
     property real iconScale: 1.0
     readonly property real minScale: 0.6
     readonly property real maxScale: 2.5
-    readonly property int baseCellSize: 110
+    readonly property int baseCellSize: 95
     readonly property int baseIconSize: 48
 
     readonly property int columnsPerRow: Math.max(1, Math.floor(width / Math.round(baseCellSize * iconScale)))
@@ -187,6 +187,7 @@ GridView {
         required property string fileIconName
 
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
+        property alias contentRect: selectionRect
 
         // Per-folder drop target
         DropArea {
@@ -208,10 +209,63 @@ GridView {
             }
         }
 
+        // Content column first, so selection rect can size to it
+        Column {
+            id: contentCol
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 4
+            spacing: 4
+
+            readonly property bool isImage: !delegateItem.isDir &&
+                /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(delegateItem.filePath)
+
+            Image {
+                visible: parent.isImage
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.round(root.baseIconSize * root.iconScale)
+                height: Math.round(root.baseIconSize * root.iconScale)
+                fillMode: Image.PreserveAspectFit
+                source: parent.isImage
+                    ? ("image://thumbnail/" + delegateItem.filePath)
+                    : ""
+                asynchronous: true
+            }
+
+            Image {
+                visible: !parent.isImage
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.round(root.baseIconSize * root.iconScale)
+                height: Math.round(root.baseIconSize * root.iconScale)
+                source: "image://icon/" + delegateItem.fileIconName
+                sourceSize: Qt.size(Math.round(root.baseIconSize * root.iconScale), Math.round(root.baseIconSize * root.iconScale))
+                asynchronous: true
+            }
+
+            Text {
+                id: labelText
+                width: root.cellWidth - 16
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: delegateItem.fileName
+                color: Theme.text
+                font.pointSize: Theme.fontSmall
+                elide: Text.ElideRight
+                horizontalAlignment: Text.AlignHCenter
+                maximumLineCount: 2
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+            }
+        }
+
+        // Selection/hover rect wraps tightly around the content
         Rectangle {
-            anchors.fill: parent
-            anchors.margins: 4
+            id: selectionRect
+            anchors.horizontalCenter: contentCol.horizontalCenter
+            anchors.top: contentCol.top
+            anchors.topMargin: -4
+            width: Math.max(contentCol.width, labelText.paintedWidth) + 12
+            height: contentCol.height + 8
             radius: Theme.radiusMedium
+            z: -1
             opacity: (root.isDragging && delegateItem.isSelected) ? 0.4 : 1.0
             color: {
                 if (folderDropArea.containsDrag)
@@ -227,126 +281,82 @@ GridView {
                         : delegateItem.isSelected ? Theme.accent : "transparent"
             border.width: folderDropArea.containsDrag ? 2
                         : delegateItem.isSelected ? 2 : 0
+        }
 
-            Column {
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.top: parent.top
-                anchors.topMargin: 8
-                spacing: 6
+        MouseArea {
+            id: ma
+            anchors.fill: selectionRect
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
 
-                readonly property bool isImage: !delegateItem.isDir &&
-                    /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(delegateItem.filePath)
+            property point pressPos
+            property bool dragPending: false
 
-                Image {
-                    visible: parent.isImage
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: Math.round(root.baseIconSize * root.iconScale)
-                    height: Math.round(root.baseIconSize * root.iconScale)
-                    fillMode: Image.PreserveAspectFit
-                    source: parent.isImage
-                        ? ("image://thumbnail/" + delegateItem.filePath)
-                        : ""
-                    asynchronous: true
+            onPressed: (mouse) => {
+                pressPos = Qt.point(mouse.x, mouse.y)
+                dragPending = (mouse.button === Qt.LeftButton)
+                if (dragPending)
+                    root.interactive = false  // Prevent Flickable from stealing grab
+            }
+
+            onPositionChanged: (mouse) => {
+                if (!dragPending && !root.isDragging) return
+                var dx = mouse.x - pressPos.x
+                var dy = mouse.y - pressPos.y
+                if (Math.sqrt(dx*dx + dy*dy) > 10) {
+                    dragPending = false
+                    if (!delegateItem.isSelected)
+                        root.selectIndex(delegateItem.index, false, false)
+                    // Map mouse to GridView coordinates
+                    var mapped = ma.mapToItem(root, mouse.x, mouse.y)
+                    root.beginDrag(
+                        delegateItem.filePath,
+                        delegateItem.fileIconName,
+                        delegateItem.fileName,
+                        mapped.x, mapped.y
+                    )
                 }
-
-                Image {
-                    visible: !parent.isImage
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: Math.round(root.baseIconSize * root.iconScale)
-                    height: Math.round(root.baseIconSize * root.iconScale)
-                    source: "image://icon/" + delegateItem.fileIconName
-                    sourceSize: Qt.size(Math.round(root.baseIconSize * root.iconScale), Math.round(root.baseIconSize * root.iconScale))
-                    asynchronous: true
-                }
-
-                Text {
-                    width: root.cellWidth - 16
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: delegateItem.fileName
-                    color: Theme.text
-                    font.pointSize: Theme.fontSmall
-                    elide: Text.ElideRight
-                    horizontalAlignment: Text.AlignHCenter
-                    maximumLineCount: 2
-                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                if (root.isDragging) {
+                    var mapped2 = ma.mapToItem(root, mouse.x, mouse.y)
+                    root.updateDrag(mapped2.x, mapped2.y)
                 }
             }
 
-            MouseArea {
-                id: ma
-                anchors.fill: parent
-                hoverEnabled: true
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
-
-                property point pressPos
-                property bool dragPending: false
-
-                onPressed: (mouse) => {
-                    pressPos = Qt.point(mouse.x, mouse.y)
-                    dragPending = (mouse.button === Qt.LeftButton)
-                    if (dragPending)
-                        root.interactive = false  // Prevent Flickable from stealing grab
-                }
-
-                onPositionChanged: (mouse) => {
-                    if (!dragPending && !root.isDragging) return
-                    var dx = mouse.x - pressPos.x
-                    var dy = mouse.y - pressPos.y
-                    if (Math.sqrt(dx*dx + dy*dy) > 10) {
-                        dragPending = false
-                        if (!delegateItem.isSelected)
-                            root.selectIndex(delegateItem.index, false, false)
-                        // Map mouse to GridView coordinates
-                        var mapped = ma.mapToItem(root, mouse.x, mouse.y)
-                        root.beginDrag(
-                            delegateItem.filePath,
-                            delegateItem.fileIconName,
-                            delegateItem.fileName,
-                            mapped.x, mapped.y
-                        )
-                    }
-                    if (root.isDragging) {
-                        var mapped2 = ma.mapToItem(root, mouse.x, mouse.y)
-                        root.updateDrag(mapped2.x, mapped2.y)
-                    }
-                }
-
-                onClicked: (mouse) => {
-                    if (!root.isDragging) root.interactive = true
-                    root.forceActiveFocus()
-                    if (mouse.button === Qt.RightButton) {
-                        var mapped = ma.mapToItem(null, mouse.x, mouse.y)
-                        root.contextMenuRequested(
-                            delegateItem.filePath,
-                            delegateItem.isDir,
-                            Qt.point(mapped.x, mapped.y)
-                        )
-                        return
-                    }
-                    root.selectIndex(
-                        delegateItem.index,
-                        mouse.modifiers & Qt.ControlModifier,
-                        mouse.modifiers & Qt.ShiftModifier
+            onClicked: (mouse) => {
+                if (!root.isDragging) root.interactive = true
+                root.forceActiveFocus()
+                if (mouse.button === Qt.RightButton) {
+                    var mapped = ma.mapToItem(null, mouse.x, mouse.y)
+                    root.contextMenuRequested(
+                        delegateItem.filePath,
+                        delegateItem.isDir,
+                        Qt.point(mapped.x, mapped.y)
                     )
+                    return
                 }
+                root.selectIndex(
+                    delegateItem.index,
+                    mouse.modifiers & Qt.ControlModifier,
+                    mouse.modifiers & Qt.ShiftModifier
+                )
+            }
 
-                onDoubleClicked: (mouse) => {
-                    if (mouse.button !== Qt.LeftButton) return
-                    root.fileActivated(delegateItem.filePath, delegateItem.isDir)
-                }
+            onDoubleClicked: (mouse) => {
+                if (mouse.button !== Qt.LeftButton) return
+                root.fileActivated(delegateItem.filePath, delegateItem.isDir)
+            }
 
-                onReleased: {
-                    dragPending = false
-                    if (root.isDragging)
-                        root.endDrag()
-                    else
-                        root.interactive = true
-                }
+            onReleased: {
+                dragPending = false
+                if (root.isDragging)
+                    root.endDrag()
+                else
+                    root.interactive = true
+            }
 
-                onCanceled: {
-                    dragPending = false
-                    root.cancelDrag()
-                }
+            onCanceled: {
+                dragPending = false
+                root.cancelDrag()
             }
         }
     }
@@ -406,15 +416,25 @@ GridView {
             }
         }
 
+        // Check if a point (in GridView coords) hits a delegate's content area
+        function hitTestContent(mx, my) {
+            var idx = root.indexAt(mx + root.contentX, my + root.contentY)
+            if (idx < 0) return false
+            var item = root.itemAtIndex(idx)
+            if (!item || !item.contentRect) return false
+            var local = root.mapToItem(item.contentRect, mx, my)
+            return local.x >= 0 && local.x <= item.contentRect.width &&
+                   local.y >= 0 && local.y <= item.contentRect.height
+        }
+
         onPressed: (mouse) => {
-            // Check if clicking on a delegate item
-            var idx = root.indexAt(mouse.x + root.contentX, mouse.y + root.contentY)
-            if (idx >= 0) {
-                // On an item — reject so delegate's MouseArea gets it
+            // Check if clicking on a delegate's content area
+            if (hitTestContent(mouse.x, mouse.y)) {
+                // On an item's content — reject so delegate's MouseArea gets it
                 mouse.accepted = false
                 return
             }
-            // Empty space
+            // Empty space (between cells or outside content rects)
             root.forceActiveFocus()
             if (mouse.button === Qt.LeftButton) {
                 root.interactive = false
