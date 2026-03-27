@@ -69,3 +69,7 @@ target_include_directories(hyprfm PRIVATE
 target_compile_definitions(hyprfm PRIVATE
     HYPRFM_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
 )
+
+install(TARGETS hyprfm DESTINATION bin)
+install(FILES "${CMAKE_SOURCE_DIR}/dist/hyprfm.desktop" DESTINATION share/applications)
+install(FILES "${CMAKE_SOURCE_DIR}/dist/hyprfm.svg" DESTINATION share/icons/hicolor/scalable/apps)

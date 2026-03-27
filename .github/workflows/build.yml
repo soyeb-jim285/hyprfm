@@ -1,0 +1,76 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            qt6-base-dev \
+            qt6-declarative-dev \
+            qml6-module-qtquick-controls \
+            qml6-module-qtquick-layouts \
+            qt6-svg-dev \
+            qt6-wayland-dev \
+            libgl-dev \
+            rsync \
+            xdg-utils \
+            file \
+            libfuse2
+
+      - name: Build
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build
+
+      - name: Install into AppDir
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          DESTDIR="$GITHUB_WORKSPACE/AppDir" cmake --install build
+
+      - name: Download linuxdeploy and Qt plugin
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+
+      - name: Build AppImage
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          QMAKE: /usr/bin/qmake6
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          OUTPUT="HyprFM-${TAG_NAME}-x86_64.AppImage" \
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --plugin qt \
+            --desktop-file dist/hyprfm.desktop \
+            --icon-file dist/hyprfm.svg \
+            --output appimage
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: HyprFM-${{ github.ref_name }}-x86_64.AppImage
+          generate_release_notes: true

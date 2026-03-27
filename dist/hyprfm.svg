@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- folder body -->
+  <rect x="4" y="20" width="56" height="36" rx="4" ry="4" fill="#5b9bd5"/>
+  <!-- folder tab -->
+  <path d="M4 20 L4 16 Q4 12 8 12 L26 12 Q30 12 32 16 L34 20 Z" fill="#4a8bc4"/>
+</svg>
