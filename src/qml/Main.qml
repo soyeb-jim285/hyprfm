@@ -613,6 +613,7 @@ ApplicationWindow {
 
                 // ── Tab bar ──
                 Q.Tabs {
+                    width: parent.width
                     model: ["General", "Permissions"]
                     currentIndex: propertiesDialog.currentTab
                     onTabChanged: (index) => propertiesDialog.currentTab = index
