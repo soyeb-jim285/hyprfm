@@ -612,33 +612,10 @@ ApplicationWindow {
                 }
 
                 // ── Tab bar ──
-                Item {
-                    width: parent.width; height: 36
-                    Row {
-                        anchors.left: parent.left; anchors.leftMargin: 20; spacing: 0
-                        Repeater {
-                            model: ["General", "Permissions"]
-                            delegate: Item {
-                                width: tabText.implicitWidth + 24; height: 36
-                                Text {
-                                    id: tabText; text: modelData; anchors.centerIn: parent
-                                    font.pixelSize: Theme.fontSmall
-                                    font.weight: propertiesDialog.currentTab === index ? Font.DemiBold : Font.Normal
-                                    color: propertiesDialog.currentTab === index ? Theme.accent : Theme.subtext
-                                }
-                                Rectangle {
-                                    width: parent.width; height: 2; anchors.bottom: parent.bottom
-                                    color: Theme.accent; visible: propertiesDialog.currentTab === index
-                                    radius: 1
-                                }
-                                MouseArea {
-                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: propertiesDialog.currentTab = index
-                                }
-                            }
-                        }
-                    }
-                    Rectangle { width: parent.width; height: 1; anchors.bottom: parent.bottom; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06) }
+                Quill.Tabs {
+                    model: ["General", "Permissions"]
+                    currentIndex: propertiesDialog.currentTab
+                    onTabChanged: (index) => propertiesDialog.currentTab = index
                 }
 
                 // ── Tab content slider ──
