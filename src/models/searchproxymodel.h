@@ -49,6 +49,8 @@ protected:
 private:
     bool matchesText(const QString &fileName) const;
     bool matchesType(const QModelIndex &sourceIndex) const;
+    bool matchesSingleType(const QString &type, bool isDirectory,
+                           const QString &mime, const QString &filePath) const;
     bool matchesDate(const QModelIndex &sourceIndex) const;
     bool matchesSize(const QModelIndex &sourceIndex) const;
 

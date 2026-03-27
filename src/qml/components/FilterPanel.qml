@@ -5,7 +5,7 @@ import HyprFM
 Rectangle {
     id: root
 
-    property string activeTypeFilter: ""
+    property var activeTypes: []  // array of active type values
     property string activeDateFilter: ""
     property string activeSizeFilter: ""
 
@@ -13,6 +13,21 @@ Rectangle {
     signal dateFilterChanged(string filter)
     signal sizeFilterChanged(string filter)
     signal clearAllFilters()
+
+    function isTypeActive(value) {
+        return activeTypes.indexOf(value) >= 0
+    }
+
+    function toggleType(value) {
+        var types = activeTypes.slice()
+        var idx = types.indexOf(value)
+        if (idx >= 0)
+            types.splice(idx, 1)
+        else
+            types.push(value)
+        activeTypes = types
+        typeFilterChanged(types.join(","))
+    }
 
     color: Theme.mantle
     implicitHeight: content.implicitHeight + 16
@@ -56,7 +71,7 @@ Rectangle {
                             width: chipText.implicitWidth + 16
                             height: 26
                             radius: 13
-                            color: root.activeTypeFilter === modelData.value
+                            color: root.isTypeActive(modelData.value)
                                 ? Theme.accent
                                 : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
 
@@ -67,21 +82,13 @@ Rectangle {
                                 anchors.centerIn: parent
                                 text: modelData.label
                                 font.pointSize: Theme.fontSmall
-                                color: root.activeTypeFilter === modelData.value ? Theme.base : Theme.subtext
+                                color: root.isTypeActive(modelData.value) ? Theme.base : Theme.subtext
                             }
 
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (root.activeTypeFilter === modelData.value) {
-                                        root.activeTypeFilter = ""
-                                        root.typeFilterChanged("")
-                                    } else {
-                                        root.activeTypeFilter = modelData.value
-                                        root.typeFilterChanged(modelData.value)
-                                    }
-                                }
+                                onClicked: root.toggleType(modelData.value)
                             }
                         }
                     }
@@ -226,7 +233,7 @@ Rectangle {
                 color: clearHover.hovered
                     ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.15)
                     : "transparent"
-                visible: root.activeTypeFilter !== "" || root.activeDateFilter !== "" || root.activeSizeFilter !== ""
+                visible: root.activeTypes.length > 0 || root.activeDateFilter !== "" || root.activeSizeFilter !== ""
 
                 Text {
                     id: clearText
@@ -242,7 +249,7 @@ Rectangle {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        root.activeTypeFilter = ""
+                        root.activeTypes = []
                         root.activeDateFilter = ""
                         root.activeSizeFilter = ""
                         root.clearAllFilters()

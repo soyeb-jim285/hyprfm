@@ -141,30 +141,23 @@ bool SearchProxyModel::matchesText(const QString &fileName) const
     return fileName.contains(m_searchQuery, Qt::CaseInsensitive);
 }
 
-bool SearchProxyModel::matchesType(const QModelIndex &sourceIndex) const
+bool SearchProxyModel::matchesSingleType(const QString &type, bool isDirectory,
+                                          const QString &mime, const QString &filePath) const
 {
-    bool isDirectory = sourceModel()->data(sourceIndex, FileSystemModel::IsDirRole).toBool();
-
-    if (m_fileTypeFilter == "folders")
+    if (type == "folders")
         return isDirectory;
-
     if (isDirectory) return false;
-
-    QString fp = sourceModel()->data(sourceIndex, FileSystemModel::FilePathRole).toString();
-    QMimeDatabase db;
-    QString mime = db.mimeTypeForFile(fp).name();
-
-    if (m_fileTypeFilter == "documents")
+    if (type == "documents")
         return mime.startsWith("text/") || mime == "application/pdf"
                || mime.startsWith("application/vnd.oasis") || mime.startsWith("application/msword")
                || mime.startsWith("application/vnd.openxmlformats");
-    if (m_fileTypeFilter == "images")
+    if (type == "images")
         return mime.startsWith("image/");
-    if (m_fileTypeFilter == "audio")
+    if (type == "audio")
         return mime.startsWith("audio/");
-    if (m_fileTypeFilter == "video")
+    if (type == "video")
         return mime.startsWith("video/");
-    if (m_fileTypeFilter == "code") {
+    if (type == "code") {
         static const QStringList codeExts = {
             "cpp", "h", "hpp", "c", "cc", "cxx", "py", "js", "ts", "jsx", "tsx",
             "rs", "go", "java", "kt", "swift", "rb", "php", "cs", "sh", "bash",
@@ -172,10 +165,26 @@ bool SearchProxyModel::matchesType(const QModelIndex &sourceIndex) const
             "qml", "cmake", "toml", "yaml", "yml", "json", "xml", "html", "css",
             "scss", "less", "sql", "md", "rst", "tex",
         };
-        QFileInfo info(fp);
+        QFileInfo info(filePath);
         return codeExts.contains(info.suffix().toLower());
     }
     return true;
+}
+
+bool SearchProxyModel::matchesType(const QModelIndex &sourceIndex) const
+{
+    bool isDirectory = sourceModel()->data(sourceIndex, FileSystemModel::IsDirRole).toBool();
+    QString fp = sourceModel()->data(sourceIndex, FileSystemModel::FilePathRole).toString();
+    QMimeDatabase db;
+    QString mime = db.mimeTypeForFile(fp).name();
+
+    // Support comma-separated type filters (OR'd)
+    const auto types = m_fileTypeFilter.split(',', Qt::SkipEmptyParts);
+    for (const auto &type : types) {
+        if (matchesSingleType(type.trimmed(), isDirectory, mime, fp))
+            return true;
+    }
+    return false;
 }
 
 bool SearchProxyModel::matchesDate(const QModelIndex &sourceIndex) const

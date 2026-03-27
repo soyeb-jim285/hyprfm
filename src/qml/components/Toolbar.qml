@@ -18,7 +18,6 @@ Rectangle {
     signal searchClicked()
     signal homeClicked()
     signal searchQueryChanged(string query)
-    signal searchScopeChanged(string scope)
     signal searchFilterToggled()
     signal searchClosed()
     signal searchEnterPressed()
@@ -95,7 +94,6 @@ Rectangle {
                     active: root.searchMode
                     sourceComponent: SearchBar {
                         onQueryChanged: (query) => root.searchQueryChanged(query)
-                        onSearchScopeUpdated: (scope) => root.searchScopeChanged(scope)
                         onFilterToggled: root.searchFilterToggled()
                         onSearchClosed: root.searchClosed()
                         onEnterPressed: root.searchEnterPressed()

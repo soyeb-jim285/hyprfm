@@ -75,7 +75,6 @@ ApplicationWindow {
 
     // ── Search state ──────────────────────────────────────────────────────────
     property bool searchMode: false
-    property string searchScope: "local"
     property var debounceTimer: null
 
     // ── Selection state for StatusBar ────────────────────────────────────────
@@ -146,6 +145,7 @@ ApplicationWindow {
     function openSearch() {
         searchMode = true
         toolbar.searchMode = true
+        searchProxy.switchSourceModel(searchResults)
     }
 
     function closeSearch() {
@@ -153,26 +153,25 @@ ApplicationWindow {
         toolbar.searchMode = false
         searchProxy.clearSearch()
         searchService.cancelSearch()
-        searchScope = "local"
         searchProxy.switchSourceModel(fsModel)
     }
 
     function handleSearchQuery(query) {
-        if (searchScope === "local") {
-            searchProxy.searchQuery = query
-        } else {
-            if (debounceTimer) debounceTimer.destroy()
-            debounceTimer = Qt.createQmlObject(
-                'import QtQuick; Timer { interval: 500; running: true; onTriggered: { parent.triggerRecursiveSearch(); destroy() } }',
-                root
-            )
+        if (debounceTimer) debounceTimer.destroy()
+        if (query === "") {
+            searchService.cancelSearch()
+            searchResults.clear()
+            return
         }
+        debounceTimer = Qt.createQmlObject(
+            'import QtQuick; Timer { interval: 500; running: true; onTriggered: { parent.triggerRecursiveSearch(); destroy() } }',
+            root
+        )
     }
 
     function triggerRecursiveSearch() {
         var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
         if (query === "") return
-        searchProxy.switchSourceModel(searchResults)
         searchService.startSearch(
             tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
             query,
@@ -181,33 +180,29 @@ ApplicationWindow {
     }
 
     function handleSearchEnter() {
-        if (searchScope === "recursive") {
-            var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
-            if (query === "") return
-            searchProxy.switchSourceModel(searchResults)
-            searchService.startSearch(
-                tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
-                query,
-                fsModel.showHidden
-            )
-        }
+        var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
+        if (query === "") return
+        searchService.startSearch(
+            tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
+            query,
+            fsModel.showHidden
+        )
     }
 
-    function handleScopeChange(scope) {
-        searchScope = scope
-        searchService.cancelSearch()
-        var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
-        if (scope === "local") {
-            searchProxy.switchSourceModel(fsModel)
-            searchProxy.searchQuery = query
-        } else if (query !== "") {
-            searchProxy.switchSourceModel(searchResults)
-            searchService.startSearch(
-                tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
-                query,
-                fsModel.showHidden
-            )
-        }
+    function selectFirstSearchResult() {
+        if (!searchMode || searchProxy.rowCount() === 0) return
+        var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+        var subView = null
+        if (vm === "grid")          subView = fileViewContainer.gridViewItem
+        else if (vm === "list")     subView = fileViewContainer.listViewItem
+        else if (vm === "detailed") subView = fileViewContainer.detailedViewItem
+        if (subView && subView.selectedIndices !== undefined)
+            subView.selectedIndices = [0]
+    }
+
+    Connections {
+        target: searchService
+        function onSearchFinished() { root.selectFirstSearchResult() }
     }
 
     // ── Rename dialog ───────────────────────────────────────────────────────
@@ -1300,7 +1295,6 @@ ApplicationWindow {
                 onSearchClicked: root.openSearch()
                 onSearchClosed: root.closeSearch()
                 onSearchQueryChanged: (query) => root.handleSearchQuery(query)
-                onSearchScopeChanged: (scope) => root.handleScopeChange(scope)
                 onSearchEnterPressed: root.handleSearchEnter()
                 onSearchFilterToggled: {
                     if (toolbar.filterPanel) {
