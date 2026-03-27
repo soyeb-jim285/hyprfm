@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import HyprFM
+import "quill" as Quill
 
 ApplicationWindow {
     id: root
@@ -37,6 +38,27 @@ ApplicationWindow {
         if (tabModel.activeTab) {
             fsModel.refresh()
         }
+
+        // Bridge HyprFM theme into Quill theme singleton
+        Quill.Theme.background = Qt.binding(() => Theme.base)
+        Quill.Theme.backgroundAlt = Qt.binding(() => Theme.mantle)
+        Quill.Theme.backgroundDeep = Qt.binding(() => Theme.crust)
+        Quill.Theme.surface0 = Qt.binding(() => Theme.surface)
+        Quill.Theme.surface1 = Qt.binding(() => Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1))
+        Quill.Theme.surface2 = Qt.binding(() => Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.15))
+        Quill.Theme.textPrimary = Qt.binding(() => Theme.text)
+        Quill.Theme.textSecondary = Qt.binding(() => Theme.subtext)
+        Quill.Theme.textTertiary = Qt.binding(() => Theme.muted)
+        Quill.Theme.primary = Qt.binding(() => Theme.accent)
+        Quill.Theme.success = Qt.binding(() => Theme.success)
+        Quill.Theme.warning = Qt.binding(() => Theme.warning)
+        Quill.Theme.error = Qt.binding(() => Theme.error)
+        Quill.Theme.radiusSm = Qt.binding(() => Theme.radiusSmall)
+        Quill.Theme.radius = Qt.binding(() => Theme.radiusMedium)
+        Quill.Theme.radiusLg = Qt.binding(() => Theme.radiusLarge)
+        Quill.Theme.fontSizeSmall = Qt.binding(() => Theme.fontSmall)
+        Quill.Theme.fontSize = Qt.binding(() => Theme.fontNormal)
+        Quill.Theme.fontSizeLarge = Qt.binding(() => Theme.fontLarge)
     }
 
     // ── Sidebar visibility (local property; config.sidebarVisible is read-only) ─
