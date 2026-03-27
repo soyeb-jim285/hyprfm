@@ -728,145 +728,66 @@ ApplicationWindow {
                     }
 
                     // Open With (files only)
-                    Quill.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter; visible: !(propertiesDialog.props.isDir) && propertiesDialog.apps.length > 0 }
-
-                    Item {
-                        width: parent.width
-                        height: openWithInner.height
+                    Quill.Collapsible {
                         visible: !(propertiesDialog.props.isDir) && propertiesDialog.apps.length > 0
+                        title: {
+                            var apps = propertiesDialog.apps
+                            for (var i = 0; i < apps.length; i++)
+                                if (apps[i].isDefault) return "Open with: " + apps[i].name
+                            return apps.length > 0 ? "Open with: " + apps[0].name : "Open with"
+                        }
+                        width: parent.width
 
-                        property bool expanded: false
+                        Repeater {
+                            model: propertiesDialog.apps
+                            delegate: Rectangle {
+                                width: parent ? parent.width : 0; height: 30; radius: 4
+                                color: owItemMa.containsMouse
+                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
+                                    : "transparent"
+                                Layout.fillWidth: true
 
-                        Column {
-                            id: openWithInner
-                            anchors.left: parent.left; anchors.right: parent.right
-                            anchors.leftMargin: 24; anchors.rightMargin: 24
-                            spacing: 0
-
-                            Item { width: 1; height: 6 }
-
-                            // Current default app button
-                            Rectangle {
-                                width: parent.width; height: 32; radius: Theme.radiusSmall
-                                color: owBtnMa.containsMouse ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05) : "transparent"
-
-                                Text {
-                                    text: "Open with"
-                                    color: Theme.subtext; font.pixelSize: Theme.fontSmall
-                                    anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-                                    width: 80
+                                Image {
+                                    id: owAppIcon
+                                    source: modelData.iconName ? ("image://icon/" + modelData.iconName) : ""
+                                    sourceSize: Qt.size(18, 18)
+                                    width: 18; height: 18
+                                    anchors.left: parent.left; anchors.leftMargin: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: modelData.iconName && status === Image.Ready
                                 }
 
                                 Text {
-                                    id: owCurrentApp
-                                    text: {
-                                        var apps = propertiesDialog.apps
-                                        for (var i = 0; i < apps.length; i++)
-                                            if (apps[i].isDefault) return apps[i].name
-                                        return apps.length > 0 ? apps[0].name : ""
-                                    }
-                                    color: Theme.text; font.pixelSize: Theme.fontSmall
-                                    anchors.left: parent.left; anchors.leftMargin: 88
-                                    anchors.right: owChevron.left; anchors.rightMargin: 4
+                                    text: modelData.name
+                                    color: modelData.isDefault ? Theme.accent : Theme.text
+                                    font.pixelSize: Theme.fontSmall
+                                    font.weight: modelData.isDefault ? Font.DemiBold : Font.Normal
+                                    anchors.left: owAppIcon.visible ? owAppIcon.right : parent.left
+                                    anchors.leftMargin: owAppIcon.visible ? 8 : 10
                                     anchors.verticalCenter: parent.verticalCenter
+                                    anchors.right: owItemBadge.left; anchors.rightMargin: 4
                                     elide: Text.ElideRight
                                 }
 
-                                Item {
-                                    id: owChevron
-                                    width: 12; height: 12
-                                    anchors.right: parent.right; anchors.rightMargin: 4
+                                IconCheck {
+                                    id: owItemBadge
+                                    visible: modelData.isDefault
+                                    size: 14; color: Theme.accent
+                                    anchors.right: parent.right; anchors.rightMargin: 10
                                     anchors.verticalCenter: parent.verticalCenter
-                                    rotation: parent.parent.parent.expanded ? 180 : 0
-                                    Behavior on rotation { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                                    IconChevronDown { anchors.centerIn: parent; size: 12; color: Theme.subtext }
                                 }
 
                                 MouseArea {
-                                    id: owBtnMa; anchors.fill: parent; hoverEnabled: true
+                                    id: owItemMa; anchors.fill: parent; hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: parent.parent.parent.expanded = !parent.parent.parent.expanded
-                                }
-                            }
-
-                            // Animated expanding list
-                            Item {
-                                width: parent.width
-                                height: parent.parent.expanded ? owAppList.height + 8 : 0
-                                clip: true
-                                Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-
-                                Rectangle {
-                                    id: owListBg
-                                    width: parent.width; height: owAppList.height + 8
-                                    radius: Theme.radiusSmall
-                                    color: Theme.surface
-                                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                                    border.width: 1
-
-                                    Column {
-                                        id: owAppList
-                                        width: parent.width - 8
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        anchors.top: parent.top; anchors.topMargin: 4
-                                        spacing: 2
-
-                                        Repeater {
-                                            model: propertiesDialog.apps
-                                            delegate: Rectangle {
-                                                width: parent.width; height: 30; radius: 4
-                                                color: owItemMa.containsMouse
-                                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
-                                                    : "transparent"
-
-                                                Image {
-                                                    id: owAppIcon
-                                                    source: modelData.iconName ? ("image://icon/" + modelData.iconName) : ""
-                                                    sourceSize: Qt.size(18, 18)
-                                                    width: 18; height: 18
-                                                    anchors.left: parent.left; anchors.leftMargin: 10
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                    visible: modelData.iconName && status === Image.Ready
-                                                }
-
-                                                Text {
-                                                    text: modelData.name
-                                                    color: modelData.isDefault ? Theme.accent : Theme.text
-                                                    font.pixelSize: Theme.fontSmall
-                                                    font.weight: modelData.isDefault ? Font.DemiBold : Font.Normal
-                                                    anchors.left: owAppIcon.visible ? owAppIcon.right : parent.left
-                                                    anchors.leftMargin: owAppIcon.visible ? 8 : 10
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                    anchors.right: owItemBadge.left; anchors.rightMargin: 4
-                                                    elide: Text.ElideRight
-                                                }
-
-                                                IconCheck {
-                                                    id: owItemBadge
-                                                    visible: modelData.isDefault
-                                                    size: 14; color: Theme.accent
-                                                    anchors.right: parent.right; anchors.rightMargin: 10
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                }
-
-                                                MouseArea {
-                                                    id: owItemMa; anchors.fill: parent; hoverEnabled: true
-                                                    cursorShape: Qt.PointingHandCursor
-                                                    onClicked: {
-                                                        if (!modelData.isDefault) {
-                                                            fsModel.setDefaultApp(propertiesDialog.props.mimeType, modelData.desktopFile)
-                                                            propertiesDialog.apps = fsModel.availableApps(propertiesDialog.props.mimeType)
-                                                        }
-                                                        openWithInner.parent.expanded = false
-                                                    }
-                                                }
-                                            }
+                                    onClicked: {
+                                        if (!modelData.isDefault) {
+                                            fsModel.setDefaultApp(propertiesDialog.props.mimeType, modelData.desktopFile)
+                                            propertiesDialog.apps = fsModel.availableApps(propertiesDialog.props.mimeType)
                                         }
                                     }
                                 }
                             }
-
-                            Item { width: 1; height: 6 }
                         }
                     }
                 }
