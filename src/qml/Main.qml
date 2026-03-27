@@ -216,6 +216,8 @@ ApplicationWindow {
                 anchors.fill: parent
                 title: "Rename"
                 padding: 20
+                color: Theme.mantle
+                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
 
                 Q.TextField {
                     id: renameField
@@ -336,6 +338,8 @@ ApplicationWindow {
                 anchors.fill: parent
                 title: "New Folder"
                 padding: 20
+                color: Theme.mantle
+                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
 
                 Q.TextField {
                     id: newFolderField
@@ -453,6 +457,8 @@ ApplicationWindow {
                 id: fileCard
                 anchors.fill: parent
                 title: "New File"
+                color: Theme.mantle
+                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
                 padding: 20
 
                 Q.TextField {
