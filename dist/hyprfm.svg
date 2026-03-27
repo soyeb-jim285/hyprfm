@@ -1,29 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <defs>
-    <linearGradient id="folderGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#94e2d5"/>
-      <stop offset="100%" stop-color="#89b4fa"/>
-    </linearGradient>
-    <linearGradient id="tabGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#74c7ec"/>
-      <stop offset="100%" stop-color="#89b4fa"/>
-    </linearGradient>
-    <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#313244"/>
-      <stop offset="100%" stop-color="#1e1e2e"/>
-    </linearGradient>
-  </defs>
-
   <!-- Shadow -->
   <rect x="14" y="42" width="104" height="72" rx="10" ry="10" fill="#11111b" opacity="0.4"/>
 
   <!-- Folder body -->
-  <rect x="10" y="38" width="108" height="74" rx="10" ry="10" fill="url(#bodyGrad)"/>
-  <rect x="10" y="38" width="108" height="74" rx="10" ry="10" fill="none" stroke="url(#folderGrad)" stroke-width="2.5" opacity="0.7"/>
+  <rect x="10" y="38" width="108" height="74" rx="10" ry="10" fill="#1e1e2e"/>
+  <rect x="10" y="38" width="108" height="74" rx="10" ry="10" fill="none" stroke="#89b4fa" stroke-width="2.5" opacity="0.7"/>
 
   <!-- Folder tab -->
-  <path d="M10 38 L10 28 Q10 20 18 20 L44 20 Q50 20 54 26 L58 34 Q59 38 56 38 Z" fill="url(#bodyGrad)"/>
-  <path d="M10 38 L10 28 Q10 20 18 20 L44 20 Q50 20 54 26 L58 34 Q59 38 56 38" fill="none" stroke="url(#tabGrad)" stroke-width="2.5" opacity="0.7"/>
+  <path d="M10 38 L10 28 Q10 20 18 20 L44 20 Q50 20 54 26 L58 34 Q59 38 56 38 Z" fill="#1e1e2e"/>
+  <path d="M10 38 L10 28 Q10 20 18 20 L44 20 Q50 20 54 26 L58 34 Q59 38 56 38" fill="none" stroke="#89b4fa" stroke-width="2.5" opacity="0.7"/>
 
   <!-- File lines -->
   <rect x="28" y="56" width="40" height="3" rx="1.5" fill="#89b4fa" opacity="0.5"/>
