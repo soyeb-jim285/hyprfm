@@ -15,7 +15,7 @@ Rectangle {
     signal homeClicked()
 
     implicitHeight: toolbarColumn.implicitHeight
-    color: Theme.base
+    color: Theme.mantle
 
     ColumnLayout {
         id: toolbarColumn
@@ -104,7 +104,7 @@ Rectangle {
 
             Rectangle {
                 anchors.fill: parent
-                color: Theme.base
+                color: Theme.mantle
                 // Top separator
                 Rectangle {
                     anchors.top: parent.top

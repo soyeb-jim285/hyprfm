@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Shapes
 import HyprFM
 import Quill as Q
 
@@ -1168,10 +1169,13 @@ ApplicationWindow {
         }
 
         // Right panel: toolbar + content
-        ColumnLayout {
+        Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 0
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
 
             // Toolbar with integrated tabs
             Toolbar {
@@ -1186,9 +1190,42 @@ ApplicationWindow {
 
             // File view (semi-transparent — Hyprland compositor blurs behind this)
             Rectangle {
+                id: contentArea
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 color: Qt.rgba(Theme.base.r, Theme.base.g, Theme.base.b, 0.65)
+
+                // Curved mantle fills for inverse rounded corners
+                Shape {
+                    z: 1; width: Theme.radiusMedium; height: Theme.radiusMedium
+                    anchors.top: parent.top; anchors.left: parent.left
+                    ShapePath {
+                        fillColor: Theme.mantle; strokeColor: "transparent"
+                        startX: 0; startY: 0
+                        PathLine { x: Theme.radiusMedium; y: 0 }
+                        PathArc {
+                            x: 0; y: Theme.radiusMedium
+                            radiusX: Theme.radiusMedium; radiusY: Theme.radiusMedium
+                            direction: PathArc.Counterclockwise
+                        }
+                        PathLine { x: 0; y: 0 }
+                    }
+                }
+                Shape {
+                    z: 1; width: Theme.radiusMedium; height: Theme.radiusMedium
+                    anchors.top: parent.top; anchors.right: parent.right
+                    ShapePath {
+                        fillColor: Theme.mantle; strokeColor: "transparent"
+                        startX: Theme.radiusMedium; startY: 0
+                        PathLine { x: 0; y: 0 }
+                        PathArc {
+                            x: Theme.radiusMedium; y: Theme.radiusMedium
+                            radiusX: Theme.radiusMedium; radiusY: Theme.radiusMedium
+                            direction: PathArc.Clockwise
+                        }
+                        PathLine { x: Theme.radiusMedium; y: 0 }
+                    }
+                }
 
                 FileViewContainer {
                     id: fileViewContainer
@@ -1217,6 +1254,7 @@ ApplicationWindow {
                         contextMenu.popup(position.x, position.y)
                     }
                 }
+            }
             }
         }
     }

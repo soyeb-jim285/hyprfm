@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Shapes
 import HyprFM
 
 Rectangle {
@@ -10,6 +11,41 @@ Rectangle {
     signal collapseClicked()
 
     color: Theme.mantle
+    clip: false
+
+    // Inverse rounded corner — top right
+    Shape {
+        z: 1; width: Theme.radiusMedium; height: Theme.radiusMedium
+        anchors.top: parent.top; anchors.left: parent.right
+        ShapePath {
+            fillColor: Theme.mantle; strokeColor: "transparent"
+            startX: 0; startY: 0
+            PathLine { x: Theme.radiusMedium; y: 0 }
+            PathArc {
+                x: 0; y: Theme.radiusMedium
+                radiusX: Theme.radiusMedium; radiusY: Theme.radiusMedium
+                direction: PathArc.Clockwise
+            }
+            PathLine { x: 0; y: 0 }
+        }
+    }
+
+    // Inverse rounded corner — bottom right
+    Shape {
+        z: 1; width: Theme.radiusMedium; height: Theme.radiusMedium
+        anchors.bottom: parent.bottom; anchors.left: parent.right
+        ShapePath {
+            fillColor: Theme.mantle; strokeColor: "transparent"
+            startX: 0; startY: Theme.radiusMedium
+            PathLine { x: Theme.radiusMedium; y: Theme.radiusMedium }
+            PathArc {
+                x: 0; y: 0
+                radiusX: Theme.radiusMedium; radiusY: Theme.radiusMedium
+                direction: PathArc.Clockwise
+            }
+            PathLine { x: 0; y: 0 }
+        }
+    }
 
     // Map common folder names to freedesktop icon names
     function folderIconName(name) {
