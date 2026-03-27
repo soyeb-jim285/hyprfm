@@ -51,3 +51,34 @@ add_executable(tst_fileoperations tst_fileoperations.cpp
 target_include_directories(tst_fileoperations PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_fileoperations PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME tst_fileoperations COMMAND tst_fileoperations)
+
+# --- New test targets ---
+
+add_executable(tst_filesystemmodel tst_filesystemmodel.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/filesystemmodel.cpp
+)
+target_include_directories(tst_filesystemmodel PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/third_party
+)
+target_link_libraries(tst_filesystemmodel PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg Qt6::SvgWidgets)
+add_test(NAME tst_filesystemmodel COMMAND tst_filesystemmodel)
+
+add_executable(tst_devicemodel tst_devicemodel.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/devicemodel.cpp
+)
+target_include_directories(tst_devicemodel PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_devicemodel PRIVATE Qt6::Test Qt6::Core Qt6::DBus)
+add_test(NAME tst_devicemodel COMMAND tst_devicemodel)
+
+add_executable(tst_iconprovider tst_iconprovider.cpp)
+target_include_directories(tst_iconprovider PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_iconprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick Qt6::Svg)
+add_test(NAME tst_iconprovider COMMAND tst_iconprovider)
+
+add_executable(tst_thumbnailprovider tst_thumbnailprovider.cpp
+    ${CMAKE_SOURCE_DIR}/src/providers/thumbnailprovider.cpp
+)
+target_include_directories(tst_thumbnailprovider PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_thumbnailprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick)
+add_test(NAME tst_thumbnailprovider COMMAND tst_thumbnailprovider)
