@@ -4,6 +4,7 @@ qt_add_executable(hyprfm
     services/themeloader.cpp
     services/clipboardmanager.cpp
     services/fileoperations.cpp
+    services/draghelper.cpp
     models/tabmodel.cpp
     models/tablistmodel.cpp
     models/bookmarkmodel.cpp

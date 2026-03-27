@@ -104,15 +104,11 @@ ListView {
 
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
-        // ── Drag support ──────────────────────────────────────────────────
-        Drag.active: false
-        Drag.mimeData: ({ "text/uri-list": "file://" + rowItem.filePath })
-        Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-        Drag.dragType: Drag.Automatic
+        property bool dragStarted: false
 
         Rectangle {
             anchors.fill: parent
-            opacity: rowItem.Drag.active ? 0.5 : 1.0
+            opacity: rowItem.dragStarted ? 0.5 : 1.0
             color: {
                 if (rowItem.isSelected)
                     return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
@@ -177,6 +173,30 @@ ListView {
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
 
+                property point pressPos
+                property bool dragPending: false
+
+                onPressed: (mouse) => {
+                    pressPos = Qt.point(mouse.x, mouse.y)
+                    dragPending = (mouse.button === Qt.LeftButton)
+                }
+
+                onPositionChanged: (mouse) => {
+                    if (!dragPending) return
+                    var dx = mouse.x - pressPos.x
+                    var dy = mouse.y - pressPos.y
+                    if (Math.sqrt(dx*dx + dy*dy) > 10) {
+                        dragPending = false
+                        if (!rowItem.isSelected)
+                            root.selectIndex(rowItem.index, false, false)
+                        var paths = root.selectedIndices.length > 1
+                            ? root.selectedIndices.map(function(i) { return fsModel.filePath(i) })
+                            : [rowItem.filePath]
+                        rowItem.dragStarted = true
+                        dragHelper.startDrag(paths, rowItem.fileIconName, paths.length)
+                    }
+                }
+
                 onClicked: (mouse) => {
                     root.forceActiveFocus()
                     if (mouse.button === Qt.RightButton) {
@@ -198,6 +218,14 @@ ListView {
                 onDoubleClicked: (mouse) => {
                     if (mouse.button !== Qt.LeftButton) return
                     root.fileActivated(rowItem.filePath, rowItem.isDir)
+                }
+
+                onReleased: { dragPending = false }
+                onCanceled: { dragPending = false }
+
+                Connections {
+                    target: dragHelper
+                    function onDragFinished() { rowItem.dragStarted = false }
                 }
             }
         }

@@ -229,11 +229,7 @@ Item {
 
                 readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
-                // ── Drag support ──────────────────────────────────────────
-                Drag.active: false
-                Drag.mimeData: ({ "text/uri-list": "file://" + detRow.filePath })
-                Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-                Drag.dragType: Drag.Automatic
+                property bool dragStarted: false
 
                 // Compute unix-style permissions string from Qt permissions flags
                 readonly property string permString: {
@@ -258,7 +254,7 @@ Item {
 
                 Rectangle {
                     anchors.fill: parent
-                    opacity: detRow.Drag.active ? 0.5 : 1.0
+                    opacity: detRow.dragStarted ? 0.5 : 1.0
                     color: {
                         if (detRow.isSelected)
                             return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
@@ -354,6 +350,30 @@ Item {
                         hoverEnabled: true
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
 
+                        property point pressPos
+                        property bool dragPending: false
+
+                        onPressed: (mouse) => {
+                            pressPos = Qt.point(mouse.x, mouse.y)
+                            dragPending = (mouse.button === Qt.LeftButton)
+                        }
+
+                        onPositionChanged: (mouse) => {
+                            if (!dragPending) return
+                            var dx = mouse.x - pressPos.x
+                            var dy = mouse.y - pressPos.y
+                            if (Math.sqrt(dx*dx + dy*dy) > 10) {
+                                dragPending = false
+                                if (!detRow.isSelected)
+                                    root.selectIndex(detRow.index, false, false)
+                                var paths = root.selectedIndices.length > 1
+                                    ? root.selectedIndices.map(function(i) { return fsModel.filePath(i) })
+                                    : [detRow.filePath]
+                                detRow.dragStarted = true
+                                dragHelper.startDrag(paths, detRow.fileIconName, paths.length)
+                            }
+                        }
+
                         onClicked: (mouse) => {
                             if (mouse.button === Qt.RightButton) {
                                 var mapped = rowMa.mapToItem(null, mouse.x, mouse.y)
@@ -374,6 +394,14 @@ Item {
                         onDoubleClicked: (mouse) => {
                             if (mouse.button !== Qt.LeftButton) return
                             root.fileActivated(detRow.filePath, detRow.isDir)
+                        }
+
+                        onReleased: { dragPending = false }
+                        onCanceled: { dragPending = false }
+
+                        Connections {
+                            target: dragHelper
+                            function onDragFinished() { detRow.dragStarted = false }
                         }
                     }
                 }

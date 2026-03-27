@@ -101,7 +101,7 @@ GridView {
         selectedIndices = all
     }
 
-    // Parse file paths from a drop event (handles both internal and system DnD)
+    // Parse file paths from a drop event
     function parseDragPaths(drop) {
         var paths = []
 
@@ -114,7 +114,7 @@ GridView {
             }
         }
 
-        // Fallback: parse text/uri-list from mime data (internal DnD)
+        // Fallback: parse text/uri-list from text mime data
         if (paths.length === 0 && drop.hasText) {
             var text = drop.text
             var lines = text.split("\n")
@@ -125,55 +125,34 @@ GridView {
             }
         }
 
-        // Fallback: use our own stored drag data
-        if (paths.length === 0 && root.dragMimeData["text/uri-list"]) {
-            var uriList = root.dragMimeData["text/uri-list"]
-            var uris = uriList.split("\n")
-            for (var k = 0; k < uris.length; k++) {
-                var uri = uris[k].trim()
-                if (uri.startsWith("file://"))
-                    paths.push(uri.substring(7))
-            }
-        }
-
         return paths
     }
 
     // ── Drag state ─────────────────────────────────────────────────────────
-    property var dragMimeData: ({})
     property string dragIconName: ""
     property string dragFileName: ""
     property bool isDragging: false
 
-    // Start a drag from a delegate
+    // Start a drag from a delegate — uses C++ QDrag for system-wide DnD
     function beginDrag(filePath, iconName, fileName, mouseX, mouseY) {
-        // Build mime data from selection
         var paths = selectedIndices.length > 1
-            ? selectedIndices.map(function(i) { return "file://" + fsModel.filePath(i) })
-            : ["file://" + filePath]
-        dragMimeData = { "text/uri-list": paths.join("\n") }
+            ? selectedIndices.map(function(i) { return fsModel.filePath(i) })
+            : [filePath]
         dragIconName = iconName
         dragFileName = selectedIndices.length > 1
             ? (selectedIndices.length + " items")
             : fileName
         isDragging = true
 
-        // Position the drag proxy at the mouse
-        var globalPos = mapToGlobal(mouseX, mouseY)
-        dragProxy.x = mapFromGlobal(globalPos.x, 0).x
-        dragProxy.y = mapFromGlobal(0, globalPos.y).y
-        dragProxy.Drag.active = true
+        dragHelper.startDrag(paths, iconName, paths.length)
     }
 
     function updateDrag(mouseX, mouseY) {
-        dragProxy.x = mouseX
-        dragProxy.y = mouseY
+        // System drag handles cursor tracking
     }
 
     function endDrag() {
         if (isDragging) {
-            dragProxy.Drag.drop()
-            dragProxy.Drag.active = false
             isDragging = false
             interactive = true
             dragIconName = ""
@@ -183,7 +162,6 @@ GridView {
 
     function cancelDrag() {
         if (isDragging) {
-            dragProxy.Drag.active = false
             isDragging = false
             interactive = true
             dragIconName = ""
@@ -191,59 +169,9 @@ GridView {
         }
     }
 
-    // ── Drag proxy: invisible item that moves with the mouse ───────────────
-    // DropAreas detect THIS item overlapping them
-    Item {
-        id: dragProxy
-        width: 1
-        height: 1
-        z: 2000
-
-        Drag.active: false
-        Drag.keys: ["text/uri-list"]
-        Drag.mimeData: root.dragMimeData
-        Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-        Drag.hotSpot.x: 0
-        Drag.hotSpot.y: 0
-    }
-
-    // ── Drag ghost: visual feedback following the cursor ───────────────────
-    Rectangle {
-        id: dragGhost
-        visible: root.isDragging
-        width: 80
-        height: 80
-        radius: Theme.radiusMedium
-        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.3)
-        border.color: Theme.accent
-        border.width: 1
-        z: 1999
-        opacity: 0.9
-        x: dragProxy.x - 40
-        y: dragProxy.y - 40
-
-        Column {
-            anchors.centerIn: parent
-            spacing: 2
-
-            Image {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 32
-                height: 32
-                source: root.dragIconName ? ("image://icon/" + root.dragIconName) : ""
-                sourceSize: Qt.size(32, 32)
-            }
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: root.dragFileName
-                color: Theme.text
-                font.pixelSize: 10
-                elide: Text.ElideMiddle
-                width: 70
-                horizontalAlignment: Text.AlignHCenter
-            }
-        }
+    Connections {
+        target: dragHelper
+        function onDragFinished() { root.endDrag() }
     }
 
     // ── Delegate ───────────────────────────────────────────────────────────
@@ -265,7 +193,7 @@ GridView {
             id: folderDropArea
             anchors.fill: parent
             keys: ["text/uri-list"]
-            enabled: delegateItem.isDir && root.isDragging && !delegateItem.isSelected
+            enabled: delegateItem.isDir && !delegateItem.isSelected
 
             onDropped: (drop) => {
                 var paths = root.parseDragPaths(drop)

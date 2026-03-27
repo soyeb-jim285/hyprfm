@@ -78,7 +78,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.leftMargin: Theme.spacing + 4
                 anchors.verticalCenter: parent.verticalCenter
-                text: "hyprfm"
+                text: "Hyprfm"
                 color: Theme.text
                 font.pixelSize: Theme.fontLarge
                 font.weight: Font.Bold

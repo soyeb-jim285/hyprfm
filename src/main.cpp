@@ -13,6 +13,7 @@
 #include "services/themeloader.h"
 #include "services/fileoperations.h"
 #include "services/clipboardmanager.h"
+#include "services/draghelper.h"
 #include "models/filesystemmodel.h"
 #include "models/tablistmodel.h"
 #include "models/bookmarkmodel.h"
@@ -65,6 +66,7 @@ int main(int argc, char *argv[])
 
     FileOperations *fileOps = new FileOperations(&app);
     ClipboardManager *clipboard = new ClipboardManager(&app);
+    // DragHelper created after IconProvider below
 
     FileSystemModel *fsModel = new FileSystemModel(&app);
     fsModel->setRootPath(QStandardPaths::writableLocation(QStandardPaths::HomeLocation));
@@ -101,9 +103,15 @@ int main(int argc, char *argv[])
     engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR));            // HyprFM module
     engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR "/src/qml")); // Quill module
 
-    // Register image providers
+    // Set icon theme so QIcon::fromTheme() works (e.g. for drag pixmaps)
+    QIcon::setThemeName(config->iconTheme());
+
+    // Register image providers (keep pointer to IconProvider for DragHelper)
+    auto *iconProvider = new IconProvider(config->iconTheme());
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
-    engine.addImageProvider("icon", new IconProvider(config->iconTheme()));
+    engine.addImageProvider("icon", iconProvider);
+
+    DragHelper *dragHelper = new DragHelper(iconProvider, &app);
 
     // Register context properties
     engine.rootContext()->setContextProperty("config", config);
@@ -112,6 +120,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("bookmarks", bookmarks);
     engine.rootContext()->setContextProperty("fileOps", fileOps);
     engine.rootContext()->setContextProperty("clipboard", clipboard);
+    engine.rootContext()->setContextProperty("dragHelper", dragHelper);
     engine.rootContext()->setContextProperty("fsModel", fsModel);
     engine.rootContext()->setContextProperty("devices", devices);
 
