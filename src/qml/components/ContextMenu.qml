@@ -48,13 +48,53 @@ Item {
     property Item blurSource: null
     property var fileModel: null
 
+    // Pending popup coordinates — repositioned after layout completes
+    property real _pendingX: 0
+    property real _pendingY: 0
+    property bool _pendingPopup: false
+
     function popup(x, y) {
         openWithApps = []
+        _pendingX = x
+        _pendingY = y
+        _pendingPopup = true
+
+        // Make visible so model builds and layout happens, but keep container invisible
+        menuContainer.opacity = 0
+        menuContainer.scale = 0.88
+        root.visible = true
+    }
+
+    // Once menuColumn has its real height, position and animate
+    Connections {
+        target: menuColumn
+        function onHeightChanged() {
+            if (!root._pendingPopup) return
+            root._pendingPopup = false
+            root._reposition()
+        }
+    }
+
+    function _reposition() {
         var menuW = menuColumn.width + 12
         var menuH = menuColumn.height + 12
-        menuContainer.x = Math.min(x, root.width - menuW - 8)
-        menuContainer.y = Math.min(y, root.height - menuH - 8)
-        root.visible = true
+        var winW = Window.width
+        var winH = Window.height
+
+        var posX = _pendingX
+        if (posX + menuW + 8 > winW)
+            posX = winW - menuW - 8
+        posX = Math.max(8, posX)
+
+        var posY = _pendingY
+        if (posY + menuH + 8 > winH)
+            posY = _pendingY - menuH
+        posY = Math.max(8, Math.min(posY, winH - menuH - 8))
+
+        menuContainer.x = posX
+        menuContainer.y = posY
+        menuContainer.transformOrigin = (_pendingY === posY) ? Item.TopLeft : Item.BottomLeft
+
         openAnim.start()
     }
 
