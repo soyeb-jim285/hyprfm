@@ -20,6 +20,8 @@ Rectangle {
     Component { id: iconTrash; IconTrash { size: 18; color: Theme.subtext } }
     Component { id: iconImage; IconImage { size: 18; color: Theme.subtext } }
     Component { id: iconDownload; IconDownload { size: 18; color: Theme.subtext } }
+    Component { id: iconHardDrive; IconHardDrive { size: 18; color: Theme.subtext } }
+    Component { id: iconHardDriveOff; IconHardDriveOff { size: 18; color: Theme.muted } }
 
     // Inverse rounded corner — top right
     Shape {
@@ -85,205 +87,171 @@ Rectangle {
         }
 
         // Quick access section
-        Item {
+        Column {
             Layout.fillWidth: true
-            Layout.fillHeight: true
 
-            Column {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-
-                // Quick access entries
-                Repeater {
-                    model: ListModel {
-                        ListElement { name: "Home"; iconType: "home" }
-                        ListElement { name: "Recents"; iconType: "clock" }
-                        ListElement { name: "Trash"; iconType: "trash" }
-                        ListElement { name: "Pictures"; iconType: "image" }
-                        ListElement { name: "Downloads"; iconType: "download" }
-                    }
-
-                    delegate: Rectangle {
-                        id: quickAccessDelegate
-
-                        readonly property string resolvedPath: {
-                            const home = fsModel.homePath()
-                            if (model.name === "Home") return home
-                            if (model.name === "Recents") return ""
-                            if (model.name === "Trash") return home + "/.local/share/Trash/files"
-                            if (model.name === "Pictures") return home + "/Pictures"
-                            if (model.name === "Downloads") return home + "/Downloads"
-                            return ""
-                        }
-
-                        width: parent.width - Theme.spacing
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        height: 32
-                        readonly property bool isActive: {
-                            if (model.name === "Recents") return root.isRecentsView
-                            if (resolvedPath === "") return false
-                            return !root.isRecentsView && resolvedPath === root.currentPath
-                        }
-
-                        color: {
-                            if (isActive) return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
-                            if (qaHoverArea.containsMouse) return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
-                            return "transparent"
-                        }
-                        radius: Theme.radiusSmall
-                        Behavior on color { ColorAnimation { duration: Theme.animDuration } }
-
-                        Row {
-                            anchors.left: parent.left
-                            anchors.leftMargin: Theme.spacing
-                            anchors.right: parent.right
-                            anchors.rightMargin: Theme.spacing
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: Theme.spacing
-
-                            Loader {
-                                width: 18; height: 18
-                                anchors.verticalCenter: parent.verticalCenter
-                                sourceComponent: {
-                                    if (model.iconType === "home") return iconHome
-                                    if (model.iconType === "clock") return iconClock
-                                    if (model.iconType === "trash") return iconTrash
-                                    if (model.iconType === "image") return iconImage
-                                    if (model.iconType === "download") return iconDownload
-                                    return iconHome
-                                }
-                            }
-
-                            Text {
-                                text: model.name
-                                color: quickAccessDelegate.isActive ? Theme.accent : Theme.text
-                                font.pointSize: Theme.fontNormal
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                                width: parent.width - 32 - Theme.spacing
-                            }
-                        }
-
-                        MouseArea {
-                            id: qaHoverArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (model.name === "Recents")
-                                    root.recentsClicked()
-                                else
-                                    root.bookmarkClicked(quickAccessDelegate.resolvedPath)
-                            }
-                        }
-                    }
+            // Quick access entries
+            Repeater {
+                model: ListModel {
+                    ListElement { name: "Home"; iconType: "home" }
+                    ListElement { name: "Recents"; iconType: "clock" }
+                    ListElement { name: "Trash"; iconType: "trash" }
+                    ListElement { name: "Pictures"; iconType: "image" }
+                    ListElement { name: "Downloads"; iconType: "download" }
                 }
 
-                // Separator between quick access and devices
-                Rectangle {
-                    width: parent.width - Theme.spacing * 2
+                delegate: Rectangle {
+                    id: quickAccessDelegate
+
+                    readonly property string resolvedPath: {
+                        const home = fsModel.homePath()
+                        if (model.name === "Home") return home
+                        if (model.name === "Recents") return ""
+                        if (model.name === "Trash") return home + "/.local/share/Trash/files"
+                        if (model.name === "Pictures") return home + "/Pictures"
+                        if (model.name === "Downloads") return home + "/Downloads"
+                        return ""
+                    }
+
+                    width: parent.width - Theme.spacing
                     anchors.horizontalCenter: parent.horizontalCenter
-                    height: 1
-                    color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                    height: 32
+                    readonly property bool isActive: {
+                        if (model.name === "Recents") return root.isRecentsView
+                        if (resolvedPath === "") return false
+                        return !root.isRecentsView && resolvedPath === root.currentPath
+                    }
+
+                    color: {
+                        if (isActive) return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+                        if (qaHoverArea.containsMouse) return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
+                        return "transparent"
+                    }
+                    radius: Theme.radiusSmall
+                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: Theme.spacing
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.spacing
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Theme.spacing
+
+                        Loader {
+                            width: 18; height: 18
+                            anchors.verticalCenter: parent.verticalCenter
+                            sourceComponent: {
+                                if (model.iconType === "home") return iconHome
+                                if (model.iconType === "clock") return iconClock
+                                if (model.iconType === "trash") return iconTrash
+                                if (model.iconType === "image") return iconImage
+                                if (model.iconType === "download") return iconDownload
+                                return iconHome
+                            }
+                        }
+
+                        Text {
+                            text: model.name
+                            color: quickAccessDelegate.isActive ? Theme.accent : Theme.text
+                            font.pointSize: Theme.fontNormal
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            width: parent.width - 32 - Theme.spacing
+                        }
+                    }
+
+                    MouseArea {
+                        id: qaHoverArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (model.name === "Recents")
+                                root.recentsClicked()
+                            else
+                                root.bookmarkClicked(quickAccessDelegate.resolvedPath)
+                        }
+                    }
                 }
             }
         }
 
-        // Devices section
-        Item {
+        // Separator between quick access and devices
+        Rectangle {
             Layout.fillWidth: true
-            implicitHeight: devicesColumn.implicitHeight
+            Layout.leftMargin: Theme.spacing
+            Layout.rightMargin: Theme.spacing
+            height: 1
+            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+        }
 
-            Column {
-                id: devicesColumn
-                anchors.left: parent.left
-                anchors.right: parent.right
+        // Auto-navigate after mounting an unmounted device
+        Connections {
+            target: devices
+            function onDeviceMounted(mountPoint) {
+                root.bookmarkClicked(mountPoint)
+            }
+        }
 
-                // Device entries
-                Repeater {
-                    model: devices
+        // Devices section
+        Column {
+            Layout.fillWidth: true
 
-                    delegate: Rectangle {
-                        id: deviceDelegate
-                        width: parent.width - Theme.spacing
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        height: deviceContent.implicitHeight + 8
-                        color: deviceHoverArea.containsMouse
-                            ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
-                            : "transparent"
-                        radius: Theme.radiusSmall
-                        Behavior on color { ColorAnimation { duration: Theme.animDuration } }
+            Repeater {
+                model: devices
 
-                        Column {
-                            id: deviceContent
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.leftMargin: Theme.spacing
-                            anchors.rightMargin: Theme.spacing
+                delegate: Rectangle {
+                    id: deviceDelegate
+                    width: parent.width - Theme.spacing
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    height: 36
+                    color: deviceHoverArea.containsMouse
+                        ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
+                        : "transparent"
+                    radius: Theme.radiusSmall
+                    Behavior on color { ColorAnimation { duration: Theme.animDuration } }
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: Theme.spacing
+                        anchors.rightMargin: Theme.spacing
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Theme.spacing
+
+                        // Drive icon: mounted vs unmounted
+                        Loader {
+                            width: 18; height: 18
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 4
+                            sourceComponent: model.mounted ? iconHardDrive : iconHardDriveOff
+                        }
 
-                            // Device row: icon + name + eject button
-                            Item {
+                        // Right side: name + progress bar
+                        Column {
+                            width: parent.width - 18 - Theme.spacing
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 3
+
+                            Text {
+                                text: model.deviceName
+                                color: model.mounted ? Theme.text : Theme.muted
+                                font.pointSize: Theme.fontNormal
+                                elide: Text.ElideRight
                                 width: parent.width
-                                height: 24
-
-                                Row {
-                                    anchors.left: parent.left
-                                    anchors.right: ejectBtn.visible ? ejectBtn.left : parent.right
-                                    anchors.rightMargin: 4
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: Theme.spacing
-
-                                    Image {
-                                        width: 16
-                                        height: 16
-                                        source: "image://icon/" + (model.removable ? "drive-removable-media" : "drive-harddisk")
-                                        sourceSize: Qt.size(16, 16)
-                                        anchors.verticalCenter: parent.verticalCenter
-                                    }
-
-                                    Text {
-                                        text: model.deviceName
-                                        color: Theme.text
-                                        font.pointSize: Theme.fontNormal
-                                        verticalAlignment: Text.AlignVCenter
-                                        elide: Text.ElideRight
-                                        width: parent.width - 24 - Theme.spacing
-                                    }
-                                }
-
-                                Image {
-                                    id: ejectBtn
-                                    anchors.right: parent.right
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    visible: model.removable
-                                    width: 16
-                                    height: 16
-                                    source: "image://icon/media-eject"
-                                    sourceSize: Qt.size(16, 16)
-                                    opacity: ejectHover.containsMouse ? 1.0 : 0.5
-
-                                    MouseArea {
-                                        id: ejectHover
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: devices.unmount(index)
-                                    }
-                                }
                             }
 
                             // Storage usage bar
                             Rectangle {
                                 width: parent.width
-                                height: 4
-                                radius: 2
+                                height: 3
+                                radius: 1.5
                                 color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
 
                                 Rectangle {
-                                    width: parent.width * Math.min(model.usagePercent / 100.0, 1.0)
+                                    width: model.mounted
+                                        ? parent.width * Math.min(model.usagePercent / 100.0, 1.0)
+                                        : 0
                                     height: parent.height
                                     radius: parent.radius
                                     color: model.usagePercent >= 90
@@ -293,44 +261,29 @@ Rectangle {
                                             : Theme.accent
                                 }
                             }
-
-                            // "X free of Y" text
-                            Text {
-                                width: parent.width
-                                text: {
-                                    function fmt(b) {
-                                        if (b <= 0) return "0 B"
-                                        const units = ["B","KB","MB","GB","TB"]
-                                        let i = 0
-                                        let v = b
-                                        while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
-                                        return v.toFixed(1) + " " + units[i]
-                                    }
-                                    return fmt(model.freeSpace) + " free of " + fmt(model.totalSize)
-                                }
-                                color: Theme.muted
-                                font.pointSize: Theme.fontSmall - 1
-                                elide: Text.ElideRight
-                            }
                         }
+                    }
 
-                        MouseArea {
-                            id: deviceHoverArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            // Navigate to mount point on click
-                            onClicked: root.bookmarkClicked(model.mountPoint)
+                    MouseArea {
+                        id: deviceHoverArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (model.mounted)
+                                root.bookmarkClicked(model.mountPoint)
+                            else
+                                devices.mount(index)
                         }
                     }
                 }
             }
         }
 
-        // Spacer before operations bar
+        // Spacer pushes operations bar to bottom
         Item {
             Layout.fillWidth: true
-            height: Theme.spacing
+            Layout.fillHeight: true
         }
 
         // File operations progress bar

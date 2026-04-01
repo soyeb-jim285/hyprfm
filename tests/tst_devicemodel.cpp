@@ -28,6 +28,7 @@ private slots:
         const QHash<int, QByteArray> roles = model.roleNames();
 
         QCOMPARE(roles.value(DeviceModel::DeviceNameRole),   QByteArray("deviceName"));
+        QCOMPARE(roles.value(DeviceModel::DevicePathRole),   QByteArray("devicePath"));
         QCOMPARE(roles.value(DeviceModel::MountPointRole),   QByteArray("mountPoint"));
         QCOMPARE(roles.value(DeviceModel::TotalSizeRole),    QByteArray("totalSize"));
         QCOMPARE(roles.value(DeviceModel::FreeSpaceRole),    QByteArray("freeSpace"));
@@ -35,7 +36,7 @@ private slots:
         QCOMPARE(roles.value(DeviceModel::RemovableRole),    QByteArray("removable"));
         QCOMPARE(roles.value(DeviceModel::MountedRole),      QByteArray("mounted"));
 
-        QCOMPARE(roles.size(), 7);
+        QCOMPARE(roles.size(), 8);
     }
 
     void testRootDevicePresent()

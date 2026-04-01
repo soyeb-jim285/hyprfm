@@ -1,12 +1,10 @@
 #include "models/devicemodel.h"
 
-#include <QStorageInfo>
 #include <QDBusConnection>
-#include <QDBusMessage>
-#include <QProcess>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <QDebug>
 
-// Filesystem types that are considered virtual / noise
 static const QStringList kVirtualTypes = {
     "tmpfs", "devtmpfs", "proc", "sysfs",
     "cgroup", "cgroup2", "overlay", "squashfs",
@@ -29,32 +27,94 @@ bool DeviceModel::isVirtual(const QString &fsType)
 
 void DeviceModel::setupUDisks2()
 {
-    // Connect to UDisks2 ObjectManager signals for plug/unplug events
     QDBusConnection sys = QDBusConnection::systemBus();
     if (!sys.isConnected()) {
         qWarning() << "DeviceModel: cannot connect to system D-Bus; auto-refresh disabled";
         return;
     }
 
-    // InterfacesAdded
     sys.connect(
         "org.freedesktop.UDisks2",
         "/org/freedesktop/UDisks2",
         "org.freedesktop.DBus.ObjectManager",
         "InterfacesAdded",
-        this,
-        SLOT(refresh())
+        this, SLOT(refresh())
     );
 
-    // InterfacesRemoved
     sys.connect(
         "org.freedesktop.UDisks2",
         "/org/freedesktop/UDisks2",
         "org.freedesktop.DBus.ObjectManager",
         "InterfacesRemoved",
-        this,
-        SLOT(refresh())
+        this, SLOT(refresh())
     );
+}
+
+void DeviceModel::processDevice(const QJsonObject &dev, bool parentRemovable)
+{
+    bool rm = dev.value("rm").toBool() || dev.value("hotplug").toBool() || parentRemovable;
+
+    const QJsonArray children = dev.value("children").toArray();
+    for (const QJsonValue &child : children)
+        processDevice(child.toObject(), rm);
+
+    QString type = dev.value("type").toString();
+    if (type != "part" && type != "lvm" && type != "crypt") {
+        if (type != "disk" || !children.isEmpty())
+            return;
+    }
+
+    QString fstype = dev.value("fstype").toString();
+    if (fstype.isEmpty() || fstype == "swap")
+        return;
+    if (isVirtual(fstype))
+        return;
+
+    QString path = dev.value("path").toString();
+    if (path.startsWith("/dev/loop") || path.startsWith("/dev/zram"))
+        return;
+
+    QString mountpoint = dev.value("mountpoint").toString();
+    bool mounted = !mountpoint.isEmpty() && mountpoint != "[SWAP]";
+
+    if (mounted && (mountpoint.startsWith("/boot") ||
+                    mountpoint.startsWith("/snap") ||
+                    mountpoint.startsWith("/nix") ||
+                    mountpoint.startsWith("/efi")))
+        return;
+
+    // Skip EFI System Partition by GUID or by vfat heuristic
+    static const QString kEfiGuid = "c12a7328-f81f-11d2-ba4b-00a098cb80e7";
+    QString parttype = dev.value("parttype").toString().toLower();
+    if (parttype == kEfiGuid)
+        return;
+
+    qint64 size = dev.value("size").toVariant().toLongLong();
+
+    QString label = dev.value("label").toString();
+    QString name;
+    if (!label.isEmpty())
+        name = label;
+    else if (mounted && mountpoint == "/")
+        name = "/";
+    else if (mounted)
+        name = mountpoint.section('/', -1);
+    else
+        name = path.section('/', -1);
+
+    qint64 total = 0, free = 0;
+    int usage = 0;
+    if (mounted) {
+        total = dev.value("fssize").toVariant().toLongLong();
+        free  = dev.value("fsavail").toVariant().toLongLong();
+        if (total > 0)
+            usage = static_cast<int>((total - free) * 100 / total);
+    } else {
+        total = size;
+    }
+
+    m_devices.append({name, path, mounted ? mountpoint : "",
+                      total, free, usage, rm, mounted});
 }
 
 void DeviceModel::refresh()
@@ -62,60 +122,19 @@ void DeviceModel::refresh()
     beginResetModel();
     m_devices.clear();
 
-    const auto volumes = QStorageInfo::mountedVolumes();
-    for (const QStorageInfo &vol : volumes) {
-        if (!vol.isValid() || !vol.isReady())
-            continue;
-
-        const QString fsType = vol.fileSystemType();
-        if (isVirtual(fsType))
-            continue;
-
-        // Skip very short mount points that look like kernel pseudo-mounts
-        const QString mp = vol.rootPath();
-        if (mp.isEmpty())
-            continue;
-
-        const qint64 total = vol.bytesTotal();
-        const qint64 free  = vol.bytesFree();
-        const int usage    = (total > 0)
-            ? static_cast<int>((total - free) * 100 / total)
-            : 0;
-
-        // Heuristic: consider a device removable if its root path is NOT / or /boot*
-        // and its device name starts with /dev/sd, /dev/nvme, etc.
-        // We also treat loop and zram devices as non-removable internal.
-        const QString devName = vol.device();
-        bool removable = false;
-        if (!devName.startsWith("/dev/loop") &&
-            !devName.startsWith("/dev/zram") &&
-            mp != "/" &&
-            !mp.startsWith("/boot") &&
-            !mp.startsWith("/nix") &&
-            !mp.startsWith("/snap"))
-        {
-            // Anything mounted under /media or /run/media is likely removable
-            removable = mp.startsWith("/media") || mp.startsWith("/run/media");
-        }
-
-        // Friendly name: last component of device or mount point
-        QString name = vol.displayName();
-        if (name.isEmpty() || name == mp) {
-            name = mp.section('/', -1);
-            if (name.isEmpty())
-                name = "/";
-        }
-
-        m_devices.append({
-            name,
-            mp,
-            total,
-            free,
-            usage,
-            removable,
-            true
-        });
+    QProcess proc;
+    proc.start("lsblk", {"-Jbp", "-o",
+        "NAME,PATH,TYPE,FSTYPE,MOUNTPOINT,LABEL,RM,HOTPLUG,SIZE,FSSIZE,FSAVAIL,PARTTYPE"});
+    if (!proc.waitForFinished(3000)) {
+        qWarning() << "DeviceModel: lsblk timed out";
+        endResetModel();
+        return;
     }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(proc.readAllStandardOutput());
+    const QJsonArray devices = doc.object().value("blockdevices").toArray();
+    for (const QJsonValue &dev : devices)
+        processDevice(dev.toObject());
 
     endResetModel();
 }
@@ -125,12 +144,13 @@ void DeviceModel::unmount(int index)
     if (index < 0 || index >= m_devices.size())
         return;
 
-    const QString mp = m_devices.at(index).mountPoint;
+    const DeviceEntry &dev = m_devices.at(index);
+    if (!dev.mounted)
+        return;
 
     auto *proc = new QProcess(this);
     proc->setProgram("udisksctl");
-    proc->setArguments({"unmount", "--no-user-interaction", "-p",
-                        "block_devices/" + mp.section('/', -1)});
+    proc->setArguments({"unmount", "--no-user-interaction", "-b", dev.devicePath});
     connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this, proc](int exitCode, QProcess::ExitStatus) {
         proc->deleteLater();
@@ -147,18 +167,25 @@ void DeviceModel::mount(int index)
     if (index < 0 || index >= m_devices.size())
         return;
 
-    const QString devName = m_devices.at(index).deviceName;
+    const QString devicePath = m_devices.at(index).devicePath;
 
     auto *proc = new QProcess(this);
     proc->setProgram("udisksctl");
-    proc->setArguments({"mount", "--no-user-interaction", "-b", devName});
+    proc->setArguments({"mount", "-b", devicePath});
     connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, proc](int exitCode, QProcess::ExitStatus) {
+            this, [this, proc, devicePath](int exitCode, QProcess::ExitStatus) {
         proc->deleteLater();
-        if (exitCode == 0)
+        if (exitCode == 0) {
             refresh();
-        else
+            for (const auto &dev : m_devices) {
+                if (dev.devicePath == devicePath && dev.mounted) {
+                    emit deviceMounted(dev.mountPoint);
+                    break;
+                }
+            }
+        } else {
             qWarning() << "udisksctl mount failed:" << proc->readAllStandardError();
+        }
     });
     proc->start();
 }
@@ -176,6 +203,7 @@ QVariant DeviceModel::data(const QModelIndex &index, int role) const
     const auto &d = m_devices.at(index.row());
     switch (role) {
     case DeviceNameRole:   return d.deviceName;
+    case DevicePathRole:   return d.devicePath;
     case MountPointRole:   return d.mountPoint;
     case TotalSizeRole:    return d.totalSize;
     case FreeSpaceRole:    return d.freeSpace;
@@ -190,6 +218,7 @@ QHash<int, QByteArray> DeviceModel::roleNames() const
 {
     return {
         {DeviceNameRole,   "deviceName"},
+        {DevicePathRole,   "devicePath"},
         {MountPointRole,   "mountPoint"},
         {TotalSizeRole,    "totalSize"},
         {FreeSpaceRole,    "freeSpace"},

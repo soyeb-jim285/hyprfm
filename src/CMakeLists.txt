@@ -65,6 +65,8 @@ qt_add_qml_module(hyprfm
         qml/icons/IconRocket.qml
         qml/icons/IconSettings.qml
         qml/icons/IconFilter.qml
+        qml/icons/IconHardDrive.qml
+        qml/icons/IconHardDriveOff.qml
         qml/components/SearchBar.qml
         qml/components/FilterPanel.qml
 )

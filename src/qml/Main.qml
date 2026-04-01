@@ -1258,21 +1258,30 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
 
-        // Sidebar (full height)
-        Sidebar {
-            width: config.sidebarWidth
+        // Sidebar (full height, animated)
+        Item {
+            Layout.preferredWidth: root.sidebarVisible ? config.sidebarWidth : 0
             Layout.fillHeight: true
-            visible: root.sidebarVisible
-            currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
-            isRecentsView: root.isRecentsView
-            onBookmarkClicked: (path) => {
-                root.isRecentsView = false
-                if (tabModel.activeTab) tabModel.activeTab.navigateTo(path)
+            clip: true
+
+            Behavior on Layout.preferredWidth {
+                NumberAnimation { duration: 200; easing.type: Easing.InOutCubic }
             }
-            onRecentsClicked: {
-                root.isRecentsView = true
+
+            Sidebar {
+                width: config.sidebarWidth
+                height: parent.height
+                currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+                isRecentsView: root.isRecentsView
+                onBookmarkClicked: (path) => {
+                    root.isRecentsView = false
+                    if (tabModel.activeTab) tabModel.activeTab.navigateTo(path)
+                }
+                onRecentsClicked: {
+                    root.isRecentsView = true
+                }
+                onCollapseClicked: root.sidebarVisible = !root.sidebarVisible
             }
-            onCollapseClicked: root.sidebarVisible = !root.sidebarVisible
         }
 
         // Right panel: toolbar + content

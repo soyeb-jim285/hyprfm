@@ -2,12 +2,13 @@
 
 #include <QAbstractListModel>
 #include <QList>
-#include <QDBusInterface>
+#include <QJsonObject>
 #include <QProcess>
 
 struct DeviceEntry {
     QString deviceName;
-    QString mountPoint;
+    QString devicePath;   // block device path, e.g. /dev/nvme0n1p5
+    QString mountPoint;   // empty if unmounted
     qint64  totalSize;
     qint64  freeSpace;
     int     usagePercent;
@@ -22,6 +23,7 @@ class DeviceModel : public QAbstractListModel
 public:
     enum Roles {
         DeviceNameRole = Qt::UserRole + 1,
+        DevicePathRole,
         MountPointRole,
         TotalSizeRole,
         FreeSpaceRole,
@@ -40,10 +42,13 @@ public:
     Q_INVOKABLE void unmount(int index);
     Q_INVOKABLE void mount(int index);
 
+signals:
+    void deviceMounted(const QString &mountPoint);
+
 private:
     void setupUDisks2();
+    void processDevice(const QJsonObject &dev, bool parentRemovable = false);
     static bool isVirtual(const QString &fsType);
-    static QString formatSize(qint64 bytes);
 
     QList<DeviceEntry> m_devices;
 };
