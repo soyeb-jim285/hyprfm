@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QDir>
 #include <QDebug>
+#include <fstream>
 
 QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"open", "Return"},
@@ -31,6 +32,8 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"list_view", "Ctrl+2"},
     {"detailed_view", "Ctrl+3"},
     {"select_all", "Ctrl+A"},
+    {"undo", "Ctrl+Z"},
+    {"redo", "Ctrl+Shift+Z"},
 };
 
 ConfigManager::ConfigManager(const QString &configPath, QObject *parent)
@@ -171,4 +174,28 @@ QVariantList ConfigManager::customContextActions() const { return m_customContex
 QString ConfigManager::shortcut(const QString &action) const
 {
     return m_shortcuts.value(action, s_defaultShortcuts.value(action));
+}
+
+void ConfigManager::saveBookmarks(const QStringList &paths)
+{
+    m_bookmarks = paths;
+
+    // Read existing config or create new
+    toml::table config;
+    if (QFile::exists(m_configPath)) {
+        try {
+            config = toml::parse_file(m_configPath.toStdString());
+        } catch (...) {}
+    }
+
+    // Update bookmarks array
+    toml::array arr;
+    for (const auto &p : paths)
+        arr.push_back(p.toStdString());
+    config.insert_or_assign("bookmarks", toml::table{{"paths", std::move(arr)}});
+
+    // Write back
+    std::ofstream ofs(m_configPath.toStdString());
+    if (ofs.is_open())
+        ofs << config;
 }

@@ -202,7 +202,7 @@ GridView {
                     return delegateItem.filePath === p || delegateItem.filePath.startsWith(p + "/")
                 })
                 if (dominated) return
-                fileOps.moveFiles(paths, delegateItem.filePath)
+                undoManager.moveFiles(paths, delegateItem.filePath)
                 drop.accept()
             }
         }
@@ -412,7 +412,7 @@ GridView {
                 return parentDir === root.currentPath
             })
             if (allSameDir) return
-            fileOps.moveFiles(paths, root.currentPath)
+            undoManager.moveFiles(paths, root.currentPath)
             drop.accept()
         }
     }

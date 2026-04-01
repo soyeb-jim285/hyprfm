@@ -45,6 +45,7 @@ public:
     int radiusLarge() const;
     QVariantList customContextActions() const;
     Q_INVOKABLE QString shortcut(const QString &action) const;
+    Q_INVOKABLE void saveBookmarks(const QStringList &paths);
 
 signals:
     void configChanged();

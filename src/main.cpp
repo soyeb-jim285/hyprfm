@@ -25,6 +25,7 @@
 #include "models/searchresultsmodel.h"
 #include "models/searchproxymodel.h"
 #include "services/searchservice.h"
+#include "services/undomanager.h"
 #include "providers/thumbnailprovider.h"
 #include "providers/iconprovider.h"
 #include <QIcon>
@@ -84,7 +85,13 @@ int main(int argc, char *argv[])
     BookmarkModel *bookmarks = new BookmarkModel(&app);
     bookmarks->setBookmarks(config->bookmarks());
 
+    // Persist bookmark changes to config
+    QObject::connect(bookmarks, &BookmarkModel::bookmarksChanged, [=]() {
+        config->saveBookmarks(bookmarks->paths());
+    });
+
     FileOperations *fileOps = new FileOperations(&app);
+    UndoManager *undoManager = new UndoManager(fileOps, &app);
     ClipboardManager *clipboard = new ClipboardManager(&app);
     // DragHelper created after IconProvider below
 
@@ -149,6 +156,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("tabModel", tabModel);
     engine.rootContext()->setContextProperty("bookmarks", bookmarks);
     engine.rootContext()->setContextProperty("fileOps", fileOps);
+    engine.rootContext()->setContextProperty("undoManager", undoManager);
     engine.rootContext()->setContextProperty("clipboard", clipboard);
     engine.rootContext()->setContextProperty("dragHelper", dragHelper);
     engine.rootContext()->setContextProperty("fsModel", fsModel);

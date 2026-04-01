@@ -232,6 +232,23 @@ Item {
             items.push({ text: "Copy", shortcut: "Ctrl+C", action: "copy" })
             items.push({ text: "Copy Path", shortcut: "", action: "copypath" })
             items.push({ separator: true })
+
+            // Compress submenu — always available for files/folders
+            items.push({ text: "Compress", shortcut: "", action: "compress_toggle", isSubmenu: true,
+                submenuItems: [
+                    { text: "ZIP", shortcut: "", action: "compress_zip" },
+                    { text: "tar.gz", shortcut: "", action: "compress_targz" },
+                    { text: "tar.xz", shortcut: "", action: "compress_tarxz" },
+                    { text: "tar.bz2", shortcut: "", action: "compress_tarbz2" },
+                    { text: "tar", shortcut: "", action: "compress_tar" }
+                ]
+            })
+
+            // Extract option for archives
+            if (!targetIsDir && fileOps.isArchive(targetPath))
+                items.push({ text: "Extract Here", shortcut: "", action: "extract" })
+
+            items.push({ separator: true })
             items.push({ text: "Rename...", shortcut: "F2", action: "rename" })
             items.push({ text: "Move to Trash", shortcut: "Delete", action: "trash" })
             items.push({ separator: true })
@@ -295,6 +312,12 @@ Item {
         case "sort_type": sortRequested("type", currentSortAscending); break
         case "sort_asc": sortRequested(currentSortBy, true); break
         case "sort_desc": sortRequested(currentSortBy, false); break
+        case "compress_zip": fileOps.compressFiles(effectivePaths, "zip"); break
+        case "compress_targz": fileOps.compressFiles(effectivePaths, "tar.gz"); break
+        case "compress_tarxz": fileOps.compressFiles(effectivePaths, "tar.xz"); break
+        case "compress_tarbz2": fileOps.compressFiles(effectivePaths, "tar.bz2"); break
+        case "compress_tar": fileOps.compressFiles(effectivePaths, "tar"); break
+        case "extract": fileOps.extractArchive(targetPath, effectiveDir); break
         }
     }
 

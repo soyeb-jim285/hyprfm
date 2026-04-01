@@ -22,6 +22,7 @@ Rectangle {
     Component { id: iconDownload; IconDownload { size: 18; color: Theme.subtext } }
     Component { id: iconHardDrive; IconHardDrive { size: 18; color: Theme.subtext } }
     Component { id: iconHardDriveOff; IconHardDriveOff { size: 18; color: Theme.muted } }
+    Component { id: iconFolder; IconFolder { size: 18; color: Theme.subtext } }
 
     // Inverse rounded corner — top right
     Shape {
@@ -177,8 +178,169 @@ Rectangle {
             }
         }
 
-        // Separator between quick access and devices
+        // Separator between quick access and bookmarks
         Rectangle {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacing
+            Layout.rightMargin: Theme.spacing
+            height: 1
+            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+        }
+
+        // Bookmarks section — drag folders here to add
+        Item {
+            id: bookmarksSection
+            Layout.fillWidth: true
+            implicitHeight: bookmarksList.implicitHeight + (dropIndicator.visible ? 4 : 0)
+
+            property int dropIndex: -1
+
+            // Full-area drop zone
+            DropArea {
+                id: bookmarkDropArea
+                anchors.fill: parent
+                keys: ["text/uri-list"]
+
+                onPositionChanged: (drag) => {
+                    // Calculate insertion index from y position
+                    var localY = drag.y
+                    var idx = Math.round(localY / 32)
+                    bookmarksSection.dropIndex = Math.max(0, Math.min(idx, bookmarks.count))
+                }
+                onExited: bookmarksSection.dropIndex = -1
+
+                onDropped: (drop) => {
+                    var insertAt = bookmarksSection.dropIndex
+                    bookmarksSection.dropIndex = -1
+                    var urls = drop.urls || []
+                    if (urls.length === 0 && drop.text)
+                        urls = drop.text.split("\n").filter(u => u.startsWith("file://"))
+                    for (var i = 0; i < urls.length; i++) {
+                        var path = urls[i].toString().replace("file://", "").replace(/\/$/, "")
+                        path = decodeURIComponent(path)
+                        if (path !== "")
+                            bookmarks.insertBookmark(path, insertAt >= 0 ? insertAt : bookmarks.count)
+                    }
+                    drop.accept()
+                }
+            }
+
+            // Insertion indicator line
+            Rectangle {
+                id: dropIndicator
+                visible: bookmarksSection.dropIndex >= 0
+                width: parent.width - Theme.spacing * 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                height: 2
+                radius: 1
+                color: Theme.accent
+                y: bookmarksSection.dropIndex * 32
+
+                Behavior on y {
+                    NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                }
+            }
+
+            Column {
+                id: bookmarksList
+                width: parent.width
+
+                add: Transition {
+                    ParallelAnimation {
+                        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutCubic }
+                        NumberAnimation { property: "scale"; from: 0.9; to: 1; duration: 250; easing.type: Easing.OutBack; easing.overshoot: 0.6 }
+                    }
+                }
+                move: Transition {
+                    NumberAnimation { properties: "x,y"; duration: 200; easing.type: Easing.InOutCubic }
+                }
+
+                Repeater {
+                    model: bookmarks
+
+                    delegate: Rectangle {
+                        id: bmDelegate
+                        width: bookmarksList.width - Theme.spacing
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        height: 32
+
+                        readonly property bool isActive:
+                            !root.isRecentsView && model.path === root.currentPath
+
+                        color: {
+                            if (isActive) return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+                            if (bmHoverArea.containsMouse || removeMa.containsMouse)
+                                return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
+                            return "transparent"
+                        }
+                        radius: Theme.radiusSmall
+                        Behavior on color { ColorAnimation { duration: Theme.animDuration } }
+
+                        // Background hover area (declared first = lowest z)
+                        MouseArea {
+                            id: bmHoverArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            acceptedButtons: Qt.LeftButton
+                            onClicked: root.bookmarkClicked(model.path)
+                        }
+
+                        Row {
+                            anchors.left: parent.left
+                            anchors.leftMargin: Theme.spacing
+                            anchors.right: removeBtnArea.left
+                            anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: Theme.spacing
+
+                            Loader {
+                                width: 18; height: 18
+                                anchors.verticalCenter: parent.verticalCenter
+                                sourceComponent: iconFolder
+                            }
+
+                            Text {
+                                text: model.name
+                                color: bmDelegate.isActive ? Theme.accent : Theme.text
+                                font.pointSize: Theme.fontNormal
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                                width: parent.width - 18 - Theme.spacing
+                            }
+                        }
+
+                        // Remove button — on top of hover area
+                        Item {
+                            id: removeBtnArea
+                            anchors.right: parent.right
+                            anchors.rightMargin: Theme.spacing - 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 22; height: 22
+                            visible: bmHoverArea.containsMouse || removeMa.containsMouse
+
+                            IconX {
+                                anchors.centerIn: parent
+                                size: 14
+                                color: removeMa.containsMouse ? Theme.text : Theme.muted
+                            }
+
+                            MouseArea {
+                                id: removeMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: bookmarks.removeBookmark(index)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Separator between bookmarks and devices
+        Rectangle {
+            visible: bookmarks.count > 0
             Layout.fillWidth: true
             Layout.leftMargin: Theme.spacing
             Layout.rightMargin: Theme.spacing

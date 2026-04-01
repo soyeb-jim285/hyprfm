@@ -14,6 +14,7 @@ ApplicationWindow {
     color: "transparent"
 
     property bool isRecentsView: false
+    property var deleteConfirmPaths: []
 
     // ── Sync fsModel when active tab changes; quit on last tab closed ───────
     Connections {
@@ -222,11 +223,15 @@ ApplicationWindow {
             renameBox.scale = 0.88
             renameBox.yOffset = -8
             renameOpenAnim.start()
+            Qt.callLater(function() {
+                renameField.inputItem.forceActiveFocus()
+                renameField.inputItem.selectAll()
+            })
             renameField.forceActiveFocus()
         }
         function accept() {
             if (renameTargetPath !== "" && renameField.text.trim() !== "")
-                fileOps.rename(renameTargetPath, renameField.text.trim())
+                undoManager.rename(renameTargetPath, renameField.text.trim())
             renameCloseAnim.start()
         }
         function reject() { renameCloseAnim.start() }
@@ -345,11 +350,12 @@ ApplicationWindow {
             folderBox.scale = 0.88
             folderBox.yOffset = -8
             folderOpenAnim.start()
+            Qt.callLater(function() { newFolderField.inputItem.forceActiveFocus() })
             newFolderField.forceActiveFocus()
         }
         function accept() {
             if (newItemParentPath !== "" && newFolderField.text.trim() !== "")
-                fileOps.createFolder(newItemParentPath, newFolderField.text.trim())
+                undoManager.createFolder(newItemParentPath, newFolderField.text.trim())
             folderCloseAnim.start()
         }
         function reject() { folderCloseAnim.start() }
@@ -466,11 +472,12 @@ ApplicationWindow {
             fileBox.scale = 0.88
             fileBox.yOffset = -8
             fileOpenAnim.start()
+            Qt.callLater(function() { newFileField.inputItem.forceActiveFocus() })
             newFileField.forceActiveFocus()
         }
         function accept() {
             if (newItemParentPath !== "" && newFileField.text.trim() !== "")
-                fileOps.createFile(newItemParentPath, newFileField.text.trim())
+                undoManager.createFile(newItemParentPath, newFileField.text.trim())
             fileCloseAnim.start()
         }
         function reject() { fileCloseAnim.start() }
@@ -993,6 +1000,110 @@ ApplicationWindow {
         }
     }
 
+    // ── Permanent Delete Confirmation Dialog ───────────────────────────────
+    Item {
+        id: deleteConfirmDialog
+        anchors.fill: parent
+        visible: false
+        z: 9998
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: deleteConfirmDialog.visible = false
+        }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: 360
+            height: deleteConfirmCol.implicitHeight + 32
+            radius: Theme.radiusLarge
+            color: Theme.crust
+            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+            border.width: 1
+
+            Column {
+                id: deleteConfirmCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.margins: 20
+                spacing: 16
+
+                Text {
+                    text: "Permanently Delete?"
+                    font.pointSize: Theme.fontLarge
+                    font.weight: Font.Bold
+                    color: Theme.text
+                }
+
+                Text {
+                    width: parent.width
+                    text: root.deleteConfirmPaths.length === 1
+                        ? "\"" + root.deleteConfirmPaths[0].substring(root.deleteConfirmPaths[0].lastIndexOf("/") + 1) + "\" will be permanently deleted. This cannot be undone."
+                        : root.deleteConfirmPaths.length + " items will be permanently deleted. This cannot be undone."
+                    color: Theme.subtext
+                    font.pointSize: Theme.fontNormal
+                    wrapMode: Text.WordWrap
+                }
+
+                Row {
+                    anchors.right: parent.right
+                    spacing: 8
+
+                    Rectangle {
+                        width: cancelText.implicitWidth + 24
+                        height: 32
+                        radius: Theme.radiusSmall
+                        color: cancelMa.containsMouse
+                            ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                            : "transparent"
+                        Text {
+                            id: cancelText
+                            anchors.centerIn: parent
+                            text: "Cancel"
+                            color: Theme.text
+                            font.pointSize: Theme.fontNormal
+                        }
+                        MouseArea {
+                            id: cancelMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: deleteConfirmDialog.visible = false
+                        }
+                    }
+
+                    Rectangle {
+                        width: deleteText.implicitWidth + 24
+                        height: 32
+                        radius: Theme.radiusSmall
+                        color: deleteMa.containsMouse
+                            ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.3)
+                            : Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.2)
+                        Text {
+                            id: deleteText
+                            anchors.centerIn: parent
+                            text: "Delete"
+                            color: Theme.error
+                            font.pointSize: Theme.fontNormal
+                            font.weight: Font.Bold
+                        }
+                        MouseArea {
+                            id: deleteMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                fileOps.deleteFiles(root.deleteConfirmPaths)
+                                deleteConfirmDialog.visible = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // ── Context Menu ────────────────────────────────────────────────────────
     ContextMenu {
         id: contextMenu
@@ -1015,9 +1126,9 @@ ApplicationWindow {
             var items = clipboard.take()
             if (!items || items.length === 0) return
             if (wasCut)
-                fileOps.moveFiles(items, destPath)
+                undoManager.moveFiles(items, destPath)
             else
-                fileOps.copyFiles(items, destPath)
+                undoManager.copyFiles(items, destPath)
         }
 
         onCopyPathRequested: (path) => fileOps.copyPathToClipboard(path)
@@ -1029,7 +1140,7 @@ ApplicationWindow {
             renameDialog.open()
         }
 
-        onTrashRequested: (paths) => fileOps.trashFiles(paths)
+        onTrashRequested: (paths) => undoManager.trashFiles(paths)
 
         onDeleteRequested: (paths) => fileOps.deleteFiles(paths)
 
@@ -1170,9 +1281,9 @@ ApplicationWindow {
             var items = clipboard.take()
             if (!items || items.length === 0) return
             if (wasCut)
-                fileOps.moveFiles(items, dest)
+                undoManager.moveFiles(items, dest)
             else
-                fileOps.copyFiles(items, dest)
+                undoManager.copyFiles(items, dest)
         }
     }
 
@@ -1180,8 +1291,29 @@ ApplicationWindow {
         sequence: config.shortcut("trash")
         onActivated: {
             var paths = getSelectedPaths()
-            if (paths.length > 0) fileOps.trashFiles(paths)
+            if (paths.length > 0) undoManager.trashFiles(paths)
         }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("permanent_delete")
+        onActivated: {
+            var paths = getSelectedPaths()
+            if (paths.length > 0) {
+                deleteConfirmPaths = paths
+                deleteConfirmDialog.visible = true
+            }
+        }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("undo")
+        onActivated: { if (undoManager.canUndo) undoManager.undo() }
+    }
+
+    Shortcut {
+        sequence: config.shortcut("redo")
+        onActivated: { if (undoManager.canRedo) undoManager.redo() }
     }
 
     Shortcut {
@@ -1379,6 +1511,20 @@ ApplicationWindow {
                     onFileActivated: (filePath, isDirectory) => {
                         if (isDirectory) {
                             if (tabModel.activeTab) tabModel.activeTab.navigateTo(filePath)
+                        } else if (fileOps.isArchive(filePath)) {
+                            var dir = filePath.substring(0, filePath.lastIndexOf("/"))
+                            // Peek at archive to find root folder before extracting
+                            var rootFolder = fileOps.archiveRootFolder(filePath)
+                            fileOps.extractArchive(filePath, dir)
+                            var conn = fileOps.operationFinished.connect(function(success) {
+                                fileOps.operationFinished.disconnect(arguments.callee)
+                                if (success && tabModel.activeTab) {
+                                    if (rootFolder)
+                                        tabModel.activeTab.navigateTo(dir + "/" + rootFolder)
+                                    else
+                                        tabModel.activeTab.navigateTo(dir)
+                                }
+                            })
                         } else {
                             fileOps.openFile(filePath)
                             recentFiles.addRecent(filePath)

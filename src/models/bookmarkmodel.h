@@ -6,6 +6,7 @@
 class BookmarkModel : public QAbstractListModel
 {
     Q_OBJECT
+    Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
 
 public:
     enum Roles {
@@ -21,6 +22,17 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void setBookmarks(const QStringList &paths);
+    QStringList paths() const;
+
+    Q_INVOKABLE void addBookmark(const QString &path);
+    Q_INVOKABLE void insertBookmark(const QString &path, int index);
+    Q_INVOKABLE void removeBookmark(int index);
+    Q_INVOKABLE void moveBookmark(int from, int to);
+    Q_INVOKABLE bool containsPath(const QString &path) const;
+
+signals:
+    void countChanged();
+    void bookmarksChanged();
 
 private:
     struct Bookmark {
@@ -32,4 +44,5 @@ private:
     QList<Bookmark> m_bookmarks;
     static QString expandPath(const QString &path);
     static QString iconForPath(const QString &name);
+    Bookmark makeBookmark(const QString &path) const;
 };

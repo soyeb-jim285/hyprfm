@@ -70,9 +70,9 @@ Rectangle {
                                 }
                                 if (paths.length === 0) return
                                 if (drop.proposedAction === Qt.MoveAction)
-                                    fileOps.moveFiles(paths, destPath)
+                                    undoManager.moveFiles(paths, destPath)
                                 else
-                                    fileOps.copyFiles(paths, destPath)
+                                    undoManager.copyFiles(paths, destPath)
                                 drop.acceptProposedAction()
                             }
                         }

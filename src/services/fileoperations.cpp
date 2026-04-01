@@ -120,6 +120,146 @@ void FileOperations::openInTerminal(const QString &dirPath)
             proc, &QProcess::deleteLater);
 }
 
+void FileOperations::compressFiles(const QStringList &paths, const QString &format)
+{
+    if (paths.isEmpty()) return;
+
+    // Determine output name from first file's parent + name
+    QFileInfo first(paths.first());
+    QString baseName = (paths.size() == 1) ? first.completeBaseName() : "archive";
+    QString parentDir = first.absolutePath();
+
+    QString cmd;
+    if (format == "zip") {
+        QString outPath = parentDir + "/" + baseName + ".zip";
+        cmd = "zip -r " + QString("'%1'").arg(outPath);
+        for (const auto &p : paths) {
+            QFileInfo fi(p);
+            cmd += " -j " + QString("'%1'").arg(p);
+        }
+        // Use cd + relative paths for proper zip structure
+        cmd = "cd " + QString("'%1'").arg(parentDir) + " && zip -r " +
+              QString("'%1'").arg(outPath);
+        for (const auto &p : paths)
+            cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
+    } else if (format == "tar.gz") {
+        QString outPath = parentDir + "/" + baseName + ".tar.gz";
+        cmd = "tar -czf " + QString("'%1'").arg(outPath) +
+              " -C " + QString("'%1'").arg(parentDir);
+        for (const auto &p : paths)
+            cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
+    } else if (format == "tar.xz") {
+        QString outPath = parentDir + "/" + baseName + ".tar.xz";
+        cmd = "tar -cJf " + QString("'%1'").arg(outPath) +
+              " -C " + QString("'%1'").arg(parentDir);
+        for (const auto &p : paths)
+            cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
+    } else if (format == "tar.bz2") {
+        QString outPath = parentDir + "/" + baseName + ".tar.bz2";
+        cmd = "tar -cjf " + QString("'%1'").arg(outPath) +
+              " -C " + QString("'%1'").arg(parentDir);
+        for (const auto &p : paths)
+            cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
+    } else if (format == "tar") {
+        QString outPath = parentDir + "/" + baseName + ".tar";
+        cmd = "tar -cf " + QString("'%1'").arg(outPath) +
+              " -C " + QString("'%1'").arg(parentDir);
+        for (const auto &p : paths)
+            cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
+    } else {
+        return;
+    }
+
+    m_statusText = QString("Compressing %1 item(s)...").arg(paths.size());
+    emit statusTextChanged();
+    runProcess("sh", {"-c", cmd});
+}
+
+void FileOperations::extractArchive(const QString &archivePath, const QString &destination)
+{
+    QFileInfo fi(archivePath);
+    QString ext = fi.suffix().toLower();
+    QString fullExt = fi.fileName().toLower();
+
+    // Extract directly to destination — archives with a root folder stay clean,
+    // loose files land in the current directory (same as Nautilus "Extract Here")
+    QString cmd;
+    if (ext == "zip")
+        cmd = "unzip -o " + QString("'%1'").arg(archivePath) + " -d " + QString("'%1'").arg(destination);
+    else if (fullExt.endsWith(".tar.gz") || fullExt.endsWith(".tgz"))
+        cmd = "tar -xzf " + QString("'%1'").arg(archivePath) + " -C " + QString("'%1'").arg(destination);
+    else if (fullExt.endsWith(".tar.xz") || fullExt.endsWith(".txz"))
+        cmd = "tar -xJf " + QString("'%1'").arg(archivePath) + " -C " + QString("'%1'").arg(destination);
+    else if (fullExt.endsWith(".tar.bz2") || fullExt.endsWith(".tbz2"))
+        cmd = "tar -xjf " + QString("'%1'").arg(archivePath) + " -C " + QString("'%1'").arg(destination);
+    else if (ext == "tar")
+        cmd = "tar -xf " + QString("'%1'").arg(archivePath) + " -C " + QString("'%1'").arg(destination);
+    else if (ext == "gz")
+        cmd = "gunzip -k " + QString("'%1'").arg(archivePath);
+    else if (ext == "xz")
+        cmd = "unxz -k " + QString("'%1'").arg(archivePath);
+    else if (ext == "bz2")
+        cmd = "bunzip2 -k " + QString("'%1'").arg(archivePath);
+    else
+        return;
+
+    m_statusText = "Extracting...";
+    emit statusTextChanged();
+    runProcess("sh", {"-c", cmd});
+}
+
+QString FileOperations::archiveRootFolder(const QString &archivePath)
+{
+    QFileInfo fi(archivePath);
+    QString ext = fi.suffix().toLower();
+    QString fullExt = fi.fileName().toLower();
+
+    // List archive contents and check if all entries share a single root folder
+    QString cmd;
+    if (ext == "zip")
+        cmd = "unzip -Z1 " + QString("'%1'").arg(archivePath);
+    else if (fullExt.endsWith(".tar.gz") || fullExt.endsWith(".tgz"))
+        cmd = "tar -tzf " + QString("'%1'").arg(archivePath);
+    else if (fullExt.endsWith(".tar.xz") || fullExt.endsWith(".txz"))
+        cmd = "tar -tJf " + QString("'%1'").arg(archivePath);
+    else if (fullExt.endsWith(".tar.bz2") || fullExt.endsWith(".tbz2"))
+        cmd = "tar -tjf " + QString("'%1'").arg(archivePath);
+    else if (ext == "tar")
+        cmd = "tar -tf " + QString("'%1'").arg(archivePath);
+    else
+        return {};
+
+    QProcess proc;
+    proc.start("sh", {"-c", cmd});
+    if (!proc.waitForFinished(5000))
+        return {};
+
+    QStringList entries = QString::fromUtf8(proc.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
+    if (entries.isEmpty())
+        return {};
+
+    // Find common root: first path component of every entry
+    QString root;
+    for (const auto &entry : entries) {
+        QString top = entry.section('/', 0, 0);
+        if (root.isEmpty())
+            root = top;
+        else if (top != root)
+            return {}; // multiple top-level entries, no single root
+    }
+    return root;
+}
+
+bool FileOperations::isArchive(const QString &path)
+{
+    QString lower = path.toLower();
+    return lower.endsWith(".zip") || lower.endsWith(".tar") ||
+           lower.endsWith(".tar.gz") || lower.endsWith(".tgz") ||
+           lower.endsWith(".tar.xz") || lower.endsWith(".txz") ||
+           lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2") ||
+           lower.endsWith(".gz") || lower.endsWith(".xz") || lower.endsWith(".bz2");
+}
+
 void FileOperations::runProcess(const QString &program, const QStringList &args)
 {
     if (m_process) {

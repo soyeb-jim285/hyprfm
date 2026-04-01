@@ -256,9 +256,9 @@ ListView {
             }
             if (paths.length === 0) return
             if (drop.proposedAction === Qt.MoveAction)
-                fileOps.moveFiles(paths, root.currentPath)
+                undoManager.moveFiles(paths, root.currentPath)
             else
-                fileOps.copyFiles(paths, root.currentPath)
+                undoManager.copyFiles(paths, root.currentPath)
             drop.acceptProposedAction()
         }
     }

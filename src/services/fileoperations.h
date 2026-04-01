@@ -29,6 +29,10 @@ public:
     Q_INVOKABLE void openFileWith(const QString &path, const QString &desktopFile);
     Q_INVOKABLE void copyPathToClipboard(const QString &path);
     Q_INVOKABLE void openInTerminal(const QString &dirPath);
+    Q_INVOKABLE void compressFiles(const QStringList &paths, const QString &format);
+    Q_INVOKABLE void extractArchive(const QString &archivePath, const QString &destination);
+    Q_INVOKABLE static bool isArchive(const QString &path);
+    Q_INVOKABLE QString archiveRootFolder(const QString &archivePath);
 
 signals:
     void busyChanged();

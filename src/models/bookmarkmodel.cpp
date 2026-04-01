@@ -1,5 +1,6 @@
 #include "models/bookmarkmodel.h"
 #include <QDir>
+#include <QFileInfo>
 
 BookmarkModel::BookmarkModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -38,13 +39,98 @@ void BookmarkModel::setBookmarks(const QStringList &paths)
 {
     beginResetModel();
     m_bookmarks.clear();
-    for (const auto &p : paths) {
-        QString expanded = expandPath(p);
-        QDir dir(expanded);
-        QString name = dir.dirName();
-        m_bookmarks.append({name, expanded, iconForPath(name.toLower())});
-    }
+    for (const auto &p : paths)
+        m_bookmarks.append(makeBookmark(p));
     endResetModel();
+    emit countChanged();
+}
+
+QStringList BookmarkModel::paths() const
+{
+    QStringList result;
+    const QString home = QDir::homePath();
+    for (const auto &bm : m_bookmarks) {
+        // Store as ~/... for portability
+        if (bm.path.startsWith(home))
+            result.append("~" + bm.path.mid(home.length()));
+        else
+            result.append(bm.path);
+    }
+    return result;
+}
+
+void BookmarkModel::addBookmark(const QString &path)
+{
+    QString expanded = expandPath(path);
+    if (containsPath(expanded))
+        return;
+
+    int row = m_bookmarks.size();
+    beginInsertRows(QModelIndex(), row, row);
+    m_bookmarks.append(makeBookmark(expanded));
+    endInsertRows();
+    emit countChanged();
+    emit bookmarksChanged();
+}
+
+void BookmarkModel::insertBookmark(const QString &path, int index)
+{
+    QString expanded = expandPath(path);
+    if (containsPath(expanded))
+        return;
+
+    int row = qBound(0, index, m_bookmarks.size());
+    beginInsertRows(QModelIndex(), row, row);
+    m_bookmarks.insert(row, makeBookmark(expanded));
+    endInsertRows();
+    emit countChanged();
+    emit bookmarksChanged();
+}
+
+void BookmarkModel::removeBookmark(int index)
+{
+    if (index < 0 || index >= m_bookmarks.size())
+        return;
+
+    beginRemoveRows(QModelIndex(), index, index);
+    m_bookmarks.removeAt(index);
+    endRemoveRows();
+    emit countChanged();
+    emit bookmarksChanged();
+}
+
+void BookmarkModel::moveBookmark(int from, int to)
+{
+    if (from < 0 || from >= m_bookmarks.size() ||
+        to < 0 || to >= m_bookmarks.size() || from == to)
+        return;
+
+    // QAbstractListModel::beginMoveRows requires special handling when moving down
+    int destRow = (to > from) ? to + 1 : to;
+    if (!beginMoveRows(QModelIndex(), from, from, QModelIndex(), destRow))
+        return;
+    m_bookmarks.move(from, to);
+    endMoveRows();
+    emit bookmarksChanged();
+}
+
+bool BookmarkModel::containsPath(const QString &path) const
+{
+    QString expanded = expandPath(path);
+    for (const auto &bm : m_bookmarks) {
+        if (bm.path == expanded)
+            return true;
+    }
+    return false;
+}
+
+BookmarkModel::Bookmark BookmarkModel::makeBookmark(const QString &rawPath) const
+{
+    QString expanded = expandPath(rawPath);
+    QString name = QDir(expanded).dirName();
+    if (name.isEmpty())
+        name = expanded;
+    return {name, expanded, iconForPath(name.toLower())};
 }
 
 QString BookmarkModel::expandPath(const QString &path)

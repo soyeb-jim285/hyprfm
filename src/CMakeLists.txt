@@ -14,6 +14,7 @@ qt_add_executable(hyprfm
     models/searchresultsmodel.cpp
     models/searchproxymodel.cpp
     services/searchservice.cpp
+    services/undomanager.cpp
     providers/thumbnailprovider.cpp
 )
 
