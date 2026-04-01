@@ -49,8 +49,8 @@ int main(int argc, char *argv[])
     // Use native text rendering (FreeType/fontconfig) for crisp fonts matching GTK apps
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
 
-    // Match system font (Adwaita Sans 11pt) for consistent rendering with GTK apps
-    QFont defaultFont("Adwaita Sans", 11);
+    // Use system default font with proper hinting for crisp text
+    QFont defaultFont = app.font();
     defaultFont.setHintingPreference(QFont::PreferFullHinting);
     app.setFont(defaultFont);
 

@@ -209,25 +209,30 @@ GridView {
 
         readonly property bool isImage: !delegateItem.isDir &&
             /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(delegateItem.filePath)
+        readonly property bool isVideo: !delegateItem.isDir &&
+            /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ts)$/i.test(delegateItem.filePath)
+        readonly property bool hasThumbnail: isImage || isVideo
 
         Image {
             id: thumbImg
-            visible: delegateItem.isImage
+            visible: delegateItem.hasThumbnail
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 8
             width: root.iconSize
             height: root.iconSize
             fillMode: Image.PreserveAspectFit
-            source: delegateItem.isImage
+            source: delegateItem.hasThumbnail
                 ? ("image://thumbnail/" + delegateItem.filePath)
                 : ""
+            sourceSize: Qt.size(root.iconSize * Screen.devicePixelRatio,
+                                root.iconSize * Screen.devicePixelRatio)
             asynchronous: true
         }
 
         Image {
             id: iconImg
-            visible: !delegateItem.isImage
+            visible: !delegateItem.hasThumbnail
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 8

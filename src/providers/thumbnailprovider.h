@@ -17,6 +17,9 @@ public:
     QQuickTextureFactory *textureFactory() const override;
 
 private:
+    void generateImageThumbnail();
+    void generateVideoThumbnail();
+
     QString m_id;
     QSize m_requestedSize;
     QImage m_image;
