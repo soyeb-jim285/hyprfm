@@ -9,6 +9,115 @@
 #include <QPixmap>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QStorageInfo>
+#include <QUrl>
+#include <unistd.h>
+
+namespace {
+
+bool isTrashUriPath(const QString &path)
+{
+    return QUrl(path).scheme() == "trash";
+}
+
+QString currentUidString()
+{
+    return QString::number(geteuid());
+}
+
+QString trashUriRootPath()
+{
+    return QStringLiteral("trash:///");
+}
+
+QString homeTrashRootPath()
+{
+    return QDir::cleanPath(QDir::homePath() + "/.local/share/Trash");
+}
+
+QString homeTrashFilesPath()
+{
+    return homeTrashRootPath() + "/files";
+}
+
+QString existingLookupPathFor(const QString &path)
+{
+    QString candidate = QDir::cleanPath(path);
+    if (candidate.isEmpty())
+        return QDir::homePath();
+
+    const QFileInfo info(candidate);
+    candidate = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+
+    while (!candidate.isEmpty() && !QFileInfo::exists(candidate)) {
+        const QString parent = QFileInfo(candidate).absolutePath();
+        if (parent == candidate)
+            break;
+        candidate = parent;
+    }
+
+    return QFileInfo::exists(candidate) ? candidate : QDir::homePath();
+}
+
+QStringList trashRootCandidatesForPath(const QString &path)
+{
+    QStringList roots;
+
+    const QString cleanPath = QDir::cleanPath(path);
+    if (!cleanPath.isEmpty()) {
+        const QString lookupPath = existingLookupPathFor(cleanPath);
+        const QString storageRoot = QDir::cleanPath(QStorageInfo(lookupPath).rootPath());
+        if (!storageRoot.isEmpty() && storageRoot != "/") {
+            const QString uid = currentUidString();
+            roots.append(QDir(storageRoot).filePath(".Trash-" + uid));
+            roots.append(QDir(storageRoot).filePath(".Trash/" + uid));
+        }
+    }
+
+    roots.append(homeTrashRootPath());
+    roots.removeDuplicates();
+    return roots;
+}
+
+QString matchingTrashFilesRoot(const QString &path)
+{
+    if (isTrashUriPath(path))
+        return trashUriRootPath();
+
+    const QString cleanPath = QDir::cleanPath(path);
+    if (cleanPath.isEmpty())
+        return {};
+
+    for (const QString &trashRoot : trashRootCandidatesForPath(cleanPath)) {
+        const QString filesRoot = QDir(trashRoot).filePath("files");
+        if (cleanPath == filesRoot || cleanPath.startsWith(filesRoot + "/"))
+            return filesRoot;
+    }
+
+    return {};
+}
+
+QString trashUriForPath(const QString &path)
+{
+    const QUrl url(path);
+    if (url.scheme() == "trash")
+        return url.toString(QUrl::FullyEncoded);
+
+    const QString filesRoot = matchingTrashFilesRoot(path);
+    if (filesRoot.isEmpty())
+        return {};
+
+    const QString relativePath = QDir::cleanPath(QDir(filesRoot).relativeFilePath(QDir::cleanPath(path)));
+    if (relativePath.isEmpty() || relativePath == "." || relativePath.startsWith("../"))
+        return {};
+
+    QUrl trashUrl;
+    trashUrl.setScheme("trash");
+    trashUrl.setPath("/" + QDir::fromNativeSeparators(relativePath));
+    return trashUrl.toString(QUrl::FullyEncoded);
+}
+
+}
 
 FileOperations::FileOperations(QObject *parent)
     : QObject(parent)
@@ -60,16 +169,77 @@ void FileOperations::trashFiles(const QStringList &paths)
     runProcess("gio", args);
 }
 
+void FileOperations::restoreFromTrash(const QStringList &paths)
+{
+    QStringList trashUris;
+    for (const QString &path : paths) {
+        const QString uri = trashUriForPath(path);
+        if (!uri.isEmpty() && !trashUris.contains(uri))
+            trashUris.append(uri);
+    }
+
+    if (trashUris.isEmpty()) {
+        emit operationFinished(false, "No trashed items could be restored");
+        return;
+    }
+
+    QStringList args = {"trash", "--restore", "--force"};
+    args.append(trashUris);
+
+    m_statusText = QString("Restoring %1 item(s)...").arg(trashUris.size());
+    emit statusTextChanged();
+    runProcess("gio", args);
+}
+
+bool FileOperations::isTrashPath(const QString &path) const
+{
+    return isTrashUriPath(path) || !matchingTrashFilesRoot(path).isEmpty();
+}
+
+QString FileOperations::trashFilesPathFor(const QString &path) const
+{
+    if (isTrashUriPath(path))
+        return trashUriRootPath();
+
+    const QString matchedRoot = matchingTrashFilesRoot(path);
+    if (!matchedRoot.isEmpty())
+        return matchedRoot;
+
+    const QStringList roots = trashRootCandidatesForPath(path);
+    if (!roots.isEmpty())
+        return QDir(roots.first()).filePath("files");
+
+    return homeTrashFilesPath();
+}
+
 void FileOperations::deleteFiles(const QStringList &paths)
 {
+    QStringList trashUris;
+    bool localSuccess = true;
+
     for (const auto &path : paths) {
+        if (isTrashUriPath(path)) {
+            trashUris.append(QUrl(path).toString(QUrl::FullyEncoded));
+            continue;
+        }
+
         QFileInfo info(path);
         if (info.isDir())
-            QDir(path).removeRecursively();
+            localSuccess = QDir(path).removeRecursively() && localSuccess;
         else
-            QFile::remove(path);
+            localSuccess = QFile::remove(path) && localSuccess;
     }
-    emit operationFinished(true, QString());
+
+    if (!trashUris.isEmpty()) {
+        m_statusText = QString("Deleting %1 item(s)...").arg(trashUris.size());
+        emit statusTextChanged();
+        QStringList args = {"remove", "-f"};
+        args.append(trashUris);
+        runProcess("gio", args);
+        return;
+    }
+
+    emit operationFinished(localSuccess, localSuccess ? QString() : QStringLiteral("Failed to delete one or more items"));
 }
 
 bool FileOperations::rename(const QString &path, const QString &newName)
@@ -95,13 +265,22 @@ void FileOperations::createFile(const QString &parentPath, const QString &name)
 void FileOperations::openFile(const QString &path)
 {
     auto *proc = new QProcess(this);
-    proc->start("xdg-open", {path});
+    if (isTrashUriPath(path))
+        proc->start("gio", {"open", QUrl(path).toString(QUrl::FullyEncoded)});
+    else
+        proc->start("xdg-open", {path});
     connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             proc, &QProcess::deleteLater);
 }
 
 bool FileOperations::pathExists(const QString &path) const
 {
+    if (isTrashUriPath(path)) {
+        QProcess proc;
+        proc.start("gio", {"info", QUrl(path).toString(QUrl::FullyEncoded)});
+        return proc.waitForFinished(2000) && proc.exitCode() == 0;
+    }
+
     return QFileInfo::exists(path);
 }
 

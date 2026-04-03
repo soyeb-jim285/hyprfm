@@ -64,12 +64,22 @@ signals:
 
 private:
     void reload();
+    void reloadLocal();
+    void reloadTrash();
+    QList<QFileInfo> currentLocalEntries() const;
+    void updateLocalCounts();
+    bool applyLocalDiff(const QList<QFileInfo> &newEntries);
+    bool isTrashRoot() const;
+    QVariantMap trashFileProperties(const QString &path) const;
 
     QString m_rootPath;
     bool m_showHidden = false;
     QList<QFileInfo> m_entries;
+    QList<QVariantMap> m_trashEntries;
     int m_fileCount = 0;
     int m_folderCount = 0;
     QFileSystemWatcher m_watcher;
     QDir::SortFlags m_sortFlags = QDir::Name | QDir::DirsFirst | QDir::IgnoreCase;
+    QString m_sortColumn = "name";
+    bool m_sortAscending = true;
 };

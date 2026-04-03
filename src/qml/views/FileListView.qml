@@ -11,11 +11,18 @@ ListView {
 
     // Current directory path (used as drop target)
     property string currentPath: ""
-    onCurrentPathChanged: clearSelection()
+    onCurrentPathChanged: {
+        clearSelection()
+        pendingFocusPath = ""
+    }
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
     signal interactionStarted()
+
+    property string pendingFocusPath: ""
+    property bool pendingFocusReveal: true
+    property bool focusScheduled: false
 
     clip: true
 
@@ -98,10 +105,67 @@ ListView {
         return model.data(model.index(row, 0), 258 /* FilePathRole */) || ""
     }
 
+    function rowForPath(path) {
+        if (!path)
+            return -1
+
+        for (var i = 0; i < count; ++i) {
+            if (pathForRow(i) === path)
+                return i
+        }
+
+        return -1
+    }
+
+    function schedulePendingFocus() {
+        if (focusScheduled)
+            return
+
+        focusScheduled = true
+        Qt.callLater(function() {
+            focusScheduled = false
+            if (pendingFocusPath !== "")
+                focusPath(pendingFocusPath, pendingFocusReveal)
+        })
+    }
+
+    function focusPath(path, reveal) {
+        if (!path || !model)
+            return false
+
+        var idx = rowForPath(path)
+        if (idx < 0) {
+            pendingFocusPath = path
+            pendingFocusReveal = (reveal !== false)
+            return false
+        }
+
+        pendingFocusPath = ""
+        pendingFocusReveal = true
+        forceActiveFocus()
+        selectIndex(idx, false, false)
+        if (reveal !== false)
+            positionViewAtIndex(idx, ListView.Contain)
+        return true
+    }
+
     function selectAll() {
         var all = []
         for (var i = 0; i < count; i++) all.push(i)
         selectedIndices = all
+    }
+
+    Connections {
+        target: root.model
+        ignoreUnknownSignals: true
+
+        function onModelReset() {
+            root.schedulePendingFocus()
+        }
+
+        function onRowsInserted() {
+            root.schedulePendingFocus()
+        }
     }
 
     delegate: Item {

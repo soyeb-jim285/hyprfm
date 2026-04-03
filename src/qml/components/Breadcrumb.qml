@@ -95,11 +95,10 @@ Item {
                 model: {
                     if (root.isRecentsView) return [{ label: "Recents", fullPath: "" }]
                     if (!root.path || root.path === "/") return []
-                    var homeUrl = Platform.StandardPaths.writableLocation(Platform.StandardPaths.HomeLocation)
-                    const homePath = homeUrl.toString().replace("file://", "")
-                    const trashPath = homePath + "/.local/share/Trash/files"
-                    if (root.path === trashPath) return [{ label: "Trash", fullPath: trashPath }]
-                    if (root.path.startsWith(trashPath + "/")) {
+                    const homePath = fsModel.homePath()
+                    const trashPath = fileOps.trashFilesPathFor(root.path)
+                    if (fileOps.isTrashPath(root.path)) {
+                        if (root.path === trashPath) return [{ label: "Trash", fullPath: trashPath }]
                         const sub = root.path.substring(trashPath.length + 1).split("/")
                         const result = [{ label: "Trash", fullPath: trashPath }]
                         let acc = trashPath

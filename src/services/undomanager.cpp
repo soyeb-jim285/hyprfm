@@ -4,8 +4,69 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
-#include <QUrl>
+#include <QDateTime>
 #include <QProcess>
+#include <QRegularExpression>
+#include <QUrl>
+
+namespace {
+
+QHash<QString, QString> parseGioAttributes(const QString &attributeText)
+{
+    QHash<QString, QString> attrs;
+    static const QRegularExpression attrRe(R"(([A-Za-z0-9:-]+)=(.*?)(?= [A-Za-z0-9:-]+=|$))");
+
+    auto it = attrRe.globalMatch(attributeText.trimmed());
+    while (it.hasNext()) {
+        const auto match = it.next();
+        attrs.insert(match.captured(1), match.captured(2));
+    }
+
+    return attrs;
+}
+
+QString latestTrashUriForOriginalPath(const QString &originalPath)
+{
+    QProcess proc;
+    proc.start("gio", {
+        "list",
+        "-h",
+        "-l",
+        "-u",
+        "-a",
+        "trash::orig-path,trash::deletion-date",
+        "trash:///"
+    });
+    if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
+        return {};
+
+    QString latestUri;
+    QDateTime latestDeletedAt;
+    const QStringList lines = QString::fromUtf8(proc.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        const QStringList fields = line.split('\t');
+        if (fields.size() < 4)
+            continue;
+
+        const QString uri = fields.at(0).trimmed();
+        const auto attrs = parseGioAttributes(fields.mid(3).join(" "));
+        if (QDir::cleanPath(attrs.value("trash::orig-path")) != originalPath)
+            continue;
+
+        QDateTime deletedAt = QDateTime::fromString(attrs.value("trash::deletion-date"), Qt::ISODate);
+        if (!deletedAt.isValid())
+            deletedAt = QDateTime::fromString(attrs.value("trash::deletion-date"), Qt::ISODateWithMs);
+
+        if (latestUri.isEmpty() || !latestDeletedAt.isValid() || deletedAt > latestDeletedAt) {
+            latestUri = uri;
+            latestDeletedAt = deletedAt;
+        }
+    }
+
+    return latestUri;
+}
+
+}
 
 UndoManager::UndoManager(FileOperations *fileOps, QObject *parent)
     : QObject(parent)
@@ -217,32 +278,14 @@ void UndoManager::executeRedo(const UndoRecord &rec)
 
 void UndoManager::restoreFromTrash(const QStringList &originalPaths)
 {
-    QString trashInfoDir = QDir::homePath() + "/.local/share/Trash/info/";
-    QStringList restoreArgs = {"trash", "--restore", "--force"};
+    QStringList restoreTargets;
 
     for (const QString &origPath : originalPaths) {
-        QDir infoDir(trashInfoDir);
-        for (const QString &entry : infoDir.entryList({"*.trashinfo"})) {
-            QFile f(trashInfoDir + entry);
-            if (!f.open(QIODevice::ReadOnly))
-                continue;
-            QString content = QString::fromUtf8(f.readAll());
-            f.close();
-
-            // trashinfo stores Path= with URL-encoded value
-            QString decoded = QUrl::fromPercentEncoding(content.toUtf8());
-            if (decoded.contains("Path=" + origPath)) {
-                QString baseName = entry.chopped(10); // strip ".trashinfo"
-                restoreArgs.append("trash:///" + baseName);
-                break;
-            }
-        }
+        const QString trashUri = latestTrashUriForOriginalPath(QDir::cleanPath(origPath));
+        if (!trashUri.isEmpty())
+            restoreTargets.append(trashUri);
     }
 
-    if (restoreArgs.size() > 3) {
-        auto *proc = new QProcess(this);
-        proc->start("gio", restoreArgs);
-        connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
-                proc, &QProcess::deleteLater);
-    }
+    if (!restoreTargets.isEmpty())
+        m_fileOps->restoreFromTrash(restoreTargets);
 }

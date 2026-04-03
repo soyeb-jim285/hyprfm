@@ -7,6 +7,7 @@ Rectangle {
     id: root
 
     property string currentPath: ""
+    property string trashPath: fsModel.homePath() + "/.local/share/Trash/files"
     property bool isRecentsView: false
     signal bookmarkClicked(string path)
     signal sidebarContextMenuRequested(var item, point position)
@@ -109,7 +110,7 @@ Rectangle {
                         const home = fsModel.homePath()
                         if (model.name === "Home") return home
                         if (model.name === "Recents") return ""
-                        if (model.name === "Trash") return home + "/.local/share/Trash/files"
+                        if (model.name === "Trash") return root.trashPath
                         if (model.name === "Pictures") return home + "/Pictures"
                         if (model.name === "Downloads") return home + "/Downloads"
                         return ""
@@ -120,6 +121,7 @@ Rectangle {
                     height: 32
                     readonly property bool isActive: {
                         if (model.name === "Recents") return root.isRecentsView
+                        if (model.name === "Trash") return !root.isRecentsView && fileOps.isTrashPath(root.currentPath)
                         if (resolvedPath === "") return false
                         return !root.isRecentsView && resolvedPath === root.currentPath
                     }

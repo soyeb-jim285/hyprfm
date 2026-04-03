@@ -28,6 +28,7 @@ Item {
     signal copyPathRequested(string path)
     signal renameRequested(string path)
     signal trashRequested(var paths)
+    signal restoreRequested(var paths)
     signal deleteRequested(var paths)
     signal openInTerminalRequested(string path)
     signal newFolderRequested(string parentPath)
@@ -221,7 +222,7 @@ Item {
         }
         if (!isEmptySpace && targetPath !== "") {
             items.push({ text: "Open", shortcut: "Return", action: "open", icon: "ExternalLink" })
-            if (!splitViewEnabled) {
+            if (!splitViewEnabled && !isTrashView) {
                 items.push({
                     text: targetIsDir ? "Open in Split View" : "Split View Here",
                     shortcut: "",
@@ -246,51 +247,40 @@ Item {
             } else {
                 openWithApps = []
             }
-            if (targetIsDir)
+            if (targetIsDir && !isTrashView)
                 items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
             items.push({ separator: true })
-            items.push({ text: "Cut", shortcut: "Ctrl+X", action: "cut", icon: "Scissors" })
-            items.push({ text: "Copy", shortcut: "Ctrl+C", action: "copy", icon: "Copy" })
-            items.push({ text: "Copy Path", shortcut: "", action: "copypath", icon: "CopyPath" })
-            items.push({ separator: true })
-
-            // Compress submenu — always available for files/folders
-            items.push({ text: "Compress", shortcut: "", action: "compress_toggle", isSubmenu: true, icon: "FolderArchive",
-                submenuItems: [
-                    { text: "ZIP", shortcut: "", action: "compress_zip" },
-                    { text: "tar.gz", shortcut: "", action: "compress_targz" },
-                    { text: "tar.xz", shortcut: "", action: "compress_tarxz" },
-                    { text: "tar.bz2", shortcut: "", action: "compress_tarbz2" },
-                    { text: "tar", shortcut: "", action: "compress_tar" }
-                ]
-            })
-
-            // Extract option for archives
-            if (!targetIsDir && fileOps.isArchive(targetPath))
-                items.push({ text: "Extract Here", shortcut: "", action: "extract", icon: "PackageOpen" })
-
-            items.push({ separator: true })
-            items.push({ text: "Rename...", shortcut: "F2", action: "rename", icon: "FolderPen" })
-            if (isTrashView)
+            if (isTrashView) {
+                items.push({ text: "Restore", shortcut: "", action: "restore", icon: "Undo" })
                 items.push({ text: "Delete Permanently", shortcut: "Delete", action: "delete", icon: "Trash", destructive: true })
-            else
+            } else {
+                items.push({ text: "Cut", shortcut: "Ctrl+X", action: "cut", icon: "Scissors" })
+                items.push({ text: "Copy", shortcut: "Ctrl+C", action: "copy", icon: "Copy" })
+                items.push({ text: "Copy Path", shortcut: "", action: "copypath", icon: "CopyPath" })
+                items.push({ separator: true })
+
+                // Compress submenu — always available for files/folders
+                items.push({ text: "Compress", shortcut: "", action: "compress_toggle", isSubmenu: true, icon: "FolderArchive",
+                    submenuItems: [
+                        { text: "ZIP", shortcut: "", action: "compress_zip" },
+                        { text: "tar.gz", shortcut: "", action: "compress_targz" },
+                        { text: "tar.xz", shortcut: "", action: "compress_tarxz" },
+                        { text: "tar.bz2", shortcut: "", action: "compress_tarbz2" },
+                        { text: "tar", shortcut: "", action: "compress_tar" }
+                    ]
+                })
+
+                // Extract option for archives
+                if (!targetIsDir && fileOps.isArchive(targetPath))
+                    items.push({ text: "Extract Here", shortcut: "", action: "extract", icon: "PackageOpen" })
+
+                items.push({ separator: true })
+                items.push({ text: "Rename...", shortcut: "F2", action: "rename", icon: "FolderPen" })
                 items.push({ text: "Move to Trash", shortcut: "Delete", action: "trash", icon: "Trash", destructive: true })
+            }
             items.push({ separator: true })
             items.push({ text: "Properties", shortcut: "", action: "properties", icon: "Info" })
         } else {
-            items.push({ text: "New Folder...", shortcut: "Shift+Ctrl+N", action: "newfolder", icon: "Folder" })
-            items.push({ text: "New File...", shortcut: "", action: "newfile", icon: "FileText" })
-            items.push({ separator: true })
-            if (clipboard.hasContent || fileOps.hasClipboardImage()) {
-                items.push({
-                    text: clipboard.hasContent ? "Paste" : "Paste Image",
-                    shortcut: "Ctrl+V",
-                    action: "paste",
-                    icon: clipboard.hasContent ? "Clipboard" : "Image"
-                })
-            }
-            if (!splitViewEnabled)
-                items.push({ text: "Split View Here", shortcut: "", action: "split_here", icon: "SquareSplitHorizontal" })
             items.push({ text: "Select All", shortcut: "Ctrl+A", action: "selectall", icon: "Check" })
             items.push({ separator: true })
             items.push({ text: "View", shortcut: "", action: "view_toggle", isSubmenu: true, icon: "Eye",
@@ -311,10 +301,25 @@ Item {
                     { text: "Descending", shortcut: "", action: "sort_desc", checked: !currentSortAscending, icon: "ChevronDown" }
                 ]
             })
-            items.push({ separator: true })
-            items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
-            items.push({ text: "Properties", shortcut: "", action: "properties", icon: "Info" })
-            if (isTrashView) {
+            if (!isTrashView) {
+                items.push({ separator: true })
+                items.push({ text: "New Folder...", shortcut: "Shift+Ctrl+N", action: "newfolder", icon: "Folder" })
+                items.push({ text: "New File...", shortcut: "", action: "newfile", icon: "FileText" })
+                items.push({ separator: true })
+                if (clipboard.hasContent || fileOps.hasClipboardImage()) {
+                    items.push({
+                        text: clipboard.hasContent ? "Paste" : "Paste Image",
+                        shortcut: "Ctrl+V",
+                        action: "paste",
+                        icon: clipboard.hasContent ? "Clipboard" : "Image"
+                    })
+                }
+                if (!splitViewEnabled)
+                    items.push({ text: "Split View Here", shortcut: "", action: "split_here", icon: "SquareSplitHorizontal" })
+                items.push({ separator: true })
+                items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
+                items.push({ text: "Properties", shortcut: "", action: "properties", icon: "Info" })
+            } else {
                 items.push({ separator: true })
                 items.push({ text: "Empty Trash", shortcut: "", action: "emptytrash", icon: "Trash", destructive: true })
             }
@@ -332,6 +337,7 @@ Item {
         case "copypath": copyPathRequested(targetPath); break
         case "rename": renameRequested(targetPath); break
         case "trash": trashRequested(effectivePaths); break
+        case "restore": restoreRequested(effectivePaths); break
         case "delete": deleteRequested(effectivePaths); break
         case "paste": pasteRequested(effectiveDir); break
         case "selectall": selectAllRequested(); break

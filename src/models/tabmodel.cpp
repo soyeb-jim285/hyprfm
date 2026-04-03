@@ -1,5 +1,6 @@
 #include "models/tabmodel.h"
 #include <QFileInfo>
+#include <QUrl>
 
 TabModel::TabModel(QObject *parent)
     : QObject(parent)
@@ -15,6 +16,11 @@ QString TabModel::currentPath() const { return m_currentPath; }
 
 QString TabModel::title() const
 {
+    if (QUrl(m_currentPath).scheme() == "trash") {
+        const QString fileName = QUrl(m_currentPath).fileName();
+        return fileName.isEmpty() ? QStringLiteral("Trash") : fileName;
+    }
+
     if (m_currentPath == "/")
         return "/";
     QDir dir(m_currentPath);

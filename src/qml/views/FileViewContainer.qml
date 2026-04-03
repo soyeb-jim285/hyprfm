@@ -20,6 +20,12 @@ Item {
         else detailedView.selectAll()
     }
 
+    function focusPath(path, reveal) {
+        gridView.focusPath(path, reveal)
+        listView.focusPath(path, reveal)
+        detailedView.focusPath(path, reveal)
+    }
+
     // Expose sub-views so main.qml can access selection state
     property alias gridViewItem: gridView
     property alias listViewItem: listView

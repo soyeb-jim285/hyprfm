@@ -22,6 +22,9 @@ public:
     Q_INVOKABLE void copyFiles(const QStringList &sources, const QString &destination);
     Q_INVOKABLE void moveFiles(const QStringList &sources, const QString &destination);
     Q_INVOKABLE void trashFiles(const QStringList &paths);
+    Q_INVOKABLE void restoreFromTrash(const QStringList &paths);
+    Q_INVOKABLE bool isTrashPath(const QString &path) const;
+    Q_INVOKABLE QString trashFilesPathFor(const QString &path) const;
     Q_INVOKABLE void deleteFiles(const QStringList &paths);
     Q_INVOKABLE bool rename(const QString &path, const QString &newName);
     Q_INVOKABLE void createFolder(const QString &parentPath, const QString &name);

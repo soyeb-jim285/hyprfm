@@ -23,8 +23,8 @@ ApplicationWindow {
         ? secondaryPaneIsRecents
         : primaryPaneIsRecents
     property var deleteConfirmPaths: []
-    readonly property string trashFilesPath: fsModel.homePath() + "/.local/share/Trash/files"
-    readonly property bool isTrashView: panePath(activePane).startsWith(trashFilesPath)
+    readonly property string unifiedTrashPath: "trash:///"
+    readonly property bool isTrashView: fileOps.isTrashPath(panePath(activePane))
 
     // ── Sync fsModel when active tab changes; quit on last tab closed ───────
     Connections {
@@ -231,6 +231,12 @@ ApplicationWindow {
         return fileViewForPane(activePane)
     }
 
+    function focusPathInPane(pane, path, reveal) {
+        var view = fileViewForPane(pane)
+        if (view && view.focusPath)
+            view.focusPath(path, reveal)
+    }
+
     function subViewFor(view) {
         if (!view)
             return null
@@ -296,6 +302,20 @@ ApplicationWindow {
     function goActivePaneUp() {
         if (!tabModel.activeTab || root.paneIsRecents(activePane))
             return
+
+        var currentPath = panePath(activePane)
+        if (currentPath.startsWith("trash:///")) {
+            var normalized = currentPath.length > 9 && currentPath.endsWith("/")
+                ? currentPath.slice(0, -1)
+                : currentPath
+            if (normalized === unifiedTrashPath.slice(0, -1) || normalized === unifiedTrashPath)
+                return
+
+            var slashIndex = normalized.lastIndexOf("/")
+            var parentPath = slashIndex <= 8 ? unifiedTrashPath : normalized.substring(0, slashIndex)
+            root.navigateActivePaneTo(parentPath)
+            return
+        }
 
         if (activePane === "secondary" && splitViewEnabled())
             tabModel.activeTab.secondaryGoUp()
@@ -687,11 +707,14 @@ ApplicationWindow {
         function accept() {
             var name = newFolderField.text.trim()
             if (newItemParentPath === "" || name === "") return
-            if (fileOps.pathExists(newItemParentPath + "/" + name)) {
+            var createdPath = newItemParentPath + "/" + name
+            if (fileOps.pathExists(createdPath)) {
                 newFolderErrorText.text = "\"" + name + "\" already exists"
                 return
             }
             undoManager.createFolder(newItemParentPath, name)
+            if (fileOps.pathExists(createdPath))
+                root.focusPathInPane(root.activePane, createdPath, true)
             folderCloseAnim.start()
         }
         function reject() { folderCloseAnim.start() }
@@ -841,11 +864,14 @@ ApplicationWindow {
         function accept() {
             var name = newFileField.text.trim()
             if (newItemParentPath === "" || name === "") return
-            if (fileOps.pathExists(newItemParentPath + "/" + name)) {
+            var createdPath = newItemParentPath + "/" + name
+            if (fileOps.pathExists(createdPath)) {
                 newFileErrorText.text = "\"" + name + "\" already exists"
                 return
             }
             undoManager.createFile(newItemParentPath, name)
+            if (fileOps.pathExists(createdPath))
+                root.focusPathInPane(root.activePane, createdPath, true)
             fileCloseAnim.start()
         }
         function reject() { fileCloseAnim.start() }
@@ -984,14 +1010,16 @@ ApplicationWindow {
 
         property var props: ({})
         property var apps: []
+        property var fileModelRef: fsModel
         property int currentTab: 0  // 0=General, 1=Permissions, 2=Open With
 
         function showProperties(path) {
-            props = fsModel.fileProperties(path)
+            fileModelRef = root.paneBaseModel(root.activePane) || fsModel
+            props = fileModelRef.fileProperties(path)
             currentTab = 0
             propsTabs.currentIndex = 0
             if (!props.isDir && props.mimeType)
-                apps = fsModel.availableApps(props.mimeType)
+                apps = fileModelRef.availableApps(props.mimeType)
             else
                 apps = []
             visible = true
@@ -1106,7 +1134,7 @@ ApplicationWindow {
                 Q.Tabs {
                     id: propsTabs
                     width: parent.width
-                    model: ["General", "Permissions"]
+                    model: propertiesDialog.props.canEditPermissions === false ? ["General"] : ["General", "Permissions"]
                     currentIndex: propertiesDialog.currentTab
                     onTabChanged: (index) => propertiesDialog.currentTab = index
                 }
@@ -1150,6 +1178,7 @@ ApplicationWindow {
 
                         PropRow { label: "Kind"; value: { var p = propertiesDialog.props; return p.isDir ? "Folder" : (p.mimeDescription || "") } }
                         PropRow { label: "Location"; value: propertiesDialog.props.parentDir || "" }
+                        PropRow { label: "Deleted"; value: propertiesDialog.props.deleted || ""; show: (propertiesDialog.props.deleted || "") !== "" }
                         PropRow { label: "Link target"; value: propertiesDialog.props.symlinkTarget || ""; show: propertiesDialog.props.isSymlink || false }
                     }
 
@@ -1275,8 +1304,8 @@ ApplicationWindow {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
                                         if (!modelData.isDefault) {
-                                            fsModel.setDefaultApp(propertiesDialog.props.mimeType, modelData.desktopFile)
-                                            propertiesDialog.apps = fsModel.availableApps(propertiesDialog.props.mimeType)
+                                            propertiesDialog.fileModelRef.setDefaultApp(propertiesDialog.props.mimeType, modelData.desktopFile)
+                                            propertiesDialog.apps = propertiesDialog.fileModelRef.availableApps(propertiesDialog.props.mimeType)
                                         }
                                     }
                                 }
@@ -1343,8 +1372,8 @@ ApplicationWindow {
                         userName: propertiesDialog.props.owner || ""
                         accessIdx: propertiesDialog.props.ownerAccess || 0
                         onAccessChanged: (idx) => {
-                            fsModel.setFilePermissions(propertiesDialog.props.path, idx, propertiesDialog.props.groupAccess || 0, propertiesDialog.props.otherAccess || 0)
-                            propertiesDialog.props = fsModel.fileProperties(propertiesDialog.props.path)
+                            propertiesDialog.fileModelRef.setFilePermissions(propertiesDialog.props.path, idx, propertiesDialog.props.groupAccess || 0, propertiesDialog.props.otherAccess || 0)
+                            propertiesDialog.props = propertiesDialog.fileModelRef.fileProperties(propertiesDialog.props.path)
                         }
                     }
 
@@ -1355,8 +1384,8 @@ ApplicationWindow {
                         userName: propertiesDialog.props.group || ""
                         accessIdx: propertiesDialog.props.groupAccess || 0
                         onAccessChanged: (idx) => {
-                            fsModel.setFilePermissions(propertiesDialog.props.path, propertiesDialog.props.ownerAccess || 0, idx, propertiesDialog.props.otherAccess || 0)
-                            propertiesDialog.props = fsModel.fileProperties(propertiesDialog.props.path)
+                            propertiesDialog.fileModelRef.setFilePermissions(propertiesDialog.props.path, propertiesDialog.props.ownerAccess || 0, idx, propertiesDialog.props.otherAccess || 0)
+                            propertiesDialog.props = propertiesDialog.fileModelRef.fileProperties(propertiesDialog.props.path)
                         }
                     }
 
@@ -1367,8 +1396,8 @@ ApplicationWindow {
                         userName: ""
                         accessIdx: propertiesDialog.props.otherAccess || 0
                         onAccessChanged: (idx) => {
-                            fsModel.setFilePermissions(propertiesDialog.props.path, propertiesDialog.props.ownerAccess || 0, propertiesDialog.props.groupAccess || 0, idx)
-                            propertiesDialog.props = fsModel.fileProperties(propertiesDialog.props.path)
+                            propertiesDialog.fileModelRef.setFilePermissions(propertiesDialog.props.path, propertiesDialog.props.ownerAccess || 0, propertiesDialog.props.groupAccess || 0, idx)
+                            propertiesDialog.props = propertiesDialog.fileModelRef.fileProperties(propertiesDialog.props.path)
                         }
                     }
 
@@ -1505,7 +1534,7 @@ ApplicationWindow {
         id: contextMenu
         blurSource: mainContent
 
-        fileModel: fsModel
+        fileModel: root.paneBaseModel(root.activePane)
         splitViewEnabled: root.splitViewEnabled()
         isTrashView: root.isTrashView
         currentViewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
@@ -1533,6 +1562,7 @@ ApplicationWindow {
         }
 
         onTrashRequested: (paths) => undoManager.trashFiles(paths)
+        onRestoreRequested: (paths) => fileOps.restoreFromTrash(paths)
         onEmptyTrashRequested: emptyTrashConfirmDialog.open()
 
         onDeleteRequested: (paths) => {
@@ -1614,6 +1644,8 @@ ApplicationWindow {
                 tabModel.addTab()
                 if (tabModel.activeTab)
                     tabModel.activeTab.navigateTo(sidebarContextMenu.targetPath)
+            } else if (action === "emptytrash") {
+                emptyTrashConfirmDialog.open()
             } else if (action === "removebookmark") {
                 if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
                     bookmarks.removeBookmark(sidebarItem.index)
@@ -1868,6 +1900,14 @@ ApplicationWindow {
                     { text: "Open", shortcut: "", action: "open" }
                 ]
 
+            if (fileOps.isTrashPath(item.path))
+                return [
+                    { text: "Open", shortcut: "Return", action: "open" },
+                    { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
+                    { separator: true },
+                    { text: "Empty Trash", shortcut: "", action: "emptytrash", destructive: true }
+                ]
+
             return [
                 { text: "Open", shortcut: "Return", action: "open" },
                 { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
@@ -1999,6 +2039,7 @@ ApplicationWindow {
                 width: config.sidebarWidth
                 height: parent.height
                 currentPath: panePath(activePane)
+                trashPath: root.unifiedTrashPath
                 isRecentsView: root.isRecentsView
                 onBookmarkClicked: (path) => {
                     root.navigateActivePaneTo(path)
@@ -2050,6 +2091,11 @@ ApplicationWindow {
                 onForwardRequested: root.goActivePaneForward()
                 onUpRequested: root.goActivePaneUp()
                 onNavigateRequested: (targetPath) => root.navigateActivePaneTo(targetPath)
+                onRestoreTrashRequested: {
+                    var paths = getSelectedPaths()
+                    if (paths.length > 0)
+                        fileOps.restoreFromTrash(paths)
+                }
                 onEmptyTrashRequested: emptyTrashConfirmDialog.open()
                 onSplitViewToggled: root.toggleSplitView()
                 onHomeClicked: {
@@ -2251,6 +2297,8 @@ ApplicationWindow {
     Connections {
         target: fileOps
         function onOperationFinished(success, error) {
+            fsModel.refresh()
+            splitFsModel.refresh()
             if (success)
                 toast.show("Operation completed successfully", "success")
             else

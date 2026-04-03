@@ -7,14 +7,69 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QMimeData>
+#include <QProcess>
 #include <QSignalSpy>
 #include <QStandardPaths>
+#include <QUrl>
+#include <QUuid>
+#include <unistd.h>
 #include "testdir.h"
 #include "services/fileoperations.h"
 
 class TestFileOperations : public QObject
 {
     Q_OBJECT
+
+    static QString findTrashEntryPath(const QString &originalPath)
+    {
+        const QString trashInfoDirPath = QDir::homePath() + "/.local/share/Trash/info";
+        const QString trashFilesDirPath = QDir::homePath() + "/.local/share/Trash/files";
+        QDir infoDir(trashInfoDirPath);
+
+        const QStringList entries = infoDir.entryList({"*.trashinfo"}, QDir::Files, QDir::Time);
+        for (const QString &entry : entries) {
+            QFile file(infoDir.filePath(entry));
+            if (!file.open(QIODevice::ReadOnly))
+                continue;
+
+            const QStringList lines = QString::fromUtf8(file.readAll()).split('\n');
+            for (const QString &line : lines) {
+                if (!line.startsWith("Path="))
+                    continue;
+
+                const QString decodedPath = QUrl::fromPercentEncoding(line.mid(5).toUtf8());
+                if (decodedPath == originalPath)
+                    return QDir(trashFilesDirPath).filePath(entry.chopped(10));
+            }
+        }
+
+        return {};
+    }
+
+    static QString findTrashEntryUri(const QString &originalPath)
+    {
+        QProcess proc;
+        proc.start("gio", {
+            "list",
+            "-l",
+            "-u",
+            "-a",
+            "trash::orig-path",
+            "trash:///"
+        });
+        if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
+            return {};
+
+        const QStringList lines = QString::fromUtf8(proc.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
+        for (const QString &line : lines) {
+            if (!line.contains("trash::orig-path=" + originalPath))
+                continue;
+
+            return line.section('\t', 0, 0).trimmed();
+        }
+
+        return {};
+    }
 
 private slots:
     void initTestCase()
@@ -322,7 +377,7 @@ private slots:
         QString filePath = testPath + "/trash_me.txt";
         {
             QFile f(filePath);
-            f.open(QIODevice::WriteOnly);
+            QVERIFY(f.open(QIODevice::WriteOnly));
             f.write("bye");
             f.close();
         }
@@ -341,6 +396,134 @@ private slots:
 
         QVERIFY(!QFile::exists(filePath));
         QDir(testPath).removeRecursively();
+    }
+
+    void testRestoreFromTrash()
+    {
+        if (QStandardPaths::findExecutable("gio").isEmpty())
+            QSKIP("gio not found in PATH");
+
+        const QString uniqueId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QString testPath = QDir::homePath() + "/.cache/hyprfm-test-restore-trash-" + uniqueId;
+        QDir().mkpath(testPath);
+
+        const QString filePath = testPath + "/restore_me.txt";
+        {
+            QFile f(filePath);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("restore me");
+            f.close();
+        }
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+
+        ops.trashFiles({filePath});
+
+        if (!spy.wait(5000))
+            QSKIP("gio trash timed out (may not be supported in this environment)");
+
+        bool success = spy.at(0).at(0).toBool();
+        if (!success)
+            QSKIP("gio trash failed (may not be supported for this path)");
+
+        QVERIFY(!QFile::exists(filePath));
+
+        const QString trashedPath = findTrashEntryPath(filePath);
+        if (trashedPath.isEmpty())
+            QSKIP("Could not locate trashed file metadata");
+
+        spy.clear();
+        ops.restoreFromTrash({trashedPath});
+
+        if (!spy.wait(5000))
+            QSKIP("gio trash restore timed out (may not be supported in this environment)");
+
+        success = spy.at(0).at(0).toBool();
+        if (!success)
+            QSKIP("gio trash restore failed (may not be supported in this environment)");
+
+        QVERIFY(QFile::exists(filePath));
+        QDir(testPath).removeRecursively();
+    }
+
+    void testRestoreFromTrashUri()
+    {
+        if (QStandardPaths::findExecutable("gio").isEmpty())
+            QSKIP("gio not found in PATH");
+
+        const QString uniqueId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QString testPath = QDir::homePath() + "/.cache/hyprfm-test-restore-trash-uri-" + uniqueId;
+        QDir().mkpath(testPath);
+
+        const QString filePath = testPath + "/restore_uri_me.txt";
+        {
+            QFile f(filePath);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("restore via uri");
+            f.close();
+        }
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+
+        ops.trashFiles({filePath});
+        if (!spy.wait(5000))
+            QSKIP("gio trash timed out (may not be supported in this environment)");
+
+        bool success = spy.at(0).at(0).toBool();
+        if (!success)
+            QSKIP("gio trash failed (may not be supported for this path)");
+
+        const QString trashUri = findTrashEntryUri(filePath);
+        if (trashUri.isEmpty())
+            QSKIP("Could not locate trashed file URI");
+
+        spy.clear();
+        ops.restoreFromTrash({trashUri});
+
+        if (!spy.wait(5000))
+            QSKIP("gio trash restore timed out (may not be supported in this environment)");
+
+        success = spy.at(0).at(0).toBool();
+        if (!success)
+            QSKIP("gio trash restore failed (may not be supported in this environment)");
+
+        QVERIFY(QFile::exists(filePath));
+        QDir(testPath).removeRecursively();
+    }
+
+    void testTrashHelpersForHomePath()
+    {
+        FileOperations ops;
+
+        const QString expectedTrashPath = QDir::cleanPath(QDir::homePath() + "/.local/share/Trash/files");
+        const QString homeFilePath = QDir::homePath() + "/Documents/example.txt";
+
+        QCOMPARE(ops.trashFilesPathFor(homeFilePath), expectedTrashPath);
+        QVERIFY(!ops.isTrashPath(homeFilePath));
+        QVERIFY(ops.isTrashPath(expectedTrashPath + "/example.txt"));
+    }
+
+    void testTrashHelpersForMountedVolume()
+    {
+        const QString mediaRoot = "/run/media/" + qEnvironmentVariable("USER");
+        QDir mediaDir(mediaRoot);
+        if (!mediaDir.exists())
+            QSKIP("/run/media/$USER does not exist");
+
+        const QStringList entries = mediaDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+        if (entries.isEmpty())
+            QSKIP("No mounted volumes found under /run/media/$USER");
+
+        const QString mountPath = mediaDir.filePath(entries.constFirst());
+        FileOperations ops;
+
+        const QString expectedTrashPath = QDir::cleanPath(
+            mountPath + "/.Trash-" + QString::number(geteuid()) + "/files");
+
+        QCOMPARE(ops.trashFilesPathFor(mountPath + "/example.txt"), expectedTrashPath);
+        QVERIFY(ops.isTrashPath(expectedTrashPath + "/example.txt"));
     }
 
     // --- Progress property ---

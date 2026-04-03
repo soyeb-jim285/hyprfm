@@ -52,6 +52,14 @@ target_include_directories(tst_fileoperations PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_fileoperations PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME tst_fileoperations COMMAND tst_fileoperations)
 
+add_executable(tst_undomanager tst_undomanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/undomanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/fileoperations.cpp
+)
+target_include_directories(tst_undomanager PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_undomanager PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+add_test(NAME tst_undomanager COMMAND tst_undomanager)
+
 # --- New test targets ---
 
 add_executable(tst_filesystemmodel tst_filesystemmodel.cpp

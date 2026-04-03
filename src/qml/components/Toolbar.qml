@@ -60,6 +60,7 @@ Rectangle {
     signal dateFilterChanged(string filter)
     signal sizeFilterChanged(string filter)
     signal clearAllFilters()
+    signal restoreTrashRequested()
     signal emptyTrashRequested()
 
     implicitHeight: toolbarColumn.implicitHeight
@@ -165,6 +166,26 @@ Rectangle {
                     }
                 }
 
+                // Restore button (only in trash view)
+                HoverRect {
+                    width: restoreTrashRow.implicitWidth + 16; height: 32
+                    visible: root.isTrashView && !root.searchMode
+                    onClicked: root.restoreTrashRequested()
+                    Row {
+                        id: restoreTrashRow
+                        anchors.centerIn: parent
+                        spacing: 6
+                        IconUndo { anchors.verticalCenter: parent.verticalCenter; size: 16; color: Theme.accent }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Restore"
+                            color: Theme.text
+                            font.pointSize: Theme.fontNormal
+                            font.weight: Font.Medium
+                        }
+                    }
+                }
+
                 // Empty Trash button (only in trash view)
                 HoverRect {
                     width: emptyTrashRow.implicitWidth + 16; height: 32
@@ -188,7 +209,7 @@ Rectangle {
                 // Search button (hidden in search mode)
                 HoverRect {
                     width: 32; height: 32
-                    visible: !root.searchMode
+                    visible: !root.searchMode && !root.isTrashView
                     onClicked: root.searchClicked()
                     IconSearch { anchors.centerIn: parent; size: 18; color: Theme.text }
                 }

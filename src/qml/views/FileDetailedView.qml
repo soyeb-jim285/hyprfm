@@ -13,10 +13,16 @@ Item {
 
     // Current directory path (used as drop target)
     property string currentPath: ""
-    onCurrentPathChanged: clearSelection()
+    onCurrentPathChanged: {
+        clearSelection()
+        pendingFocusPath = ""
+    }
 
     // Model bound by FileViewContainer
     property var viewModel
+    property string pendingFocusPath: ""
+    property bool pendingFocusReveal: true
+    property bool focusScheduled: false
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
@@ -62,6 +68,50 @@ Item {
             return viewModel.filePath(row)
 
         return viewModel.data(viewModel.index(row, 0), 258 /* FilePathRole */) || ""
+    }
+
+    function rowForPath(path) {
+        if (!path)
+            return -1
+
+        for (var i = 0; i < listView.count; ++i) {
+            if (pathForRow(i) === path)
+                return i
+        }
+
+        return -1
+    }
+
+    function schedulePendingFocus() {
+        if (focusScheduled)
+            return
+
+        focusScheduled = true
+        Qt.callLater(function() {
+            focusScheduled = false
+            if (pendingFocusPath !== "")
+                focusPath(pendingFocusPath, pendingFocusReveal)
+        })
+    }
+
+    function focusPath(path, reveal) {
+        if (!path || !viewModel)
+            return false
+
+        var idx = rowForPath(path)
+        if (idx < 0) {
+            pendingFocusPath = path
+            pendingFocusReveal = (reveal !== false)
+            return false
+        }
+
+        pendingFocusPath = ""
+        pendingFocusReveal = true
+        listView.forceActiveFocus()
+        selectIndex(idx, false, false)
+        if (reveal !== false)
+            listView.positionViewAtIndex(idx, ListView.Contain)
+        return true
     }
 
     function selectAll() {
@@ -560,5 +610,18 @@ Item {
         z: 12
         flickable: listView
         onScrollStarted: root.interactionStarted()
+    }
+
+    Connections {
+        target: root.viewModel
+        ignoreUnknownSignals: true
+
+        function onModelReset() {
+            root.schedulePendingFocus()
+        }
+
+        function onRowsInserted() {
+            root.schedulePendingFocus()
+        }
     }
 }

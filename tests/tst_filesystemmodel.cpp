@@ -5,6 +5,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QProcess>
+#include <QUuid>
 #include "models/filesystemmodel.h"
 #include "testdir.h"
 
@@ -98,6 +100,50 @@ private slots:
         QCOMPARE(model.rowCount(), 0);
         QCOMPARE(model.fileCount(), 0);
         QCOMPARE(model.folderCount(), 0);
+    }
+
+    void testUnifiedTrashRoot()
+    {
+        if (QStandardPaths::findExecutable("gio").isEmpty())
+            QSKIP("gio not found in PATH");
+
+        const QString fileName = "hyprfm-trash-model-" + QUuid::createUuid().toString(QUuid::WithoutBraces) + ".txt";
+        const QString dirPath = QDir::homePath() + "/.cache/hyprfm-test-trash-model";
+        QDir().mkpath(dirPath);
+        const QString filePath = dirPath + "/" + fileName;
+
+        QFile file(filePath);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("trash model");
+        file.close();
+
+        QProcess trashProc;
+        trashProc.start("gio", {"trash", filePath});
+        if (!trashProc.waitForFinished(5000) || trashProc.exitCode() != 0)
+            QSKIP("gio trash failed in this environment");
+
+        FileSystemModel model;
+        model.setRootPath("trash:///");
+
+        QString foundUri;
+        for (int i = 0; i < model.rowCount(); ++i) {
+            if (model.fileName(i) == fileName) {
+                foundUri = model.filePath(i);
+                break;
+            }
+        }
+
+        QVERIFY(!foundUri.isEmpty());
+        QVERIFY(foundUri.startsWith("trash:///"));
+
+        const QVariantMap props = model.fileProperties(foundUri);
+        QCOMPARE(props.value("name").toString(), fileName);
+        QCOMPARE(props.value("originalPath").toString(), filePath);
+        QVERIFY(props.value("isTrashItem").toBool());
+
+        QProcess removeProc;
+        removeProc.start("gio", {"remove", "-f", foundUri});
+        QVERIFY(removeProc.waitForFinished(5000));
     }
 
     // 7. Hidden files

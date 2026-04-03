@@ -5,14 +5,211 @@
 #include <QMimeDatabase>
 #include <QStorageInfo>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QUrl>
+
+namespace {
+
+bool isTrashUri(const QString &path)
+{
+    return QUrl(path).scheme() == "trash";
+}
+
+QString formattedSize(qint64 size, bool verbose = false)
+{
+    if (size < 0)
+        return {};
+    if (size < 1024)
+        return verbose ? QString("%1 B (%2 bytes)").arg(size).arg(QLocale().toString(size))
+                       : QString("%1 B").arg(size);
+    if (size < 1024 * 1024)
+        return verbose ? QString("%1 KB (%2 bytes)").arg(size / 1024.0, 0, 'f', 1).arg(QLocale().toString(size))
+                       : QString("%1 KB").arg(size / 1024.0, 0, 'f', 1);
+    if (size < 1024LL * 1024 * 1024)
+        return verbose ? QString("%1 MB (%2 bytes)").arg(size / (1024.0 * 1024.0), 0, 'f', 1).arg(QLocale().toString(size))
+                       : QString("%1 MB").arg(size / (1024.0 * 1024.0), 0, 'f', 1);
+    return verbose ? QString("%1 GB (%2 bytes)").arg(size / (1024.0 * 1024.0 * 1024.0), 0, 'f', 2).arg(QLocale().toString(size))
+                   : QString("%1 GB").arg(size / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
+}
+
+QString iconNameForSuffix(const QString &suffix)
+{
+    static const QHash<QString, QString> iconMap = {
+        {"png", "image-x-generic"}, {"jpg", "image-x-generic"},
+        {"jpeg", "image-x-generic"}, {"gif", "image-x-generic"},
+        {"svg", "image-x-generic"}, {"webp", "image-x-generic"},
+        {"bmp", "image-x-generic"},
+        {"mp3", "audio-x-generic"}, {"flac", "audio-x-generic"},
+        {"ogg", "audio-x-generic"}, {"wav", "audio-x-generic"},
+        {"mp4", "video-x-generic"}, {"mkv", "video-x-generic"},
+        {"avi", "video-x-generic"}, {"webm", "video-x-generic"},
+        {"pdf", "application-pdf"},
+        {"zip", "package-x-generic"}, {"tar", "package-x-generic"},
+        {"gz", "package-x-generic"}, {"xz", "package-x-generic"},
+        {"7z", "package-x-generic"}, {"rar", "package-x-generic"},
+        {"txt", "text-x-generic"}, {"md", "text-x-generic"},
+        {"cpp", "text-x-generic"}, {"h", "text-x-generic"},
+        {"py", "text-x-generic"}, {"js", "text-x-generic"},
+        {"rs", "text-x-generic"}, {"go", "text-x-generic"},
+        {"sh", "text-x-script"}, {"bash", "text-x-script"},
+        {"html", "text-html"}, {"css", "text-css"},
+        {"json", "text-x-generic"}, {"xml", "text-xml"},
+        {"toml", "text-x-generic"}, {"yaml", "text-x-generic"},
+    };
+    return iconMap.value(suffix, QStringLiteral("text-x-generic"));
+}
+
+QString iconNameForEntry(const QString &name, bool isDir, const QString &contentType = QString())
+{
+    if (isDir)
+        return QStringLiteral("folder");
+
+    const QString suffix = QFileInfo(name).suffix().toLower();
+    if (!suffix.isEmpty())
+        return iconNameForSuffix(suffix);
+
+    if (contentType.startsWith("image/"))
+        return QStringLiteral("image-x-generic");
+    if (contentType.startsWith("audio/"))
+        return QStringLiteral("audio-x-generic");
+    if (contentType.startsWith("video/"))
+        return QStringLiteral("video-x-generic");
+    if (contentType == "application/pdf")
+        return QStringLiteral("application-pdf");
+
+    return QStringLiteral("text-x-generic");
+}
+
+QString fileTypeForEntry(const QString &name, bool isDir, const QString &contentType = QString())
+{
+    if (isDir)
+        return QStringLiteral("folder");
+
+    const QString suffix = QFileInfo(name).suffix().toLower();
+    if (!suffix.isEmpty())
+        return suffix;
+
+    return contentType;
+}
+
+QHash<QString, QString> parseGioAttributes(const QString &attributeText)
+{
+    QHash<QString, QString> attrs;
+    static const QRegularExpression attrRe(R"(([A-Za-z0-9:-]+)=(.*?)(?= [A-Za-z0-9:-]+=|$))");
+
+    auto it = attrRe.globalMatch(attributeText.trimmed());
+    while (it.hasNext()) {
+        const auto match = it.next();
+        attrs.insert(match.captured(1), match.captured(2));
+    }
+
+    return attrs;
+}
+
+QVariantMap buildTrashEntryFromLine(const QString &line)
+{
+    static const QRegularExpression lineRe(R"(^([^\t]+)\t(\d+)\t\(([^)]*)\)(?:\t(.*))?$)");
+    const auto match = lineRe.match(line.trimmed());
+    if (!match.hasMatch())
+        return {};
+
+    const QString uri = match.captured(1).trimmed();
+    const qint64 size = match.captured(2).toLongLong();
+    const QString typeToken = match.captured(3).trimmed().toLower();
+    const auto attrs = parseGioAttributes(match.captured(4));
+
+    const bool isDir = typeToken.contains("directory");
+    QString displayName = attrs.value("standard::display-name");
+    if (displayName.isEmpty()) {
+        const QUrl url(uri);
+        displayName = url.fileName();
+        if (displayName.isEmpty())
+            displayName = attrs.value("standard::name");
+    }
+
+    QDateTime modified;
+    const QString modifiedSeconds = attrs.value("time::modified");
+    if (!modifiedSeconds.isEmpty())
+        modified = QDateTime::fromSecsSinceEpoch(modifiedSeconds.toLongLong());
+
+    QDateTime deletedAt;
+    const QString deletionDate = attrs.value("trash::deletion-date");
+    if (!deletionDate.isEmpty()) {
+        deletedAt = QDateTime::fromString(deletionDate, Qt::ISODate);
+        if (!deletedAt.isValid())
+            deletedAt = QDateTime::fromString(deletionDate, Qt::ISODateWithMs);
+    }
+
+    const QString contentType = attrs.value("standard::content-type");
+    QMimeDatabase mimeDb;
+    const QString mimeDescription = contentType.isEmpty()
+        ? QString()
+        : mimeDb.mimeTypeForName(contentType).comment();
+
+    QVariantMap entry;
+    entry["fileName"] = displayName;
+    entry["filePath"] = uri;
+    entry["fileSize"] = isDir ? QVariant(-1) : QVariant(size);
+    entry["fileSizeText"] = isDir ? QString() : formattedSize(size);
+    entry["fileType"] = fileTypeForEntry(displayName, isDir, contentType);
+    entry["fileModified"] = modified;
+    entry["fileModifiedText"] = modified.isValid() ? QLocale().toString(modified, QLocale::ShortFormat) : QString();
+    entry["filePermissions"] = QString();
+    entry["isDir"] = isDir;
+    entry["isSymlink"] = typeToken.contains("symbolic");
+    entry["fileIconName"] = iconNameForEntry(displayName, isDir, contentType);
+    entry["originalPath"] = attrs.value("trash::orig-path");
+    entry["deletedAt"] = deletedAt;
+    entry["deletedAtText"] = deletedAt.isValid() ? QLocale().toString(deletedAt, QLocale::LongFormat) : QString();
+    entry["mimeType"] = contentType;
+    entry["mimeDescription"] = mimeDescription;
+    return entry;
+}
+
+QVariantMap buildTrashProperties(const QVariantMap &entry)
+{
+    QVariantMap props;
+    const QString originalPath = entry.value("originalPath").toString();
+    const QFileInfo originalInfo(originalPath);
+
+    props["name"] = entry.value("fileName").toString();
+    props["path"] = entry.value("filePath").toString();
+    props["parentDir"] = originalPath.isEmpty() ? QString() : originalInfo.absolutePath();
+    props["originalPath"] = originalPath;
+    props["isDir"] = entry.value("isDir").toBool();
+    props["isSymlink"] = false;
+    props["iconName"] = entry.value("fileIconName").toString();
+    props["size"] = entry.value("fileSize");
+    props["sizeText"] = entry.value("fileSizeText").toString();
+    props["mimeType"] = entry.value("mimeType").toString();
+    props["mimeDescription"] = entry.value("mimeDescription").toString();
+    props["created"] = QString();
+    props["modified"] = entry.value("fileModified").toDateTime().isValid()
+        ? QLocale().toString(entry.value("fileModified").toDateTime(), QLocale::LongFormat)
+        : QString();
+    props["accessed"] = QString();
+    props["owner"] = QString();
+    props["group"] = QString();
+    props["permissions"] = QString();
+    props["ownerAccess"] = 0;
+    props["groupAccess"] = 0;
+    props["otherAccess"] = 0;
+    props["isExecutable"] = false;
+    props["canEditPermissions"] = false;
+    props["isTrashItem"] = true;
+    props["deleted"] = entry.value("deletedAtText").toString();
+    return props;
+}
+
+}
 
 FileSystemModel::FileSystemModel(QObject *parent)
     : QAbstractListModel(parent)
 {
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this]() {
-        reload();
+        refresh();
     });
 }
 
@@ -20,13 +217,44 @@ int FileSystemModel::rowCount(const QModelIndex &parent) const
 {
     if (parent.isValid())
         return 0;
-    return m_entries.size();
+    return isTrashRoot() ? m_trashEntries.size() : m_entries.size();
 }
 
 QVariant FileSystemModel::data(const QModelIndex &index, int role) const
 {
-    if (!index.isValid() || index.row() >= m_entries.size())
+    if (!index.isValid() || index.row() >= rowCount())
         return {};
+
+    if (isTrashRoot()) {
+        const QVariantMap &entry = m_trashEntries.at(index.row());
+
+        switch (role) {
+        case FileNameRole:
+            return entry.value("fileName");
+        case FilePathRole:
+            return entry.value("filePath");
+        case FileSizeRole:
+            return entry.value("fileSize");
+        case FileSizeTextRole:
+            return entry.value("fileSizeText");
+        case FileTypeRole:
+            return entry.value("fileType");
+        case FileModifiedRole:
+            return entry.value("fileModified");
+        case FileModifiedTextRole:
+            return entry.value("fileModifiedText");
+        case FilePermissionsRole:
+            return entry.value("filePermissions");
+        case IsDirRole:
+            return entry.value("isDir");
+        case IsSymlinkRole:
+            return entry.value("isSymlink");
+        case FileIconNameRole:
+            return entry.value("fileIconName");
+        default:
+            return {};
+        }
+    }
 
     const QFileInfo &info = m_entries.at(index.row());
 
@@ -40,18 +268,10 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
     case FileSizeTextRole: {
         if (info.isDir())
             return QString();
-        qint64 size = info.size();
-        if (size < 1024)
-            return QString("%1 B").arg(size);
-        else if (size < 1024 * 1024)
-            return QString("%1 KB").arg(size / 1024.0, 0, 'f', 1);
-        else if (size < 1024LL * 1024 * 1024)
-            return QString("%1 MB").arg(size / (1024.0 * 1024.0), 0, 'f', 1);
-        else
-            return QString("%1 GB").arg(size / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
+        return formattedSize(info.size());
     }
     case FileTypeRole:
-        return info.isDir() ? QStringLiteral("folder") : info.suffix().toLower();
+        return fileTypeForEntry(info.fileName(), info.isDir());
     case FileModifiedRole:
         return info.lastModified();
     case FileModifiedTextRole:
@@ -74,35 +294,8 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
         return info.isDir();
     case IsSymlinkRole:
         return info.isSymLink();
-    case FileIconNameRole: {
-        if (info.isDir())
-            return QStringLiteral("folder");
-        QString suffix = info.suffix().toLower();
-        // Map common suffixes to freedesktop icon names
-        static const QHash<QString, QString> iconMap = {
-            {"png", "image-x-generic"}, {"jpg", "image-x-generic"},
-            {"jpeg", "image-x-generic"}, {"gif", "image-x-generic"},
-            {"svg", "image-x-generic"}, {"webp", "image-x-generic"},
-            {"bmp", "image-x-generic"},
-            {"mp3", "audio-x-generic"}, {"flac", "audio-x-generic"},
-            {"ogg", "audio-x-generic"}, {"wav", "audio-x-generic"},
-            {"mp4", "video-x-generic"}, {"mkv", "video-x-generic"},
-            {"avi", "video-x-generic"}, {"webm", "video-x-generic"},
-            {"pdf", "application-pdf"},
-            {"zip", "package-x-generic"}, {"tar", "package-x-generic"},
-            {"gz", "package-x-generic"}, {"xz", "package-x-generic"},
-            {"7z", "package-x-generic"}, {"rar", "package-x-generic"},
-            {"txt", "text-x-generic"}, {"md", "text-x-generic"},
-            {"cpp", "text-x-generic"}, {"h", "text-x-generic"},
-            {"py", "text-x-generic"}, {"js", "text-x-generic"},
-            {"rs", "text-x-generic"}, {"go", "text-x-generic"},
-            {"sh", "text-x-script"}, {"bash", "text-x-script"},
-            {"html", "text-html"}, {"css", "text-css"},
-            {"json", "text-x-generic"}, {"xml", "text-xml"},
-            {"toml", "text-x-generic"}, {"yaml", "text-x-generic"},
-        };
-        return iconMap.value(suffix, QStringLiteral("text-x-generic"));
-    }
+    case FileIconNameRole:
+        return iconNameForEntry(info.fileName(), info.isDir());
     default:
         return {};
     }
@@ -130,19 +323,24 @@ bool FileSystemModel::showHidden() const { return m_showHidden; }
 int FileSystemModel::fileCount() const { return m_fileCount; }
 int FileSystemModel::folderCount() const { return m_folderCount; }
 
+bool FileSystemModel::isTrashRoot() const
+{
+    return isTrashUri(m_rootPath);
+}
+
 void FileSystemModel::setRootPath(const QString &path)
 {
     if (m_rootPath == path)
         return;
 
     // Stop watching old directory
-    if (!m_rootPath.isEmpty())
+    if (!m_rootPath.isEmpty() && !isTrashRoot())
         m_watcher.removePath(m_rootPath);
 
     m_rootPath = path;
 
     // Watch new directory
-    if (!m_rootPath.isEmpty())
+    if (!m_rootPath.isEmpty() && !isTrashRoot())
         m_watcher.addPath(m_rootPath);
 
     reload();
@@ -160,6 +358,9 @@ void FileSystemModel::setShowHidden(bool show)
 
 void FileSystemModel::sortByColumn(const QString &column, bool ascending)
 {
+    m_sortColumn = column;
+    m_sortAscending = ascending;
+
     QDir::SortFlags flags = QDir::DirsFirst | QDir::IgnoreCase;
     if (column == "name")
         flags |= QDir::Name;
@@ -181,27 +382,53 @@ void FileSystemModel::sortByColumn(const QString &column, bool ascending)
 
 void FileSystemModel::refresh()
 {
-    reload();
+    if (isTrashRoot()) {
+        reload();
+        return;
+    }
+
+    const QList<QFileInfo> newEntries = currentLocalEntries();
+    if (applyLocalDiff(newEntries))
+        return;
+
+    beginResetModel();
+    m_entries = newEntries;
+    m_trashEntries.clear();
+    updateLocalCounts();
+    endResetModel();
+    emit countsChanged();
 }
 
 QString FileSystemModel::filePath(int row) const
 {
-    if (row < 0 || row >= m_entries.size())
+    if (row < 0 || row >= rowCount())
         return {};
+
+    if (isTrashRoot())
+        return m_trashEntries.at(row).value("filePath").toString();
+
     return m_entries.at(row).absoluteFilePath();
 }
 
 bool FileSystemModel::isDir(int row) const
 {
-    if (row < 0 || row >= m_entries.size())
+    if (row < 0 || row >= rowCount())
         return false;
+
+    if (isTrashRoot())
+        return m_trashEntries.at(row).value("isDir").toBool();
+
     return m_entries.at(row).isDir();
 }
 
 QString FileSystemModel::fileName(int row) const
 {
-    if (row < 0 || row >= m_entries.size())
+    if (row < 0 || row >= rowCount())
         return {};
+
+    if (isTrashRoot())
+        return m_trashEntries.at(row).value("fileName").toString();
+
     return m_entries.at(row).fileName();
 }
 
@@ -209,18 +436,40 @@ void FileSystemModel::reload()
 {
     beginResetModel();
     m_entries.clear();
+    m_trashEntries.clear();
 
-    if (!m_rootPath.isEmpty()) {
-        QDir dir(m_rootPath);
-        QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot;
-        if (m_showHidden)
-            filters |= QDir::Hidden;
+    if (isTrashRoot())
+        reloadTrash();
+    else
+        reloadLocal();
 
-        m_entries = dir.entryInfoList(filters, m_sortFlags);
-    }
+    endResetModel();
+    emit countsChanged();
+}
 
-    // Count
-    int files = 0, folders = 0;
+void FileSystemModel::reloadLocal()
+{
+    m_entries = currentLocalEntries();
+    updateLocalCounts();
+}
+
+QList<QFileInfo> FileSystemModel::currentLocalEntries() const
+{
+    if (m_rootPath.isEmpty())
+        return {};
+
+    QDir dir(m_rootPath);
+    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot;
+    if (m_showHidden)
+        filters |= QDir::Hidden;
+
+    return dir.entryInfoList(filters, m_sortFlags);
+}
+
+void FileSystemModel::updateLocalCounts()
+{
+    int files = 0;
+    int folders = 0;
     for (const auto &info : m_entries) {
         if (info.isDir())
             ++folders;
@@ -229,13 +478,153 @@ void FileSystemModel::reload()
     }
     m_fileCount = files;
     m_folderCount = folders;
+}
 
-    endResetModel();
-    emit countsChanged();
+bool FileSystemModel::applyLocalDiff(const QList<QFileInfo> &newEntries)
+{
+    const int oldCount = m_entries.size();
+    const int newCount = newEntries.size();
+
+    if (newCount == oldCount + 1) {
+        int insertRow = 0;
+        while (insertRow < oldCount
+               && m_entries.at(insertRow).absoluteFilePath() == newEntries.at(insertRow).absoluteFilePath()) {
+            ++insertRow;
+        }
+
+        bool matches = true;
+        for (int oldRow = insertRow, newRow = insertRow + 1; oldRow < oldCount; ++oldRow, ++newRow) {
+            if (m_entries.at(oldRow).absoluteFilePath() != newEntries.at(newRow).absoluteFilePath()) {
+                matches = false;
+                break;
+            }
+        }
+
+        if (matches) {
+            beginInsertRows({}, insertRow, insertRow);
+            m_entries.insert(insertRow, newEntries.at(insertRow));
+            endInsertRows();
+            updateLocalCounts();
+            emit countsChanged();
+            return true;
+        }
+    }
+
+    if (newCount + 1 == oldCount) {
+        int removeRow = 0;
+        while (removeRow < newCount
+               && m_entries.at(removeRow).absoluteFilePath() == newEntries.at(removeRow).absoluteFilePath()) {
+            ++removeRow;
+        }
+
+        bool matches = true;
+        for (int oldRow = removeRow + 1, newRow = removeRow; newRow < newCount; ++oldRow, ++newRow) {
+            if (m_entries.at(oldRow).absoluteFilePath() != newEntries.at(newRow).absoluteFilePath()) {
+                matches = false;
+                break;
+            }
+        }
+
+        if (matches) {
+            beginRemoveRows({}, removeRow, removeRow);
+            m_entries.removeAt(removeRow);
+            endRemoveRows();
+            updateLocalCounts();
+            emit countsChanged();
+            return true;
+        }
+    }
+
+    if (newCount == oldCount) {
+        bool sameOrder = true;
+        for (int row = 0; row < newCount; ++row) {
+            if (m_entries.at(row).absoluteFilePath() != newEntries.at(row).absoluteFilePath()) {
+                sameOrder = false;
+                break;
+            }
+        }
+
+        if (sameOrder) {
+            m_entries = newEntries;
+            updateLocalCounts();
+            if (newCount > 0)
+                emit dataChanged(index(0, 0), index(newCount - 1, 0));
+            emit countsChanged();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void FileSystemModel::reloadTrash()
+{
+    if (m_rootPath.isEmpty()) {
+        m_fileCount = 0;
+        m_folderCount = 0;
+        return;
+    }
+
+    QProcess proc;
+    proc.start("gio", {
+        "list",
+        "-l",
+        "-u",
+        "-a",
+        "standard::display-name,standard::name,standard::content-type,time::modified,trash::orig-path,trash::deletion-date",
+        QUrl(m_rootPath).toString(QUrl::FullyEncoded)
+    });
+    if (proc.waitForFinished(5000) && proc.exitCode() == 0) {
+        const QStringList lines = QString::fromUtf8(proc.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
+        for (const QString &line : lines) {
+            const QVariantMap entry = buildTrashEntryFromLine(line);
+            if (!entry.isEmpty())
+                m_trashEntries.append(entry);
+        }
+    }
+
+    std::sort(m_trashEntries.begin(), m_trashEntries.end(), [this](const QVariantMap &lhs, const QVariantMap &rhs) {
+        const bool lhsDir = lhs.value("isDir").toBool();
+        const bool rhsDir = rhs.value("isDir").toBool();
+        if (lhsDir != rhsDir)
+            return lhsDir > rhsDir;
+
+        int comparison = 0;
+        if (m_sortColumn == "size") {
+            const qint64 leftSize = lhs.value("fileSize").toLongLong();
+            const qint64 rightSize = rhs.value("fileSize").toLongLong();
+            comparison = (leftSize < rightSize) ? -1 : (leftSize > rightSize ? 1 : 0);
+        } else if (m_sortColumn == "modified") {
+            const QDateTime leftModified = lhs.value("fileModified").toDateTime();
+            const QDateTime rightModified = rhs.value("fileModified").toDateTime();
+            comparison = (leftModified < rightModified) ? -1 : (leftModified > rightModified ? 1 : 0);
+        } else if (m_sortColumn == "type") {
+            comparison = QString::compare(lhs.value("fileType").toString(), rhs.value("fileType").toString(), Qt::CaseInsensitive);
+        } else {
+            comparison = QString::compare(lhs.value("fileName").toString(), rhs.value("fileName").toString(), Qt::CaseInsensitive);
+        }
+
+        return m_sortAscending ? comparison < 0 : comparison > 0;
+    });
+
+    int files = 0;
+    int folders = 0;
+    for (const auto &entry : std::as_const(m_trashEntries)) {
+        if (entry.value("isDir").toBool())
+            ++folders;
+        else
+            ++files;
+    }
+
+    m_fileCount = files;
+    m_folderCount = folders;
 }
 
 QVariantMap FileSystemModel::fileProperties(const QString &path) const
 {
+    if (isTrashUri(path))
+        return trashFileProperties(path);
+
     QFileInfo info(path);
     QVariantMap props;
 
@@ -246,34 +635,7 @@ QVariantMap FileSystemModel::fileProperties(const QString &path) const
     props["isSymlink"] = info.isSymLink();
 
     // Icon name (reuse the same mapping as data())
-    if (info.isDir()) {
-        props["iconName"] = QStringLiteral("folder");
-    } else {
-        QString suffix = info.suffix().toLower();
-        static const QHash<QString, QString> iconMap = {
-            {"png", "image-x-generic"}, {"jpg", "image-x-generic"},
-            {"jpeg", "image-x-generic"}, {"gif", "image-x-generic"},
-            {"svg", "image-x-generic"}, {"webp", "image-x-generic"},
-            {"bmp", "image-x-generic"},
-            {"mp3", "audio-x-generic"}, {"flac", "audio-x-generic"},
-            {"ogg", "audio-x-generic"}, {"wav", "audio-x-generic"},
-            {"mp4", "video-x-generic"}, {"mkv", "video-x-generic"},
-            {"avi", "video-x-generic"}, {"webm", "video-x-generic"},
-            {"pdf", "application-pdf"},
-            {"zip", "package-x-generic"}, {"tar", "package-x-generic"},
-            {"gz", "package-x-generic"}, {"xz", "package-x-generic"},
-            {"7z", "package-x-generic"}, {"rar", "package-x-generic"},
-            {"txt", "text-x-generic"}, {"md", "text-x-generic"},
-            {"cpp", "text-x-generic"}, {"h", "text-x-generic"},
-            {"py", "text-x-generic"}, {"js", "text-x-generic"},
-            {"rs", "text-x-generic"}, {"go", "text-x-generic"},
-            {"sh", "text-x-script"}, {"bash", "text-x-script"},
-            {"html", "text-html"}, {"css", "text-css"},
-            {"json", "text-x-generic"}, {"xml", "text-xml"},
-            {"toml", "text-x-generic"}, {"yaml", "text-x-generic"},
-        };
-        props["iconName"] = iconMap.value(suffix, QStringLiteral("text-x-generic"));
-    }
+    props["iconName"] = iconNameForEntry(info.fileName(), info.isDir());
     if (info.isSymLink())
         props["symlinkTarget"] = info.symLinkTarget();
 
@@ -295,14 +657,7 @@ QVariantMap FileSystemModel::fileProperties(const QString &path) const
     } else {
         qint64 size = info.size();
         props["size"] = size;
-        if (size < 1024)
-            props["sizeText"] = QString("%1 B").arg(size);
-        else if (size < 1024 * 1024)
-            props["sizeText"] = QString("%1 KB (%2 bytes)").arg(size / 1024.0, 0, 'f', 1).arg(QLocale().toString(size));
-        else if (size < 1024LL * 1024 * 1024)
-            props["sizeText"] = QString("%1 MB (%2 bytes)").arg(size / (1024.0 * 1024.0), 0, 'f', 1).arg(QLocale().toString(size));
-        else
-            props["sizeText"] = QString("%1 GB (%2 bytes)").arg(size / (1024.0 * 1024.0 * 1024.0), 0, 'f', 2).arg(QLocale().toString(size));
+        props["sizeText"] = formattedSize(size, true);
     }
 
     // Disk usage
@@ -370,6 +725,40 @@ QVariantMap FileSystemModel::fileProperties(const QString &path) const
     props["otherAccess"] = accessIndex(p & QFile::ReadOther, p & QFile::WriteOther, p & QFile::ExeOther);
     props["isExecutable"] = bool(p & QFile::ExeOwner);
 
+    return props;
+}
+
+QVariantMap FileSystemModel::trashFileProperties(const QString &path) const
+{
+    for (const auto &entry : m_trashEntries) {
+        if (entry.value("filePath").toString() == path)
+            return buildTrashProperties(entry);
+    }
+
+    QVariantMap props;
+    props["name"] = QUrl(path).fileName();
+    props["path"] = path;
+    props["parentDir"] = QString();
+    props["isDir"] = false;
+    props["isSymlink"] = false;
+    props["iconName"] = iconNameForEntry(props.value("name").toString(), false);
+    props["size"] = qint64(-1);
+    props["sizeText"] = QString();
+    props["mimeType"] = QString();
+    props["mimeDescription"] = QString();
+    props["created"] = QString();
+    props["modified"] = QString();
+    props["accessed"] = QString();
+    props["owner"] = QString();
+    props["group"] = QString();
+    props["permissions"] = QString();
+    props["ownerAccess"] = 0;
+    props["groupAccess"] = 0;
+    props["otherAccess"] = 0;
+    props["isExecutable"] = false;
+    props["canEditPermissions"] = false;
+    props["isTrashItem"] = true;
+    props["deleted"] = QString();
     return props;
 }
 
@@ -465,6 +854,9 @@ void FileSystemModel::setDefaultApp(const QString &mimeType, const QString &desk
 
 bool FileSystemModel::setFilePermissions(const QString &path, int ownerAccess, int groupAccess, int otherAccess)
 {
+    if (isTrashUri(path))
+        return false;
+
     // accessIndex: 0=None, 1=Read only, 2=Read & Write, 3=Read & Write & Execute
     QFile::Permissions perms;
 
