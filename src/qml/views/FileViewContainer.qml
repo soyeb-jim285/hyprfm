@@ -12,6 +12,7 @@ Item {
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
     signal selectionChanged()
+    signal interactionStarted()
 
     function selectAll() {
         if (viewMode === "grid") gridView.selectAll()
@@ -34,6 +35,7 @@ Item {
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
         onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
         onSelectedIndicesChanged: root.selectionChanged()
+        onInteractionStarted: root.interactionStarted()
     }
 
     FileListView {
@@ -46,6 +48,7 @@ Item {
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
         onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
         onSelectedIndicesChanged: root.selectionChanged()
+        onInteractionStarted: root.interactionStarted()
     }
 
     FileDetailedView {
@@ -61,5 +64,6 @@ Item {
             if (root.fileModel) root.fileModel.sortByColumn(col, asc)
         }
         onSelectedIndicesChanged: root.selectionChanged()
+        onInteractionStarted: root.interactionStarted()
     }
 }

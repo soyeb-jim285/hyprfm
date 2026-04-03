@@ -1,8 +1,14 @@
 #include "services/fileoperations.h"
+#include <QClipboard>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
+#include <QImage>
+#include <QMimeData>
+#include <QPixmap>
 #include <QRegularExpression>
+#include <QStandardPaths>
 
 FileOperations::FileOperations(QObject *parent)
     : QObject(parent)
@@ -94,12 +100,89 @@ void FileOperations::openFile(const QString &path)
             proc, &QProcess::deleteLater);
 }
 
+bool FileOperations::pathExists(const QString &path) const
+{
+    return QFileInfo::exists(path);
+}
+
+void FileOperations::emptyTrash()
+{
+    m_statusText = "Emptying trash...";
+    emit statusTextChanged();
+    runProcess("gio", {"trash", "--empty"});
+}
+
 void FileOperations::openFileWith(const QString &path, const QString &desktopFile)
 {
     auto *proc = new QProcess(this);
     proc->start("gtk-launch", {desktopFile, path});
     connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             proc, &QProcess::deleteLater);
+}
+
+bool FileOperations::hasClipboardImage() const
+{
+    if (!clipboardImageData().isEmpty())
+        return true;
+
+    const QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboard)
+        return false;
+
+    const QMimeData *mime = clipboard->mimeData();
+    return mime && mime->hasImage();
+}
+
+QString FileOperations::pasteClipboardImage(const QString &destinationDir)
+{
+    const QString outputPath = uniqueImagePastePath(destinationDir);
+    if (outputPath.isEmpty()) {
+        emit operationFinished(false, "Destination folder does not exist");
+        return {};
+    }
+
+    // Prefer writing raw wl-paste bytes directly to preserve the original image exactly
+    const QByteArray rawImage = clipboardImageData();
+    if (!rawImage.isEmpty()) {
+        QFile file(outputPath);
+        if (!file.open(QIODevice::WriteOnly)) {
+            emit operationFinished(false, "Failed to write clipboard image");
+            return {};
+        }
+        file.write(rawImage);
+        file.close();
+        emit operationFinished(true, QString());
+        return outputPath;
+    }
+
+    // Fallback: Qt clipboard (e.g. X11 or non-Wayland)
+    const QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboard || !clipboard->mimeData() || !clipboard->mimeData()->hasImage()) {
+        emit operationFinished(false, "Clipboard does not contain an image");
+        return {};
+    }
+
+    QImage image = clipboard->image();
+    if (image.isNull()) {
+        const QVariant imageData = clipboard->mimeData()->imageData();
+        if (imageData.canConvert<QImage>())
+            image = qvariant_cast<QImage>(imageData);
+        else if (imageData.canConvert<QPixmap>())
+            image = qvariant_cast<QPixmap>(imageData).toImage();
+    }
+
+    if (image.isNull()) {
+        emit operationFinished(false, "Clipboard image could not be read");
+        return {};
+    }
+
+    if (!image.save(outputPath, "PNG")) {
+        emit operationFinished(false, "Failed to save clipboard image");
+        return {};
+    }
+
+    emit operationFinished(true, QString());
+    return outputPath;
 }
 
 void FileOperations::copyPathToClipboard(const QString &path)
@@ -316,4 +399,61 @@ void FileOperations::parseRsyncProgress(const QByteArray &data)
         QString speed = match.captured(2);
         emit progressChanged(m_progress, speed, QString());
     }
+}
+
+QString FileOperations::uniqueImagePastePath(const QString &destinationDir) const
+{
+    QDir dir(destinationDir);
+    if (!dir.exists())
+        return {};
+
+    const QString baseName = "Pasted image";
+    const QString extension = ".png";
+    QString candidate = dir.filePath(baseName + extension);
+    if (!QFileInfo::exists(candidate))
+        return candidate;
+
+    for (int i = 2; i < 10000; ++i) {
+        candidate = dir.filePath(QString("%1 %2%3").arg(baseName).arg(i).arg(extension));
+        if (!QFileInfo::exists(candidate))
+            return candidate;
+    }
+
+    return {};
+}
+
+QByteArray FileOperations::clipboardImageData() const
+{
+    const QString wlPastePath = QStandardPaths::findExecutable("wl-paste");
+    if (wlPastePath.isEmpty())
+        return {};
+
+    QProcess listProcess;
+    listProcess.start(wlPastePath, {"--list-types"});
+    if (!listProcess.waitForFinished(1000) || listProcess.exitCode() != 0)
+        return {};
+
+    const QStringList types = QString::fromUtf8(listProcess.readAllStandardOutput())
+                                  .split('\n', Qt::SkipEmptyParts);
+    QString imageType;
+    if (types.contains("image/png"))
+        imageType = "image/png";
+    else {
+        for (const QString &type : types) {
+            if (type.startsWith("image/")) {
+                imageType = type;
+                break;
+            }
+        }
+    }
+
+    if (imageType.isEmpty())
+        return {};
+
+    QProcess imageProcess;
+    imageProcess.start(wlPastePath, {"--no-newline", "--type", imageType});
+    if (!imageProcess.waitForFinished(3000) || imageProcess.exitCode() != 0)
+        return {};
+
+    return imageProcess.readAllStandardOutput();
 }

@@ -50,8 +50,8 @@ cmake --build build
 | | Packages |
 |---|---|
 | **Build** | cmake, qt6-base, qt6-declarative, qt6-svg |
-| **Runtime** | qt6-base, qt6-declarative, qt6-svg, qt6-wayland, rsync, xdg-utils |
-| **Optional** | wl-clipboard (clipboard), glib2 (gio file ops) |
+| **Runtime** | qt6-base, qt6-declarative, qt6-svg, qt6-wayland, fd, rsync, xdg-utils |
+| **Optional** | wl-clipboard (clipboard via wl-copy/wl-paste), glib2 (gio file ops) |
 
 ## Configuration
 

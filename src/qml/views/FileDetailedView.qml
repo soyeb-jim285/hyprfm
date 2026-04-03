@@ -21,6 +21,7 @@ Item {
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
     signal sortRequested(string column, bool ascending)
+    signal interactionStarted()
 
     function selectIndex(idx, ctrl, shift) {
         if (shift && lastSelectedIndex >= 0) {
@@ -51,6 +52,16 @@ Item {
         selectedIndices = []
         lastSelectedIndex = -1
         cursorIndex = -1
+    }
+
+    function pathForRow(row) {
+        if (!viewModel || row < 0)
+            return ""
+
+        if (viewModel.filePath)
+            return viewModel.filePath(row)
+
+        return viewModel.data(viewModel.index(row, 0), 258 /* FilePathRole */) || ""
     }
 
     function selectAll() {
@@ -154,6 +165,10 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
+                            onPressed: {
+                                wheelScroller.stopAndSettle()
+                                root.interactionStarted()
+                            }
                             onClicked: root.clickHeader(modelData.key)
                         }
                     }
@@ -178,8 +193,18 @@ Item {
 
             focus: visible
             keyNavigationEnabled: false
+            boundsMovement: Flickable.StopAtBounds
+            boundsBehavior: Flickable.StopAtBounds
+            rebound: Transition {
+                NumberAnimation {
+                    properties: "x,y"
+                    duration: Theme.animDurationSlow + 60
+                    easing.type: Easing.OutCubic
+                }
+            }
 
             function moveSelection(delta, extend) {
+                wheelScroller.stopAndSettle()
                 var current = root.cursorIndex >= 0 ? root.cursorIndex : (root.selectedIndices.length > 0 ? root.selectedIndices[root.selectedIndices.length - 1] : -1)
                 var next = Math.max(0, Math.min(count - 1, current + delta))
                 if (next === current && current >= 0) return
@@ -199,12 +224,6 @@ Item {
 
             Keys.onUpPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
             Keys.onDownPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
-
-            // Elastic overscroll
-            boundsMovement: Flickable.FollowBoundsBehavior
-            boundsBehavior: Flickable.DragAndOvershootBounds
-            flickDeceleration: 1500
-            maximumFlickVelocity: 2500
 
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
@@ -354,6 +373,8 @@ Item {
                         property bool dragPending: false
 
                         onPressed: (mouse) => {
+                            wheelScroller.stopAndSettle()
+                            root.interactionStarted()
                             pressPos = Qt.point(mouse.x, mouse.y)
                             dragPending = (mouse.button === Qt.LeftButton)
                         }
@@ -367,7 +388,7 @@ Item {
                                 if (!detRow.isSelected)
                                     root.selectIndex(detRow.index, false, false)
                                 var paths = root.selectedIndices.length > 1
-                                    ? root.selectedIndices.map(function(i) { return (searchProxy && searchProxy.searchActive ? searchProxy.filePath(i) : fsModel.filePath(i)) })
+                                    ? root.selectedIndices.map(function(i) { return root.pathForRow(i) })
                                     : [detRow.filePath]
                                 detRow.dragStarted = true
                                 dragHelper.startDrag(paths, detRow.fileIconName, paths.length)
@@ -456,6 +477,8 @@ Item {
                         mouse.accepted = false
                         return
                     }
+                    wheelScroller.stopAndSettle()
+                    root.interactionStarted()
                     root.forceActiveFocus()
                     if (mouse.button === Qt.LeftButton) {
                         listView.interactive = false
@@ -523,6 +546,15 @@ Item {
                 anchors.fill: parent
                 z: 11
             }
+
         }
+    }
+
+    KineticWheelScroller {
+        id: wheelScroller
+        anchors.fill: parent
+        z: 12
+        flickable: listView
+        onScrollStarted: root.interactionStarted()
     }
 }

@@ -13,16 +13,32 @@ ApplicationWindow {
     title: "HyprFM"
     color: "transparent"
 
-    property bool isRecentsView: false
+    property bool primaryPaneIsRecents: false
+    property bool secondaryPaneIsRecents: false
+    property bool primaryPaneSearchMode: false
+    property bool secondaryPaneSearchMode: false
+    property bool primaryPaneFilterPanelOpen: false
+    property bool secondaryPaneFilterPanelOpen: false
+    readonly property bool isRecentsView: activePane === "secondary"
+        ? secondaryPaneIsRecents
+        : primaryPaneIsRecents
     property var deleteConfirmPaths: []
+    readonly property string trashFilesPath: fsModel.homePath() + "/.local/share/Trash/files"
+    readonly property bool isTrashView: panePath(activePane).startsWith(trashFilesPath)
 
     // ── Sync fsModel when active tab changes; quit on last tab closed ───────
     Connections {
         target: tabModel
         function onActiveIndexChanged() {
             if (tabModel.activeTab) {
-                root.isRecentsView = false
+                root.activePane = "primary"
+                root.primaryPaneIsRecents = false
+                root.secondaryPaneIsRecents = false
+                root.clearPaneSearch("primary")
+                root.clearPaneSearch("secondary")
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
+                splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
+                root.applyActiveTabSort()
             }
         }
         function onLastTabClosed() {
@@ -35,17 +51,39 @@ ApplicationWindow {
         ignoreUnknownSignals: true
         function onCurrentPathChanged() {
             if (tabModel.activeTab) {
-                root.isRecentsView = false
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
-                if (root.searchMode) root.closeSearch()
+                root.setPaneRecents("primary", false)
+                root.clearPaneSearch("primary")
             }
+        }
+        function onSecondaryCurrentPathChanged() {
+            if (tabModel.activeTab) {
+                splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
+                root.setPaneRecents("secondary", false)
+                root.clearPaneSearch("secondary")
+            }
+        }
+        function onSortChanged() {
+            root.applyActiveTabSort()
+        }
+        function onSplitViewEnabledChanged() {
+            if (!tabModel.activeTab || tabModel.activeTab.splitViewEnabled)
+                return
+
+            if (root.activePane === "secondary")
+                root.activePane = "primary"
+            root.updateSelectionStatus()
         }
     }
 
     // Force initial load after QML is fully set up
     Component.onCompleted: {
         if (tabModel.activeTab) {
+            fsModel.setRootPath(tabModel.activeTab.currentPath)
             fsModel.refresh()
+            splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
+            splitFsModel.refresh()
+            root.applyActiveTabSort()
         }
 
         // Bridge HyprFM theme into Quill theme singleton
@@ -75,19 +113,263 @@ ApplicationWindow {
     property bool sidebarVisible: config.sidebarVisible
 
     // ── Search state ──────────────────────────────────────────────────────────
-    property bool searchMode: false
     property var debounceTimer: null
+    property string debouncePane: "primary"
+    property string activePane: "primary"
+    readonly property bool searchMode: paneSearchMode(activePane)
 
     // ── Selection state for StatusBar ────────────────────────────────────────
     property int currentSelectedCount: 0
     property string currentSelectedSize: ""
 
-    function updateSelectionStatus() {
+    function splitViewEnabled() {
+        return tabModel.activeTab ? tabModel.activeTab.splitViewEnabled : false
+    }
+
+    function paneBaseModel(pane) {
+        return pane === "secondary" ? splitFsModel : fsModel
+    }
+
+    function panePath(pane) {
+        if (!tabModel.activeTab)
+            return fsModel.homePath()
+
+        return pane === "secondary"
+            ? tabModel.activeTab.secondaryCurrentPath
+            : tabModel.activeTab.currentPath
+    }
+
+    function paneIsRecents(pane) {
+        return pane === "secondary" ? secondaryPaneIsRecents : primaryPaneIsRecents
+    }
+
+    function setPaneRecents(pane, enabled) {
+        if (pane === "secondary")
+            secondaryPaneIsRecents = enabled
+        else
+            primaryPaneIsRecents = enabled
+    }
+
+    function searchProxyForPane(pane) {
+        return pane === "secondary" ? splitSearchProxy : searchProxy
+    }
+
+    function searchResultsForPane(pane) {
+        return pane === "secondary" ? splitSearchResults : searchResults
+    }
+
+    function searchServiceForPane(pane) {
+        return pane === "secondary" ? splitSearchService : searchService
+    }
+
+    function paneSearchMode(pane) {
+        return pane === "secondary" ? secondaryPaneSearchMode : primaryPaneSearchMode
+    }
+
+    function setPaneSearchMode(pane, enabled) {
+        if (pane === "secondary")
+            secondaryPaneSearchMode = enabled
+        else
+            primaryPaneSearchMode = enabled
+    }
+
+    function paneFilterPanelOpen(pane) {
+        return pane === "secondary" ? secondaryPaneFilterPanelOpen : primaryPaneFilterPanelOpen
+    }
+
+    function setPaneFilterPanelOpen(pane, enabled) {
+        if (pane === "secondary")
+            secondaryPaneFilterPanelOpen = enabled
+        else
+            primaryPaneFilterPanelOpen = enabled
+    }
+
+    function clearPaneDebounce(pane) {
+        if (debounceTimer && debouncePane === pane) {
+            debounceTimer.destroy()
+            debounceTimer = null
+        }
+    }
+
+    function clearPaneSearch(pane) {
+        clearPaneDebounce(pane)
+        setPaneSearchMode(pane, false)
+        setPaneFilterPanelOpen(pane, false)
+        searchServiceForPane(pane).cancelSearch()
+        searchResultsForPane(pane).clear()
+        searchProxyForPane(pane).clearSearch()
+    }
+
+    function paneModel(pane) {
+        if (root.paneIsRecents(pane))
+            return recentFiles
+
+        if (root.paneSearchMode(pane))
+            return searchProxyForPane(pane)
+
+        return paneBaseModel(pane)
+    }
+
+    function filePathFromModel(model, row) {
+        if (!model || row < 0)
+            return ""
+
+        if (model.filePath)
+            return model.filePath(row)
+
+        return model.data(model.index(row, 0), 258 /* FilePathRole */) || ""
+    }
+
+    function fileViewForPane(pane) {
+        if (pane === "secondary")
+            return secondaryPaneLoader.item ? secondaryPaneLoader.item.fileView : null
+
+        return primaryFileViewContainer
+    }
+
+    function activeFileView() {
+        return fileViewForPane(activePane)
+    }
+
+    function subViewFor(view) {
+        if (!view)
+            return null
+
         var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-        var subView = null
-        if (vm === "grid")          subView = fileViewContainer.gridViewItem
-        else if (vm === "list")     subView = fileViewContainer.listViewItem
-        else if (vm === "detailed") subView = fileViewContainer.detailedViewItem
+        if (vm === "grid") return view.gridViewItem
+        if (vm === "list") return view.listViewItem
+        return view.detailedViewItem
+    }
+
+    function activeSubView() {
+        return subViewFor(activeFileView())
+    }
+
+    function setActivePane(pane) {
+        var nextPane = pane
+        if (nextPane === "secondary" && !splitViewEnabled())
+            nextPane = "primary"
+
+        if (activePane === nextPane)
+            return
+
+        activePane = nextPane
+        root.updateSelectionStatus()
+    }
+
+    function navigatePaneTo(pane, path) {
+        if (!tabModel.activeTab || !path)
+            return
+
+        root.setPaneRecents(pane, false)
+        root.clearPaneSearch(pane)
+        if (pane === "secondary" && splitViewEnabled())
+            tabModel.activeTab.navigateSecondaryTo(path)
+        else
+            tabModel.activeTab.navigateTo(path)
+    }
+
+    function navigateActivePaneTo(path) {
+        navigatePaneTo(activePane, path)
+    }
+
+    function goActivePaneBack() {
+        if (!tabModel.activeTab)
+            return
+
+        if (activePane === "secondary" && splitViewEnabled())
+            tabModel.activeTab.secondaryGoBack()
+        else
+            tabModel.activeTab.goBack()
+    }
+
+    function goActivePaneForward() {
+        if (!tabModel.activeTab)
+            return
+
+        if (activePane === "secondary" && splitViewEnabled())
+            tabModel.activeTab.secondaryGoForward()
+        else
+            tabModel.activeTab.goForward()
+    }
+
+    function goActivePaneUp() {
+        if (!tabModel.activeTab || root.paneIsRecents(activePane))
+            return
+
+        if (activePane === "secondary" && splitViewEnabled())
+            tabModel.activeTab.secondaryGoUp()
+        else
+            tabModel.activeTab.goUp()
+    }
+
+    function toggleSplitView() {
+        if (!tabModel.activeTab)
+            return
+
+        var enable = !tabModel.activeTab.splitViewEnabled
+        if (enable) {
+            root.clearPaneSearch("secondary")
+            root.setPaneRecents("secondary", false)
+            tabModel.activeTab.resetSecondaryTo(tabModel.activeTab.currentPath)
+        }
+
+        if (!enable) {
+            root.clearPaneSearch("secondary")
+            root.setPaneRecents("secondary", false)
+            if (activePane === "secondary")
+                activePane = "primary"
+        }
+
+        tabModel.activeTab.splitViewEnabled = enable
+        root.updateSelectionStatus()
+    }
+
+    function activePaneCanGoBack() {
+        if (!tabModel.activeTab)
+            return false
+
+        return activePane === "secondary" && splitViewEnabled()
+            ? tabModel.activeTab.secondaryCanGoBack
+            : tabModel.activeTab.canGoBack
+    }
+
+    function activePaneCanGoForward() {
+        if (!tabModel.activeTab)
+            return false
+
+        return activePane === "secondary" && splitViewEnabled()
+            ? tabModel.activeTab.secondaryCanGoForward
+            : tabModel.activeTab.canGoForward
+    }
+
+    function activeItemCount() {
+        if (root.paneIsRecents(activePane))
+            return recentFiles.count
+        if (root.paneSearchMode(activePane))
+            return searchProxyForPane(activePane).rowCount()
+
+        var model = paneBaseModel(activePane)
+        return model.fileCount + model.folderCount
+    }
+
+    function activeFolderCount() {
+        if (root.paneIsRecents(activePane) || root.paneSearchMode(activePane))
+            return 0
+
+        return paneBaseModel(activePane).folderCount
+    }
+
+    function applyActiveTabSort() {
+        if (!tabModel.activeTab)
+            return
+
+        fsModel.sortByColumn(tabModel.activeTab.sortBy, tabModel.activeTab.sortAscending)
+        splitFsModel.sortByColumn(tabModel.activeTab.sortBy, tabModel.activeTab.sortAscending)
+    }
+
+    function updateSelectionStatus() {
+        var subView = activeSubView()
 
         if (!subView || !subView.selectedIndices) {
             currentSelectedCount = 0
@@ -109,23 +391,20 @@ ApplicationWindow {
     }
 
     // ── Helper: collect selected file paths from active view ─────────────────
-    function getSelectedPaths() {
+    function getSelectedPaths(pane) {
         var paths = []
-        var view = fileViewContainer
+        var targetPane = pane || activePane
+        var view = fileViewForPane(targetPane)
         if (!view) return paths
 
-        // Access the active sub-view's selectedIndices
-        var subView = null
-        var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-        if (vm === "grid")          subView = view.gridViewItem
-        else if (vm === "list")     subView = view.listViewItem
-        else if (vm === "detailed") subView = view.detailedViewItem
+        var subView = subViewFor(view)
+        var model = paneModel(targetPane)
 
-        if (!subView || !subView.selectedIndices) return paths
+        if (!subView || !subView.selectedIndices || !model) return paths
 
         var indices = subView.selectedIndices
         for (var i = 0; i < indices.length; i++) {
-            var fp = root.searchMode ? searchProxy.filePath(indices[i]) : fsModel.filePath(indices[i])
+            var fp = filePathFromModel(model, indices[i])
             if (fp !== "") paths.push(fp)
         }
         return paths
@@ -134,78 +413,96 @@ ApplicationWindow {
     // ── Helper: list of all file paths in current directory (for preview cycling)
     function getDirectoryFiles() {
         var files = []
-        var activeModel = root.searchMode ? searchProxy : fsModel
+        var activeModel = paneModel(activePane)
         var count = activeModel.rowCount()
         for (var i = 0; i < count; i++) {
-            files.push(activeModel.filePath(i))
+            var fp = filePathFromModel(activeModel, i)
+            if (fp !== "")
+                files.push(fp)
         }
         return files
     }
 
     // ── Search helpers ────────────────────────────────────────────────────────
     function openSearch() {
-        searchMode = true
-        toolbar.searchMode = true
-        searchProxy.switchSourceModel(searchResults)
+        setPaneRecents(activePane, false)
+        setPaneSearchMode(activePane, true)
     }
 
-    function closeSearch() {
-        searchMode = false
-        toolbar.searchMode = false
-        searchProxy.clearSearch()
-        searchService.cancelSearch()
-        searchProxy.switchSourceModel(fsModel)
+    function closeSearch(pane) {
+        clearPaneSearch(pane || activePane)
     }
 
     function handleSearchQuery(query) {
+        var pane = activePane
+        var proxy = searchProxyForPane(pane)
+        var results = searchResultsForPane(pane)
+        var service = searchServiceForPane(pane)
+
+        proxy.searchQuery = query
         if (debounceTimer) debounceTimer.destroy()
+        debounceTimer = null
+
         if (query === "") {
-            searchService.cancelSearch()
-            searchResults.clear()
+            service.cancelSearch()
+            results.clear()
             return
         }
+
+        debouncePane = pane
         debounceTimer = Qt.createQmlObject(
-            'import QtQuick; Timer { interval: 500; running: true; onTriggered: { parent.triggerRecursiveSearch(); destroy() } }',
+            'import QtQuick; Timer { interval: 500; running: true; repeat: false }',
             root
         )
+        debounceTimer.triggered.connect(function() {
+            root.triggerRecursiveSearch(pane, query)
+            debounceTimer = null
+        })
     }
 
-    function triggerRecursiveSearch() {
-        var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
-        if (query === "") return
-        searchService.startSearch(
-            tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
-            query,
+    function triggerRecursiveSearch(pane, query) {
+        var targetPane = pane || activePane
+        var targetQuery = query !== undefined ? query : searchProxyForPane(targetPane).searchQuery
+        if (targetQuery === "") return
+        searchServiceForPane(targetPane).startSearch(
+            panePath(targetPane),
+            targetQuery,
             fsModel.showHidden
         )
     }
 
     function handleSearchEnter() {
-        var query = toolbar.searchBar ? toolbar.searchBar.searchQuery : ""
+        var query = searchProxyForPane(activePane).searchQuery
         if (query === "") return
-        searchService.startSearch(
-            tabModel.activeTab ? tabModel.activeTab.currentPath : fsModel.homePath(),
+        clearPaneDebounce(activePane)
+        searchServiceForPane(activePane).startSearch(
+            panePath(activePane),
             query,
             fsModel.showHidden
         )
     }
 
-    function selectFirstSearchResult() {
-        if (!searchMode || searchProxy.rowCount() === 0) return
-        var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-        var subView = null
-        if (vm === "grid")          subView = fileViewContainer.gridViewItem
-        else if (vm === "list")     subView = fileViewContainer.listViewItem
-        else if (vm === "detailed") subView = fileViewContainer.detailedViewItem
+    function selectFirstSearchResult(pane) {
+        var targetPane = pane || activePane
+        if (!paneSearchMode(targetPane) || searchProxyForPane(targetPane).rowCount() === 0)
+            return
+
+        var subView = subViewFor(fileViewForPane(targetPane))
         if (subView && subView.selectedIndices !== undefined) {
             subView.selectedIndices = [0]
-            subView.forceActiveFocus()
+            if (targetPane === activePane)
+                subView.forceActiveFocus()
         }
     }
 
     Connections {
         target: searchService
-        function onSearchFinished() { root.selectFirstSearchResult() }
+        function onSearchFinished() { root.selectFirstSearchResult("primary") }
+    }
+
+    Connections {
+        target: splitSearchService
+        function onSearchFinished() { root.selectFirstSearchResult("secondary") }
     }
 
     // ── Rename dialog ───────────────────────────────────────────────────────
@@ -218,6 +515,7 @@ ApplicationWindow {
         z: 1000
 
         function open() {
+            renameErrorText.text = ""
             visible = true
             renameBox.opacity = 0
             renameBox.scale = 0.88
@@ -230,8 +528,14 @@ ApplicationWindow {
             renameField.forceActiveFocus()
         }
         function accept() {
-            if (renameTargetPath !== "" && renameField.text.trim() !== "")
-                undoManager.rename(renameTargetPath, renameField.text.trim())
+            var name = renameField.text.trim()
+            if (renameTargetPath === "" || name === "") return
+            var parentDir = renameTargetPath.substring(0, renameTargetPath.lastIndexOf("/"))
+            if (fileOps.pathExists(parentDir + "/" + name)) {
+                renameErrorText.text = "\"" + name + "\" already exists"
+                return
+            }
+            undoManager.rename(renameTargetPath, name)
             renameCloseAnim.start()
         }
         function reject() { renameCloseAnim.start() }
@@ -309,8 +613,18 @@ ApplicationWindow {
                     autoFocus: true
                     variant: "filled"
                     placeholder: "Enter new name"
+                    onTextChanged: renameErrorText.text = ""
                     Keys.onReturnPressed: renameDialog.accept()
                     Keys.onEscapePressed: renameDialog.reject()
+                }
+
+                Text {
+                    id: renameErrorText
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    color: Theme.error
+                    font.pointSize: Theme.fontSmall
+                    wrapMode: Text.WordWrap
                 }
 
                 RowLayout {
@@ -318,16 +632,32 @@ ApplicationWindow {
                     spacing: 12
 
                     Q.Button {
+                        id: cancelRenameButton
                         text: "Cancel"
                         variant: "ghost"
                         size: "small"
+                        KeyNavigation.left: confirmRenameButton
+                        KeyNavigation.right: confirmRenameButton
+                        KeyNavigation.tab: confirmRenameButton
+                        KeyNavigation.backtab: confirmRenameButton
+                        Keys.onLeftPressed: confirmRenameButton.forceActiveFocus()
+                        Keys.onRightPressed: confirmRenameButton.forceActiveFocus()
+                        Keys.onEscapePressed: renameDialog.reject()
                         onClicked: renameDialog.reject()
                     }
 
                     Q.Button {
+                        id: confirmRenameButton
                         text: "Rename"
                         variant: "primary"
                         size: "small"
+                        KeyNavigation.left: cancelRenameButton
+                        KeyNavigation.right: cancelRenameButton
+                        KeyNavigation.tab: cancelRenameButton
+                        KeyNavigation.backtab: cancelRenameButton
+                        Keys.onLeftPressed: cancelRenameButton.forceActiveFocus()
+                        Keys.onRightPressed: cancelRenameButton.forceActiveFocus()
+                        Keys.onEscapePressed: renameDialog.reject()
                         onClicked: renameDialog.accept()
                     }
                 }
@@ -345,6 +675,7 @@ ApplicationWindow {
         z: 1000
 
         function open() {
+            newFolderErrorText.text = ""
             visible = true
             folderBox.opacity = 0
             folderBox.scale = 0.88
@@ -354,8 +685,13 @@ ApplicationWindow {
             newFolderField.forceActiveFocus()
         }
         function accept() {
-            if (newItemParentPath !== "" && newFolderField.text.trim() !== "")
-                undoManager.createFolder(newItemParentPath, newFolderField.text.trim())
+            var name = newFolderField.text.trim()
+            if (newItemParentPath === "" || name === "") return
+            if (fileOps.pathExists(newItemParentPath + "/" + name)) {
+                newFolderErrorText.text = "\"" + name + "\" already exists"
+                return
+            }
+            undoManager.createFolder(newItemParentPath, name)
             folderCloseAnim.start()
         }
         function reject() { folderCloseAnim.start() }
@@ -433,8 +769,18 @@ ApplicationWindow {
                     autoFocus: true
                     variant: "filled"
                     placeholder: "Folder name"
+                    onTextChanged: newFolderErrorText.text = ""
                     Keys.onReturnPressed: newFolderDialog.accept()
                     Keys.onEscapePressed: newFolderDialog.reject()
+                }
+
+                Text {
+                    id: newFolderErrorText
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    color: Theme.error
+                    font.pointSize: Theme.fontSmall
+                    wrapMode: Text.WordWrap
                 }
 
                 RowLayout {
@@ -442,16 +788,32 @@ ApplicationWindow {
                     spacing: 12
 
                     Q.Button {
+                        id: cancelNewFolderButton
                         text: "Cancel"
                         variant: "ghost"
                         size: "small"
+                        KeyNavigation.left: confirmNewFolderButton
+                        KeyNavigation.right: confirmNewFolderButton
+                        KeyNavigation.tab: confirmNewFolderButton
+                        KeyNavigation.backtab: confirmNewFolderButton
+                        Keys.onLeftPressed: confirmNewFolderButton.forceActiveFocus()
+                        Keys.onRightPressed: confirmNewFolderButton.forceActiveFocus()
+                        Keys.onEscapePressed: newFolderDialog.reject()
                         onClicked: newFolderDialog.reject()
                     }
 
                     Q.Button {
+                        id: confirmNewFolderButton
                         text: "Create"
                         variant: "primary"
                         size: "small"
+                        KeyNavigation.left: cancelNewFolderButton
+                        KeyNavigation.right: cancelNewFolderButton
+                        KeyNavigation.tab: cancelNewFolderButton
+                        KeyNavigation.backtab: cancelNewFolderButton
+                        Keys.onLeftPressed: cancelNewFolderButton.forceActiveFocus()
+                        Keys.onRightPressed: cancelNewFolderButton.forceActiveFocus()
+                        Keys.onEscapePressed: newFolderDialog.reject()
                         onClicked: newFolderDialog.accept()
                     }
                 }
@@ -467,6 +829,7 @@ ApplicationWindow {
         z: 1000
 
         function open() {
+            newFileErrorText.text = ""
             visible = true
             fileBox.opacity = 0
             fileBox.scale = 0.88
@@ -476,8 +839,13 @@ ApplicationWindow {
             newFileField.forceActiveFocus()
         }
         function accept() {
-            if (newItemParentPath !== "" && newFileField.text.trim() !== "")
-                undoManager.createFile(newItemParentPath, newFileField.text.trim())
+            var name = newFileField.text.trim()
+            if (newItemParentPath === "" || name === "") return
+            if (fileOps.pathExists(newItemParentPath + "/" + name)) {
+                newFileErrorText.text = "\"" + name + "\" already exists"
+                return
+            }
+            undoManager.createFile(newItemParentPath, name)
             fileCloseAnim.start()
         }
         function reject() { fileCloseAnim.start() }
@@ -555,8 +923,18 @@ ApplicationWindow {
                     autoFocus: true
                     variant: "filled"
                     placeholder: "File name"
+                    onTextChanged: newFileErrorText.text = ""
                     Keys.onReturnPressed: newFileDialog.accept()
                     Keys.onEscapePressed: newFileDialog.reject()
+                }
+
+                Text {
+                    id: newFileErrorText
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    color: Theme.error
+                    font.pointSize: Theme.fontSmall
+                    wrapMode: Text.WordWrap
                 }
 
                 RowLayout {
@@ -564,16 +942,32 @@ ApplicationWindow {
                     spacing: 12
 
                     Q.Button {
+                        id: cancelNewFileButton
                         text: "Cancel"
                         variant: "ghost"
                         size: "small"
+                        KeyNavigation.left: confirmNewFileButton
+                        KeyNavigation.right: confirmNewFileButton
+                        KeyNavigation.tab: confirmNewFileButton
+                        KeyNavigation.backtab: confirmNewFileButton
+                        Keys.onLeftPressed: confirmNewFileButton.forceActiveFocus()
+                        Keys.onRightPressed: confirmNewFileButton.forceActiveFocus()
+                        Keys.onEscapePressed: newFileDialog.reject()
                         onClicked: newFileDialog.reject()
                     }
 
                     Q.Button {
+                        id: confirmNewFileButton
                         text: "Create"
                         variant: "primary"
                         size: "small"
+                        KeyNavigation.left: cancelNewFileButton
+                        KeyNavigation.right: cancelNewFileButton
+                        KeyNavigation.tab: cancelNewFileButton
+                        KeyNavigation.backtab: cancelNewFileButton
+                        Keys.onLeftPressed: cancelNewFileButton.forceActiveFocus()
+                        Keys.onRightPressed: cancelNewFileButton.forceActiveFocus()
+                        Keys.onEscapePressed: newFileDialog.reject()
                         onClicked: newFileDialog.accept()
                     }
                 }
@@ -1001,105 +1395,107 @@ ApplicationWindow {
     }
 
     // ── Permanent Delete Confirmation Dialog ───────────────────────────────
-    Item {
+    Q.Dialog {
         id: deleteConfirmDialog
         anchors.fill: parent
-        visible: false
         z: 9998
+        dialogWidth: 360
+        title: "Permanently Delete?"
+        initialFocusItem: cancelDeleteButton
+        onAccepted: fileOps.deleteFiles(root.deleteConfirmPaths)
 
-        MouseArea {
-            anchors.fill: parent
-            onClicked: deleteConfirmDialog.visible = false
+        Text {
+            Layout.fillWidth: true
+            text: root.deleteConfirmPaths.length === 1
+                ? "\"" + root.deleteConfirmPaths[0].substring(root.deleteConfirmPaths[0].lastIndexOf("/") + 1) + "\" will be permanently deleted. This cannot be undone."
+                : root.deleteConfirmPaths.length + " items will be permanently deleted. This cannot be undone."
+            color: Theme.subtext
+            font.pointSize: Theme.fontNormal
+            wrapMode: Text.WordWrap
         }
 
-        Rectangle {
-            anchors.centerIn: parent
-            width: 360
-            height: deleteConfirmCol.implicitHeight + 32
-            radius: Theme.radiusLarge
-            color: Theme.crust
-            border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-            border.width: 1
+        RowLayout {
+            Layout.alignment: Qt.AlignRight
+            spacing: 12
 
-            Column {
-                id: deleteConfirmCol
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.margins: 20
-                spacing: 16
+            Q.Button {
+                id: cancelDeleteButton
+                text: "Cancel"
+                variant: "ghost"
+                size: "small"
+                KeyNavigation.left: confirmDeleteButton
+                KeyNavigation.right: confirmDeleteButton
+                KeyNavigation.tab: confirmDeleteButton
+                KeyNavigation.backtab: confirmDeleteButton
+                Keys.onLeftPressed: confirmDeleteButton.forceActiveFocus()
+                Keys.onRightPressed: confirmDeleteButton.forceActiveFocus()
+                onClicked: deleteConfirmDialog.reject()
+            }
 
-                Text {
-                    text: "Permanently Delete?"
-                    font.pointSize: Theme.fontLarge
-                    font.weight: Font.Bold
-                    color: Theme.text
-                }
+            Q.Button {
+                id: confirmDeleteButton
+                text: "Delete"
+                variant: "danger"
+                size: "small"
+                KeyNavigation.left: cancelDeleteButton
+                KeyNavigation.right: cancelDeleteButton
+                KeyNavigation.tab: cancelDeleteButton
+                KeyNavigation.backtab: cancelDeleteButton
+                Keys.onLeftPressed: cancelDeleteButton.forceActiveFocus()
+                Keys.onRightPressed: cancelDeleteButton.forceActiveFocus()
+                onClicked: deleteConfirmDialog.accept()
+            }
+        }
+    }
 
-                Text {
-                    width: parent.width
-                    text: root.deleteConfirmPaths.length === 1
-                        ? "\"" + root.deleteConfirmPaths[0].substring(root.deleteConfirmPaths[0].lastIndexOf("/") + 1) + "\" will be permanently deleted. This cannot be undone."
-                        : root.deleteConfirmPaths.length + " items will be permanently deleted. This cannot be undone."
-                    color: Theme.subtext
-                    font.pointSize: Theme.fontNormal
-                    wrapMode: Text.WordWrap
-                }
+    // ── Empty Trash Confirmation Dialog ──────────────────────────────────────
+    Q.Dialog {
+        id: emptyTrashConfirmDialog
+        anchors.fill: parent
+        z: 9998
+        dialogWidth: 360
+        title: "Empty Trash?"
+        initialFocusItem: cancelEmptyTrashButton
+        onAccepted: fileOps.emptyTrash()
 
-                Row {
-                    anchors.right: parent.right
-                    spacing: 8
+        Text {
+            Layout.fillWidth: true
+            text: "All items in the Trash will be permanently deleted. This cannot be undone."
+            color: Theme.subtext
+            font.pointSize: Theme.fontNormal
+            wrapMode: Text.WordWrap
+        }
 
-                    Rectangle {
-                        width: cancelText.implicitWidth + 24
-                        height: 32
-                        radius: Theme.radiusSmall
-                        color: cancelMa.containsMouse
-                            ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                            : "transparent"
-                        Text {
-                            id: cancelText
-                            anchors.centerIn: parent
-                            text: "Cancel"
-                            color: Theme.text
-                            font.pointSize: Theme.fontNormal
-                        }
-                        MouseArea {
-                            id: cancelMa
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: deleteConfirmDialog.visible = false
-                        }
-                    }
+        RowLayout {
+            Layout.alignment: Qt.AlignRight
+            spacing: 12
 
-                    Rectangle {
-                        width: deleteText.implicitWidth + 24
-                        height: 32
-                        radius: Theme.radiusSmall
-                        color: deleteMa.containsMouse
-                            ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.3)
-                            : Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.2)
-                        Text {
-                            id: deleteText
-                            anchors.centerIn: parent
-                            text: "Delete"
-                            color: Theme.error
-                            font.pointSize: Theme.fontNormal
-                            font.weight: Font.Bold
-                        }
-                        MouseArea {
-                            id: deleteMa
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                fileOps.deleteFiles(root.deleteConfirmPaths)
-                                deleteConfirmDialog.visible = false
-                            }
-                        }
-                    }
-                }
+            Q.Button {
+                id: cancelEmptyTrashButton
+                text: "Cancel"
+                variant: "ghost"
+                size: "small"
+                KeyNavigation.left: confirmEmptyTrashButton
+                KeyNavigation.right: confirmEmptyTrashButton
+                KeyNavigation.tab: confirmEmptyTrashButton
+                KeyNavigation.backtab: confirmEmptyTrashButton
+                Keys.onLeftPressed: confirmEmptyTrashButton.forceActiveFocus()
+                Keys.onRightPressed: confirmEmptyTrashButton.forceActiveFocus()
+                onClicked: emptyTrashConfirmDialog.reject()
+            }
+
+            Q.Button {
+                id: confirmEmptyTrashButton
+                text: "Empty Trash"
+                variant: "danger"
+                size: "small"
+                KeyNavigation.left: cancelEmptyTrashButton
+                KeyNavigation.right: cancelEmptyTrashButton
+                KeyNavigation.tab: cancelEmptyTrashButton
+                KeyNavigation.backtab: cancelEmptyTrashButton
+                Keys.onLeftPressed: cancelEmptyTrashButton.forceActiveFocus()
+                Keys.onRightPressed: cancelEmptyTrashButton.forceActiveFocus()
+                onClicked: emptyTrashConfirmDialog.accept()
             }
         }
     }
@@ -1110,6 +1506,8 @@ ApplicationWindow {
         blurSource: mainContent
 
         fileModel: fsModel
+        splitViewEnabled: root.splitViewEnabled()
+        isTrashView: root.isTrashView
         currentViewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
         currentSortBy: tabModel.activeTab ? tabModel.activeTab.sortBy : "name"
         currentSortAscending: tabModel.activeTab ? tabModel.activeTab.sortAscending : true
@@ -1122,13 +1520,7 @@ ApplicationWindow {
         onCopyRequested: (paths) => clipboard.copy(paths)
 
         onPasteRequested: (destPath) => {
-            var wasCut = clipboard.isCut
-            var items = clipboard.take()
-            if (!items || items.length === 0) return
-            if (wasCut)
-                undoManager.moveFiles(items, destPath)
-            else
-                undoManager.copyFiles(items, destPath)
+            root.pasteIntoDirectory(destPath)
         }
 
         onCopyPathRequested: (path) => fileOps.copyPathToClipboard(path)
@@ -1141,8 +1533,12 @@ ApplicationWindow {
         }
 
         onTrashRequested: (paths) => undoManager.trashFiles(paths)
+        onEmptyTrashRequested: emptyTrashConfirmDialog.open()
 
-        onDeleteRequested: (paths) => fileOps.deleteFiles(paths)
+        onDeleteRequested: (paths) => {
+            deleteConfirmPaths = paths
+            deleteConfirmDialog.open()
+        }
 
         onOpenInTerminalRequested: (path) => {
             fileOps.openInTerminal(path)
@@ -1160,10 +1556,17 @@ ApplicationWindow {
             newFileDialog.open()
         }
 
-        onSelectAllRequested: fileViewContainer.selectAll()
+        onSelectAllRequested: {
+            var view = root.activeFileView()
+            if (view) view.selectAll()
+        }
 
         onPropertiesRequested: (path) => {
             propertiesDialog.showProperties(path)
+        }
+
+        onSplitViewRequested: (path) => {
+            root.openPathInSplitView(path)
         }
 
         onViewModeRequested: (mode) => {
@@ -1176,6 +1579,7 @@ ApplicationWindow {
                 tabModel.activeTab.sortAscending = ascending
             }
             if (fsModel) fsModel.sortByColumn(column, ascending)
+            if (splitFsModel) splitFsModel.sortByColumn(column, ascending)
         }
     }
 
@@ -1187,13 +1591,11 @@ ApplicationWindow {
 
         onOpenRequested: (path) => {
             if (sidebarItem.isRecents) {
-                root.isRecentsView = true
+                root.setPaneRecents(root.activePane, true)
                 return
             }
 
-            root.isRecentsView = false
-            if (path && tabModel.activeTab)
-                tabModel.activeTab.navigateTo(path)
+            root.navigateActivePaneTo(path)
         }
 
         onPropertiesRequested: (path) => {
@@ -1208,7 +1610,7 @@ ApplicationWindow {
 
         onCustomActionRequested: (action) => {
             if (action === "opennewtab") {
-                root.isRecentsView = false
+                root.setPaneRecents(root.activePane, false)
                 tabModel.addTab()
                 if (tabModel.activeTab)
                     tabModel.activeTab.navigateTo(sidebarContextMenu.targetPath)
@@ -1253,22 +1655,22 @@ ApplicationWindow {
     // Navigation
     Shortcut {
         sequence: config.shortcut("back")
-        onActivated: { if (tabModel.activeTab) tabModel.activeTab.goBack() }
+        onActivated: root.goActivePaneBack()
     }
 
     Shortcut {
         sequence: "Backspace"
-        onActivated: { if (tabModel.activeTab) tabModel.activeTab.goBack() }
+        onActivated: root.goActivePaneBack()
     }
 
     Shortcut {
         sequence: config.shortcut("forward")
-        onActivated: { if (tabModel.activeTab) tabModel.activeTab.goForward() }
+        onActivated: root.goActivePaneForward()
     }
 
     Shortcut {
         sequence: config.shortcut("parent")
-        onActivated: { if (tabModel.activeTab) tabModel.activeTab.goUp() }
+        onActivated: root.goActivePaneUp()
     }
 
     // Toggle hidden files
@@ -1287,6 +1689,11 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcut("toggle_sidebar")
         onActivated: root.sidebarVisible = !root.sidebarVisible
+    }
+
+    Shortcut {
+        sequence: config.shortcut("split_view")
+        onActivated: root.toggleSplitView()
     }
 
     // View mode switching
@@ -1325,16 +1732,11 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcut("paste")
         onActivated: {
-            if (!clipboard.hasContent) return
-            var dest = tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+            if (!clipboard.hasContent && !fileOps.hasClipboardImage()) return
+            if (root.paneIsRecents(activePane)) return
+            var dest = panePath(activePane)
             if (dest === "") return
-            var wasCut = clipboard.isCut
-            var items = clipboard.take()
-            if (!items || items.length === 0) return
-            if (wasCut)
-                undoManager.moveFiles(items, dest)
-            else
-                undoManager.copyFiles(items, dest)
+            root.pasteIntoDirectory(dest)
         }
     }
 
@@ -1342,7 +1744,13 @@ ApplicationWindow {
         sequence: config.shortcut("trash")
         onActivated: {
             var paths = getSelectedPaths()
-            if (paths.length > 0) undoManager.trashFiles(paths)
+            if (paths.length === 0) return
+            if (root.isTrashView) {
+                deleteConfirmPaths = paths
+                deleteConfirmDialog.open()
+            } else {
+                undoManager.trashFiles(paths)
+            }
         }
     }
 
@@ -1352,7 +1760,7 @@ ApplicationWindow {
             var paths = getSelectedPaths()
             if (paths.length > 0) {
                 deleteConfirmPaths = paths
-                deleteConfirmDialog.visible = true
+                deleteConfirmDialog.open()
             }
         }
     }
@@ -1369,7 +1777,10 @@ ApplicationWindow {
 
     Shortcut {
         sequence: config.shortcut("select_all")
-        onActivated: fileViewContainer.selectAll()
+        onActivated: {
+            var view = root.activeFileView()
+            if (view) view.selectAll()
+        }
     }
 
     Shortcut {
@@ -1388,7 +1799,7 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcut("new_folder")
         onActivated: {
-            var dest = tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+            var dest = root.isRecentsView ? "" : panePath(activePane)
             if (dest !== "") {
                 root.newItemParentPath = dest
                 newFolderField.text = ""
@@ -1400,7 +1811,7 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcut("new_file")
         onActivated: {
-            var dest = tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+            var dest = root.isRecentsView ? "" : panePath(activePane)
             if (dest !== "") {
                 root.newItemParentPath = dest
                 newFileField.text = ""
@@ -1433,6 +1844,18 @@ ApplicationWindow {
             if (root.searchMode) root.closeSearch()
             else root.openSearch()
         }
+    }
+
+    Shortcut {
+        sequence: "Escape"
+        enabled: root.searchMode
+                 && !quickPreview.active
+                 && !renameDialog.visible
+                 && !newFolderDialog.visible
+                 && !newFileDialog.visible
+                 && !deleteConfirmDialog.visible
+                 && !emptyTrashConfirmDialog.visible
+        onActivated: root.closeSearch()
     }
 
     function sidebarMenuItems(item) {
@@ -1486,6 +1909,76 @@ ApplicationWindow {
         return []
     }
 
+    function handlePaneFileActivated(pane, filePath, isDirectory) {
+        root.setActivePane(pane)
+
+        if (isDirectory) {
+            root.navigatePaneTo(pane, filePath)
+        } else if (fileOps.isArchive(filePath)) {
+            var dir = filePath.substring(0, filePath.lastIndexOf("/"))
+            var rootFolder = fileOps.archiveRootFolder(filePath)
+            fileOps.extractArchive(filePath, dir)
+            var conn = fileOps.operationFinished.connect(function(success) {
+                fileOps.operationFinished.disconnect(arguments.callee)
+                if (success) {
+                    root.navigatePaneTo(pane, rootFolder ? dir + "/" + rootFolder : dir)
+                }
+            })
+        } else {
+            fileOps.openFile(filePath)
+            recentFiles.addRecent(filePath)
+        }
+    }
+
+    function showContextMenuForPane(pane, filePath, isDirectory, position) {
+        root.setActivePane(pane)
+
+        var currentDir = panePath(pane)
+        contextMenu.targetPath = filePath !== "" ? filePath : currentDir
+        contextMenu.targetIsDir = filePath !== "" ? isDirectory : true
+        contextMenu.isEmptySpace = (filePath === "")
+        var sel = getSelectedPaths(pane)
+        contextMenu.selectedPaths = (sel.length > 1) ? sel : (filePath !== "" ? [filePath] : [])
+        contextMenu.popup(position.x, position.y)
+    }
+
+    function openPathInSplitView(path) {
+        if (!tabModel.activeTab)
+            return
+
+        var targetPath = path || panePath(activePane)
+        if (!targetPath)
+            return
+
+        root.clearPaneSearch("secondary")
+        root.setPaneRecents("secondary", false)
+        tabModel.activeTab.resetSecondaryTo(targetPath)
+
+        if (!tabModel.activeTab.splitViewEnabled)
+            tabModel.activeTab.splitViewEnabled = true
+
+        root.setActivePane("secondary")
+    }
+
+    function pasteIntoDirectory(destPath) {
+        if (!destPath)
+            return
+
+        if (clipboard.hasContent) {
+            var wasCut = clipboard.isCut
+            var items = clipboard.take()
+            if (!items || items.length === 0) return
+            if (wasCut)
+                undoManager.moveFiles(items, destPath)
+            else
+                undoManager.copyFiles(items, destPath)
+            return
+        }
+
+        if (fileOps.hasClipboardImage())
+            fileOps.pasteClipboardImage(destPath)
+    }
+
     // ── Layout ──────────────────────────────────────────────────────────────
     RowLayout {
         id: mainContent
@@ -1505,11 +1998,10 @@ ApplicationWindow {
             Sidebar {
                 width: config.sidebarWidth
                 height: parent.height
-                currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+                currentPath: panePath(activePane)
                 isRecentsView: root.isRecentsView
                 onBookmarkClicked: (path) => {
-                    root.isRecentsView = false
-                    if (tabModel.activeTab) tabModel.activeTab.navigateTo(path)
+                    root.navigateActivePaneTo(path)
                 }
                 onSidebarContextMenuRequested: (item, position) => {
                     sidebarContextMenu.sidebarItem = item
@@ -1522,7 +2014,7 @@ ApplicationWindow {
                     sidebarContextMenu.popup(position.x, position.y)
                 }
                 onRecentsClicked: {
-                    root.isRecentsView = true
+                    root.setPaneRecents(root.activePane, true)
                 }
                 onCollapseClicked: root.sidebarVisible = !root.sidebarVisible
             }
@@ -1542,35 +2034,43 @@ ApplicationWindow {
                 id: toolbar
                 Layout.fillWidth: true
                 activeTab: tabModel.activeTab
+                navigationPath: panePath(activePane)
+                canGoBack: activePaneCanGoBack()
+                canGoForward: activePaneCanGoForward()
+                splitViewEnabled: root.splitViewEnabled()
                 isRecentsView: root.isRecentsView
+                isTrashView: root.isTrashView
+                searchMode: root.searchMode
+                currentSearchQuery: root.searchProxyForPane(activePane).searchQuery
+                searchTypeFilter: root.searchProxyForPane(activePane).fileTypeFilter
+                searchDateFilter: root.searchProxyForPane(activePane).dateFilter
+                searchSizeFilter: root.searchProxyForPane(activePane).sizeFilter
+                filterPanelOpen: root.paneFilterPanelOpen(activePane)
+                onBackRequested: root.goActivePaneBack()
+                onForwardRequested: root.goActivePaneForward()
+                onUpRequested: root.goActivePaneUp()
+                onNavigateRequested: (targetPath) => root.navigateActivePaneTo(targetPath)
+                onEmptyTrashRequested: emptyTrashConfirmDialog.open()
+                onSplitViewToggled: root.toggleSplitView()
                 onHomeClicked: {
-                    if (tabModel.activeTab)
-                        tabModel.activeTab.navigateTo(fsModel.homePath())
+                    root.navigateActivePaneTo(fsModel.homePath())
                 }
                 onSearchClicked: root.openSearch()
                 onSearchClosed: root.closeSearch()
                 onSearchQueryChanged: (query) => root.handleSearchQuery(query)
                 onSearchEnterPressed: root.handleSearchEnter()
                 onSearchNavigateDown: {
-                    var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-                    var subView = null
-                    if (vm === "grid")          subView = fileViewContainer.gridViewItem
-                    else if (vm === "list")     subView = fileViewContainer.listViewItem
-                    else if (vm === "detailed") subView = fileViewContainer.detailedViewItem
+                    var subView = root.activeSubView()
                     if (subView) subView.forceActiveFocus()
                 }
-                onSearchFilterToggled: {
-                    if (toolbar.filterPanel) {
-                        toolbar.filterPanel.visible = !toolbar.filterPanel.visible
-                    }
-                }
-                onTypeFilterChanged: (filter) => searchProxy.fileTypeFilter = filter
-                onDateFilterChanged: (filter) => searchProxy.dateFilter = filter
-                onSizeFilterChanged: (filter) => searchProxy.sizeFilter = filter
+                onSearchFilterToggled: root.setPaneFilterPanelOpen(activePane, !root.paneFilterPanelOpen(activePane))
+                onTypeFilterChanged: (filter) => root.searchProxyForPane(activePane).fileTypeFilter = filter
+                onDateFilterChanged: (filter) => root.searchProxyForPane(activePane).dateFilter = filter
+                onSizeFilterChanged: (filter) => root.searchProxyForPane(activePane).sizeFilter = filter
                 onClearAllFilters: {
-                    searchProxy.fileTypeFilter = ""
-                    searchProxy.dateFilter = ""
-                    searchProxy.sizeFilter = ""
+                    root.searchProxyForPane(activePane).fileTypeFilter = ""
+                    root.searchProxyForPane(activePane).dateFilter = ""
+                    root.searchProxyForPane(activePane).sizeFilter = ""
                 }
             }
 
@@ -1613,59 +2113,103 @@ ApplicationWindow {
                     }
                 }
 
-                FileViewContainer {
-                    id: fileViewContainer
+                RowLayout {
                     anchors.fill: parent
-                    fileModel: root.isRecentsView ? recentFiles : (root.searchMode ? searchProxy : fsModel)
-                    viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-                    currentPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+                    anchors.margins: 8
+                    spacing: 8
 
-                    onFileActivated: (filePath, isDirectory) => {
-                        if (isDirectory) {
-                            if (tabModel.activeTab) tabModel.activeTab.navigateTo(filePath)
-                        } else if (fileOps.isArchive(filePath)) {
-                            var dir = filePath.substring(0, filePath.lastIndexOf("/"))
-                            // Peek at archive to find root folder before extracting
-                            var rootFolder = fileOps.archiveRootFolder(filePath)
-                            fileOps.extractArchive(filePath, dir)
-                            var conn = fileOps.operationFinished.connect(function(success) {
-                                fileOps.operationFinished.disconnect(arguments.callee)
-                                if (success && tabModel.activeTab) {
-                                    if (rootFolder)
-                                        tabModel.activeTab.navigateTo(dir + "/" + rootFolder)
-                                    else
-                                        tabModel.activeTab.navigateTo(dir)
-                                }
-                            })
-                        } else {
-                            fileOps.openFile(filePath)
-                            recentFiles.addRecent(filePath)
+                    Rectangle {
+                        id: primaryPaneFrame
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: Theme.radiusMedium
+                        clip: true
+                        color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.14)
+                        border.width: 1
+                        border.color: root.splitViewEnabled() && root.activePane === "primary"
+                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
+                            : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                        Behavior on border.color { ColorAnimation { duration: Theme.animDuration } }
+
+                        FileViewContainer {
+                            id: primaryFileViewContainer
+                            anchors.fill: parent
+                            fileModel: root.paneModel("primary")
+                            viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+                            currentPath: root.panePath("primary")
+
+                            onInteractionStarted: root.setActivePane("primary")
+                            onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("primary", filePath, isDirectory)
+                            onSelectionChanged: {
+                                root.setActivePane("primary")
+                                root.updateSelectionStatus()
+                            }
+                            onContextMenuRequested: (filePath, isDirectory, position) =>
+                                root.showContextMenuForPane("primary", filePath, isDirectory, position)
                         }
                     }
 
-                    onSelectionChanged: root.updateSelectionStatus()
+                    Loader {
+                        id: dividerLoader
+                        active: root.splitViewEnabled()
+                        visible: active
+                        Layout.preferredWidth: active ? 1 : 0
+                        Layout.fillHeight: true
 
-                    onContextMenuRequested: (filePath, isDirectory, position) => {
-                        var currentDir = tabModel.activeTab ? tabModel.activeTab.currentPath : ""
-                        contextMenu.targetPath = filePath !== "" ? filePath : currentDir
-                        contextMenu.targetIsDir = filePath !== "" ? isDirectory : true
-                        contextMenu.isEmptySpace = (filePath === "")
-                        var sel = getSelectedPaths()
-                        contextMenu.selectedPaths = (sel.length > 1) ? sel : (filePath !== "" ? [filePath] : [])
-                        contextMenu.popup(position.x, position.y)
+                        sourceComponent: Rectangle {
+                            width: 1
+                            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                        }
+                    }
+
+                    Loader {
+                        id: secondaryPaneLoader
+                        active: root.splitViewEnabled()
+                        visible: active
+                        Layout.fillWidth: active
+                        Layout.fillHeight: true
+
+                        sourceComponent: Rectangle {
+                            id: secondaryPaneFrame
+                            property alias fileView: secondaryFileViewContainer
+                            radius: Theme.radiusMedium
+                            clip: true
+                            color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.14)
+                            border.width: 1
+                            border.color: root.activePane === "secondary"
+                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
+                                : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                            Behavior on border.color { ColorAnimation { duration: Theme.animDuration } }
+
+                            FileViewContainer {
+                                id: secondaryFileViewContainer
+                                anchors.fill: parent
+                                fileModel: root.paneModel("secondary")
+                                viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+                                currentPath: root.panePath("secondary")
+
+                                onInteractionStarted: root.setActivePane("secondary")
+                                onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("secondary", filePath, isDirectory)
+                                onSelectionChanged: {
+                                    root.setActivePane("secondary")
+                                    root.updateSelectionStatus()
+                                }
+                                onContextMenuRequested: (filePath, isDirectory, position) =>
+                                    root.showContextMenuForPane("secondary", filePath, isDirectory, position)
+                            }
+                        }
                     }
                 }
             }
 
             StatusBar {
                 Layout.fillWidth: true
-                itemCount: root.isRecentsView ? recentFiles.count
-                    : (root.searchMode ? searchProxy.rowCount() : fsModel.fileCount + fsModel.folderCount)
-                folderCount: root.isRecentsView ? 0 : (root.searchMode ? 0 : fsModel.folderCount)
-                searchStatus: root.searchMode && searchService.isSearching
-                    ? "Searching... " + searchService.resultCount + " results"
-                    : (root.searchMode && searchProxy.searchActive
-                        ? searchProxy.rowCount() + " results"
+                itemCount: root.activeItemCount()
+                folderCount: root.activeFolderCount()
+                searchStatus: root.searchMode && root.searchServiceForPane(activePane).isSearching
+                    ? "Searching... " + root.searchServiceForPane(activePane).resultCount + " results"
+                    : (root.searchMode && root.searchProxyForPane(activePane).searchActive
+                        ? root.searchProxyForPane(activePane).rowCount() + " results"
                         : "")
                 selectedCount: root.currentSelectedCount
                 selectedSize: root.currentSelectedSize
@@ -1681,10 +2225,10 @@ ApplicationWindow {
         acceptedButtons: Qt.BackButton | Qt.ForwardButton
         propagateComposedEvents: true
         onClicked: (mouse) => {
-            if (mouse.button === Qt.BackButton && tabModel.activeTab)
-                tabModel.activeTab.goBack()
-            else if (mouse.button === Qt.ForwardButton && tabModel.activeTab)
-                tabModel.activeTab.goForward()
+            if (mouse.button === Qt.BackButton)
+                root.goActivePaneBack()
+            else if (mouse.button === Qt.ForwardButton)
+                root.goActivePaneForward()
         }
     }
 

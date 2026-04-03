@@ -1,7 +1,12 @@
 #include <QTest>
+#include <QClipboard>
+#include <QCoreApplication>
 #include <QTemporaryDir>
 #include <QFile>
 #include <QDir>
+#include <QGuiApplication>
+#include <QImage>
+#include <QMimeData>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include "testdir.h"
@@ -259,6 +264,49 @@ private slots:
         QVERIFY(dir.exists("new_file.txt"));
         QFileInfo info(dir.path() + "/new_file.txt");
         QCOMPARE(info.size(), 0LL); // empty file
+    }
+
+    void testPasteClipboardImage()
+    {
+        TestDir dir;
+
+        QClipboard *clipboard = QGuiApplication::clipboard();
+        QVERIFY(clipboard != nullptr);
+
+        QMimeData *savedMime = new QMimeData;
+        if (const QMimeData *original = clipboard->mimeData()) {
+            for (const QString &format : original->formats())
+                savedMime->setData(format, original->data(format));
+            if (original->hasImage())
+                savedMime->setImageData(original->imageData());
+            if (original->hasText())
+                savedMime->setText(original->text());
+        }
+
+        QImage image(8, 8, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::red);
+        clipboard->setImage(image);
+
+        const QByteArray originalPath = qgetenv("PATH");
+        qputenv("PATH", QFileInfo(QCoreApplication::applicationFilePath()).absolutePath().toUtf8());
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+
+        const QString outputPath = ops.pasteClipboardImage(dir.path());
+
+        qputenv("PATH", originalPath);
+
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.at(0).at(0).toBool(), true);
+        QVERIFY(!outputPath.isEmpty());
+        QVERIFY(QFile::exists(outputPath));
+
+        QImage saved(outputPath);
+        QVERIFY(!saved.isNull());
+        QCOMPARE(saved.size(), image.size());
+
+        clipboard->setMimeData(savedMime);
     }
 
     // --- Trash (requires gio) ---

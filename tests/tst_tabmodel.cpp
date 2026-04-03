@@ -63,6 +63,42 @@ private slots:
         QCOMPARE(tab.currentPath(), QString("/usr"));
     }
 
+    void testSplitViewState()
+    {
+        TabModel tab;
+
+        QCOMPARE(tab.splitViewEnabled(), false);
+        QCOMPARE(tab.secondaryCurrentPath(), QDir::homePath());
+        QCOMPARE(tab.secondaryCanGoBack(), false);
+        QCOMPARE(tab.secondaryCanGoForward(), false);
+
+        tab.setSplitViewEnabled(true);
+        QCOMPARE(tab.splitViewEnabled(), true);
+        QCOMPARE(tab.secondaryCurrentPath(), tab.currentPath());
+    }
+
+    void testSecondaryNavigation()
+    {
+        TabModel tab;
+        tab.setSplitViewEnabled(true);
+
+        QSignalSpy pathSpy(&tab, &TabModel::secondaryCurrentPathChanged);
+
+        tab.navigateSecondaryTo("/tmp");
+        QCOMPARE(tab.secondaryCurrentPath(), QString("/tmp"));
+        QCOMPARE(tab.secondaryCanGoBack(), true);
+        QCOMPARE(tab.secondaryCanGoForward(), false);
+        QCOMPARE(pathSpy.count(), 1);
+
+        tab.navigateSecondaryTo("/usr");
+        tab.secondaryGoBack();
+        QCOMPARE(tab.secondaryCurrentPath(), QString("/tmp"));
+        QCOMPARE(tab.secondaryCanGoForward(), true);
+
+        tab.secondaryGoForward();
+        QCOMPARE(tab.secondaryCurrentPath(), QString("/usr"));
+    }
+
     void testNavigateClearsForwardHistory()
     {
         TabModel tab;
@@ -217,6 +253,8 @@ private slots:
     {
         TabListModel model;
         model.activeTab()->navigateTo("/tmp");
+        model.activeTab()->setSplitViewEnabled(true);
+        model.activeTab()->navigateSecondaryTo("/usr");
         model.addTab();
         model.closeTab(0);
         QCOMPARE(model.rowCount(), 1);
@@ -224,6 +262,8 @@ private slots:
         model.reopenClosedTab();
         QCOMPARE(model.rowCount(), 2);
         QCOMPARE(model.tabAt(1)->currentPath(), QString("/tmp"));
+        QCOMPARE(model.tabAt(1)->secondaryCurrentPath(), QString("/usr"));
+        QCOMPARE(model.tabAt(1)->splitViewEnabled(), true);
     }
 
     void testReopenMultipleClosedTabs()

@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QProcess>
+#include <QByteArray>
 #include <QStringList>
 
 class FileOperations : public QObject
@@ -26,7 +27,11 @@ public:
     Q_INVOKABLE void createFolder(const QString &parentPath, const QString &name);
     Q_INVOKABLE void createFile(const QString &parentPath, const QString &name);
     Q_INVOKABLE void openFile(const QString &path);
+    Q_INVOKABLE bool pathExists(const QString &path) const;
+    Q_INVOKABLE void emptyTrash();
     Q_INVOKABLE void openFileWith(const QString &path, const QString &desktopFile);
+    Q_INVOKABLE bool hasClipboardImage() const;
+    Q_INVOKABLE QString pasteClipboardImage(const QString &destinationDir);
     Q_INVOKABLE void copyPathToClipboard(const QString &path);
     Q_INVOKABLE void openInTerminal(const QString &dirPath);
     Q_INVOKABLE void compressFiles(const QStringList &paths, const QString &format);
@@ -43,6 +48,8 @@ signals:
 private:
     void runProcess(const QString &program, const QStringList &args);
     void parseRsyncProgress(const QByteArray &data);
+    QByteArray clipboardImageData() const;
+    QString uniqueImagePastePath(const QString &destinationDir) const;
 
     QProcess *m_process = nullptr;
     bool m_busy = false;

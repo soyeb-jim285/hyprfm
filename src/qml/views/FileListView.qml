@@ -15,13 +15,24 @@ ListView {
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
+    signal interactionStarted()
 
     clip: true
 
     focus: visible
     keyNavigationEnabled: false  // We handle keys manually
+    boundsMovement: Flickable.StopAtBounds
+    boundsBehavior: Flickable.StopAtBounds
+    rebound: Transition {
+        NumberAnimation {
+            properties: "x,y"
+            duration: Theme.animDurationSlow + 60
+            easing.type: Easing.OutCubic
+        }
+    }
 
     function moveSelection(delta, extend) {
+        wheelScroller.stopAndSettle()
         var current = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
         var next = Math.max(0, Math.min(count - 1, current + delta))
         if (next === current && current >= 0) return
@@ -41,12 +52,6 @@ ListView {
 
     Keys.onUpPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
     Keys.onDownPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
-
-    // Elastic overscroll
-    boundsMovement: Flickable.FollowBoundsBehavior
-    boundsBehavior: Flickable.DragAndOvershootBounds
-    flickDeceleration: 1500
-    maximumFlickVelocity: 2500
 
     ScrollBar.vertical: ScrollBar {
         policy: ScrollBar.AsNeeded
@@ -81,6 +86,16 @@ ListView {
         selectedIndices = []
         lastSelectedIndex = -1
         cursorIndex = -1
+    }
+
+    function pathForRow(row) {
+        if (!model || row < 0)
+            return ""
+
+        if (model.filePath)
+            return model.filePath(row)
+
+        return model.data(model.index(row, 0), 258 /* FilePathRole */) || ""
     }
 
     function selectAll() {
@@ -177,6 +192,8 @@ ListView {
                 property bool dragPending: false
 
                 onPressed: (mouse) => {
+                    wheelScroller.stopAndSettle()
+                    root.interactionStarted()
                     pressPos = Qt.point(mouse.x, mouse.y)
                     dragPending = (mouse.button === Qt.LeftButton)
                 }
@@ -190,7 +207,7 @@ ListView {
                         if (!rowItem.isSelected)
                             root.selectIndex(rowItem.index, false, false)
                         var paths = root.selectedIndices.length > 1
-                            ? root.selectedIndices.map(function(i) { return (searchProxy && searchProxy.searchActive ? searchProxy.filePath(i) : fsModel.filePath(i)) })
+                            ? root.selectedIndices.map(function(i) { return root.pathForRow(i) })
                             : [rowItem.filePath]
                         rowItem.dragStarted = true
                         dragHelper.startDrag(paths, rowItem.fileIconName, paths.length)
@@ -281,6 +298,8 @@ ListView {
                 mouse.accepted = false
                 return
             }
+            wheelScroller.stopAndSettle()
+            root.interactionStarted()
             root.forceActiveFocus()
             if (mouse.button === Qt.LeftButton) {
                 root.interactive = false
@@ -347,5 +366,13 @@ ListView {
         id: rubberBand
         anchors.fill: parent
         z: 11
+    }
+
+    KineticWheelScroller {
+        id: wheelScroller
+        anchors.fill: parent
+        z: 12
+        flickable: root
+        onScrollStarted: root.interactionStarted()
     }
 }

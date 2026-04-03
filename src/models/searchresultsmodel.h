@@ -33,9 +33,9 @@ public:
     Q_INVOKABLE QString filePath(int row) const;
     Q_INVOKABLE bool isDir(int row) const;
     Q_INVOKABLE QString fileName(int row) const;
+    Q_INVOKABLE void clear();
 
     void addResults(const QList<QFileInfo> &entries);
-    void clear();
 
 private:
     static QString formatSize(qint64 bytes);

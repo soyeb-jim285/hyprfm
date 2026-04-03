@@ -94,7 +94,14 @@ void TabListModel::closeTab(int index)
     }
 
     TabModel *tab = m_tabs.at(index);
-    m_closedTabs.append({tab->currentPath(), tab->viewMode()});
+    m_closedTabs.append({
+        tab->currentPath(),
+        tab->viewMode(),
+        tab->secondaryCurrentPath(),
+        tab->sortBy(),
+        tab->sortAscending(),
+        tab->splitViewEnabled(),
+    });
 
     beginRemoveRows(QModelIndex(), index, index);
     m_tabs.removeAt(index);
@@ -122,6 +129,10 @@ void TabListModel::reopenClosedTab()
     auto *tab = new TabModel(this);
     tab->navigateTo(info.path);
     tab->setViewMode(info.viewMode);
+    tab->setSecondaryCurrentPath(info.secondaryPath);
+    tab->setSortBy(info.sortBy);
+    tab->setSortAscending(info.sortAscending);
+    tab->setSplitViewEnabled(info.splitViewEnabled);
     m_tabs.append(tab);
     connectTab(m_tabs.size() - 1, tab);
     endInsertRows();
@@ -136,6 +147,8 @@ QJsonArray TabListModel::saveSession() const
         arr.append(QJsonObject{
             {"path", tab->currentPath()},
             {"viewMode", tab->viewMode()},
+            {"splitViewEnabled", tab->splitViewEnabled()},
+            {"secondaryPath", tab->secondaryCurrentPath()},
             {"sortBy", tab->sortBy()},
             {"sortAscending", tab->sortAscending()},
         });
@@ -157,6 +170,8 @@ void TabListModel::restoreSession(const QJsonArray &tabs, int activeIdx)
         auto *tab = new TabModel(this);
         tab->navigateTo(obj.value("path").toString());
         tab->setViewMode(obj.value("viewMode").toString("grid"));
+        tab->setSplitViewEnabled(obj.value("splitViewEnabled").toBool(false));
+        tab->setSecondaryCurrentPath(obj.value("secondaryPath").toString(tab->currentPath()));
         tab->setSortBy(obj.value("sortBy").toString("name"));
         tab->setSortAscending(obj.value("sortAscending").toBool(true));
         m_tabs.append(tab);

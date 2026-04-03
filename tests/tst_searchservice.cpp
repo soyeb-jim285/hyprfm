@@ -119,6 +119,29 @@ private slots:
         QVERIFY(finishedSpy.wait(5000));
         QVERIFY(progressSpy.count() >= 1);
     }
+
+    void testSearchMatchesRelativePath()
+    {
+        TestDir dir;
+        dir.createFile("iasa/nested/file.txt");
+        dir.createFile("other.txt");
+
+        SearchResultsModel model;
+        SearchService service;
+        service.setResultsModel(&model);
+
+        QSignalSpy finishedSpy(&service, &SearchService::searchFinished);
+        service.startSearch(dir.path(), "iasa", false);
+        QVERIFY(finishedSpy.wait(5000));
+
+        QStringList paths;
+        for (int i = 0; i < model.rowCount(); ++i)
+            paths << model.filePath(i);
+
+        QVERIFY(paths.contains(dir.path() + "/iasa"));
+        QVERIFY(paths.contains(dir.path() + "/iasa/nested"));
+        QVERIFY(paths.contains(dir.path() + "/iasa/nested/file.txt"));
+    }
 };
 
 QTEST_MAIN(TestSearchService)

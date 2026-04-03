@@ -17,6 +17,8 @@ Item {
     property var customItems: []
     property var contextData: ({})
     property int menuWidth: 260
+    property bool splitViewEnabled: false
+    property bool isTrashView: false
 
     signal openRequested(string path)
     signal openWithRequested(string path, string desktopFile)
@@ -32,8 +34,10 @@ Item {
     signal newFileRequested(string parentPath)
     signal selectAllRequested()
     signal propertiesRequested(string path)
+    signal splitViewRequested(string path)
     signal viewModeRequested(string mode)
     signal sortRequested(string column, bool ascending)
+    signal emptyTrashRequested()
     signal customActionRequested(string action)
 
     property string currentViewMode: "grid"
@@ -217,6 +221,14 @@ Item {
         }
         if (!isEmptySpace && targetPath !== "") {
             items.push({ text: "Open", shortcut: "Return", action: "open", icon: "ExternalLink" })
+            if (!splitViewEnabled) {
+                items.push({
+                    text: targetIsDir ? "Open in Split View" : "Split View Here",
+                    shortcut: "",
+                    action: targetIsDir ? "split_open" : "split_here",
+                    icon: "SquareSplitHorizontal"
+                })
+            }
             if (!targetIsDir && fileModel) {
                 var props = fileModel.fileProperties(targetPath)
                 var mime = props["mimeType"] || ""
@@ -259,15 +271,26 @@ Item {
 
             items.push({ separator: true })
             items.push({ text: "Rename...", shortcut: "F2", action: "rename", icon: "FolderPen" })
-            items.push({ text: "Move to Trash", shortcut: "Delete", action: "trash", icon: "Trash", destructive: true })
+            if (isTrashView)
+                items.push({ text: "Delete Permanently", shortcut: "Delete", action: "delete", icon: "Trash", destructive: true })
+            else
+                items.push({ text: "Move to Trash", shortcut: "Delete", action: "trash", icon: "Trash", destructive: true })
             items.push({ separator: true })
             items.push({ text: "Properties", shortcut: "", action: "properties", icon: "Info" })
         } else {
             items.push({ text: "New Folder...", shortcut: "Shift+Ctrl+N", action: "newfolder", icon: "Folder" })
             items.push({ text: "New File...", shortcut: "", action: "newfile", icon: "FileText" })
             items.push({ separator: true })
-            if (clipboard.hasContent)
-                items.push({ text: "Paste", shortcut: "Ctrl+V", action: "paste", icon: "Clipboard" })
+            if (clipboard.hasContent || fileOps.hasClipboardImage()) {
+                items.push({
+                    text: clipboard.hasContent ? "Paste" : "Paste Image",
+                    shortcut: "Ctrl+V",
+                    action: "paste",
+                    icon: clipboard.hasContent ? "Clipboard" : "Image"
+                })
+            }
+            if (!splitViewEnabled)
+                items.push({ text: "Split View Here", shortcut: "", action: "split_here", icon: "SquareSplitHorizontal" })
             items.push({ text: "Select All", shortcut: "Ctrl+A", action: "selectall", icon: "Check" })
             items.push({ separator: true })
             items.push({ text: "View", shortcut: "", action: "view_toggle", isSubmenu: true, icon: "Eye",
@@ -291,6 +314,10 @@ Item {
             items.push({ separator: true })
             items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
             items.push({ text: "Properties", shortcut: "", action: "properties", icon: "Info" })
+            if (isTrashView) {
+                items.push({ separator: true })
+                items.push({ text: "Empty Trash", shortcut: "", action: "emptytrash", icon: "Trash", destructive: true })
+            }
         }
         return items
     }
@@ -312,6 +339,8 @@ Item {
         case "newfolder": newFolderRequested(effectiveDir); break
         case "newfile": newFileRequested(effectiveDir); break
         case "properties": propertiesRequested(targetPath); break
+        case "split_open": splitViewRequested(targetPath); break
+        case "split_here": splitViewRequested(effectiveDir); break
         case "view_grid": viewModeRequested("grid"); break
         case "view_list": viewModeRequested("list"); break
         case "view_detailed": viewModeRequested("detailed"); break
@@ -327,6 +356,7 @@ Item {
         case "compress_tarbz2": fileOps.compressFiles(effectivePaths, "tar.bz2"); break
         case "compress_tar": fileOps.compressFiles(effectivePaths, "tar"); break
         case "extract": fileOps.extractArchive(targetPath, effectiveDir); break
+        case "emptytrash": emptyTrashRequested(); break
         default: customActionRequested(action); break
         }
     }

@@ -62,6 +62,7 @@ private:
     QThread *m_workerThread = nullptr;
     SearchWorker *m_worker = nullptr;
     QString m_fdPath;
+    QString m_fdRootPath;
     bool m_searching = false;
     int m_resultCount = 0;
     int m_maxResults = 10000;

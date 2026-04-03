@@ -25,6 +25,14 @@ Item {
         root.searchQuery = ""
     }
 
+    function applyQuery(query) {
+        if (searchInput.text !== query)
+            searchInput.text = query
+    }
+
+    onSearchQueryChanged: applyQuery(searchQuery)
+    Component.onCompleted: applyQuery(searchQuery)
+
     Rectangle {
         anchors.fill: parent
         color: Theme.surface

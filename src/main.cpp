@@ -111,22 +111,44 @@ int main(int argc, char *argv[])
     ClipboardManager *clipboard = new ClipboardManager(&app);
     // DragHelper created after IconProvider below
 
+    const QString homePath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    const QString initialPrimaryPath = tabModel->activeTab() && !tabModel->activeTab()->currentPath().isEmpty()
+        ? tabModel->activeTab()->currentPath()
+        : homePath;
+    const QString initialSecondaryPath = tabModel->activeTab() && !tabModel->activeTab()->secondaryCurrentPath().isEmpty()
+        ? tabModel->activeTab()->secondaryCurrentPath()
+        : initialPrimaryPath;
+
     FileSystemModel *fsModel = new FileSystemModel(&app);
-    fsModel->setRootPath(QStandardPaths::writableLocation(QStandardPaths::HomeLocation));
+    fsModel->setRootPath(initialPrimaryPath);
     fsModel->setShowHidden(config->showHidden());
+
+    FileSystemModel *splitFsModel = new FileSystemModel(&app);
+    splitFsModel->setRootPath(initialSecondaryPath);
+    splitFsModel->setShowHidden(config->showHidden());
 
     SearchResultsModel *searchResults = new SearchResultsModel(&app);
     SearchProxyModel *searchProxy = new SearchProxyModel(&app);
-    searchProxy->setSourceModel(fsModel);
+    searchProxy->setSourceModel(searchResults);
+
+    SearchResultsModel *splitSearchResults = new SearchResultsModel(&app);
+    SearchProxyModel *splitSearchProxy = new SearchProxyModel(&app);
+    splitSearchProxy->setSourceModel(splitSearchResults);
 
     SearchService *searchService = new SearchService(&app);
+    searchService->setObjectName("primary");
     searchService->setResultsModel(searchResults);
+
+    SearchService *splitSearchService = new SearchService(&app);
+    splitSearchService->setObjectName("secondary");
+    splitSearchService->setResultsModel(splitSearchResults);
 
     // Connect config changes to reload theme, bookmarks, and showHidden
     QObject::connect(config, &ConfigManager::configChanged, [=]() {
         theme->loadTheme(config->theme(), themesDir);
         bookmarks->setBookmarks(config->bookmarks());
         fsModel->setShowHidden(config->showHidden());
+        splitFsModel->setShowHidden(config->showHidden());
     });
 
     // Connect lastWindowClosed to quit
@@ -139,7 +161,7 @@ int main(int argc, char *argv[])
     DeviceModel *devices = new DeviceModel(&app);
 
     // Check for required CLI tools and warn if missing
-    const QStringList requiredTools = {"rsync", "gio", "xdg-open", "wl-copy"};
+    const QStringList requiredTools = {"fd", "rsync", "gio", "xdg-open", "wl-copy", "wl-paste"};
     for (const QString &tool : requiredTools) {
         QProcess which;
         which.setProgram("which");
@@ -176,11 +198,15 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("clipboard", clipboard);
     engine.rootContext()->setContextProperty("dragHelper", dragHelper);
     engine.rootContext()->setContextProperty("fsModel", fsModel);
+    engine.rootContext()->setContextProperty("splitFsModel", splitFsModel);
     engine.rootContext()->setContextProperty("devices", devices);
     engine.rootContext()->setContextProperty("recentFiles", recentFiles);
     engine.rootContext()->setContextProperty("searchProxy", searchProxy);
     engine.rootContext()->setContextProperty("searchResults", searchResults);
     engine.rootContext()->setContextProperty("searchService", searchService);
+    engine.rootContext()->setContextProperty("splitSearchProxy", splitSearchProxy);
+    engine.rootContext()->setContextProperty("splitSearchResults", splitSearchResults);
+    engine.rootContext()->setContextProperty("splitSearchService", splitSearchService);
 
     engine.loadFromModule("HyprFM", "Main");
 

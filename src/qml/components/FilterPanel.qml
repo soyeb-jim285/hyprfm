@@ -14,6 +14,12 @@ Rectangle {
     signal sizeFilterChanged(string filter)
     signal clearAllFilters()
 
+    function applyState(typeFilter, dateFilter, sizeFilter) {
+        activeTypes = typeFilter ? typeFilter.split(",").filter(function(v) { return v !== "" }) : []
+        activeDateFilter = dateFilter || ""
+        activeSizeFilter = sizeFilter || ""
+    }
+
     function isTypeActive(value) {
         return activeTypes.indexOf(value) >= 0
     }

@@ -6,14 +6,43 @@ Rectangle {
     id: root
 
     property var activeTab: null
+    property string navigationPath: ""
+    property bool canGoBack: false
+    property bool canGoForward: false
+    property bool splitViewEnabled: false
     property bool isRecentsView: false
+    property bool isTrashView: false
     property bool searchMode: false
+    property string currentSearchQuery: ""
+    property string searchTypeFilter: ""
+    property string searchDateFilter: ""
+    property string searchSizeFilter: ""
+    property bool filterPanelOpen: false
     property alias searchBar: searchBarLoader.item
     property alias filterPanel: filterPanelLoader.item
 
     function startEditing() {
         if (!searchMode) breadcrumb.startEditing()
     }
+
+    function syncSearchBarState() {
+        if (searchBarLoader.item)
+            searchBarLoader.item.applyQuery(currentSearchQuery)
+    }
+
+    function syncFilterPanelState() {
+        if (!filterPanelLoader.item)
+            return
+
+        filterPanelLoader.item.visible = filterPanelOpen
+        filterPanelLoader.item.applyState(searchTypeFilter, searchDateFilter, searchSizeFilter)
+    }
+
+    onCurrentSearchQueryChanged: syncSearchBarState()
+    onSearchTypeFilterChanged: syncFilterPanelState()
+    onSearchDateFilterChanged: syncFilterPanelState()
+    onSearchSizeFilterChanged: syncFilterPanelState()
+    onFilterPanelOpenChanged: syncFilterPanelState()
 
     signal searchClicked()
     signal homeClicked()
@@ -22,10 +51,16 @@ Rectangle {
     signal searchClosed()
     signal searchEnterPressed()
     signal searchNavigateDown()
+    signal backRequested()
+    signal forwardRequested()
+    signal upRequested()
+    signal navigateRequested(string targetPath)
+    signal splitViewToggled()
     signal typeFilterChanged(string filter)
     signal dateFilterChanged(string filter)
     signal sizeFilterChanged(string filter)
     signal clearAllFilters()
+    signal emptyTrashRequested()
 
     implicitHeight: toolbarColumn.implicitHeight
     color: Theme.mantle
@@ -50,25 +85,27 @@ Rectangle {
                 // Back button
                 HoverRect {
                     width: 32; height: 32
-                    hoverEnabled: root.activeTab && root.activeTab.canGoBack
+                    hoverEnabled: root.canGoBack
                     opacity: hoverEnabled ? 1.0 : 0.4
-                    onClicked: { if (root.activeTab) root.activeTab.goBack() }
+                    onClicked: root.backRequested()
                     IconChevronLeft { anchors.centerIn: parent; size: 18; color: Theme.text }
                 }
 
                 // Forward button
                 HoverRect {
                     width: 32; height: 32
-                    hoverEnabled: root.activeTab && root.activeTab.canGoForward
+                    hoverEnabled: root.canGoForward
                     opacity: hoverEnabled ? 1.0 : 0.4
-                    onClicked: { if (root.activeTab) root.activeTab.goForward() }
+                    onClicked: root.forwardRequested()
                     IconChevronRight { anchors.centerIn: parent; size: 18; color: Theme.text }
                 }
 
                 // Up button
                 HoverRect {
                     width: 32; height: 32
-                    onClicked: { if (root.activeTab) root.activeTab.goUp() }
+                    hoverEnabled: !root.isRecentsView
+                    opacity: hoverEnabled ? 1.0 : 0.4
+                    onClicked: root.upRequested()
                     IconChevronUp { anchors.centerIn: parent; size: 18; color: Theme.text }
                 }
 
@@ -78,12 +115,10 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     visible: !root.searchMode
-                    path: root.activeTab ? root.activeTab.currentPath : ""
+                    path: root.navigationPath
                     activeTab: root.activeTab
                     isRecentsView: root.isRecentsView
-                    onNavigateRequested: (targetPath) => {
-                        if (root.activeTab) root.activeTab.navigateTo(targetPath)
-                    }
+                    onNavigateRequested: (targetPath) => root.navigateRequested(targetPath)
                 }
 
                 // Search bar (shown in search mode)
@@ -95,13 +130,59 @@ Rectangle {
                     visible: root.searchMode
                     active: root.searchMode
                     sourceComponent: SearchBar {
+                        searchQuery: root.currentSearchQuery
+                        filterPanelOpen: root.filterPanelOpen
                         onQueryChanged: (query) => root.searchQueryChanged(query)
                         onFilterToggled: root.searchFilterToggled()
                         onSearchClosed: root.searchClosed()
                         onEnterPressed: root.searchEnterPressed()
                         onNavigateDown: root.searchNavigateDown()
                     }
-                    onLoaded: item.focusInput()
+                    onLoaded: {
+                        root.syncSearchBarState()
+                        item.focusInput()
+                    }
+                }
+
+                HoverRect {
+                    width: 32; height: 32
+                    visible: !root.searchMode
+                    border.width: root.splitViewEnabled ? 1 : 0
+                    border.color: root.splitViewEnabled
+                        ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.65)
+                        : "transparent"
+                    color: root.splitViewEnabled
+                        ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b,
+                                  hovered ? 0.30 : 0.22)
+                        : (hovered
+                            ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                            : "transparent")
+                    onClicked: root.splitViewToggled()
+                    IconSquareSplitHorizontal {
+                        anchors.centerIn: parent
+                        size: 18
+                        color: root.splitViewEnabled ? Theme.accent : Theme.text
+                    }
+                }
+
+                // Empty Trash button (only in trash view)
+                HoverRect {
+                    width: emptyTrashRow.implicitWidth + 16; height: 32
+                    visible: root.isTrashView && !root.searchMode
+                    onClicked: root.emptyTrashRequested()
+                    Row {
+                        id: emptyTrashRow
+                        anchors.centerIn: parent
+                        spacing: 6
+                        IconTrash { anchors.verticalCenter: parent.verticalCenter; size: 16; color: Theme.error }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Empty Trash"
+                            color: Theme.error
+                            font.pointSize: Theme.fontNormal
+                            font.weight: Font.Medium
+                        }
+                    }
                 }
 
                 // Search button (hidden in search mode)
@@ -117,8 +198,8 @@ Rectangle {
         // ── Filter panel (slides in when toggled) ──
         Item {
             Layout.fillWidth: true
-            Layout.preferredHeight: root.searchMode && filterPanelLoader.item && filterPanelLoader.item.visible
-                ? filterPanelLoader.item.implicitHeight : 0
+                Layout.preferredHeight: root.searchMode && filterPanelLoader.item && filterPanelLoader.item.visible
+                    ? filterPanelLoader.item.implicitHeight : 0
             clip: true
 
             Behavior on Layout.preferredHeight {
@@ -130,12 +211,13 @@ Rectangle {
                 anchors.fill: parent
                 active: root.searchMode
                 sourceComponent: FilterPanel {
-                    visible: false
+                    visible: root.filterPanelOpen
                     onTypeFilterChanged: (filter) => root.typeFilterChanged(filter)
                     onDateFilterChanged: (filter) => root.dateFilterChanged(filter)
                     onSizeFilterChanged: (filter) => root.sizeFilterChanged(filter)
                     onClearAllFilters: root.clearAllFilters()
                 }
+                onLoaded: root.syncFilterPanelState()
             }
         }
 

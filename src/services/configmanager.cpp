@@ -28,6 +28,7 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"quick_preview", "Space"},
     {"path_bar", "Ctrl+L"},
     {"toggle_sidebar", "F9"},
+    {"split_view", "F3"},
     {"grid_view", "Ctrl+1"},
     {"list_view", "Ctrl+2"},
     {"detailed_view", "Ctrl+3"},

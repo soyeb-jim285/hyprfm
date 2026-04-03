@@ -20,9 +20,18 @@ qt_add_executable(hyprfm
 
 set_source_files_properties(qml/theme/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_qml_module(hyprfm
+option(HYPRFM_ENABLE_QML_CACHEGEN "Enable Qt QML cache compilation (faster startup, slower builds)" OFF)
+
+set(hyprfm_qml_module_args
     URI HyprFM
     VERSION 1.0
+)
+
+if(NOT HYPRFM_ENABLE_QML_CACHEGEN)
+    list(APPEND hyprfm_qml_module_args NO_CACHEGEN)
+endif()
+
+list(APPEND hyprfm_qml_module_args
     QML_FILES
         qml/Main.qml
         qml/theme/Theme.qml
@@ -37,6 +46,7 @@ qt_add_qml_module(hyprfm
         qml/views/FileGridView.qml
         qml/views/FileListView.qml
         qml/views/FileDetailedView.qml
+        qml/views/KineticWheelScroller.qml
         qml/components/ContextMenu.qml
         qml/components/QuickPreview.qml
         qml/components/Toast.qml
@@ -53,6 +63,7 @@ qt_add_qml_module(hyprfm
         qml/icons/IconHome.qml
         qml/icons/IconSearch.qml
         qml/icons/IconPanelLeft.qml
+        qml/icons/IconSquareSplitHorizontal.qml
         qml/icons/IconPlus.qml
         qml/icons/IconClock.qml
         qml/icons/IconTrash.qml
@@ -86,6 +97,8 @@ qt_add_qml_module(hyprfm
         qml/components/SearchBar.qml
         qml/components/FilterPanel.qml
 )
+
+qt_add_qml_module(hyprfm ${hyprfm_qml_module_args})
 
 # Make Quill module discoverable at runtime
 set_target_properties(hyprfm PROPERTIES

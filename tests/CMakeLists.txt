@@ -49,7 +49,7 @@ add_executable(tst_fileoperations tst_fileoperations.cpp
     ${CMAKE_SOURCE_DIR}/src/services/fileoperations.cpp
 )
 target_include_directories(tst_fileoperations PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_fileoperations PRIVATE Qt6::Test Qt6::Core)
+target_link_libraries(tst_fileoperations PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME tst_fileoperations COMMAND tst_fileoperations)
 
 # --- New test targets ---

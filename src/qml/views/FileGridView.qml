@@ -15,22 +15,38 @@ GridView {
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
+    signal interactionStarted()
 
     clip: true
     // Zoom controls column count, not icon size
     property int columnCount: 7
-    readonly property int minColumns: 3
+    readonly property int minColumns: 2
     readonly property int maxColumns: 12
+    readonly property int minCellWidth: 140
+    readonly property int effectiveColumnCount: Math.max(
+        minColumns,
+        Math.min(columnCount, Math.min(maxColumns, Math.max(1, Math.floor(width / minCellWidth))))
+    )
     readonly property int labelHeight: 32  // two lines of text below icon
 
-    cellWidth: Math.floor(width / columnCount)
+    cellWidth: Math.floor(width / effectiveColumnCount)
     cellHeight: cellWidth  // square cells
     readonly property int iconSize: cellHeight - 8 - labelHeight - 5  // 8px top, 0px gap, 5px bottom
 
     focus: visible
     keyNavigationEnabled: false
+    boundsMovement: Flickable.StopAtBounds
+    boundsBehavior: Flickable.StopAtBounds
+    rebound: Transition {
+        NumberAnimation {
+            properties: "x,y"
+            duration: Theme.animDurationSlow + 60
+            easing.type: Easing.OutCubic
+        }
+    }
 
     function moveSelection(delta, extend) {
+        wheelScroller.stopAndSettle()
         var current = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
         var next = Math.max(0, Math.min(count - 1, current + delta))
         if (next === current && current >= 0) return
@@ -50,14 +66,8 @@ GridView {
 
     Keys.onLeftPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
     Keys.onRightPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
-    Keys.onUpPressed: (event) => moveSelection(-columnCount, event.modifiers & Qt.ShiftModifier)
-    Keys.onDownPressed: (event) => moveSelection(columnCount, event.modifiers & Qt.ShiftModifier)
-
-    // Elastic overscroll
-    boundsMovement: Flickable.FollowBoundsBehavior
-    boundsBehavior: Flickable.DragAndOvershootBounds
-    flickDeceleration: 1500
-    maximumFlickVelocity: 2500
+    Keys.onUpPressed: (event) => moveSelection(-effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
+    Keys.onDownPressed: (event) => moveSelection(effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
 
     ScrollBar.vertical: ScrollBar {
         policy: ScrollBar.AsNeeded
@@ -92,6 +102,16 @@ GridView {
         selectedIndices = []
         lastSelectedIndex = -1
         cursorIndex = -1
+    }
+
+    function pathForRow(row) {
+        if (!model || row < 0)
+            return ""
+
+        if (model.filePath)
+            return model.filePath(row)
+
+        return model.data(model.index(row, 0), 258 /* FilePathRole */) || ""
     }
 
     function selectAll() {
@@ -135,7 +155,7 @@ GridView {
     // Start a drag from a delegate — uses C++ QDrag for system-wide DnD
     function beginDrag(filePath, iconName, fileName, mouseX, mouseY) {
         var paths = selectedIndices.length > 1
-            ? selectedIndices.map(function(i) { return (searchProxy && searchProxy.searchActive ? searchProxy.filePath(i) : fsModel.filePath(i)) })
+            ? selectedIndices.map(function(i) { return pathForRow(i) })
             : [filePath]
         dragIconName = iconName
         dragFileName = selectedIndices.length > 1
@@ -317,6 +337,8 @@ GridView {
             property bool dragPending: false
 
             onPressed: (mouse) => {
+                wheelScroller.stopAndSettle()
+                root.interactionStarted()
                 pressPos = Qt.point(mouse.x, mouse.y)
                 dragPending = (mouse.button === Qt.LeftButton)
                 if (dragPending)
@@ -433,8 +455,15 @@ GridView {
 
         onWheel: (wheel) => {
             if (wheel.modifiers & Qt.ControlModifier) {
+                wheelScroller.stopAndSettle()
+                root.interactionStarted()
                 // Scroll up = zoom in = fewer columns (bigger icons)
-                var step = wheel.angleDelta.y > 0 ? -1 : 1
+                var delta = wheelScroller.deltaFor(wheel)
+                if (delta === 0) {
+                    wheel.accepted = false
+                    return
+                }
+                var step = delta < 0 ? -1 : 1
                 root.columnCount = Math.max(root.minColumns, Math.min(root.maxColumns, root.columnCount + step))
                 wheel.accepted = true
             } else {
@@ -449,6 +478,8 @@ GridView {
                 return
             }
             // Empty space (between cells or outside content rects)
+            wheelScroller.stopAndSettle()
+            root.interactionStarted()
             root.forceActiveFocus()
             if (mouse.button === Qt.LeftButton) {
                 root.interactive = false
@@ -515,5 +546,13 @@ GridView {
         id: rubberBand
         anchors.fill: parent
         z: 11
+    }
+
+    KineticWheelScroller {
+        id: wheelScroller
+        anchors.fill: parent
+        z: 12
+        flickable: root
+        onScrollStarted: root.interactionStarted()
     }
 }
