@@ -24,8 +24,7 @@ void SearchProxyModel::setSearchQuery(const QString &query)
         m_regex = QRegularExpression(pattern, QRegularExpression::CaseInsensitiveOption);
     }
 
-    beginFilterChange();
-    endFilterChange();
+    invalidateFilter();
     emit searchQueryChanged();
     emit searchActiveChanged();
 }
@@ -36,8 +35,7 @@ void SearchProxyModel::setFileTypeFilter(const QString &filter)
 {
     if (m_fileTypeFilter == filter) return;
     m_fileTypeFilter = filter;
-    beginFilterChange();
-    endFilterChange();
+    invalidateFilter();
     emit fileTypeFilterChanged();
     emit searchActiveChanged();
 }
@@ -48,8 +46,7 @@ void SearchProxyModel::setDateFilter(const QString &filter)
 {
     if (m_dateFilter == filter) return;
     m_dateFilter = filter;
-    beginFilterChange();
-    endFilterChange();
+    invalidateFilter();
     emit dateFilterChanged();
     emit searchActiveChanged();
 }
@@ -60,8 +57,7 @@ void SearchProxyModel::setSizeFilter(const QString &filter)
 {
     if (m_sizeFilter == filter) return;
     m_sizeFilter = filter;
-    beginFilterChange();
-    endFilterChange();
+    invalidateFilter();
     emit sizeFilterChanged();
     emit searchActiveChanged();
 }
@@ -87,8 +83,7 @@ void SearchProxyModel::clearSearch()
     m_sizeFilter.clear();
     m_isGlob = false;
     m_regex = QRegularExpression();
-    beginFilterChange();
-    endFilterChange();
+    invalidateFilter();
     emit searchQueryChanged();
     emit fileTypeFilterChanged();
     emit dateFilterChanged();
