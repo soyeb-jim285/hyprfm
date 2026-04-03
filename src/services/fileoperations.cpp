@@ -10,6 +10,7 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QStorageInfo>
+#include <QUuid>
 #include <QUrl>
 #include <unistd.h>
 
@@ -117,6 +118,21 @@ QString trashUriForPath(const QString &path)
     return trashUrl.toString(QUrl::FullyEncoded);
 }
 
+QString shellQuote(const QString &value)
+{
+    QString escaped = value;
+    escaped.replace("'", "'\"'\"'");
+    return QStringLiteral("'") + escaped + QStringLiteral("'");
+}
+
+QStringList nameParts(const QString &name)
+{
+    const int dotIndex = name.lastIndexOf('.');
+    if (dotIndex > 0)
+        return {name.left(dotIndex), name.mid(dotIndex)};
+    return {name, QString()};
+}
+
 }
 
 FileOperations::FileOperations(QObject *parent)
@@ -130,34 +146,22 @@ QString FileOperations::statusText() const { return m_statusText; }
 
 void FileOperations::copyFiles(const QStringList &sources, const QString &destination)
 {
-    QStringList args = {"--progress", "-r"};
-    for (const auto &src : sources)
-        args.append(src);
-    args.append(destination + "/");
+    transferResolvedItems(transferPlan(sources, destination), false);
+}
 
-    m_statusText = QString("Copying %1 item(s)...").arg(sources.size());
-    emit statusTextChanged();
-    runProcess("rsync", args);
+void FileOperations::copyResolvedItems(const QVariantList &operations)
+{
+    transferResolvedItems(operations, false);
 }
 
 void FileOperations::moveFiles(const QStringList &sources, const QString &destination)
 {
-    // Use rsync to merge, then remove empty source dirs with a shell command
-    QStringList args = {"-c", ""};
-    // Build: rsync -a --remove-source-files src1 src2 dest/ && find src1 src2 -type d -empty -delete
-    QString rsyncCmd = "rsync -a --progress --remove-source-files";
-    QString findCmd = "find";
-    for (const auto &src : sources) {
-        rsyncCmd += " " + QString("'%1'").arg(src);
-        findCmd += " " + QString("'%1'").arg(src);
-    }
-    rsyncCmd += " " + QString("'%1/'").arg(destination);
-    findCmd += " -type d -empty -delete 2>/dev/null";
-    args[1] = rsyncCmd + " && " + findCmd;
+    transferResolvedItems(transferPlan(sources, destination), true);
+}
 
-    m_statusText = QString("Moving %1 item(s)...").arg(sources.size());
-    emit statusTextChanged();
-    runProcess("sh", args);
+void FileOperations::moveResolvedItems(const QVariantList &operations)
+{
+    transferResolvedItems(operations, true);
 }
 
 void FileOperations::trashFiles(const QStringList &paths)
@@ -212,6 +216,65 @@ QString FileOperations::trashFilesPathFor(const QString &path) const
     return homeTrashFilesPath();
 }
 
+QVariantList FileOperations::transferPlan(const QStringList &sources, const QString &destination) const
+{
+    QVariantList plan;
+    const QDir destinationDir(destination);
+
+    for (const QString &sourcePath : sources) {
+        const QFileInfo sourceInfo(sourcePath);
+        if (!sourceInfo.exists())
+            continue;
+
+        const QString sourceName = sourceInfo.fileName();
+        const QString targetPath = destinationDir.filePath(sourceName);
+
+        QVariantMap item;
+        item["sourcePath"] = sourceInfo.absoluteFilePath();
+        item["sourceName"] = sourceName;
+        item["targetPath"] = QDir::cleanPath(targetPath);
+        item["targetName"] = sourceName;
+        item["targetExists"] = QFileInfo::exists(targetPath);
+        item["samePath"] = (QDir::cleanPath(sourceInfo.absoluteFilePath()) == QDir::cleanPath(targetPath));
+        item["isDir"] = sourceInfo.isDir();
+        plan.append(item);
+    }
+
+    return plan;
+}
+
+QString FileOperations::uniqueNameForDestination(const QString &destinationDir, const QString &desiredName,
+                                                const QStringList &blockedNames) const
+{
+    if (desiredName.isEmpty())
+        return {};
+
+    const auto parts = nameParts(desiredName);
+    const QString stem = parts.at(0);
+    const QString suffix = parts.at(1);
+    const QDir dir(destinationDir);
+
+    auto isBlocked = [&](const QString &candidate) {
+        return blockedNames.contains(candidate) || QFileInfo::exists(dir.filePath(candidate));
+    };
+
+    if (!isBlocked(desiredName))
+        return desiredName;
+
+    const QString copyStem = stem + " (copy)";
+    const QString firstCandidate = copyStem + suffix;
+    if (!isBlocked(firstCandidate))
+        return firstCandidate;
+
+    for (int i = 2; i < 10000; ++i) {
+        const QString candidate = QString("%1 (copy %2)%3").arg(stem).arg(i).arg(suffix);
+        if (!isBlocked(candidate))
+            return candidate;
+    }
+
+    return {};
+}
+
 void FileOperations::deleteFiles(const QStringList &paths)
 {
     QStringList trashUris;
@@ -240,6 +303,56 @@ void FileOperations::deleteFiles(const QStringList &paths)
     }
 
     emit operationFinished(localSuccess, localSuccess ? QString() : QStringLiteral("Failed to delete one or more items"));
+}
+
+void FileOperations::transferResolvedItems(const QVariantList &operations, bool moveOperation)
+{
+    if (operations.isEmpty()) {
+        emit operationFinished(true, QString());
+        return;
+    }
+
+    QStringList commands;
+    int itemCount = 0;
+
+    for (const QVariant &variant : operations) {
+        const QVariantMap item = variant.toMap();
+        const QString sourcePath = QDir::cleanPath(item.value("sourcePath").toString());
+        const QString targetPath = QDir::cleanPath(item.value("targetPath").toString());
+        const QString backupPath = item.value("backupPath").toString();
+        const bool overwrite = item.value("overwrite").toBool();
+
+        if (sourcePath.isEmpty() || targetPath.isEmpty()) {
+            emit operationFinished(false, "Transfer operation is missing a source or destination path");
+            return;
+        }
+
+        if (sourcePath == targetPath) {
+            emit operationFinished(false, QString("Source and destination are the same for %1").arg(QFileInfo(sourcePath).fileName()));
+            return;
+        }
+
+        const QString targetDirPath = QFileInfo(targetPath).absolutePath();
+        commands.append(QString("mkdir -p -- %1").arg(shellQuote(targetDirPath)));
+
+        if (overwrite && !backupPath.isEmpty()) {
+            const QString backupDirPath = QFileInfo(backupPath).absolutePath();
+            commands.append(QString("mkdir -p -- %1").arg(shellQuote(backupDirPath)));
+            commands.append(QString("if [ -e %1 ] || [ -L %1 ]; then rm -rf -- %2 && mv -- %1 %2; fi")
+                                .arg(shellQuote(targetPath), shellQuote(backupPath)));
+        }
+
+        if (moveOperation)
+            commands.append(QString("mv -- %1 %2").arg(shellQuote(sourcePath), shellQuote(targetPath)));
+        else
+            commands.append(QString("cp -a -- %1 %2").arg(shellQuote(sourcePath), shellQuote(targetPath)));
+
+        ++itemCount;
+    }
+
+    m_statusText = QString(moveOperation ? "Moving %1 item(s)..." : "Copying %1 item(s)...").arg(itemCount);
+    emit statusTextChanged();
+    runProcess("sh", {"-c", commands.join(" && ")});
 }
 
 bool FileOperations::rename(const QString &path, const QString &newName)
@@ -599,6 +712,20 @@ QString FileOperations::uniqueImagePastePath(const QString &destinationDir) cons
     }
 
     return {};
+}
+
+QString FileOperations::conflictBackupPath(const QString &targetPath) const
+{
+    QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    if (cacheRoot.isEmpty())
+        cacheRoot = QDir::homePath() + "/.cache/hyprfm";
+
+    QDir backupDir(cacheRoot + "/conflict-backups");
+    backupDir.mkpath(".");
+
+    const QString baseName = QFileInfo(targetPath).fileName();
+    const QString uniqueName = QUuid::createUuid().toString(QUuid::WithoutBraces) + "-" + baseName;
+    return backupDir.filePath(uniqueName);
 }
 
 QByteArray FileOperations::clipboardImageData() const

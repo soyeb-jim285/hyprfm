@@ -8,6 +8,7 @@ class ClipboardManager : public QObject
     Q_OBJECT
     Q_PROPERTY(bool hasContent READ hasContent NOTIFY changed)
     Q_PROPERTY(bool isCut READ isCut NOTIFY changed)
+    Q_PROPERTY(QStringList paths READ paths NOTIFY changed)
 
 public:
     explicit ClipboardManager(QObject *parent = nullptr);

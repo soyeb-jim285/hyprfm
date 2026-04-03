@@ -1,7 +1,12 @@
 #include <QTest>
+#include <QDir>
+#include <QFile>
+#include <QProcess>
 #include <QSignalSpy>
 #include <QImage>
 #include <QQuickTextureFactory>
+#include <QStandardPaths>
+#include <QUuid>
 #include "providers/thumbnailprovider.h"
 #include "testdir.h"
 
@@ -17,6 +22,29 @@ private:
         QString path = dir.path() + "/" + name;
         img.save(path, "PNG");
         return path;
+    }
+
+    QString findTrashEntryUri(const QString &originalPath)
+    {
+        QProcess proc;
+        proc.start("gio", {
+            "list",
+            "-l",
+            "-u",
+            "-a",
+            "trash::orig-path",
+            "trash:///"
+        });
+        if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
+            return {};
+
+        const QStringList lines = QString::fromUtf8(proc.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
+        for (const QString &line : lines) {
+            if (line.contains("trash::orig-path=" + originalPath))
+                return line.section('\t', 0, 0).trimmed();
+        }
+
+        return {};
     }
 
 private slots:
@@ -161,6 +189,48 @@ private slots:
             spy.wait(5000);
 
         delete response;
+    }
+
+    void testLoadTrashedImage()
+    {
+        if (QStandardPaths::findExecutable("gio").isEmpty())
+            QSKIP("gio not found in PATH");
+
+        const QString uniqueId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QString dirPath = QDir::homePath() + "/.cache/hyprfm-test-trash-thumb-" + uniqueId;
+        QDir().mkpath(dirPath);
+
+        QImage img(200, 120, QImage::Format_ARGB32);
+        img.fill(Qt::green);
+        const QString filePath = dirPath + "/thumb.png";
+        QVERIFY(img.save(filePath, "PNG"));
+
+        QProcess trashProc;
+        trashProc.start("gio", {"trash", filePath});
+        if (!trashProc.waitForFinished(5000) || trashProc.exitCode() != 0)
+            QSKIP("gio trash failed in this environment");
+
+        const QString trashUri = findTrashEntryUri(filePath);
+        if (trashUri.isEmpty())
+            QSKIP("Could not find trashed image URI");
+
+        ThumbnailResponse response(trashUri, QSize(80, 80));
+        QSignalSpy spy(&response, &QQuickImageResponse::finished);
+        if (spy.isEmpty())
+            spy.wait(5000);
+
+        QQuickTextureFactory *factory = response.textureFactory();
+        QVERIFY(factory != nullptr);
+        const QImage result = factory->image();
+        QVERIFY(!result.isNull());
+        QVERIFY(result.width() <= 80);
+        QVERIFY(result.height() <= 80);
+        delete factory;
+
+        QProcess removeProc;
+        removeProc.start("gio", {"remove", "-f", trashUri});
+        removeProc.waitForFinished(5000);
+        QDir(dirPath).removeRecursively();
     }
 };
 

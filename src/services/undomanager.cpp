@@ -9,6 +9,8 @@
 #include <QRegularExpression>
 #include <QUrl>
 
+#include <algorithm>
+
 namespace {
 
 QHash<QString, QString> parseGioAttributes(const QString &attributeText)
@@ -66,6 +68,53 @@ QString latestTrashUriForOriginalPath(const QString &originalPath)
     return latestUri;
 }
 
+QVariantList prepareOperations(const QVariantList &operations, FileOperations *fileOps)
+{
+    QVariantList prepared;
+    for (const QVariant &variant : operations) {
+        QVariantMap item = variant.toMap();
+        if (item.value("overwrite").toBool() && item.value("backupPath").toString().isEmpty())
+            item["backupPath"] = fileOps->conflictBackupPath(item.value("targetPath").toString());
+        prepared.append(item);
+    }
+    return prepared;
+}
+
+QStringList operationsField(const QVariantList &operations, const QString &field)
+{
+    QStringList values;
+    for (const QVariant &variant : operations)
+        values.append(variant.toMap().value(field).toString());
+    return values;
+}
+
+QVariantList buildOperations(const QStringList &sources, const QStringList &targets,
+                             const QStringList &backupPaths = {})
+{
+    QVariantList operations;
+    const int count = std::min(sources.size(), targets.size());
+    for (int i = 0; i < count; ++i) {
+        QVariantMap item;
+        item["sourcePath"] = sources.at(i);
+        item["targetPath"] = targets.at(i);
+        const QString backupPath = i < backupPaths.size() ? backupPaths.at(i) : QString();
+        item["overwrite"] = !backupPath.isEmpty();
+        if (!backupPath.isEmpty())
+            item["backupPath"] = backupPath;
+        operations.append(item);
+    }
+    return operations;
+}
+
+bool hasBackupPaths(const QStringList &backupPaths)
+{
+    for (const QString &backupPath : backupPaths) {
+        if (!backupPath.isEmpty())
+            return true;
+    }
+    return false;
+}
+
 }
 
 UndoManager::UndoManager(FileOperations *fileOps, QObject *parent)
@@ -99,34 +148,47 @@ QStringList UndoManager::computeCreatedPaths(const QStringList &sources, const Q
 
 void UndoManager::copyFiles(const QStringList &sources, const QString &destination)
 {
-    QStringList created = computeCreatedPaths(sources, destination);
-    m_fileOps->copyFiles(sources, destination);
+    copyResolvedItems(buildOperations(sources, computeCreatedPaths(sources, destination)));
+}
+
+void UndoManager::copyResolvedItems(const QVariantList &operations)
+{
+    const QVariantList preparedOperations = prepareOperations(operations, m_fileOps);
+    const QStringList sourcePaths = operationsField(preparedOperations, "sourcePath");
+    const QStringList targetPaths = operationsField(preparedOperations, "targetPath");
+    const QStringList backupPaths = operationsField(preparedOperations, "backupPath");
+
+    m_fileOps->copyResolvedItems(preparedOperations);
 
     auto conn = std::make_shared<QMetaObject::Connection>();
     *conn = connect(m_fileOps, &FileOperations::operationFinished,
-                    this, [this, sources, destination, created, conn](bool success, const QString &) {
+                    this, [this, sourcePaths, targetPaths, backupPaths, conn](bool success, const QString &) {
         disconnect(*conn);
         if (success)
-            record({UndoRecord::Copy, sources, destination, {}, {}, created});
+            record({UndoRecord::Copy, sourcePaths, {}, {}, {}, targetPaths, backupPaths});
     });
 }
 
 void UndoManager::moveFiles(const QStringList &sources, const QString &destination)
 {
-    QStringList created = computeCreatedPaths(sources, destination);
-    // Remember original parent dirs per source
-    QStringList origDirs;
-    for (const auto &src : sources)
-        origDirs.append(QFileInfo(src).absolutePath());
+    moveResolvedItems(buildOperations(sources, computeCreatedPaths(sources, destination)));
+}
 
-    m_fileOps->moveFiles(sources, destination);
+void UndoManager::moveResolvedItems(const QVariantList &operations)
+{
+    const QVariantList preparedOperations = prepareOperations(operations, m_fileOps);
+    const QStringList sourcePaths = operationsField(preparedOperations, "sourcePath");
+    const QStringList targetPaths = operationsField(preparedOperations, "targetPath");
+    const QStringList backupPaths = operationsField(preparedOperations, "backupPath");
+
+    m_fileOps->moveResolvedItems(preparedOperations);
 
     auto conn = std::make_shared<QMetaObject::Connection>();
     *conn = connect(m_fileOps, &FileOperations::operationFinished,
-                    this, [this, sources, destination, created, conn](bool success, const QString &) {
+                    this, [this, sourcePaths, targetPaths, backupPaths, conn](bool success, const QString &) {
         disconnect(*conn);
         if (success)
-            record({UndoRecord::Move, sources, destination, {}, {}, created});
+            record({UndoRecord::Move, sourcePaths, {}, {}, {}, targetPaths, backupPaths});
     });
 }
 
@@ -139,7 +201,7 @@ void UndoManager::trashFiles(const QStringList &paths)
                     this, [this, paths, conn](bool success, const QString &) {
         disconnect(*conn);
         if (success)
-            record({UndoRecord::Trash, paths, {}, {}, {}, {}});
+            record({UndoRecord::Trash, paths, {}, {}, {}, {}, {}});
     });
 }
 
@@ -149,7 +211,7 @@ bool UndoManager::rename(const QString &path, const QString &newName)
     bool ok = m_fileOps->rename(path, newName);
     if (ok) {
         QString dir = QFileInfo(path).absolutePath();
-        record({UndoRecord::Rename, {path}, dir, oldName, newName, {dir + "/" + newName}});
+        record({UndoRecord::Rename, {path}, dir, oldName, newName, {dir + "/" + newName}, {}});
     }
     return ok;
 }
@@ -159,7 +221,7 @@ void UndoManager::createFolder(const QString &parentPath, const QString &name)
     m_fileOps->createFolder(parentPath, name);
     QString created = QDir(parentPath).filePath(name);
     if (QDir(created).exists())
-        record({UndoRecord::CreateFolder, {}, parentPath, {}, name, {created}});
+        record({UndoRecord::CreateFolder, {}, parentPath, {}, name, {created}, {}});
 }
 
 void UndoManager::createFile(const QString &parentPath, const QString &name)
@@ -167,7 +229,7 @@ void UndoManager::createFile(const QString &parentPath, const QString &name)
     m_fileOps->createFile(parentPath, name);
     QString created = QDir(parentPath).filePath(name);
     if (QFile::exists(created))
-        record({UndoRecord::CreateFile, {}, parentPath, {}, name, {created}});
+        record({UndoRecord::CreateFile, {}, parentPath, {}, name, {created}, {}});
 }
 
 // ── Undo ─────────────────────────────────────────────────────────────────
@@ -189,16 +251,29 @@ void UndoManager::executeUndo(const UndoRecord &rec)
 {
     switch (rec.type) {
     case UndoRecord::Copy:
-        // Undo copy = delete the copies
+        if (hasBackupPaths(rec.backupPaths)) {
+            auto conn = std::make_shared<QMetaObject::Connection>();
+            *conn = connect(m_fileOps, &FileOperations::operationFinished,
+                            this, [this, rec, conn](bool success, const QString &) {
+                disconnect(*conn);
+                if (success)
+                    restoreBackupPaths(rec.createdPaths, rec.backupPaths);
+            });
+        }
         m_fileOps->deleteFiles(rec.createdPaths);
         break;
 
     case UndoRecord::Move:
-        // Undo move = move files back to original locations
-        for (int i = 0; i < rec.createdPaths.size() && i < rec.sourcePaths.size(); ++i) {
-            QString origDir = QFileInfo(rec.sourcePaths.at(i)).absolutePath();
-            m_fileOps->moveFiles({rec.createdPaths.at(i)}, origDir);
+        if (hasBackupPaths(rec.backupPaths)) {
+            auto conn = std::make_shared<QMetaObject::Connection>();
+            *conn = connect(m_fileOps, &FileOperations::operationFinished,
+                            this, [this, rec, conn](bool success, const QString &) {
+                disconnect(*conn);
+                if (success)
+                    restoreBackupPaths(rec.createdPaths, rec.backupPaths);
+            });
         }
+        m_fileOps->moveResolvedItems(buildOperations(rec.createdPaths, rec.sourcePaths));
         break;
 
     case UndoRecord::Rename: {
@@ -245,11 +320,11 @@ void UndoManager::executeRedo(const UndoRecord &rec)
 {
     switch (rec.type) {
     case UndoRecord::Copy:
-        m_fileOps->copyFiles(rec.sourcePaths, rec.destination);
+        m_fileOps->copyResolvedItems(buildOperations(rec.sourcePaths, rec.createdPaths, rec.backupPaths));
         break;
 
     case UndoRecord::Move:
-        m_fileOps->moveFiles(rec.sourcePaths, rec.destination);
+        m_fileOps->moveResolvedItems(buildOperations(rec.sourcePaths, rec.createdPaths, rec.backupPaths));
         break;
 
     case UndoRecord::Rename: {
@@ -288,4 +363,23 @@ void UndoManager::restoreFromTrash(const QStringList &originalPaths)
 
     if (!restoreTargets.isEmpty())
         m_fileOps->restoreFromTrash(restoreTargets);
+}
+
+void UndoManager::restoreBackupPaths(const QStringList &targets, const QStringList &backupPaths)
+{
+    QVariantList restoreOperations;
+    const int count = std::min(targets.size(), backupPaths.size());
+    for (int i = 0; i < count; ++i) {
+        if (backupPaths.at(i).isEmpty() || !QFileInfo::exists(backupPaths.at(i)))
+            continue;
+
+        QVariantMap item;
+        item["sourcePath"] = backupPaths.at(i);
+        item["targetPath"] = targets.at(i);
+        item["overwrite"] = false;
+        restoreOperations.append(item);
+    }
+
+    if (!restoreOperations.isEmpty())
+        m_fileOps->moveResolvedItems(restoreOperations);
 }

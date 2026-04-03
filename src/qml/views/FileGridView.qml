@@ -21,6 +21,7 @@ GridView {
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
     signal interactionStarted()
+    signal transferRequested(var paths, string destinationPath, bool moveOperation)
 
     property string pendingFocusPath: ""
     property bool pendingFocusReveal: true
@@ -379,7 +380,7 @@ GridView {
                     return delegateItem.filePath === p || delegateItem.filePath.startsWith(p + "/")
                 })
                 if (dominated) return
-                undoManager.moveFiles(paths, delegateItem.filePath)
+                root.transferRequested(paths, delegateItem.filePath, drop.proposedAction !== Qt.CopyAction)
                 drop.accept()
             }
         }
@@ -596,7 +597,7 @@ GridView {
                 return parentDir === root.currentPath
             })
             if (allSameDir) return
-            undoManager.moveFiles(paths, root.currentPath)
+            root.transferRequested(paths, root.currentPath, drop.proposedAction !== Qt.CopyAction)
             drop.accept()
         }
     }

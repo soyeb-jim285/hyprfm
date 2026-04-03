@@ -31,6 +31,7 @@ Item {
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
     signal sortRequested(string column, bool ascending)
     signal interactionStarted()
+    signal transferRequested(var paths, string destinationPath, bool moveOperation)
 
     function selectIndex(idx, ctrl, shift) {
         if (shift && lastSelectedIndex >= 0) {
@@ -599,9 +600,9 @@ Item {
                     }
                     if (paths.length === 0) return
                     if (drop.proposedAction === Qt.MoveAction)
-                        undoManager.moveFiles(paths, root.currentPath)
+                        root.transferRequested(paths, root.currentPath, true)
                     else
-                        undoManager.copyFiles(paths, root.currentPath)
+                        root.transferRequested(paths, root.currentPath, false)
                     drop.acceptProposedAction()
                 }
             }

@@ -1,20 +1,37 @@
 #include "thumbnailprovider.h"
 
 #include <QThreadPool>
+#include <QBuffer>
 #include <QImageReader>
 #include <QImage>
 #include <QQuickTextureFactory>
 #include <QProcess>
-#include <QTemporaryFile>
 #include <QFileInfo>
+#include <QTemporaryFile>
+#include <QUrl>
 
 static const QStringList kVideoExtensions = {
     "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "3gp", "ts",
 };
 
+static bool isTrashUri(const QString &path)
+{
+    return QUrl(path).scheme() == "trash";
+}
+
+static QByteArray readTrashUriData(const QString &uri)
+{
+    QProcess proc;
+    proc.start("gio", {"cat", QUrl(uri).toString(QUrl::FullyEncoded)});
+    if (!proc.waitForFinished(10000) || proc.exitCode() != 0)
+        return {};
+
+    return proc.readAllStandardOutput();
+}
+
 static bool isVideoFile(const QString &path)
 {
-    QString ext = QFileInfo(path).suffix().toLower();
+    QString ext = QFileInfo(QUrl(path).fileName()).suffix().toLower();
     return kVideoExtensions.contains(ext);
 }
 
@@ -42,12 +59,26 @@ void ThumbnailResponse::run()
 
 void ThumbnailResponse::generateImageThumbnail()
 {
-    QImageReader reader(m_id);
-    reader.setAutoTransform(true);
-
     QSize targetSize = m_requestedSize.isValid() ? m_requestedSize : QSize(80, 80);
 
-    // Only scale down, never up
+    QImageReader reader;
+    QBuffer buffer;
+    QByteArray imageData;
+    if (isTrashUri(m_id)) {
+        imageData = readTrashUriData(m_id);
+        if (imageData.isEmpty())
+            return;
+
+        buffer.setData(imageData);
+        if (!buffer.open(QIODevice::ReadOnly))
+            return;
+        reader.setDevice(&buffer);
+    } else {
+        reader.setFileName(m_id);
+    }
+
+    reader.setAutoTransform(true);
+
     QSize imageSize = reader.size();
     if (imageSize.isValid() && (imageSize.width() > targetSize.width() ||
                                 imageSize.height() > targetSize.height())) {

@@ -13,6 +13,7 @@ Item {
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
     signal selectionChanged()
     signal interactionStarted()
+    signal transferRequested(var paths, string destinationPath, bool moveOperation)
 
     function selectAll() {
         if (viewMode === "grid") gridView.selectAll()
@@ -42,6 +43,7 @@ Item {
         onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
         onSelectedIndicesChanged: root.selectionChanged()
         onInteractionStarted: root.interactionStarted()
+        onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
     }
 
     FileListView {
@@ -55,6 +57,7 @@ Item {
         onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
         onSelectedIndicesChanged: root.selectionChanged()
         onInteractionStarted: root.interactionStarted()
+        onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
     }
 
     FileDetailedView {
@@ -71,5 +74,6 @@ Item {
         }
         onSelectedIndicesChanged: root.selectionChanged()
         onInteractionStarted: root.interactionStarted()
+        onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
     }
 }

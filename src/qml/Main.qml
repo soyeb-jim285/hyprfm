@@ -23,6 +23,13 @@ ApplicationWindow {
         ? secondaryPaneIsRecents
         : primaryPaneIsRecents
     property var deleteConfirmPaths: []
+    property var transferConflictItems: []
+    property var transferResolvedItems: []
+    property int transferConflictIndex: -1
+    property bool transferMoveOperation: false
+    property bool transferClearClipboardOnSuccess: false
+    property string transferDestinationPath: ""
+    property var transferReservedTargets: ({})
     property bool paneFocusScheduled: false
     readonly property string unifiedTrashPath: "trash:///"
     readonly property bool isTrashView: fileOps.isTrashPath(panePath(activePane))
@@ -259,12 +266,24 @@ ApplicationWindow {
         return subViewFor(activeFileView())
     }
 
+    function reservedTargetNames() {
+        var names = []
+        for (var path in transferReservedTargets) {
+            if (!transferReservedTargets[path])
+                continue
+            var slashIndex = path.lastIndexOf("/")
+            names.push(slashIndex >= 0 ? path.substring(slashIndex + 1) : path)
+        }
+        return names
+    }
+
     function shouldFocusActivePane() {
         return root.active
             && !root.searchMode
             && !renameDialog.visible
             && !newFolderDialog.visible
             && !newFileDialog.visible
+            && !conflictDialog.visible
             && !deleteConfirmDialog.visible
             && !emptyTrashConfirmDialog.visible
             && !quickPreview.active
@@ -314,6 +333,158 @@ ApplicationWindow {
 
     function navigateActivePaneTo(path) {
         navigatePaneTo(activePane, path)
+    }
+
+    function resetTransferConflictState() {
+        transferConflictItems = []
+        transferResolvedItems = []
+        transferConflictIndex = -1
+        transferMoveOperation = false
+        transferClearClipboardOnSuccess = false
+        transferDestinationPath = ""
+        transferReservedTargets = ({})
+    }
+
+    function executeTransferOperation(items, moveOperation, clearClipboardOnSuccess) {
+        if (!items || items.length === 0)
+            return
+
+        if (clearClipboardOnSuccess) {
+            fileOps.operationFinished.connect(function(success) {
+                fileOps.operationFinished.disconnect(arguments.callee)
+                if (success)
+                    clipboard.clear()
+            })
+        }
+
+        if (moveOperation)
+            undoManager.moveResolvedItems(items)
+        else
+            undoManager.copyResolvedItems(items)
+    }
+
+    function openTransferConflict(index) {
+        if (index < 0 || index >= transferConflictItems.length) {
+            var items = transferResolvedItems.slice()
+            var moveOperation = transferMoveOperation
+            var clearClipboard = transferClearClipboardOnSuccess
+            resetTransferConflictState()
+            conflictDialog.close()
+            executeTransferOperation(items, moveOperation, clearClipboard)
+            return
+        }
+
+        transferConflictIndex = index
+        var item = transferConflictItems[index]
+        conflictRenameField.text = fileOps.uniqueNameForDestination(
+            transferDestinationPath,
+            item.sourceName,
+            reservedTargetNames()
+        )
+        conflictErrorText.text = ""
+        conflictDialog.currentItem = item
+        conflictDialog.open()
+    }
+
+    function beginTransfer(paths, destinationPath, moveOperation, clearClipboardOnSuccess) {
+        if (!paths || paths.length === 0 || !destinationPath)
+            return
+
+        var plan = fileOps.transferPlan(paths, destinationPath)
+        if (!plan || plan.length === 0)
+            return
+
+        var resolved = []
+        var conflicts = []
+        var reserved = ({})
+
+        for (var i = 0; i < plan.length; ++i) {
+            var item = plan[i]
+            var targetPath = item.targetPath
+            var hasReservedConflict = reserved[targetPath] === true
+            if (item.targetExists || item.samePath || hasReservedConflict) {
+                conflicts.push(item)
+                continue
+            }
+
+            reserved[targetPath] = true
+            resolved.push({
+                sourcePath: item.sourcePath,
+                targetPath: item.targetPath,
+                overwrite: false
+            })
+        }
+
+        if (conflicts.length === 0) {
+            executeTransferOperation(resolved, moveOperation, clearClipboardOnSuccess)
+            return
+        }
+
+        transferResolvedItems = resolved
+        transferConflictItems = conflicts
+        transferConflictIndex = -1
+        transferMoveOperation = moveOperation
+        transferClearClipboardOnSuccess = clearClipboardOnSuccess
+        transferDestinationPath = destinationPath
+        transferReservedTargets = reserved
+        openTransferConflict(0)
+    }
+
+    function resolveTransferConflict(action) {
+        if (transferConflictIndex < 0 || transferConflictIndex >= transferConflictItems.length)
+            return
+
+        var item = transferConflictItems[transferConflictIndex]
+        if (action === "overwrite") {
+            if (item.samePath) {
+                conflictErrorText.text = "Cannot overwrite an item with itself"
+                return
+            }
+
+            transferReservedTargets[item.targetPath] = true
+            transferResolvedItems = transferResolvedItems.concat([{ sourcePath: item.sourcePath, targetPath: item.targetPath, overwrite: true }])
+        } else if (action === "rename") {
+            var name = conflictRenameField.text.trim()
+            if (name === "" || name === "." || name === ".." || name.indexOf("/") >= 0) {
+                conflictErrorText.text = "Enter a valid file name"
+                return
+            }
+
+            var targetPath = transferDestinationPath + "/" + name
+            if (transferReservedTargets[targetPath] || fileOps.pathExists(targetPath) || targetPath === item.sourcePath) {
+                conflictErrorText.text = "That name already exists"
+                return
+            }
+
+            transferReservedTargets[targetPath] = true
+            transferResolvedItems = transferResolvedItems.concat([{ sourcePath: item.sourcePath, targetPath: targetPath, overwrite: false }])
+        }
+
+        var nextIndex = transferConflictIndex + 1
+        if (nextIndex >= transferConflictItems.length) {
+            openTransferConflict(nextIndex)
+            return
+        }
+
+        transferConflictIndex = nextIndex
+        var nextItem = transferConflictItems[nextIndex]
+        conflictDialog.currentItem = nextItem
+        conflictRenameField.text = fileOps.uniqueNameForDestination(
+            transferDestinationPath,
+            nextItem.sourceName,
+            reservedTargetNames()
+        )
+        conflictErrorText.text = ""
+        conflictRenameField.forceActiveFocus()
+    }
+
+    function cancelTransferConflicts() {
+        if (conflictDialog.visible)
+            conflictDialog.close()
+        else {
+            resetTransferConflictState()
+            scheduleActivePaneFocus()
+        }
     }
 
     function goActivePaneBack() {
@@ -1460,6 +1631,99 @@ ApplicationWindow {
         }
     }
 
+    Q.Dialog {
+        id: conflictDialog
+        anchors.fill: parent
+        z: 9998
+        dialogWidth: 460
+        title: root.transferMoveOperation ? "Move Conflict" : "Copy Conflict"
+        initialFocusItem: conflictRenameField
+
+        property var currentItem: ({})
+
+        onRejected: {
+            root.resetTransferConflictState()
+            root.scheduleActivePaneFocus()
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: conflictDialog.currentItem.samePath
+                ? "\"" + (conflictDialog.currentItem.sourceName || "") + "\" is already in this folder."
+                : "\"" + (conflictDialog.currentItem.sourceName || "") + "\" already exists in the destination."
+            color: Theme.text
+            font.pointSize: Theme.fontNormal
+            wrapMode: Text.WordWrap
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: root.transferMoveOperation
+                ? "Choose whether to skip it, replace the existing item, or keep both with a new name."
+                : "Choose whether to skip it, overwrite the existing item, or keep both with a new name."
+            color: Theme.subtext
+            font.pointSize: Theme.fontNormal
+            wrapMode: Text.WordWrap
+        }
+
+        Q.TextField {
+            id: conflictRenameField
+            Layout.fillWidth: true
+            autoFocus: true
+            variant: "filled"
+            placeholder: "New name"
+            Keys.onReturnPressed: root.resolveTransferConflict("rename")
+            Keys.onEscapePressed: conflictDialog.reject()
+        }
+
+        Text {
+            id: conflictErrorText
+            Layout.fillWidth: true
+            visible: text !== ""
+            color: Theme.error
+            font.pointSize: Theme.fontSmall
+            wrapMode: Text.WordWrap
+        }
+
+        RowLayout {
+            Layout.alignment: Qt.AlignRight
+            spacing: 12
+
+            Q.Button {
+                id: cancelConflictButton
+                text: "Cancel"
+                variant: "ghost"
+                size: "small"
+                onClicked: conflictDialog.reject()
+            }
+
+            Q.Button {
+                id: skipConflictButton
+                text: "Skip"
+                variant: "ghost"
+                size: "small"
+                onClicked: root.resolveTransferConflict("skip")
+            }
+
+            Q.Button {
+                id: overwriteConflictButton
+                text: root.transferMoveOperation ? "Replace" : "Overwrite"
+                variant: "danger"
+                size: "small"
+                enabled: !(conflictDialog.currentItem.samePath || false)
+                onClicked: root.resolveTransferConflict("overwrite")
+            }
+
+            Q.Button {
+                id: renameConflictButton
+                text: "Rename"
+                variant: "primary"
+                size: "small"
+                onClicked: root.resolveTransferConflict("rename")
+            }
+        }
+    }
+
     // ── Permanent Delete Confirmation Dialog ───────────────────────────────
     Q.Dialog {
         id: deleteConfirmDialog
@@ -2043,12 +2307,9 @@ ApplicationWindow {
 
         if (clipboard.hasContent) {
             var wasCut = clipboard.isCut
-            var items = clipboard.take()
+            var items = clipboard.paths
             if (!items || items.length === 0) return
-            if (wasCut)
-                undoManager.moveFiles(items, destPath)
-            else
-                undoManager.copyFiles(items, destPath)
+            beginTransfer(items, destPath, wasCut, wasCut)
             return
         }
 
@@ -2227,6 +2488,10 @@ ApplicationWindow {
                                 root.setActivePane("primary")
                                 root.updateSelectionStatus()
                             }
+                            onTransferRequested: (paths, destinationPath, moveOperation) => {
+                                root.setActivePane("primary")
+                                root.beginTransfer(paths, destinationPath, moveOperation, false)
+                            }
                             onContextMenuRequested: (filePath, isDirectory, position) =>
                                 root.showContextMenuForPane("primary", filePath, isDirectory, position)
                         }
@@ -2276,6 +2541,10 @@ ApplicationWindow {
                                 onSelectionChanged: {
                                     root.setActivePane("secondary")
                                     root.updateSelectionStatus()
+                                }
+                                onTransferRequested: (paths, destinationPath, moveOperation) => {
+                                    root.setActivePane("secondary")
+                                    root.beginTransfer(paths, destinationPath, moveOperation, false)
                                 }
                                 onContextMenuRequested: (filePath, isDirectory, position) =>
                                     root.showContextMenuForPane("secondary", filePath, isDirectory, position)

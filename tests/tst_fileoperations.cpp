@@ -195,6 +195,82 @@ private slots:
         QVERIFY(!QFile::exists(srcPath));
     }
 
+    void testTransferPlanDetectsConflict()
+    {
+        TestDir src, dst;
+        src.createFile("conflict.txt", "new");
+        dst.createFile("conflict.txt", "old");
+
+        FileOperations ops;
+        const QVariantList plan = ops.transferPlan({src.path() + "/conflict.txt"}, dst.path());
+
+        QCOMPARE(plan.size(), 1);
+        const QVariantMap item = plan.constFirst().toMap();
+        QCOMPARE(item.value("sourceName").toString(), QString("conflict.txt"));
+        QCOMPARE(item.value("targetPath").toString(), dst.path() + "/conflict.txt");
+        QVERIFY(item.value("targetExists").toBool());
+    }
+
+    void testUniqueNameForDestination()
+    {
+        TestDir dir;
+        dir.createFile("report.txt", "existing");
+
+        FileOperations ops;
+        QCOMPARE(ops.uniqueNameForDestination(dir.path(), "report.txt"), QString("report (copy).txt"));
+        QCOMPARE(ops.uniqueNameForDestination(dir.path(), "draft.txt", {"draft.txt", "draft (copy).txt"}),
+                 QString("draft (copy 2).txt"));
+    }
+
+    void testCopyResolvedItemsRename()
+    {
+        TestDir src, dst;
+        src.createFile("test.txt", "hello");
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+
+        QVariantMap item;
+        item["sourcePath"] = src.path() + "/test.txt";
+        item["targetPath"] = dst.path() + "/renamed.txt";
+        item["overwrite"] = false;
+
+        ops.copyResolvedItems({item});
+
+        QCOMPARE(spy.wait(5000), true);
+        QCOMPARE(spy.at(0).at(0).toBool(), true);
+        QVERIFY(QFile::exists(dst.path() + "/renamed.txt"));
+        QVERIFY(QFile::exists(src.path() + "/test.txt"));
+    }
+
+    void testMoveResolvedItemsOverwrite()
+    {
+        TestDir src, dst;
+        src.createFile("test.txt", "new content");
+        dst.createFile("test.txt", "old content");
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+
+        QVariantMap item;
+        item["sourcePath"] = src.path() + "/test.txt";
+        item["targetPath"] = dst.path() + "/test.txt";
+        item["overwrite"] = true;
+        item["backupPath"] = ops.conflictBackupPath(dst.path() + "/test.txt");
+
+        ops.moveResolvedItems({item});
+
+        QCOMPARE(spy.wait(5000), true);
+        QCOMPARE(spy.at(0).at(0).toBool(), true);
+        QVERIFY(!QFile::exists(src.path() + "/test.txt"));
+        QVERIFY(QFile::exists(dst.path() + "/test.txt"));
+
+        QFile result(dst.path() + "/test.txt");
+        QVERIFY(result.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(result.readAll()), QString("new content"));
+        QVERIFY(QFileInfo::exists(item.value("backupPath").toString()));
+    }
+
     // --- Rename ---
 
     void testRenameFile()

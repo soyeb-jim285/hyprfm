@@ -4,6 +4,7 @@
 #include <QProcess>
 #include <QByteArray>
 #include <QStringList>
+#include <QVariantList>
 
 class FileOperations : public QObject
 {
@@ -20,11 +21,17 @@ public:
     QString statusText() const;
 
     Q_INVOKABLE void copyFiles(const QStringList &sources, const QString &destination);
+    Q_INVOKABLE void copyResolvedItems(const QVariantList &operations);
     Q_INVOKABLE void moveFiles(const QStringList &sources, const QString &destination);
+    Q_INVOKABLE void moveResolvedItems(const QVariantList &operations);
     Q_INVOKABLE void trashFiles(const QStringList &paths);
     Q_INVOKABLE void restoreFromTrash(const QStringList &paths);
     Q_INVOKABLE bool isTrashPath(const QString &path) const;
     Q_INVOKABLE QString trashFilesPathFor(const QString &path) const;
+    Q_INVOKABLE QVariantList transferPlan(const QStringList &sources, const QString &destination) const;
+    Q_INVOKABLE QString uniqueNameForDestination(const QString &destinationDir, const QString &desiredName,
+                                                 const QStringList &blockedNames = {}) const;
+    QString conflictBackupPath(const QString &targetPath) const;
     Q_INVOKABLE void deleteFiles(const QStringList &paths);
     Q_INVOKABLE bool rename(const QString &path, const QString &newName);
     Q_INVOKABLE void createFolder(const QString &parentPath, const QString &name);
@@ -49,6 +56,7 @@ signals:
     void operationFinished(bool success, const QString &error);
 
 private:
+    void transferResolvedItems(const QVariantList &operations, bool moveOperation);
     void runProcess(const QString &program, const QStringList &args);
     void parseRsyncProgress(const QByteArray &data);
     QByteArray clipboardImageData() const;

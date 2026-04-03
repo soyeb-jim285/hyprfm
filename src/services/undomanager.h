@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QVariantList>
 #include <QStringList>
 #include <QStack>
 
@@ -14,6 +15,7 @@ struct UndoRecord {
     QString oldName;           // rename: original name
     QString newName;           // rename: new name
     QStringList createdPaths;  // paths that were created by the operation
+    QStringList backupPaths;   // temporary backups for overwritten destinations
 };
 
 class UndoManager : public QObject
@@ -33,7 +35,9 @@ public:
 
     // Undoable wrappers around FileOperations
     Q_INVOKABLE void copyFiles(const QStringList &sources, const QString &destination);
+    Q_INVOKABLE void copyResolvedItems(const QVariantList &operations);
     Q_INVOKABLE void moveFiles(const QStringList &sources, const QString &destination);
+    Q_INVOKABLE void moveResolvedItems(const QVariantList &operations);
     Q_INVOKABLE void trashFiles(const QStringList &paths);
     Q_INVOKABLE bool rename(const QString &path, const QString &newName);
     Q_INVOKABLE void createFolder(const QString &parentPath, const QString &name);
@@ -47,6 +51,7 @@ private:
     void executeRedo(const UndoRecord &record);
     void record(const UndoRecord &rec);
     void restoreFromTrash(const QStringList &originalPaths);
+    void restoreBackupPaths(const QStringList &targets, const QStringList &backupPaths);
     static QStringList computeCreatedPaths(const QStringList &sources, const QString &dest);
 
     FileOperations *m_fileOps;

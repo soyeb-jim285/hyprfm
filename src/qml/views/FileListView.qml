@@ -21,6 +21,7 @@ ListView {
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
     signal interactionStarted()
+    signal transferRequested(var paths, string destinationPath, bool moveOperation)
 
     property string pendingFocusPath: ""
     property bool pendingFocusReveal: true
@@ -434,9 +435,9 @@ ListView {
             }
             if (paths.length === 0) return
             if (drop.proposedAction === Qt.MoveAction)
-                undoManager.moveFiles(paths, root.currentPath)
+                root.transferRequested(paths, root.currentPath, true)
             else
-                undoManager.copyFiles(paths, root.currentPath)
+                root.transferRequested(paths, root.currentPath, false)
             drop.acceptProposedAction()
         }
     }

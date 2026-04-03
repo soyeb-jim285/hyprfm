@@ -3,6 +3,7 @@
 #include <QFile>
 #include <QSignalSpy>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QUuid>
 
 #include "services/fileoperations.h"
@@ -68,6 +69,58 @@ private slots:
 
         QVERIFY(QFile::exists(filePath));
         QDir(testDirPath).removeRecursively();
+    }
+
+    void testUndoCopyRestoresOverwrittenTarget()
+    {
+        QTemporaryDir srcDir;
+        QTemporaryDir dstDir;
+        QVERIFY(srcDir.isValid());
+        QVERIFY(dstDir.isValid());
+
+        const QString sourcePath = srcDir.path() + "/item.txt";
+        const QString targetPath = dstDir.path() + "/item.txt";
+
+        {
+            QFile file(sourcePath);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("new value");
+        }
+        {
+            QFile file(targetPath);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("old value");
+        }
+
+        FileOperations fileOps;
+        UndoManager undoManager(&fileOps);
+        QSignalSpy finishSpy(&fileOps, &FileOperations::operationFinished);
+
+        QVariantMap item;
+        item["sourcePath"] = sourcePath;
+        item["targetPath"] = targetPath;
+        item["overwrite"] = true;
+
+        undoManager.copyResolvedItems({item});
+        QVERIFY(finishSpy.wait(5000));
+        QCOMPARE(finishSpy.at(0).at(0).toBool(), true);
+
+        {
+            QFile file(targetPath);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(file.readAll()), QString("new value"));
+        }
+
+        finishSpy.clear();
+        undoManager.undo();
+        QTRY_VERIFY(QFile::exists(targetPath));
+        QTRY_VERIFY(!fileOps.busy());
+
+        {
+            QFile file(targetPath);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(file.readAll()), QString("old value"));
+        }
     }
 };
 

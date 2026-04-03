@@ -31,6 +31,12 @@ Item {
         return img.indexOf(fileExtension) >= 0
     }
 
+    readonly property bool isTrashUri: filePath.startsWith("trash:///")
+    readonly property string imageSource: {
+        if (!isImage || filePath === "") return ""
+        return isTrashUri ? ("image://thumbnail/" + filePath) : ("file://" + filePath)
+    }
+
     readonly property bool isText: {
         var txt = ["txt", "md", "json", "yaml", "yml", "toml", "ini", "cfg", "conf",
                    "sh", "bash", "zsh", "fish", "py", "js", "ts", "css", "html",
@@ -170,7 +176,8 @@ Item {
                 Image {
                     anchors.fill: parent
                     visible: root.isImage
-                    source: root.isImage && root.filePath !== "" ? "file://" + root.filePath : ""
+                    source: root.imageSource
+                    sourceSize: root.isTrashUri ? Qt.size(width, height) : Qt.size(-1, -1)
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
                     smooth: true
