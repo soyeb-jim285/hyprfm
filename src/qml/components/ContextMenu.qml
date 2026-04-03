@@ -14,6 +14,9 @@ Item {
     property bool targetIsDir: false
     property bool isEmptySpace: false
     property var selectedPaths: []
+    property var customItems: []
+    property var contextData: ({})
+    property int menuWidth: 260
 
     signal openRequested(string path)
     signal openWithRequested(string path, string desktopFile)
@@ -31,10 +34,12 @@ Item {
     signal propertiesRequested(string path)
     signal viewModeRequested(string mode)
     signal sortRequested(string column, bool ascending)
+    signal customActionRequested(string action)
 
     property string currentViewMode: "grid"
     property string currentSortBy: "name"
     property bool currentSortAscending: true
+    readonly property bool hasCustomItems: customItems && customItems.length > 0
 
     property var effectivePaths: (selectedPaths.length > 0) ? selectedPaths : (targetPath !== "" ? [targetPath] : [])
     property string effectiveDir: {
@@ -155,10 +160,10 @@ Item {
 
     // ── Menu container ────────────────────────────────────────────────────
     Item {
-        id: menuContainer
-        x: 0
-        y: 0
-        width: menuColumn.width + 12
+            id: menuContainer
+            x: 0
+            y: 0
+            width: menuColumn.width + 12
         height: menuColumn.height + 12
 
         opacity: 0
@@ -182,7 +187,7 @@ Item {
         Column {
             id: menuColumn
             anchors.centerIn: parent
-            width: 260
+            width: root.menuWidth
             spacing: 2
 
             Repeater {
@@ -206,8 +211,12 @@ Item {
 
     function buildModel() {
         var items = []
+        if (hasCustomItems) {
+            openWithApps = []
+            return customItems
+        }
         if (!isEmptySpace && targetPath !== "") {
-            items.push({ text: "Open", shortcut: "Return", action: "open" })
+            items.push({ text: "Open", shortcut: "Return", action: "open", icon: "ExternalLink" })
             if (!targetIsDir && fileModel) {
                 var props = fileModel.fileProperties(targetPath)
                 var mime = props["mimeType"] || ""
@@ -226,15 +235,15 @@ Item {
                 openWithApps = []
             }
             if (targetIsDir)
-                items.push({ text: "Open in Terminal", shortcut: "", action: "terminal" })
+                items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
             items.push({ separator: true })
-            items.push({ text: "Cut", shortcut: "Ctrl+X", action: "cut" })
-            items.push({ text: "Copy", shortcut: "Ctrl+C", action: "copy" })
-            items.push({ text: "Copy Path", shortcut: "", action: "copypath" })
+            items.push({ text: "Cut", shortcut: "Ctrl+X", action: "cut", icon: "Scissors" })
+            items.push({ text: "Copy", shortcut: "Ctrl+C", action: "copy", icon: "Copy" })
+            items.push({ text: "Copy Path", shortcut: "", action: "copypath", icon: "CopyPath" })
             items.push({ separator: true })
 
             // Compress submenu — always available for files/folders
-            items.push({ text: "Compress", shortcut: "", action: "compress_toggle", isSubmenu: true,
+            items.push({ text: "Compress", shortcut: "", action: "compress_toggle", isSubmenu: true, icon: "FolderArchive",
                 submenuItems: [
                     { text: "ZIP", shortcut: "", action: "compress_zip" },
                     { text: "tar.gz", shortcut: "", action: "compress_targz" },
@@ -246,42 +255,42 @@ Item {
 
             // Extract option for archives
             if (!targetIsDir && fileOps.isArchive(targetPath))
-                items.push({ text: "Extract Here", shortcut: "", action: "extract" })
+                items.push({ text: "Extract Here", shortcut: "", action: "extract", icon: "PackageOpen" })
 
             items.push({ separator: true })
-            items.push({ text: "Rename...", shortcut: "F2", action: "rename" })
-            items.push({ text: "Move to Trash", shortcut: "Delete", action: "trash" })
+            items.push({ text: "Rename...", shortcut: "F2", action: "rename", icon: "FolderPen" })
+            items.push({ text: "Move to Trash", shortcut: "Delete", action: "trash", icon: "Trash", destructive: true })
             items.push({ separator: true })
-            items.push({ text: "Properties", shortcut: "", action: "properties" })
+            items.push({ text: "Properties", shortcut: "", action: "properties", icon: "Info" })
         } else {
-            items.push({ text: "New Folder...", shortcut: "Shift+Ctrl+N", action: "newfolder" })
-            items.push({ text: "New File...", shortcut: "", action: "newfile" })
+            items.push({ text: "New Folder...", shortcut: "Shift+Ctrl+N", action: "newfolder", icon: "Folder" })
+            items.push({ text: "New File...", shortcut: "", action: "newfile", icon: "FileText" })
             items.push({ separator: true })
             if (clipboard.hasContent)
-                items.push({ text: "Paste", shortcut: "Ctrl+V", action: "paste" })
-            items.push({ text: "Select All", shortcut: "Ctrl+A", action: "selectall" })
+                items.push({ text: "Paste", shortcut: "Ctrl+V", action: "paste", icon: "Clipboard" })
+            items.push({ text: "Select All", shortcut: "Ctrl+A", action: "selectall", icon: "Check" })
             items.push({ separator: true })
-            items.push({ text: "View", shortcut: "", action: "view_toggle", isSubmenu: true,
+            items.push({ text: "View", shortcut: "", action: "view_toggle", isSubmenu: true, icon: "Eye",
                 submenuItems: [
-                    { text: "Grid", shortcut: "Ctrl+1", action: "view_grid", checked: currentViewMode === "grid" },
-                    { text: "List", shortcut: "Ctrl+2", action: "view_list", checked: currentViewMode === "list" },
-                    { text: "Detailed", shortcut: "Ctrl+3", action: "view_detailed", checked: currentViewMode === "detailed" }
+                    { text: "Grid", shortcut: "Ctrl+1", action: "view_grid", checked: currentViewMode === "grid", icon: "Grid" },
+                    { text: "List", shortcut: "Ctrl+2", action: "view_list", checked: currentViewMode === "list", icon: "List" },
+                    { text: "Detailed", shortcut: "Ctrl+3", action: "view_detailed", checked: currentViewMode === "detailed", icon: "AlignJustify" }
                 ]
             })
-            items.push({ text: "Sort By", shortcut: "", action: "sort_toggle", isSubmenu: true,
+            items.push({ text: "Sort By", shortcut: "", action: "sort_toggle", isSubmenu: true, icon: "SlidersH",
                 submenuItems: [
                     { text: "Name", shortcut: "", action: "sort_name", checked: currentSortBy === "name" },
                     { text: "Size", shortcut: "", action: "sort_size", checked: currentSortBy === "size" },
                     { text: "Date Modified", shortcut: "", action: "sort_modified", checked: currentSortBy === "modified" },
                     { text: "Type", shortcut: "", action: "sort_type", checked: currentSortBy === "type" },
                     { separator: true },
-                    { text: "Ascending", shortcut: "", action: "sort_asc", checked: currentSortAscending },
-                    { text: "Descending", shortcut: "", action: "sort_desc", checked: !currentSortAscending }
+                    { text: "Ascending", shortcut: "", action: "sort_asc", checked: currentSortAscending, icon: "ChevronUp" },
+                    { text: "Descending", shortcut: "", action: "sort_desc", checked: !currentSortAscending, icon: "ChevronDown" }
                 ]
             })
             items.push({ separator: true })
-            items.push({ text: "Open in Terminal", shortcut: "", action: "terminal" })
-            items.push({ text: "Properties", shortcut: "", action: "properties" })
+            items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
+            items.push({ text: "Properties", shortcut: "", action: "properties", icon: "Info" })
         }
         return items
     }
@@ -318,6 +327,7 @@ Item {
         case "compress_tarbz2": fileOps.compressFiles(effectivePaths, "tar.bz2"); break
         case "compress_tar": fileOps.compressFiles(effectivePaths, "tar"); break
         case "extract": fileOps.extractArchive(targetPath, effectiveDir); break
+        default: customActionRequested(action); break
         }
     }
 
@@ -337,11 +347,22 @@ Item {
                 anchors.fill: parent
                 anchors.leftMargin: 12
                 anchors.rightMargin: 12
-                spacing: 16
+                spacing: 8
+                Loader {
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                    Layout.alignment: Qt.AlignVCenter
+                    active: itemData && itemData.icon
+                    source: (itemData && itemData.icon) ? "../icons/Icon" + itemData.icon + ".qml" : ""
+                    onLoaded: {
+                        item.size = 16
+                        item.color = Qt.binding(() => itemData && itemData.destructive ? Theme.error : Theme.muted)
+                    }
+                }
                 Text {
                     text: itemData ? itemData.text : ""
                     font.pointSize: Theme.fontNormal
-                    color: Theme.text
+                    color: itemData && itemData.destructive ? Theme.error : Theme.text
                     Layout.fillWidth: true
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -390,7 +411,17 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: 12
                     anchors.rightMargin: 12
-                    spacing: 16
+                    spacing: 8
+                    Loader {
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
+                        Layout.alignment: Qt.AlignVCenter
+                        source: "../icons/IconExternalLink.qml"
+                        onLoaded: {
+                            item.size = 16
+                            item.color = Qt.binding(() => Theme.muted)
+                        }
+                    }
                     Text {
                         text: "Open With"
                         font.pointSize: Theme.fontNormal
@@ -523,7 +554,18 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: 12
                     anchors.rightMargin: 12
-                    spacing: 16
+                    spacing: 8
+                    Loader {
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
+                        Layout.alignment: Qt.AlignVCenter
+                        active: itemData && itemData.icon
+                        source: (itemData && itemData.icon) ? "../icons/Icon" + itemData.icon + ".qml" : ""
+                        onLoaded: {
+                            item.size = 16
+                            item.color = Qt.binding(() => Theme.muted)
+                        }
+                    }
                     Text {
                         text: itemData ? itemData.text : ""
                         font.pointSize: Theme.fontNormal
@@ -600,6 +642,17 @@ Item {
                 anchors.leftMargin: 24
                 anchors.rightMargin: 12
                 spacing: 8
+                Loader {
+                    Layout.preferredWidth: 14
+                    Layout.preferredHeight: 14
+                    Layout.alignment: Qt.AlignVCenter
+                    active: !!(subItemData && subItemData.icon)
+                    source: (subItemData && subItemData.icon) ? "../icons/Icon" + subItemData.icon + ".qml" : ""
+                    onLoaded: {
+                        item.size = 14
+                        item.color = Qt.binding(() => Theme.muted)
+                    }
+                }
                 Text {
                     text: subItemData ? subItemData.text : ""
                     font.pointSize: Theme.fontSmall

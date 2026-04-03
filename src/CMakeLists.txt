@@ -68,6 +68,21 @@ qt_add_qml_module(hyprfm
         qml/icons/IconFilter.qml
         qml/icons/IconHardDrive.qml
         qml/icons/IconHardDriveOff.qml
+        qml/icons/IconCopy.qml
+        qml/icons/IconCopyPath.qml
+        qml/icons/IconExternalLink.qml
+        qml/icons/IconFolderArchive.qml
+        qml/icons/IconFolderPen.qml
+        qml/icons/IconInfo.qml
+        qml/icons/IconPackageOpen.qml
+        qml/icons/IconPin.qml
+        qml/icons/IconPinOff.qml
+        qml/icons/IconScissors.qml
+        qml/icons/IconTerminal.qml
+        qml/icons/IconClipboard.qml
+        qml/icons/IconEye.qml
+        qml/icons/IconSlidersH.qml
+        qml/icons/IconUndo.qml
         qml/components/SearchBar.qml
         qml/components/FilterPanel.qml
 )
