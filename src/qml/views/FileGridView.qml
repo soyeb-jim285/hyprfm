@@ -373,11 +373,15 @@ GridView {
                 root.forceActiveFocus()
                 if (mouse.button === Qt.RightButton) {
                     var mapped = ma.mapToItem(null, mouse.x, mouse.y)
-                    root.contextMenuRequested(
-                        delegateItem.filePath,
-                        delegateItem.isDir,
-                        Qt.point(mapped.x, mapped.y)
-                    )
+                    if (delegateItem.isSelected) {
+                        root.contextMenuRequested(
+                            delegateItem.filePath,
+                            delegateItem.isDir,
+                            Qt.point(mapped.x, mapped.y)
+                        )
+                    } else {
+                        root.contextMenuRequested("", false, Qt.point(mapped.x, mapped.y))
+                    }
                     return
                 }
                 root.selectIndex(

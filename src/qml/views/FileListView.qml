@@ -218,11 +218,15 @@ ListView {
                     root.forceActiveFocus()
                     if (mouse.button === Qt.RightButton) {
                         var mapped = rowMa.mapToItem(null, mouse.x, mouse.y)
-                        root.contextMenuRequested(
-                            rowItem.filePath,
-                            rowItem.isDir,
-                            Qt.point(mapped.x, mapped.y)
-                        )
+                        if (rowItem.isSelected) {
+                            root.contextMenuRequested(
+                                rowItem.filePath,
+                                rowItem.isDir,
+                                Qt.point(mapped.x, mapped.y)
+                            )
+                        } else {
+                            root.contextMenuRequested("", false, Qt.point(mapped.x, mapped.y))
+                        }
                         return
                     }
                     root.selectIndex(
