@@ -16,6 +16,8 @@ Item {
     onCurrentPathChanged: {
         clearSelection()
         pendingFocusPath = ""
+        typeAheadBuffer = ""
+        typeAheadTimer.stop()
     }
 
     // Model bound by FileViewContainer
@@ -23,6 +25,7 @@ Item {
     property string pendingFocusPath: ""
     property bool pendingFocusReveal: true
     property bool focusScheduled: false
+    property string typeAheadBuffer: ""
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
@@ -70,6 +73,16 @@ Item {
         return viewModel.data(viewModel.index(row, 0), 258 /* FilePathRole */) || ""
     }
 
+    function fileNameForRow(row) {
+        if (!viewModel || row < 0)
+            return ""
+
+        if (viewModel.fileName)
+            return viewModel.fileName(row)
+
+        return viewModel.data(viewModel.index(row, 0), 257 /* FileNameRole */) || ""
+    }
+
     function rowForPath(path) {
         if (!path)
             return -1
@@ -80,6 +93,85 @@ Item {
         }
 
         return -1
+    }
+
+    function isPrintableTypeAheadText(text) {
+        return typeof text === "string" && text.length === 1 && /[^\x00-\x1f\x7f]/.test(text)
+    }
+
+    function findTypeAheadMatch(query, keepCurrentMatch) {
+        if (!query || listView.count <= 0)
+            return -1
+
+        var needle = query.toLocaleLowerCase()
+        var current = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
+        if (keepCurrentMatch && current >= 0 && fileNameForRow(current).toLocaleLowerCase().startsWith(needle))
+            return current
+
+        for (var step = 1; step <= listView.count; ++step) {
+            var idx = current >= 0 ? (current + step) % listView.count : step - 1
+            if (fileNameForRow(idx).toLocaleLowerCase().startsWith(needle))
+                return idx
+        }
+
+        return -1
+    }
+
+    function handleTypeAhead(event) {
+        if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
+            return
+
+        if (event.key === Qt.Key_Backspace) {
+            if (typeAheadBuffer.length === 0)
+                return
+
+            typeAheadBuffer = typeAheadBuffer.slice(0, -1)
+            if (typeAheadBuffer.length > 0) {
+                typeAheadTimer.restart()
+                var backspaceMatch = findTypeAheadMatch(typeAheadBuffer, true)
+                if (backspaceMatch >= 0) {
+                    selectIndex(backspaceMatch, false, false)
+                    listView.positionViewAtIndex(backspaceMatch, ListView.Contain)
+                }
+            } else {
+                typeAheadTimer.stop()
+            }
+            event.accepted = true
+            return
+        }
+
+        if (event.key === Qt.Key_Escape && typeAheadBuffer.length > 0) {
+            typeAheadBuffer = ""
+            typeAheadTimer.stop()
+            event.accepted = true
+            return
+        }
+
+        if (!isPrintableTypeAheadText(event.text))
+            return
+
+        var nextBuffer = typeAheadBuffer + event.text
+        var keepCurrentMatch = typeAheadBuffer.length > 0 && nextBuffer.startsWith(typeAheadBuffer)
+        var match = findTypeAheadMatch(nextBuffer, keepCurrentMatch)
+        if (match < 0) {
+            nextBuffer = event.text
+            match = findTypeAheadMatch(nextBuffer, false)
+        }
+
+        typeAheadBuffer = nextBuffer
+        typeAheadTimer.restart()
+        if (match >= 0) {
+            selectIndex(match, false, false)
+            listView.positionViewAtIndex(match, ListView.Contain)
+        }
+        event.accepted = true
+    }
+
+    Timer {
+        id: typeAheadTimer
+        interval: 1000
+        repeat: false
+        onTriggered: root.typeAheadBuffer = ""
     }
 
     function schedulePendingFocus() {
@@ -274,6 +366,7 @@ Item {
 
             Keys.onUpPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
             Keys.onDownPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
+            Keys.onPressed: (event) => root.handleTypeAhead(event)
 
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded

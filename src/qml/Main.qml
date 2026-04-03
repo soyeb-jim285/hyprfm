@@ -23,6 +23,7 @@ ApplicationWindow {
         ? secondaryPaneIsRecents
         : primaryPaneIsRecents
     property var deleteConfirmPaths: []
+    property bool paneFocusScheduled: false
     readonly property string unifiedTrashPath: "trash:///"
     readonly property bool isTrashView: fileOps.isTrashPath(panePath(activePane))
 
@@ -107,6 +108,13 @@ ApplicationWindow {
         Q.Theme.fontSizeSmall = Qt.binding(() => Theme.fontSmall)
         Q.Theme.fontSize = Qt.binding(() => Theme.fontNormal)
         Q.Theme.fontSizeLarge = Qt.binding(() => Theme.fontLarge)
+
+        root.scheduleActivePaneFocus()
+    }
+
+    onActiveChanged: {
+        if (active)
+            root.scheduleActivePaneFocus()
     }
 
     // ── Sidebar visibility (local property; config.sidebarVisible is read-only) ─
@@ -251,6 +259,33 @@ ApplicationWindow {
         return subViewFor(activeFileView())
     }
 
+    function shouldFocusActivePane() {
+        return root.active
+            && !root.searchMode
+            && !renameDialog.visible
+            && !newFolderDialog.visible
+            && !newFileDialog.visible
+            && !deleteConfirmDialog.visible
+            && !emptyTrashConfirmDialog.visible
+            && !quickPreview.active
+    }
+
+    function scheduleActivePaneFocus() {
+        if (paneFocusScheduled)
+            return
+
+        paneFocusScheduled = true
+        Qt.callLater(function() {
+            paneFocusScheduled = false
+            if (!root.shouldFocusActivePane())
+                return
+
+            var subView = root.activeSubView()
+            if (subView)
+                subView.forceActiveFocus()
+        })
+    }
+
     function setActivePane(pane) {
         var nextPane = pane
         if (nextPane === "secondary" && !splitViewEnabled())
@@ -261,6 +296,7 @@ ApplicationWindow {
 
         activePane = nextPane
         root.updateSelectionStatus()
+        root.scheduleActivePaneFocus()
     }
 
     function navigatePaneTo(pane, path) {
@@ -273,6 +309,7 @@ ApplicationWindow {
             tabModel.activeTab.navigateSecondaryTo(path)
         else
             tabModel.activeTab.navigateTo(path)
+        root.scheduleActivePaneFocus()
     }
 
     function navigateActivePaneTo(path) {

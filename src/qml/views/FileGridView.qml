@@ -14,6 +14,8 @@ GridView {
     onCurrentPathChanged: {
         clearSelection()
         pendingFocusPath = ""
+        typeAheadBuffer = ""
+        typeAheadTimer.stop()
     }
 
     signal fileActivated(string filePath, bool isDirectory)
@@ -23,6 +25,7 @@ GridView {
     property string pendingFocusPath: ""
     property bool pendingFocusReveal: true
     property bool focusScheduled: false
+    property string typeAheadBuffer: ""
 
     clip: true
     // Zoom controls column count, not icon size
@@ -75,6 +78,14 @@ GridView {
     Keys.onRightPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
     Keys.onUpPressed: (event) => moveSelection(-effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
     Keys.onDownPressed: (event) => moveSelection(effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
+    Keys.onPressed: (event) => handleTypeAhead(event)
+
+    Timer {
+        id: typeAheadTimer
+        interval: 1000
+        repeat: false
+        onTriggered: root.typeAheadBuffer = ""
+    }
 
     ScrollBar.vertical: ScrollBar {
         policy: ScrollBar.AsNeeded
@@ -121,6 +132,16 @@ GridView {
         return model.data(model.index(row, 0), 258 /* FilePathRole */) || ""
     }
 
+    function fileNameForRow(row) {
+        if (!model || row < 0)
+            return ""
+
+        if (model.fileName)
+            return model.fileName(row)
+
+        return model.data(model.index(row, 0), 257 /* FileNameRole */) || ""
+    }
+
     function rowForPath(path) {
         if (!path)
             return -1
@@ -131,6 +152,78 @@ GridView {
         }
 
         return -1
+    }
+
+    function isPrintableTypeAheadText(text) {
+        return typeof text === "string" && text.length === 1 && /[^\x00-\x1f\x7f]/.test(text)
+    }
+
+    function findTypeAheadMatch(query, keepCurrentMatch) {
+        if (!query || count <= 0)
+            return -1
+
+        var needle = query.toLocaleLowerCase()
+        var current = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
+        if (keepCurrentMatch && current >= 0 && fileNameForRow(current).toLocaleLowerCase().startsWith(needle))
+            return current
+
+        for (var step = 1; step <= count; ++step) {
+            var idx = current >= 0 ? (current + step) % count : step - 1
+            if (fileNameForRow(idx).toLocaleLowerCase().startsWith(needle))
+                return idx
+        }
+
+        return -1
+    }
+
+    function handleTypeAhead(event) {
+        if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
+            return
+
+        if (event.key === Qt.Key_Backspace) {
+            if (typeAheadBuffer.length === 0)
+                return
+
+            typeAheadBuffer = typeAheadBuffer.slice(0, -1)
+            if (typeAheadBuffer.length > 0) {
+                typeAheadTimer.restart()
+                var backspaceMatch = findTypeAheadMatch(typeAheadBuffer, true)
+                if (backspaceMatch >= 0) {
+                    selectIndex(backspaceMatch, false, false)
+                    positionViewAtIndex(backspaceMatch, GridView.Contain)
+                }
+            } else {
+                typeAheadTimer.stop()
+            }
+            event.accepted = true
+            return
+        }
+
+        if (event.key === Qt.Key_Escape && typeAheadBuffer.length > 0) {
+            typeAheadBuffer = ""
+            typeAheadTimer.stop()
+            event.accepted = true
+            return
+        }
+
+        if (!isPrintableTypeAheadText(event.text))
+            return
+
+        var nextBuffer = typeAheadBuffer + event.text
+        var keepCurrentMatch = typeAheadBuffer.length > 0 && nextBuffer.startsWith(typeAheadBuffer)
+        var match = findTypeAheadMatch(nextBuffer, keepCurrentMatch)
+        if (match < 0) {
+            nextBuffer = event.text
+            match = findTypeAheadMatch(nextBuffer, false)
+        }
+
+        typeAheadBuffer = nextBuffer
+        typeAheadTimer.restart()
+        if (match >= 0) {
+            selectIndex(match, false, false)
+            positionViewAtIndex(match, GridView.Contain)
+        }
+        event.accepted = true
     }
 
     function schedulePendingFocus() {
