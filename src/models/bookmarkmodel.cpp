@@ -37,10 +37,27 @@ QHash<int, QByteArray> BookmarkModel::roleNames() const
 
 void BookmarkModel::setBookmarks(const QStringList &paths)
 {
+    QList<Bookmark> updatedBookmarks;
+    updatedBookmarks.reserve(paths.size());
+
+    bool unchanged = paths.size() == m_bookmarks.size();
+    for (int i = 0; i < paths.size(); ++i) {
+        const Bookmark bookmark = makeBookmark(paths.at(i));
+        updatedBookmarks.append(bookmark);
+
+        if (unchanged) {
+            const Bookmark &current = m_bookmarks.at(i);
+            unchanged = current.path == bookmark.path
+                        && current.name == bookmark.name
+                        && current.icon == bookmark.icon;
+        }
+    }
+
+    if (unchanged)
+        return;
+
     beginResetModel();
-    m_bookmarks.clear();
-    for (const auto &p : paths)
-        m_bookmarks.append(makeBookmark(p));
+    m_bookmarks = updatedBookmarks;
     endResetModel();
     emit countChanged();
 }

@@ -10,6 +10,10 @@
 #include <QLoggingCategory>
 #include <QSurfaceFormat>
 #include <QFont>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QFile>
 #include <QQuickWindow>
 
 #include "services/configmanager.h"
@@ -81,6 +85,18 @@ int main(int argc, char *argv[])
     theme->loadTheme(config->theme(), themesDir);
 
     TabListModel *tabModel = new TabListModel(&app);
+
+    // Restore session (tabs + window geometry)
+    const QString sessionPath = configDir + "/session.json";
+    QJsonObject sessionData;
+    {
+        QFile sf(sessionPath);
+        if (sf.open(QIODevice::ReadOnly))
+            sessionData = QJsonDocument::fromJson(sf.readAll()).object();
+    }
+    if (sessionData.contains("tabs"))
+        tabModel->restoreSession(sessionData.value("tabs").toArray(),
+                                 sessionData.value("activeTab").toInt(0));
 
     BookmarkModel *bookmarks = new BookmarkModel(&app);
     bookmarks->setBookmarks(config->bookmarks());
@@ -170,6 +186,35 @@ int main(int argc, char *argv[])
 
     if (engine.rootObjects().isEmpty())
         return -1;
+
+    // Save session on quit
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
+        QJsonObject session;
+        session["tabs"] = tabModel->saveSession();
+        session["activeTab"] = tabModel->activeIndex();
+
+        // Save window geometry
+        if (!engine.rootObjects().isEmpty()) {
+            QObject *win = engine.rootObjects().first();
+            session["windowX"] = win->property("x").toInt();
+            session["windowY"] = win->property("y").toInt();
+            session["windowWidth"] = win->property("width").toInt();
+            session["windowHeight"] = win->property("height").toInt();
+        }
+
+        QFile sf(sessionPath);
+        if (sf.open(QIODevice::WriteOnly))
+            sf.write(QJsonDocument(session).toJson(QJsonDocument::Compact));
+    });
+
+    // Restore window geometry
+    if (sessionData.contains("windowWidth") && !engine.rootObjects().isEmpty()) {
+        QObject *win = engine.rootObjects().first();
+        win->setProperty("x", sessionData.value("windowX").toInt());
+        win->setProperty("y", sessionData.value("windowY").toInt());
+        win->setProperty("width", sessionData.value("windowWidth").toInt());
+        win->setProperty("height", sessionData.value("windowHeight").toInt());
+    }
 
     return app.exec();
 }

@@ -192,7 +192,7 @@ GridView {
             id: folderDropArea
             anchors.fill: parent
             keys: ["text/uri-list"]
-            enabled: delegateItem.isDir && !delegateItem.isSelected
+            enabled: delegateItem.isDir && !delegateItem.isSelected && !root.isDragging
 
             onDropped: (drop) => {
                 var paths = root.parseDragPaths(drop)
@@ -391,6 +391,7 @@ GridView {
         anchors.fill: parent
         keys: ["text/uri-list"]
         z: -2
+        enabled: !root.isDragging
 
         // Subtle background hint — only when not hovering a specific folder
         Rectangle {

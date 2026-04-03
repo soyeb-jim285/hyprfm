@@ -1179,6 +1179,57 @@ ApplicationWindow {
         }
     }
 
+    ContextMenu {
+        id: sidebarContextMenu
+        menuWidth: 220
+
+        property var sidebarItem: ({})
+
+        onOpenRequested: (path) => {
+            if (sidebarItem.isRecents) {
+                root.isRecentsView = true
+                return
+            }
+
+            root.isRecentsView = false
+            if (path && tabModel.activeTab)
+                tabModel.activeTab.navigateTo(path)
+        }
+
+        onPropertiesRequested: (path) => {
+            if (path)
+                propertiesDialog.showProperties(path)
+        }
+
+        onOpenInTerminalRequested: (path) => {
+            if (path)
+                fileOps.openInTerminal(path)
+        }
+
+        onCustomActionRequested: (action) => {
+            if (action === "opennewtab") {
+                root.isRecentsView = false
+                tabModel.addTab()
+                if (tabModel.activeTab)
+                    tabModel.activeTab.navigateTo(sidebarContextMenu.targetPath)
+            } else if (action === "removebookmark") {
+                if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
+                    bookmarks.removeBookmark(sidebarItem.index)
+            } else if (action === "mountdevice") {
+                if (sidebarItem.kind === "device" && sidebarItem.index >= 0)
+                    devices.mount(sidebarItem.index)
+            } else if (action === "unmountdevice") {
+                if (sidebarItem.kind === "device" && sidebarItem.index >= 0)
+                    devices.unmount(sidebarItem.index)
+            }
+        }
+
+        onVisibleChanged: {
+            if (!visible)
+                sidebarItem = ({})
+        }
+    }
+
     // ── Keyboard Shortcuts ──────────────────────────────────────────────────
 
     // Tab management
@@ -1384,6 +1435,57 @@ ApplicationWindow {
         }
     }
 
+    function sidebarMenuItems(item) {
+        if (!item)
+            return []
+
+        if (item.kind === "quickAccess") {
+            if (item.isRecents)
+                return [
+                    { text: "Open", shortcut: "", action: "open" }
+                ]
+
+            return [
+                { text: "Open", shortcut: "Return", action: "open" },
+                { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
+                { separator: true },
+                { text: "Open in Terminal", shortcut: "", action: "terminal" },
+                { text: "Properties", shortcut: "", action: "properties" }
+            ]
+        }
+
+        if (item.kind === "bookmark") {
+            return [
+                { text: "Open", shortcut: "Return", action: "open" },
+                { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
+                { separator: true },
+                { text: "Open in Terminal", shortcut: "", action: "terminal" },
+                { text: "Properties", shortcut: "", action: "properties" },
+                { separator: true },
+                { text: "Remove from Bookmarks", shortcut: "", action: "removebookmark", destructive: true }
+            ]
+        }
+
+        if (item.kind === "device") {
+            if (!item.mounted)
+                return [
+                    { text: "Mount", shortcut: "", action: "mountdevice" }
+                ]
+
+            return [
+                { text: "Open", shortcut: "Return", action: "open" },
+                { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
+                { separator: true },
+                { text: "Open in Terminal", shortcut: "", action: "terminal" },
+                { text: "Properties", shortcut: "", action: "properties" },
+                { separator: true },
+                { text: "Unmount", shortcut: "", action: "unmountdevice" }
+            ]
+        }
+
+        return []
+    }
+
     // ── Layout ──────────────────────────────────────────────────────────────
     RowLayout {
         id: mainContent
@@ -1408,6 +1510,16 @@ ApplicationWindow {
                 onBookmarkClicked: (path) => {
                     root.isRecentsView = false
                     if (tabModel.activeTab) tabModel.activeTab.navigateTo(path)
+                }
+                onSidebarContextMenuRequested: (item, position) => {
+                    sidebarContextMenu.sidebarItem = item
+                    sidebarContextMenu.contextData = item
+                    sidebarContextMenu.customItems = root.sidebarMenuItems(item)
+                    sidebarContextMenu.targetPath = item.path || ""
+                    sidebarContextMenu.targetIsDir = !!item.path
+                    sidebarContextMenu.isEmptySpace = false
+                    sidebarContextMenu.selectedPaths = item.path ? [item.path] : []
+                    sidebarContextMenu.popup(position.x, position.y)
                 }
                 onRecentsClicked: {
                     root.isRecentsView = true

@@ -1,4 +1,5 @@
 #include "models/tablistmodel.h"
+#include <QJsonObject>
 
 TabListModel::TabListModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -125,5 +126,45 @@ void TabListModel::reopenClosedTab()
     connectTab(m_tabs.size() - 1, tab);
     endInsertRows();
     setActiveIndex(m_tabs.size() - 1);
+    emit countChanged();
+}
+
+QJsonArray TabListModel::saveSession() const
+{
+    QJsonArray arr;
+    for (const auto *tab : m_tabs) {
+        arr.append(QJsonObject{
+            {"path", tab->currentPath()},
+            {"viewMode", tab->viewMode()},
+            {"sortBy", tab->sortBy()},
+            {"sortAscending", tab->sortAscending()},
+        });
+    }
+    return arr;
+}
+
+void TabListModel::restoreSession(const QJsonArray &tabs, int activeIdx)
+{
+    if (tabs.isEmpty())
+        return;
+
+    beginResetModel();
+    qDeleteAll(m_tabs);
+    m_tabs.clear();
+
+    for (const auto &val : tabs) {
+        QJsonObject obj = val.toObject();
+        auto *tab = new TabModel(this);
+        tab->navigateTo(obj.value("path").toString());
+        tab->setViewMode(obj.value("viewMode").toString("grid"));
+        tab->setSortBy(obj.value("sortBy").toString("name"));
+        tab->setSortAscending(obj.value("sortAscending").toBool(true));
+        m_tabs.append(tab);
+        connectTab(m_tabs.size() - 1, tab);
+    }
+    endResetModel();
+
+    m_activeIndex = qBound(0, activeIdx, m_tabs.size() - 1);
+    emit activeIndexChanged();
     emit countChanged();
 }

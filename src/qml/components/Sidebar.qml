@@ -9,6 +9,7 @@ Rectangle {
     property string currentPath: ""
     property bool isRecentsView: false
     signal bookmarkClicked(string path)
+    signal sidebarContextMenuRequested(var item, point position)
     signal recentsClicked()
     signal collapseClicked()
 
@@ -167,7 +168,19 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton) {
+                                var mapped = qaHoverArea.mapToItem(null, mouse.x, mouse.y)
+                                root.sidebarContextMenuRequested({
+                                    kind: "quickAccess",
+                                    name: model.name,
+                                    path: quickAccessDelegate.resolvedPath,
+                                    isRecents: model.name === "Recents"
+                                }, Qt.point(mapped.x, mapped.y))
+                                return
+                            }
+
                             if (model.name === "Recents")
                                 root.recentsClicked()
                             else
@@ -187,110 +200,145 @@ Rectangle {
             color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
         }
 
-        // Bookmarks section — drag folders here to add
+        // Bookmarks section — drag folders to add, drag items to reorder
         Item {
             id: bookmarksSection
             Layout.fillWidth: true
-            implicitHeight: bookmarksList.implicitHeight + (dropIndicator.visible ? 4 : 0)
+            implicitHeight: bookmarksList.height
 
-            property int dropIndex: -1
+            readonly property int rowHeight: 32
+            readonly property bool externalDragActive:
+                bookmarkDropArea.containsDrag
+                && bookmarkDropArea._extDropIndex >= 0
+                && dragCurrentIndex < 0
+            readonly property real externalGapHeight: externalDragActive ? rowHeight : 0
+            readonly property int externalDropIndex: bookmarkDropArea._extDropIndex
 
-            // Full-area drop zone
+            property int dragCurrentIndex: -1
+            property string dragName: ""
+            property real dragMouseY: 0
+            property string externalDragName: ""
+            property real externalDragMouseY: 0
+
+            function dragUrls(data) {
+                var urls = data.urls || []
+                if ((!urls || urls.length === 0) && data.text)
+                    urls = data.text.split("\n").filter(u => u.startsWith("file://"))
+                return urls
+            }
+
+            function decodedPath(url) {
+                return decodeURIComponent(url.toString().replace("file://", "").replace(/\/$/, ""))
+            }
+
+            function displayName(path) {
+                if (!path)
+                    return ""
+                var trimmed = path.replace(/\/$/, "")
+                if (trimmed === "")
+                    return "/"
+                var parts = trimmed.split("/")
+                return parts[parts.length - 1] || trimmed
+            }
+
+            function updateExternalDrop(drag) {
+                var clampedY = Math.max(0, Math.min(drag.y, bookmarks.count * rowHeight))
+                bookmarkDropArea._extDropIndex = Math.max(0,
+                    Math.min(Math.round(clampedY / rowHeight), bookmarks.count))
+                externalDragMouseY = Math.max(0, Math.min(drag.y, bookmarksList.height))
+
+                var urls = dragUrls(drag)
+                if (urls.length === 1)
+                    externalDragName = displayName(decodedPath(urls[0]))
+                else if (urls.length > 1)
+                    externalDragName = urls.length + " items"
+                else
+                    externalDragName = "New bookmark"
+            }
+
+            function clearExternalDrop() {
+                bookmarkDropArea._extDropIndex = -1
+                externalDragName = ""
+                externalDragMouseY = 0
+            }
+
+            // External drop zone for adding new bookmarks
             DropArea {
                 id: bookmarkDropArea
                 anchors.fill: parent
                 keys: ["text/uri-list"]
 
-                onPositionChanged: (drag) => {
-                    // Calculate insertion index from y position
-                    var localY = drag.y
-                    var idx = Math.round(localY / 32)
-                    bookmarksSection.dropIndex = Math.max(0, Math.min(idx, bookmarks.count))
-                }
-                onExited: bookmarksSection.dropIndex = -1
-
+                onEntered: (drag) => bookmarksSection.updateExternalDrop(drag)
+                onPositionChanged: (drag) => bookmarksSection.updateExternalDrop(drag)
+                onExited: bookmarksSection.clearExternalDrop()
                 onDropped: (drop) => {
-                    var insertAt = bookmarksSection.dropIndex
-                    bookmarksSection.dropIndex = -1
-                    var urls = drop.urls || []
-                    if (urls.length === 0 && drop.text)
-                        urls = drop.text.split("\n").filter(u => u.startsWith("file://"))
+                    var insertAt = bookmarkDropArea._extDropIndex
+                    var urls = bookmarksSection.dragUrls(drop)
+                    bookmarksSection.clearExternalDrop()
                     for (var i = 0; i < urls.length; i++) {
-                        var path = urls[i].toString().replace("file://", "").replace(/\/$/, "")
-                        path = decodeURIComponent(path)
+                        var path = bookmarksSection.decodedPath(urls[i])
                         if (path !== "")
                             bookmarks.insertBookmark(path, insertAt >= 0 ? insertAt : bookmarks.count)
                     }
                     drop.accept()
                 }
+                property int _extDropIndex: -1
             }
 
-            // Insertion indicator line
-            Rectangle {
-                id: dropIndicator
-                visible: bookmarksSection.dropIndex >= 0
-                width: parent.width - Theme.spacing * 2
-                anchors.horizontalCenter: parent.horizontalCenter
-                height: 2
-                radius: 1
-                color: Theme.accent
-                y: bookmarksSection.dropIndex * 32
-
-                Behavior on y {
-                    NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
-                }
-            }
-
-            Column {
+            ListView {
                 id: bookmarksList
                 width: parent.width
+                height: contentHeight + bookmarksSection.externalGapHeight
+                interactive: false
+
+                model: bookmarks
 
                 add: Transition {
+                    enabled: bookmarksSection.dragCurrentIndex < 0
                     ParallelAnimation {
                         NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutCubic }
                         NumberAnimation { property: "scale"; from: 0.9; to: 1; duration: 250; easing.type: Easing.OutBack; easing.overshoot: 0.6 }
                     }
                 }
                 move: Transition {
-                    NumberAnimation { properties: "x,y"; duration: 200; easing.type: Easing.InOutCubic }
+                    NumberAnimation { properties: "x,y"; duration: 150; easing.type: Easing.OutCubic }
+                }
+                displaced: Transition {
+                    NumberAnimation { properties: "x,y"; duration: 150; easing.type: Easing.OutCubic }
                 }
 
-                Repeater {
-                    model: bookmarks
+                delegate: Item {
+                    width: bookmarksList.width
+                    height: bookmarksSection.rowHeight
 
-                    delegate: Rectangle {
+                    Rectangle {
                         id: bmDelegate
-                        width: bookmarksList.width - Theme.spacing
+                        width: parent.width - Theme.spacing
                         anchors.horizontalCenter: parent.horizontalCenter
-                        height: 32
+                        height: bookmarksSection.rowHeight
+                        y: bookmarksSection.externalDragActive && index >= bookmarksSection.externalDropIndex
+                            ? bookmarksSection.rowHeight : 0
+                        Behavior on y { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                        opacity: bookmarksSection.dragCurrentIndex === index ? 0.35 : 1.0
+                        Behavior on opacity { NumberAnimation { duration: 120 } }
 
                         readonly property bool isActive:
                             !root.isRecentsView && model.path === root.currentPath
 
                         color: {
                             if (isActive) return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
-                            if (bmHoverArea.containsMouse || removeMa.containsMouse)
+                            if (bmInteraction.hoverIndex === index && bookmarksSection.dragCurrentIndex < 0)
                                 return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
                             return "transparent"
                         }
                         radius: Theme.radiusSmall
                         Behavior on color { ColorAnimation { duration: Theme.animDuration } }
 
-                        // Background hover area (declared first = lowest z)
-                        MouseArea {
-                            id: bmHoverArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            acceptedButtons: Qt.LeftButton
-                            onClicked: root.bookmarkClicked(model.path)
-                        }
-
                         Row {
                             anchors.left: parent.left
                             anchors.leftMargin: Theme.spacing
-                            anchors.right: removeBtnArea.left
-                            anchors.rightMargin: 4
+                            anchors.right: parent.right
+                            anchors.rightMargin: Theme.spacing
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: Theme.spacing
 
@@ -309,30 +357,168 @@ Rectangle {
                                 width: parent.width - 18 - Theme.spacing
                             }
                         }
+                    }
+                }
+            }
 
-                        // Remove button — on top of hover area
-                        Item {
-                            id: removeBtnArea
-                            anchors.right: parent.right
-                            anchors.rightMargin: Theme.spacing - 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 22; height: 22
-                            visible: bmHoverArea.containsMouse || removeMa.containsMouse
+            Rectangle {
+                visible: bookmarksSection.externalDragActive
+                z: 120
+                width: bookmarksList.width - Theme.spacing
+                height: bookmarksSection.rowHeight
+                radius: Theme.radiusSmall
+                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12)
+                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35)
+                border.width: 1
+                x: Theme.spacing / 2
+                y: Math.max(0,
+                            Math.min(bookmarksSection.externalDragMouseY - height / 2,
+                                     bookmarksList.height - height))
+                opacity: 0.95
+                Behavior on y { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: 120 } }
 
-                            IconX {
-                                anchors.centerIn: parent
-                                size: 14
-                                color: removeMa.containsMouse ? Theme.text : Theme.muted
-                            }
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Theme.spacing
+                    anchors.right: parent.right
+                    anchors.rightMargin: Theme.spacing
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.spacing
 
-                            MouseArea {
-                                id: removeMa
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: bookmarks.removeBookmark(index)
-                            }
+                    Loader {
+                        width: 18; height: 18
+                        anchors.verticalCenter: parent.verticalCenter
+                        sourceComponent: iconFolder
+                    }
+
+                    Text {
+                        text: bookmarksSection.externalDragName
+                        color: Theme.text
+                        font.pointSize: Theme.fontNormal
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                        width: parent.width - 18 - Theme.spacing
+                    }
+                }
+            }
+
+            // Single MouseArea handles hover, click, and drag for all bookmarks
+            MouseArea {
+                id: bmInteraction
+                anchors.fill: bookmarksList
+                z: 100
+                hoverEnabled: true
+                cursorShape: bookmarksSection.dragCurrentIndex >= 0 ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                property int hoverIndex: -1
+                property int pressIndex: -1
+                property real pressY: 0
+                property bool isDragging: false
+                property int pressButton: Qt.NoButton
+
+                function idxAt(y) {
+                    return Math.max(0, Math.min(Math.floor(y / bookmarksSection.rowHeight), bookmarks.count - 1))
+                }
+
+                onPositionChanged: (mouse) => {
+                    hoverIndex = (mouse.y >= 0 && mouse.y < bookmarks.count * bookmarksSection.rowHeight)
+                        ? idxAt(mouse.y) : -1
+
+                    if (!pressed) return
+                    if (pressButton !== Qt.LeftButton) return
+                    if (!isDragging && Math.abs(mouse.y - pressY) > 6 && pressIndex >= 0) {
+                        isDragging = true
+                        bookmarksSection.dragCurrentIndex = pressIndex
+                        bookmarksSection.dragName = bookmarks.data(
+                            bookmarks.index(pressIndex, 0), 257 /* NameRole */) || ""
+                    }
+                    if (isDragging) {
+                        bookmarksSection.dragMouseY = mouse.y
+                        var target = idxAt(mouse.y)
+                        if (target !== bookmarksSection.dragCurrentIndex) {
+                            bookmarks.moveBookmark(bookmarksSection.dragCurrentIndex, target)
+                            bookmarksSection.dragCurrentIndex = target
                         }
+                    }
+                }
+                onPressed: (mouse) => {
+                    pressIndex = idxAt(mouse.y)
+                    pressY = mouse.y
+                    isDragging = false
+                    pressButton = mouse.button
+                }
+                onReleased: (mouse) => {
+                    if (isDragging) {
+                        bookmarksSection.dragCurrentIndex = -1
+                        isDragging = false
+                    } else if (mouse.button === Qt.LeftButton && pressIndex >= 0 && pressIndex < bookmarks.count) {
+                        var path = bookmarks.data(
+                            bookmarks.index(pressIndex, 0), 258 /* PathRole */) || ""
+                        if (path) root.bookmarkClicked(path)
+                    }
+                    pressIndex = -1
+                    pressButton = Qt.NoButton
+                }
+                onClicked: (mouse) => {
+                    if (mouse.button !== Qt.RightButton)
+                        return
+
+                    var index = (mouse.y >= 0 && mouse.y < bookmarks.count * bookmarksSection.rowHeight)
+                        ? idxAt(mouse.y) : -1
+                    if (index < 0 || index >= bookmarks.count)
+                        return
+
+                    var path = bookmarks.data(bookmarks.index(index, 0), 258 /* PathRole */) || ""
+                    var mapped = bmInteraction.mapToItem(null, mouse.x, mouse.y)
+                    root.sidebarContextMenuRequested({
+                        kind: "bookmark",
+                        index: index,
+                        name: bookmarks.data(bookmarks.index(index, 0), 257 /* NameRole */) || "",
+                        path: path
+                    }, Qt.point(mapped.x, mapped.y))
+                }
+                onExited: hoverIndex = -1
+                onCanceled: {
+                    bookmarksSection.dragCurrentIndex = -1
+                    isDragging = false
+                    pressIndex = -1
+                    pressButton = Qt.NoButton
+                }
+            }
+
+            // Ghost bookmark following cursor
+            Rectangle {
+                visible: bookmarksSection.dragCurrentIndex >= 0
+                z: 200
+                width: bookmarksList.width - Theme.spacing
+                height: bookmarksSection.rowHeight
+                radius: Theme.radiusSmall
+                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
+                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
+                border.width: 1
+                x: Theme.spacing / 2
+                y: Math.max(0,
+                            Math.min(bookmarksSection.dragMouseY - height / 2,
+                                     bookmarksList.height - height))
+                opacity: 0.9
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Theme.spacing
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.spacing
+
+                    Loader {
+                        width: 18; height: 18
+                        anchors.verticalCenter: parent.verticalCenter
+                        sourceComponent: iconFolder
+                    }
+                    Text {
+                        text: bookmarksSection.dragName
+                        color: Theme.text
+                        font.pointSize: Theme.fontNormal
                     }
                 }
             }
@@ -431,7 +617,22 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton) {
+                                var mapped = deviceHoverArea.mapToItem(null, mouse.x, mouse.y)
+                                root.sidebarContextMenuRequested({
+                                    kind: "device",
+                                    index: index,
+                                    name: model.deviceName,
+                                    path: model.mountPoint,
+                                    devicePath: model.devicePath,
+                                    mounted: model.mounted,
+                                    removable: model.removable
+                                }, Qt.point(mapped.x, mapped.y))
+                                return
+                            }
+
                             if (model.mounted)
                                 root.bookmarkClicked(model.mountPoint)
                             else

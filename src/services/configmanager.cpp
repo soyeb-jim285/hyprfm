@@ -180,6 +180,10 @@ void ConfigManager::saveBookmarks(const QStringList &paths)
 {
     m_bookmarks = paths;
 
+    const bool wasWatchingConfig = m_watcher.files().contains(m_configPath);
+    if (wasWatchingConfig)
+        m_watcher.removePath(m_configPath);
+
     // Read existing config or create new
     toml::table config;
     if (QFile::exists(m_configPath)) {
@@ -196,6 +200,11 @@ void ConfigManager::saveBookmarks(const QStringList &paths)
 
     // Write back
     std::ofstream ofs(m_configPath.toStdString());
-    if (ofs.is_open())
+    if (ofs.is_open()) {
         ofs << config;
+        ofs.close();
+    }
+
+    if (QFile::exists(m_configPath))
+        m_watcher.addPath(m_configPath);
 }

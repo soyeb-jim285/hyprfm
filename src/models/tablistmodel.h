@@ -2,6 +2,7 @@
 
 #include <QAbstractListModel>
 #include <QList>
+#include <QJsonArray>
 #include "models/tabmodel.h"
 
 class TabListModel : public QAbstractListModel
@@ -33,6 +34,9 @@ public:
     Q_INVOKABLE void addTab();
     Q_INVOKABLE void closeTab(int index);
     Q_INVOKABLE void reopenClosedTab();
+
+    QJsonArray saveSession() const;
+    void restoreSession(const QJsonArray &tabs, int activeIdx);
 
 signals:
     void activeIndexChanged();
