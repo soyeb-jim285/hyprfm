@@ -15,9 +15,31 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Widg
 
 add_subdirectory(src)
 
+# Install themes
+install(DIRECTORY themes/ DESTINATION share/hyprfm/themes FILES_MATCHING PATTERN "*.toml")
+
+# Install QML sources (Quill module + icons needed at runtime)
+install(DIRECTORY src/qml/ DESTINATION share/hyprfm/src/qml)
+
+# Install QML module metadata (generated at build time)
+install(FILES ${CMAKE_BINARY_DIR}/src/HyprFM/qmldir DESTINATION share/hyprfm/HyprFM OPTIONAL)
+
 option(BUILD_TESTS "Build tests" ON)
 if(BUILD_TESTS)
     enable_testing()
     find_package(Qt6 REQUIRED COMPONENTS Test)
     add_subdirectory(tests)
 endif()
+
+# CPack .deb packaging
+set(CPACK_PACKAGE_NAME "hyprfm")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A lightweight Qt6/QML file manager for Hyprland")
+set(CPACK_PACKAGE_CONTACT "Soyeb Pervez Jim <soyeb.jim@gmail.com>")
+set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS
+    "libqt6core6t64, libqt6gui6t64, libqt6qml6, libqt6quick6, libqt6dbus6t64, libqt6widgets6t64, libqt6svg6, libqt6svgwidgets6, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-shapes, fd-find, rsync, xdg-utils")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
+    "wl-clipboard, gvfs")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/soyeb-jim285/hyprfm")
+include(CPack)
