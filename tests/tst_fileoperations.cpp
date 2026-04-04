@@ -185,6 +185,25 @@ private slots:
         QVERIFY(statusSpy.count() >= 1);
     }
 
+    void testCopyEmitsProgressChanged()
+    {
+        if (QStandardPaths::findExecutable("rsync").isEmpty())
+            QSKIP("rsync not found in PATH");
+
+        TestDir src, dst;
+        src.createFile("large.bin", QByteArray(8 * 1024 * 1024, 'x'));
+
+        FileOperations ops;
+        QSignalSpy progressSpy(&ops, &FileOperations::progressChanged);
+        QSignalSpy finishSpy(&ops, &FileOperations::operationFinished);
+
+        ops.copyFiles({src.path() + "/large.bin"}, dst.path());
+
+        QVERIFY(finishSpy.wait(10000));
+        QVERIFY(progressSpy.count() >= 1);
+        QCOMPARE(ops.progress(), 1.0);
+    }
+
     // --- Move ---
 
     void testMoveFile()
@@ -735,6 +754,50 @@ private slots:
         QCOMPARE(ops.progress(), 0.0);
         QCOMPARE(ops.busy(), false);
         QCOMPARE(ops.statusText(), QString());
+    }
+
+    // --- Pause/Resume/Cancel ---
+
+    void testPauseResumeTransfer()
+    {
+        TestDir src, dst;
+        src.createFile("pause_test.bin", QByteArray(8 * 1024 * 1024, 'p'));
+
+        FileOperations ops;
+        QSignalSpy finishSpy(&ops, &FileOperations::operationFinished);
+
+        ops.copyFiles({src.path() + "/pause_test.bin"}, dst.path());
+
+        QTest::qWait(50);
+        if (ops.busy()) {
+            ops.pauseTransfer();
+            QVERIFY(ops.paused());
+            QTest::qWait(100);
+            ops.resumeTransfer();
+        }
+
+        if (finishSpy.isEmpty())
+            QVERIFY(finishSpy.wait(15000));
+        QCOMPARE(finishSpy.constFirst().at(0).toBool(), true);
+        QVERIFY(QFile::exists(dst.path() + "/pause_test.bin"));
+    }
+
+    void testCancelTransfer()
+    {
+        TestDir src, dst;
+        src.createFile("cancel_test.bin", QByteArray(16 * 1024 * 1024, 'c'));
+
+        FileOperations ops;
+        QSignalSpy finishSpy(&ops, &FileOperations::operationFinished);
+
+        ops.copyFiles({src.path() + "/cancel_test.bin"}, dst.path());
+
+        QTest::qWait(50);
+        if (ops.busy())
+            ops.cancelTransfer();
+
+        if (finishSpy.isEmpty())
+            QVERIFY(finishSpy.wait(10000));
     }
 };
 
