@@ -20,6 +20,7 @@ class FileOperations : public QObject
     Q_PROPERTY(QString eta READ eta NOTIFY etaChanged)
     Q_PROPERTY(bool paused READ paused NOTIFY pausedChanged)
     Q_PROPERTY(QString currentFile READ currentFile NOTIFY currentFileChanged)
+    Q_PROPERTY(QVariantList activeTransfers READ activeTransfers NOTIFY activeTransfersChanged)
 
 public:
     explicit FileOperations(QObject *parent = nullptr);
@@ -31,9 +32,11 @@ public:
     QString eta() const;
     bool paused() const;
     QString currentFile() const;
-    Q_INVOKABLE void pauseTransfer();
-    Q_INVOKABLE void resumeTransfer();
-    Q_INVOKABLE void cancelTransfer();
+    QVariantList activeTransfers() const;
+
+    Q_INVOKABLE void pauseTransfer(int transferId = -1);
+    Q_INVOKABLE void resumeTransfer(int transferId = -1);
+    Q_INVOKABLE void cancelTransfer(int transferId = -1);
 
     Q_INVOKABLE void copyFiles(const QStringList &sources, const QString &destination);
     Q_INVOKABLE void copyResolvedItems(const QVariantList &operations);
@@ -77,10 +80,24 @@ signals:
     void etaChanged();
     void pausedChanged();
     void currentFileChanged();
+    void activeTransfersChanged();
     void pathsChanged(const QStringList &paths);
     void operationFinished(bool success, const QString &error);
 
 private:
+    struct ActiveTransfer {
+        int id = 0;
+        QThread *thread = nullptr;
+        GioTransferWorker *worker = nullptr;
+        QString statusText;
+        double progress = -1.0;
+        QString speed;
+        QString eta;
+        QString currentFile;
+        bool paused = false;
+        QStringList changedPaths;
+    };
+
     void transferResolvedItems(const QVariantList &operations, bool moveOperation);
     void resetTransferState();
     void setProgressValue(double progress, const QString &speed = {}, const QString &eta = {});
@@ -91,7 +108,9 @@ private:
     QByteArray clipboardImageData() const;
     QString uniqueImagePastePath(const QString &destinationDir) const;
     void startGioTransfer(const QVariantList &operations, bool moveOperation);
-    void cleanupTransferWorker();
+    void cleanupTransfer(int transferId);
+    void emitAggregatedState();
+    ActiveTransfer *findTransfer(int id);
 
     QProcess *m_process = nullptr;
     bool m_busy = false;
@@ -101,8 +120,8 @@ private:
     QString m_eta;
     bool m_paused = false;
     QString m_currentFile;
-    QThread *m_transferThread = nullptr;
-    GioTransferWorker *m_transferWorker = nullptr;
+    QList<ActiveTransfer> m_activeTransfers;
+    int m_nextTransferId = 1;
     QByteArray m_processErrorOutput;
     QStringList m_pendingChangedPaths;
 };

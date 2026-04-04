@@ -733,6 +733,83 @@ QString FileOperations::eta() const { return m_eta; }
 bool FileOperations::paused() const { return m_paused; }
 QString FileOperations::currentFile() const { return m_currentFile; }
 
+QVariantList FileOperations::activeTransfers() const
+{
+    QVariantList list;
+    for (const auto &t : m_activeTransfers) {
+        QVariantMap map;
+        map["id"] = t.id;
+        map["statusText"] = t.statusText;
+        map["progress"] = t.progress;
+        map["speed"] = t.speed;
+        map["eta"] = t.eta;
+        map["currentFile"] = t.currentFile;
+        map["paused"] = t.paused;
+        list.append(map);
+    }
+    return list;
+}
+
+FileOperations::ActiveTransfer *FileOperations::findTransfer(int id)
+{
+    for (auto &t : m_activeTransfers) {
+        if (t.id == id)
+            return &t;
+    }
+    return nullptr;
+}
+
+void FileOperations::emitAggregatedState()
+{
+    const bool wasBusy = m_busy;
+    m_busy = !m_activeTransfers.isEmpty();
+
+    if (m_activeTransfers.isEmpty()) {
+        // Don't reset m_progress — leave at 1.0 after completion for UI linger
+        m_statusText.clear();
+        m_speed.clear();
+        m_eta.clear();
+        m_currentFile.clear();
+        m_paused = false;
+    } else if (m_activeTransfers.size() == 1) {
+        const auto &t = m_activeTransfers.first();
+        m_progress = t.progress;
+        m_statusText = t.statusText;
+        m_speed = t.speed;
+        m_eta = t.eta;
+        m_currentFile = t.currentFile;
+        m_paused = t.paused;
+    } else {
+        // Multiple transfers: show aggregate
+        m_statusText = QString("%1 transfers active").arg(m_activeTransfers.size());
+        m_paused = std::all_of(m_activeTransfers.begin(), m_activeTransfers.end(),
+                               [](const ActiveTransfer &t) { return t.paused; });
+
+        // Aggregate progress as average
+        double totalProgress = 0;
+        int countWithProgress = 0;
+        for (const auto &t : m_activeTransfers) {
+            if (t.progress >= 0) {
+                totalProgress += t.progress;
+                ++countWithProgress;
+            }
+        }
+        m_progress = countWithProgress > 0 ? totalProgress / countWithProgress : -1.0;
+        m_speed.clear();
+        m_eta.clear();
+        m_currentFile.clear();
+    }
+
+    if (wasBusy != m_busy) emit busyChanged();
+    emit progressChanged();
+    emit statusTextChanged();
+    emit speedChanged();
+    emit etaChanged();
+    emit pausedChanged();
+    emit currentFileChanged();
+    emit activeTransfersChanged();
+}
+
 void FileOperations::copyFiles(const QStringList &sources, const QString &destination)
 {
     transferResolvedItems(transferPlan(sources, destination), false);
@@ -945,17 +1022,13 @@ void FileOperations::resetTransferState()
 
 void FileOperations::setProgressValue(double progress, const QString &speed, const QString &eta)
 {
-    // Never let progress go backward (rsync reports non-monotonic values)
-    if (progress < 1.0 && progress < m_progress)
-        progress = m_progress;
-
     const bool progressDiff = m_progress != progress;
-    const bool speedDiff = !speed.isEmpty() && m_speed != speed;
-    const bool etaDiff = !eta.isEmpty() && m_eta != eta;
+    const bool speedDiff = m_speed != speed;
+    const bool etaDiff = m_eta != eta;
 
     m_progress = progress;
-    if (speedDiff) m_speed = speed;
-    if (etaDiff) m_eta = eta;
+    m_speed = speed;
+    m_eta = eta;
 
     if (progressDiff) emit progressChanged();
     if (speedDiff) emit speedChanged();
@@ -1364,47 +1437,65 @@ bool FileOperations::isArchive(const QString &path)
     return archiveKindForPath(path) != ArchiveKind::None;
 }
 
-void FileOperations::pauseTransfer()
+void FileOperations::pauseTransfer(int transferId)
 {
-    if (m_transferWorker) {
-        m_transferWorker->pause();
-        m_paused = true;
-        m_statusText = QStringLiteral("Paused");
-        emit pausedChanged();
-        emit statusTextChanged();
+    if (transferId < 0) {
+        for (auto &t : m_activeTransfers) {
+            t.worker->pause();
+            t.paused = true;
+            t.statusText = QStringLiteral("Paused");
+        }
+    } else if (auto *t = findTransfer(transferId)) {
+        t->worker->pause();
+        t->paused = true;
+        t->statusText = QStringLiteral("Paused");
+    }
+    emitAggregatedState();
+}
+
+void FileOperations::resumeTransfer(int transferId)
+{
+    if (transferId < 0) {
+        for (auto &t : m_activeTransfers) {
+            t.worker->resume();
+            t.paused = false;
+        }
+    } else if (auto *t = findTransfer(transferId)) {
+        t->worker->resume();
+        t->paused = false;
+    }
+    emitAggregatedState();
+}
+
+void FileOperations::cancelTransfer(int transferId)
+{
+    if (transferId < 0) {
+        for (auto &t : m_activeTransfers)
+            t.worker->cancel();
+    } else if (auto *t = findTransfer(transferId)) {
+        t->worker->cancel();
     }
 }
 
-void FileOperations::resumeTransfer()
+void FileOperations::cleanupTransfer(int transferId)
 {
-    if (m_transferWorker) {
-        m_transferWorker->resume();
-        m_paused = false;
-        emit pausedChanged();
+    for (int i = 0; i < m_activeTransfers.size(); ++i) {
+        if (m_activeTransfers[i].id == transferId) {
+            auto &t = m_activeTransfers[i];
+            if (t.thread) {
+                t.thread->quit();
+                t.thread->wait();
+                t.thread->deleteLater();
+            }
+            m_activeTransfers.removeAt(i);
+            break;
+        }
     }
-}
-
-void FileOperations::cancelTransfer()
-{
-    if (m_transferWorker)
-        m_transferWorker->cancel();
-}
-
-void FileOperations::cleanupTransferWorker()
-{
-    if (m_transferThread) {
-        m_transferThread->quit();
-        m_transferThread->wait();
-        m_transferThread->deleteLater();
-        m_transferThread = nullptr;
-    }
-    m_transferWorker = nullptr;
+    emitAggregatedState();
 }
 
 void FileOperations::startGioTransfer(const QVariantList &operations, bool moveOperation)
 {
-    cleanupTransferWorker();
-
     QList<GioTransferWorker::TransferItem> items;
     int itemCount = 0;
     QStringList changedPaths;
@@ -1425,56 +1516,60 @@ void FileOperations::startGioTransfer(const QVariantList &operations, bool moveO
         appendUniqueLocation(&changedPaths, backupPath);
     }
 
-    setPendingChangedPaths(changedPaths);
+    const int id = m_nextTransferId++;
+    ActiveTransfer transfer;
+    transfer.id = id;
+    transfer.statusText = QString(moveOperation ? "Moving %1 item(s)..." : "Copying %1 item(s)...").arg(itemCount);
+    transfer.progress = -1.0;
+    transfer.changedPaths = changedPaths;
 
-    m_statusText = QString(moveOperation ? "Moving %1 item(s)..." : "Copying %1 item(s)...").arg(itemCount);
-    emit statusTextChanged();
-    setProgressValue(-1.0);
-    m_busy = true;
-    emit busyChanged();
+    auto *thread = new QThread;
+    auto *worker = new GioTransferWorker;
+    worker->moveToThread(thread);
+    transfer.thread = thread;
+    transfer.worker = worker;
 
-    m_transferThread = new QThread;
-    m_transferWorker = new GioTransferWorker;
-    m_transferWorker->moveToThread(m_transferThread);
+    m_activeTransfers.append(transfer);
 
-    connect(m_transferThread, &QThread::finished, m_transferWorker, &QObject::deleteLater);
+    connect(thread, &QThread::finished, worker, &QObject::deleteLater);
 
-    connect(m_transferWorker, &GioTransferWorker::progressUpdated, this,
-            [this](double progress, const QString &speed, const QString &eta) {
-        setProgressValue(progress, speed, eta);
+    connect(worker, &GioTransferWorker::progressUpdated, this,
+            [this, id](double progress, const QString &speed, const QString &eta) {
+        if (auto *t = findTransfer(id)) {
+            t->progress = progress;
+            t->speed = speed;
+            t->eta = eta;
+            emitAggregatedState();
+        }
     });
 
-    connect(m_transferWorker, &GioTransferWorker::itemStarted, this,
-            [this](const QString &sourcePath, const QString &targetPath) {
+    connect(worker, &GioTransferWorker::itemStarted, this,
+            [this, id](const QString &sourcePath, const QString &targetPath) {
         Q_UNUSED(targetPath)
-        m_currentFile = sourcePath.mid(sourcePath.lastIndexOf('/') + 1);
-        emit currentFileChanged();
+        if (auto *t = findTransfer(id)) {
+            t->currentFile = sourcePath.mid(sourcePath.lastIndexOf('/') + 1);
+            emitAggregatedState();
+        }
     });
 
-    connect(m_transferWorker, &GioTransferWorker::finished, this,
-            [this](bool success, const QString &error) {
-        m_busy = false;
-        m_paused = false;
-        m_currentFile.clear();
+    connect(worker, &GioTransferWorker::finished, this,
+            [this, id](bool success, const QString &error) {
+        if (auto *t = findTransfer(id)) {
+            emitChangedPaths(t->changedPaths);
+            if (success)
+                t->progress = 1.0;
+        }
         if (success)
-            setProgressValue(1.0);
-        m_statusText.clear();
-        m_speed.clear();
-        m_eta.clear();
-        emit busyChanged();
-        emit pausedChanged();
-        emit statusTextChanged();
-        emit speedChanged();
-        emit etaChanged();
-        emit currentFileChanged();
-        emitPendingChangedPaths();
+            m_progress = 1.0;
         emit operationFinished(success, error);
-        cleanupTransferWorker();
+        cleanupTransfer(id);
     });
 
-    m_transferThread->start();
-    QMetaObject::invokeMethod(m_transferWorker, [this, items, moveOperation]() {
-        m_transferWorker->execute(items, moveOperation);
+    emitAggregatedState();
+
+    thread->start();
+    QMetaObject::invokeMethod(worker, [worker, items, moveOperation]() {
+        worker->execute(items, moveOperation);
     }, Qt::QueuedConnection);
 }
 

@@ -60,4 +60,5 @@ private:
     qint64 m_currentItemBytes = 0;
     QElapsedTimer m_elapsed;
     qint64 m_lastEmitMs = 0;
+    double m_lastEmittedProgress = -1.0;
 };

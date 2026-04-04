@@ -13,6 +13,7 @@ void GioTransferWorker::execute(const QList<TransferItem> &items, bool moveOpera
     m_completedBytes = 0;
     m_currentItemBytes = 0;
     m_lastEmitMs = 0;
+    m_lastEmittedProgress = -1.0;
 
     m_cancellable = g_cancellable_new();
     m_elapsed.start();
@@ -441,7 +442,9 @@ void GioTransferWorker::handleProgressCallback(goffset currentBytes, goffset tot
         return;
     }
 
-    m_currentItemBytes = currentBytes;
+    // GIO callbacks can report non-monotonic values; clamp per-item progress
+    if (currentBytes > m_currentItemBytes)
+        m_currentItemBytes = currentBytes;
     emitProgress();
 }
 
@@ -457,6 +460,8 @@ void GioTransferWorker::emitProgress()
 
     double progress = static_cast<double>(transferred) / m_totalBytes;
     if (progress > 1.0) progress = 1.0;
+    if (progress < m_lastEmittedProgress) progress = m_lastEmittedProgress;
+    m_lastEmittedProgress = progress;
 
     QString speed;
     QString eta;
