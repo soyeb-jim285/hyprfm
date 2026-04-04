@@ -108,6 +108,14 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconEye.qml
         qml/icons/IconSlidersH.qml
         qml/icons/IconUndo.qml
+        qml/icons/IconGitModified.qml
+        qml/icons/IconGitStaged.qml
+        qml/icons/IconGitUntracked.qml
+        qml/icons/IconGitDeleted.qml
+        qml/icons/IconGitRenamed.qml
+        qml/icons/IconGitConflicted.qml
+        qml/icons/IconGitIgnored.qml
+        qml/icons/IconGitDirty.qml
         qml/components/SearchBar.qml
         qml/components/FilterPanel.qml
 )
