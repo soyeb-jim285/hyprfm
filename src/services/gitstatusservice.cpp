@@ -163,7 +163,10 @@ void GitStatusService::onGitStatusFinished(int exitCode, QProcess::ExitStatus ex
         const char x = entry[0];
         const char y = entry[1];
         // entry[2] is space
-        const QString relativePath = QString::fromUtf8(entry.mid(3));
+        QString relativePath = QString::fromUtf8(entry.mid(3));
+        // Strip trailing slash from directory entries (e.g., ignored dirs)
+        if (relativePath.endsWith(QLatin1Char('/')))
+            relativePath.chop(1);
         const QString absolutePath = m_repoRoot + QLatin1Char('/') + relativePath;
 
         QString status;
