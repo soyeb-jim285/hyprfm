@@ -5,6 +5,7 @@ find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(POPPLER_QT6 QUIET IMPORTED_TARGET poppler-qt6)
 endif()
+pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

@@ -136,6 +136,7 @@ target_link_libraries(hyprfm PRIVATE
     Qt6::DBus
     Qt6::Widgets
     Qt6::Svg
+    PkgConfig::GIO
 )
 
 if(POPPLER_QT6_FOUND)
