@@ -1,4 +1,5 @@
 #include "models/filesystemmodel.h"
+#include "services/gitstatusservice.h"
 #include <QLocale>
 #include <QDateTime>
 #include <QDebug>
@@ -363,6 +364,19 @@ FileSystemModel::FileSystemModel(QObject *parent)
     });
 }
 
+void FileSystemModel::setGitStatusService(GitStatusService *service)
+{
+    if (m_gitService)
+        disconnect(m_gitService, nullptr, this, nullptr);
+    m_gitService = service;
+    if (m_gitService) {
+        connect(m_gitService, &GitStatusService::statusChanged, this, [this]() {
+            if (rowCount() > 0)
+                emit dataChanged(index(0), index(rowCount() - 1), {GitStatusRole, GitStatusIconRole});
+        });
+    }
+}
+
 int FileSystemModel::rowCount(const QModelIndex &parent) const
 {
     if (parent.isValid())
@@ -481,6 +495,22 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
         return info.isSymLink();
     case FileIconNameRole:
         return iconNameForEntry(info.fileName(), info.isDir());
+    case GitStatusRole:
+        return m_gitService ? m_gitService->statusForPath(info.absoluteFilePath()) : QString();
+    case GitStatusIconRole: {
+        if (!m_gitService)
+            return QString();
+        const QString st = m_gitService->statusForPath(info.absoluteFilePath());
+        if (st == "modified")   return QStringLiteral("git-modified");
+        if (st == "staged")     return QStringLiteral("git-staged");
+        if (st == "untracked")  return QStringLiteral("git-untracked");
+        if (st == "deleted")    return QStringLiteral("git-deleted");
+        if (st == "renamed")    return QStringLiteral("git-renamed");
+        if (st == "conflicted") return QStringLiteral("git-conflicted");
+        if (st == "ignored")    return QStringLiteral("git-ignored");
+        if (st == "dirty")      return QStringLiteral("git-dirty");
+        return QString();
+    }
     default:
         return {};
     }
@@ -500,6 +530,8 @@ QHash<int, QByteArray> FileSystemModel::roleNames() const
         {IsDirRole,            "isDir"},
         {IsSymlinkRole,        "isSymlink"},
         {FileIconNameRole,     "fileIconName"},
+        {GitStatusRole,        "gitStatus"},
+        {GitStatusIconRole,    "gitStatusIcon"},
     };
 }
 
@@ -534,6 +566,8 @@ void FileSystemModel::setRootPath(const QString &path)
         m_watcher.addPath(m_rootPath);
 
     reload();
+    if (m_gitService)
+        m_gitService->setRootPath(m_rootPath);
     emit rootPathChanged();
 }
 

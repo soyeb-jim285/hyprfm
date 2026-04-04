@@ -8,6 +8,8 @@
 #include <QString>
 #include <QVariantMap>
 
+class GitStatusService;
+
 class FileSystemModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -29,6 +31,8 @@ public:
         IsDirRole,
         IsSymlinkRole,
         FileIconNameRole,
+        GitStatusRole,
+        GitStatusIconRole,
     };
     Q_ENUM(Roles)
 
@@ -57,6 +61,8 @@ public:
     Q_INVOKABLE bool setFilePermissions(const QString &path, int ownerAccess, int groupAccess, int otherAccess);
     Q_INVOKABLE QString homePath() const;
 
+    void setGitStatusService(GitStatusService *service);
+
 signals:
     void rootPathChanged();
     void showHiddenChanged();
@@ -82,6 +88,7 @@ private:
     QList<QVariantMap> m_trashEntries;
     int m_fileCount = 0;
     int m_folderCount = 0;
+    GitStatusService *m_gitService = nullptr;
     QFileSystemWatcher m_watcher;
     QDir::SortFlags m_sortFlags = QDir::Name | QDir::DirsFirst | QDir::IgnoreCase;
     QString m_sortColumn = "name";
