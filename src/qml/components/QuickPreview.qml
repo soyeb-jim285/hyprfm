@@ -83,6 +83,8 @@ Item {
         return txt.indexOf(fileExtension) >= 0 || isNamedTextFile || isTextMime || fileExtension === ""
     }
     readonly property bool pdfPreviewAvailable: previewService.pdfPreviewAvailable
+    readonly property bool videoPreviewAvailable: runtimeFeatures.ffmpegAvailable
+    readonly property bool textHighlightAvailable: runtimeFeatures.batAvailable
     readonly property string pdfImageSource: {
         if (!isPdf || !pdfPreview.localPath || pdfPreview.error !== "")
             return ""
@@ -94,7 +96,7 @@ Item {
             return ""
         return "Page " + (pdfPageIndex + 1) + " of " + pdfPreview.pageCount
     }
-    readonly property bool hasVisualPreview: isImage || isVideo
+    readonly property bool hasVisualPreview: isImage || (isVideo && videoPreviewAvailable)
     readonly property string visualSource: {
         if (!hasVisualPreview || filePath === "")
             return ""
@@ -639,6 +641,19 @@ Item {
                             kineticGain: 0.68
                         }
 
+                        Text {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 8
+                            visible: root.isText && textPreview.error === "" && !textPreview.isBinary && !textPreview.usesBat && !root.textHighlightAvailable
+                            text: runtimeFeatures.installHint("textHighlight")
+                            color: Theme.subtext
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: 8
@@ -715,11 +730,18 @@ Item {
                                 text: root.pdfPreviewAvailable ? "PDF preview is unavailable for this file" : "PDF preview support is unavailable"
                                 color: Theme.text
                                 font.pointSize: Theme.fontNormal
+                                width: 280
+                                wrapMode: Text.WordWrap
+                                horizontalAlignment: Text.AlignHCenter
                             }
 
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: root.pdfPreview.error !== "" ? root.pdfPreview.error : "Press Enter to open the file externally"
+                                text: root.pdfPreview.error !== ""
+                                    ? root.pdfPreview.error
+                                    : (root.pdfPreviewAvailable
+                                        ? "Press Enter to open the file externally"
+                                        : runtimeFeatures.installHint("pdfPreview"))
                                 color: Theme.subtext
                                 font.pointSize: Theme.fontSmall
                                 wrapMode: Text.WordWrap
@@ -744,16 +766,28 @@ Item {
 
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: root.isAudio ? "Audio preview is not available yet" : "Preview not available"
+                                text: root.isAudio
+                                    ? "Audio preview is not available yet"
+                                    : (root.isVideo && !root.videoPreviewAvailable
+                                        ? "Video preview support is unavailable"
+                                        : "Preview not available")
                                 color: Theme.text
                                 font.pointSize: Theme.fontNormal
+                                width: 280
+                                wrapMode: Text.WordWrap
+                                horizontalAlignment: Text.AlignHCenter
                             }
 
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: "Press Enter to open externally"
+                                text: root.isVideo && !root.videoPreviewAvailable
+                                    ? runtimeFeatures.installHint("videoPreview")
+                                    : "Press Enter to open externally"
                                 color: Theme.subtext
                                 font.pointSize: Theme.fontSmall
+                                width: 280
+                                wrapMode: Text.WordWrap
+                                horizontalAlignment: Text.AlignHCenter
                             }
                         }
                     }

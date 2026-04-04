@@ -13,6 +13,7 @@ Rectangle {
     signal sidebarContextMenuRequested(var item, point position)
     signal recentsClicked()
     signal collapseClicked()
+    signal featureHintRequested(string message)
 
     color: Theme.mantle
     clip: false
@@ -644,8 +645,10 @@ Rectangle {
 
                             if (model.mounted)
                                 root.bookmarkClicked(model.mountPoint)
-                            else
+                            else if (runtimeFeatures.udisksctlAvailable)
                                 devices.mount(index)
+                            else
+                                root.featureHintRequested(runtimeFeatures.installHint("deviceMount"))
                         }
                     }
                 }

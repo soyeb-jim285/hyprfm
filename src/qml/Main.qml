@@ -2203,11 +2203,17 @@ ApplicationWindow {
                 if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
                     bookmarks.removeBookmark(sidebarItem.index)
             } else if (action === "mountdevice") {
-                if (sidebarItem.kind === "device" && sidebarItem.index >= 0)
+                if (!runtimeFeatures.udisksctlAvailable) {
+                    toast.show(runtimeFeatures.installHint("deviceMount"), "info")
+                } else if (sidebarItem.kind === "device" && sidebarItem.index >= 0) {
                     devices.mount(sidebarItem.index)
+                }
             } else if (action === "unmountdevice") {
-                if (sidebarItem.kind === "device" && sidebarItem.index >= 0)
+                if (!runtimeFeatures.udisksctlAvailable) {
+                    toast.show(runtimeFeatures.installHint("deviceMount"), "info")
+                } else if (sidebarItem.kind === "device" && sidebarItem.index >= 0) {
                     devices.unmount(sidebarItem.index)
+                }
             }
         }
 
@@ -2621,6 +2627,7 @@ ApplicationWindow {
                     root.setPaneRecents(root.activePane, true)
                 }
                 onCollapseClicked: root.sidebarVisible = !root.sidebarVisible
+                onFeatureHintRequested: (message) => toast.show(message, "info")
             }
 
             Rectangle {

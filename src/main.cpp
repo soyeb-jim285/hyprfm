@@ -35,6 +35,7 @@
 #include "services/previewservice.h"
 #include "services/diskusageservice.h"
 #include "services/remoteaccessservice.h"
+#include "services/runtimefeaturesservice.h"
 #include "providers/thumbnailprovider.h"
 #include "providers/iconprovider.h"
 #ifdef HYPRFM_HAS_POPPLER_QT6
@@ -158,6 +159,7 @@ int main(int argc, char *argv[])
     PreviewService *previewService = new PreviewService(&app);
     DiskUsageService *diskUsageService = new DiskUsageService(&app);
     RemoteAccessService *remoteAccessService = new RemoteAccessService(&app);
+    RuntimeFeaturesService *runtimeFeatures = new RuntimeFeaturesService(&app);
 
     // Connect config changes to reload theme, bookmarks, and showHidden
     QObject::connect(config, &ConfigManager::configChanged, [=]() {
@@ -176,9 +178,21 @@ int main(int argc, char *argv[])
     // Create DeviceModel
     DeviceModel *devices = new DeviceModel(&app);
 
-    // Check for required CLI tools and warn if missing
-    const QStringList requiredTools = {"fd", "rsync", "gio", "xdg-open", "wl-copy", "wl-paste"};
+    // Check for CLI tools and warn if missing
+    const QStringList requiredTools = {"fd", "rsync", "gio", "xdg-open"};
+    const QStringList optionalTools = {"wl-copy", "wl-paste", "ffmpeg", "udisksctl", "bat", "batcat"};
+
     for (const QString &tool : requiredTools) {
+        QProcess which;
+        which.setProgram("which");
+        which.setArguments({tool});
+        which.start();
+        which.waitForFinished(2000);
+        if (which.exitCode() != 0)
+            qWarning() << "HyprFM: required tool not found:" << tool;
+    }
+
+    for (const QString &tool : optionalTools) {
         QProcess which;
         which.setProgram("which");
         which.setArguments({tool});
@@ -229,6 +243,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("previewService", previewService);
     engine.rootContext()->setContextProperty("diskUsageService", diskUsageService);
     engine.rootContext()->setContextProperty("remoteAccessService", remoteAccessService);
+    engine.rootContext()->setContextProperty("runtimeFeatures", runtimeFeatures);
 
     engine.loadFromModule("HyprFM", "Main");
 

@@ -397,6 +397,23 @@ Q.Dialog {
         wrapMode: Text.WordWrap
     }
 
+    Q.Label {
+        Layout.fillWidth: true
+        text: runtimeFeatures.installHint("remoteAccess")
+        variant: "caption"
+        color: Theme.subtext
+        wrapMode: Text.WordWrap
+    }
+
+    Q.Label {
+        Layout.fillWidth: true
+        visible: modeTabs.currentIndex === 1
+        text: runtimeFeatures.installHint("smbRemoteAccess")
+        variant: "caption"
+        color: Theme.subtext
+        wrapMode: Text.WordWrap
+    }
+
     // --- Error message ---
 
     Text {

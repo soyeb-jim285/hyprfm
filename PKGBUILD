@@ -7,6 +7,7 @@ arch=('x86_64' 'aarch64')
 url="https://github.com/soyeb-jim285/hyprfm"
 license=('MIT')
 depends=(
+    'glib2'
     'qt6-base'
     'qt6-declarative'
     'qt6-svg'
@@ -24,7 +25,7 @@ makedepends=(
 )
 optdepends=(
     'wl-clipboard: clipboard support via wl-copy and wl-paste'
-    'glib2: local and trash file operations via gio'
+    'bat: syntax-highlighted text previews'
     'gvfs: remote filesystem support via gio/gvfs (sftp, ftp, dav, etc.)'
     'gvfs-smb: SMB/CIFS remote browsing support'
     'ffmpeg: video file thumbnail previews'
