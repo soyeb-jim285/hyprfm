@@ -785,7 +785,7 @@ private slots:
         FileSystemModel model;
         auto roles = model.roleNames();
 
-        QCOMPARE(roles.count(), 11);
+        QCOMPARE(roles.count(), 13);
         QCOMPARE(roles[FileSystemModel::FileNameRole],         QByteArray("fileName"));
         QCOMPARE(roles[FileSystemModel::FilePathRole],         QByteArray("filePath"));
         QCOMPARE(roles[FileSystemModel::FileSizeRole],         QByteArray("fileSize"));
@@ -797,6 +797,8 @@ private slots:
         QCOMPARE(roles[FileSystemModel::IsDirRole],            QByteArray("isDir"));
         QCOMPARE(roles[FileSystemModel::IsSymlinkRole],        QByteArray("isSymlink"));
         QCOMPARE(roles[FileSystemModel::FileIconNameRole],     QByteArray("fileIconName"));
+        QCOMPARE(roles[FileSystemModel::GitStatusRole],        QByteArray("gitStatus"));
+        QCOMPARE(roles[FileSystemModel::GitStatusIconRole],    QByteArray("gitStatusIcon"));
     }
 
     // 16. QAbstractItemModelTester
