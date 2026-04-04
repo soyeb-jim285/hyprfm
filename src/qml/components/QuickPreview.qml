@@ -45,8 +45,12 @@ Item {
         return !isRemoteUri && !isDirectory && img.indexOf(fileExtension) >= 0
     }
     readonly property bool isVideo: {
-        var vid = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "3gp", "ts"]
-        return !isRemoteUri && !isDirectory && vid.indexOf(fileExtension) >= 0
+        if (isRemoteUri || isDirectory) return false
+        var vid = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "3gp"]
+        if (vid.indexOf(fileExtension) >= 0) return true
+        // .ts is ambiguous (TypeScript vs MPEG transport stream) — use MIME type
+        if (fileExtension === "ts") return (fileProps.mimeType || "").startsWith("video/")
+        return false
     }
     readonly property bool isAudio: {
         var audio = ["mp3", "flac", "ogg", "wav", "m4a", "aac", "opus"]
