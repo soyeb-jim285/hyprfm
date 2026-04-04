@@ -2,6 +2,7 @@
 #include "services/giotransferworker.h"
 #include <QClipboard>
 #include <QDir>
+#include <QDirIterator>
 #include <QThread>
 #include <QFile>
 #include <QFileInfo>
@@ -1447,35 +1448,35 @@ void FileOperations::compressFiles(const QStringList &paths, const QString &form
             cmd += " -j " + QString("'%1'").arg(p);
         }
         // Use cd + relative paths for proper zip structure
-        cmd = "cd " + QString("'%1'").arg(parentDir) + " && zip -r " +
+        cmd = "cd " + QString("'%1'").arg(parentDir) + " && zip -rv " +
               QString("'%1'").arg(outPath);
         for (const auto &p : paths)
             cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
     } else if (format == "tar.gz") {
         QString outPath = parentDir + "/" + baseName + ".tar.gz";
         outputPath = outPath;
-        cmd = "tar -czf " + QString("'%1'").arg(outPath) +
+        cmd = "tar -cvzf " + QString("'%1'").arg(outPath) +
               " -C " + QString("'%1'").arg(parentDir);
         for (const auto &p : paths)
             cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
     } else if (format == "tar.xz") {
         QString outPath = parentDir + "/" + baseName + ".tar.xz";
         outputPath = outPath;
-        cmd = "tar -cJf " + QString("'%1'").arg(outPath) +
+        cmd = "tar -cvJf " + QString("'%1'").arg(outPath) +
               " -C " + QString("'%1'").arg(parentDir);
         for (const auto &p : paths)
             cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
     } else if (format == "tar.bz2") {
         QString outPath = parentDir + "/" + baseName + ".tar.bz2";
         outputPath = outPath;
-        cmd = "tar -cjf " + QString("'%1'").arg(outPath) +
+        cmd = "tar -cvjf " + QString("'%1'").arg(outPath) +
               " -C " + QString("'%1'").arg(parentDir);
         for (const auto &p : paths)
             cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
     } else if (format == "tar") {
         QString outPath = parentDir + "/" + baseName + ".tar";
         outputPath = outPath;
-        cmd = "tar -cf " + QString("'%1'").arg(outPath) +
+        cmd = "tar -cvf " + QString("'%1'").arg(outPath) +
               " -C " + QString("'%1'").arg(parentDir);
         for (const auto &p : paths)
             cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
@@ -1491,12 +1492,46 @@ void FileOperations::compressFiles(const QStringList &paths, const QString &form
 
     const QString statusText = QString("Compressing %1 item(s)...").arg(paths.size());
     startSimpleOperation(statusText, {outputPath},
-        [cmd](ProgressReporter report) -> QString {
-            report(-1, 0, {}); // indeterminate
+        [paths, cmd](ProgressReporter report) -> QString {
+            // Pre-count files for progress
+            int totalFiles = 0;
+            for (const auto &p : paths) {
+                QFileInfo fi(p);
+                if (fi.isDir()) {
+                    QDirIterator it(p, QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden,
+                                    QDirIterator::Subdirectories);
+                    while (it.hasNext()) { it.next(); ++totalFiles; }
+                } else {
+                    ++totalFiles;
+                }
+            }
+            if (totalFiles <= 0) totalFiles = 1;
+
+            report(0, totalFiles, {});
+
+            // Run with verbose output and count lines for progress
             QProcess proc;
+            proc.setProcessChannelMode(QProcess::MergedChannels);
             proc.start(QStringLiteral("sh"), {QStringLiteral("-c"), cmd});
-            if (!proc.waitForFinished(600000) || proc.exitCode() != 0)
-                return QString::fromUtf8(proc.readAllStandardError()).trimmed();
+            if (!proc.waitForStarted(5000))
+                return QStringLiteral("Failed to start compression");
+
+            int processed = 0;
+            while (proc.state() != QProcess::NotRunning || proc.canReadLine()) {
+                if (!proc.canReadLine())
+                    proc.waitForReadyRead(200);
+                while (proc.canReadLine()) {
+                    const QString line = QString::fromUtf8(proc.readLine()).trimmed();
+                    if (line.isEmpty()) continue;
+                    ++processed;
+                    const QString fileName = line.mid(line.lastIndexOf('/') + 1);
+                    report(qMin(processed, totalFiles), totalFiles, fileName);
+                }
+            }
+
+            proc.waitForFinished(5000);
+            if (proc.exitCode() != 0)
+                return QStringLiteral("Compression failed");
             return {};
         });
 }
@@ -1508,13 +1543,56 @@ void FileOperations::extractArchive(const QString &archivePath, const QString &d
     if (!archiveExtractCommand(archivePath, destination, &program, &args))
         return;
 
+    // Add verbose flag for progress tracking
+    QStringList verboseArgs = args;
+    if (program == "tar" || program == "bsdtar")
+        verboseArgs.prepend(QStringLiteral("-v"));
+    else if (program == "unzip")
+        { /* unzip is already verbose by default */ }
+    // 7z, gunzip, unxz, bunzip2 — no easy verbose line-per-file
+
+    // Pre-count files in archive for progress
+    QString listProg;
+    QStringList listArgs;
+    const bool canList = archiveListCommand(archivePath, &listProg, &listArgs);
+
     startSimpleOperation(QStringLiteral("Extracting..."), {destination},
-        [program, args](ProgressReporter report) -> QString {
-            report(-1, 0, {}); // indeterminate
+        [program, verboseArgs, canList, listProg, listArgs](ProgressReporter report) -> QString {
+            int totalFiles = 0;
+            if (canList) {
+                QProcess listProc;
+                listProc.start(listProg, listArgs);
+                if (listProc.waitForFinished(30000) && listProc.exitCode() == 0) {
+                    const QByteArray output = listProc.readAllStandardOutput();
+                    totalFiles = output.count('\n');
+                }
+            }
+            if (totalFiles <= 0) totalFiles = 1;
+
+            report(0, totalFiles, {});
+
             QProcess proc;
-            proc.start(program, args);
-            if (!proc.waitForFinished(600000) || proc.exitCode() != 0)
-                return QString::fromUtf8(proc.readAllStandardError()).trimmed();
+            proc.setProcessChannelMode(QProcess::MergedChannels);
+            proc.start(program, verboseArgs);
+            if (!proc.waitForStarted(5000))
+                return QStringLiteral("Failed to start extraction");
+
+            int processed = 0;
+            while (proc.state() != QProcess::NotRunning || proc.canReadLine()) {
+                if (!proc.canReadLine())
+                    proc.waitForReadyRead(200);
+                while (proc.canReadLine()) {
+                    const QString line = QString::fromUtf8(proc.readLine()).trimmed();
+                    if (line.isEmpty()) continue;
+                    ++processed;
+                    const QString fileName = line.mid(line.lastIndexOf('/') + 1);
+                    report(qMin(processed, totalFiles), totalFiles, fileName);
+                }
+            }
+
+            proc.waitForFinished(5000);
+            if (proc.exitCode() != 0)
+                return QStringLiteral("Extraction failed");
             return {};
         });
 }
