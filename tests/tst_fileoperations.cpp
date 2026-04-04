@@ -71,6 +71,17 @@ class TestFileOperations : public QObject
         return {};
     }
 
+    static bool runCommand(const QString &program, const QStringList &args,
+                           const QString &workingDirectory = {})
+    {
+        QProcess proc;
+        if (!workingDirectory.isEmpty())
+            proc.setWorkingDirectory(workingDirectory);
+
+        proc.start(program, args);
+        return proc.waitForFinished(5000) && proc.exitCode() == 0;
+    }
+
 private slots:
     void initTestCase()
     {
@@ -672,6 +683,48 @@ private slots:
 
         QCOMPARE(ops.trashFilesPathFor(mountPath + "/example.txt"), expectedTrashPath);
         QVERIFY(ops.isTrashPath(expectedTrashPath + "/example.txt"));
+    }
+
+    void testArchiveSupportFor7zAndRar_data()
+    {
+        QTest::addColumn<QString>("extension");
+
+        QTest::newRow("7z") << ".7z";
+        QTest::newRow("rar") << ".rar";
+    }
+
+    void testArchiveSupportFor7zAndRar()
+    {
+        if (QStandardPaths::findExecutable("zip").isEmpty())
+            QSKIP("zip not found in PATH");
+
+        if (QStandardPaths::findExecutable("7z").isEmpty()
+                && QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Neither 7z nor bsdtar found in PATH");
+
+        QFETCH(QString, extension);
+
+        TestDir archiveDir;
+        TestDir extractDir;
+        archiveDir.createDir("payload");
+        archiveDir.createFile("payload/inner.txt", "hello");
+
+        QVERIFY(runCommand("zip", {"-rq", "payload.zip", "payload"}, archiveDir.path()));
+
+        const QString archivePath = archiveDir.path() + "/payload" + extension;
+        QVERIFY(QFile::copy(archiveDir.path() + "/payload.zip", archivePath));
+
+        FileOperations ops;
+        QVERIFY(FileOperations::isArchive(archivePath));
+        QVERIFY(FileOperations::isArchive(archiveDir.path() + "/payload" + extension.toUpper()));
+        QCOMPARE(ops.archiveRootFolder(archivePath), QString("payload"));
+
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+        ops.extractArchive(archivePath, extractDir.path());
+
+        QVERIFY(spy.wait(5000));
+        QCOMPARE(spy.at(0).at(0).toBool(), true);
+        QVERIFY(QFile::exists(extractDir.path() + "/payload/inner.txt"));
     }
 
     // --- Progress property ---

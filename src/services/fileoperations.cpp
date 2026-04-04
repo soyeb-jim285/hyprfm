@@ -450,6 +450,207 @@ QString shellQuote(const QString &value)
     return QStringLiteral("'") + escaped + QStringLiteral("'");
 }
 
+enum class ArchiveKind {
+    None,
+    Zip,
+    Tar,
+    TarGz,
+    TarXz,
+    TarBz2,
+    Gz,
+    Xz,
+    Bz2,
+    SevenZip,
+    Rar,
+};
+
+ArchiveKind archiveKindForPath(const QString &path)
+{
+    const QString lower = path.toLower();
+    if (lower.endsWith(QStringLiteral(".tar.gz")) || lower.endsWith(QStringLiteral(".tgz")))
+        return ArchiveKind::TarGz;
+    if (lower.endsWith(QStringLiteral(".tar.xz")) || lower.endsWith(QStringLiteral(".txz")))
+        return ArchiveKind::TarXz;
+    if (lower.endsWith(QStringLiteral(".tar.bz2")) || lower.endsWith(QStringLiteral(".tbz2")))
+        return ArchiveKind::TarBz2;
+    if (lower.endsWith(QStringLiteral(".tar")))
+        return ArchiveKind::Tar;
+    if (lower.endsWith(QStringLiteral(".zip")))
+        return ArchiveKind::Zip;
+    if (lower.endsWith(QStringLiteral(".7z")))
+        return ArchiveKind::SevenZip;
+    if (lower.endsWith(QStringLiteral(".rar")))
+        return ArchiveKind::Rar;
+    if (lower.endsWith(QStringLiteral(".gz")))
+        return ArchiveKind::Gz;
+    if (lower.endsWith(QStringLiteral(".xz")))
+        return ArchiveKind::Xz;
+    if (lower.endsWith(QStringLiteral(".bz2")))
+        return ArchiveKind::Bz2;
+    return ArchiveKind::None;
+}
+
+bool archiveExtractCommand(const QString &archivePath, const QString &destination,
+                           QString *program, QStringList *args)
+{
+    switch (archiveKindForPath(archivePath)) {
+    case ArchiveKind::Zip:
+        *program = QStringLiteral("unzip");
+        *args = {QStringLiteral("-o"), archivePath, QStringLiteral("-d"), destination};
+        return true;
+    case ArchiveKind::TarGz:
+        *program = QStringLiteral("tar");
+        *args = {QStringLiteral("-xzf"), archivePath, QStringLiteral("-C"), destination};
+        return true;
+    case ArchiveKind::TarXz:
+        *program = QStringLiteral("tar");
+        *args = {QStringLiteral("-xJf"), archivePath, QStringLiteral("-C"), destination};
+        return true;
+    case ArchiveKind::TarBz2:
+        *program = QStringLiteral("tar");
+        *args = {QStringLiteral("-xjf"), archivePath, QStringLiteral("-C"), destination};
+        return true;
+    case ArchiveKind::Tar:
+        *program = QStringLiteral("tar");
+        *args = {QStringLiteral("-xf"), archivePath, QStringLiteral("-C"), destination};
+        return true;
+    case ArchiveKind::Gz:
+        *program = QStringLiteral("gunzip");
+        *args = {QStringLiteral("-k"), archivePath};
+        return true;
+    case ArchiveKind::Xz:
+        *program = QStringLiteral("unxz");
+        *args = {QStringLiteral("-k"), archivePath};
+        return true;
+    case ArchiveKind::Bz2:
+        *program = QStringLiteral("bunzip2");
+        *args = {QStringLiteral("-k"), archivePath};
+        return true;
+    case ArchiveKind::SevenZip:
+    case ArchiveKind::Rar:
+        if (!QStandardPaths::findExecutable(QStringLiteral("7z")).isEmpty()) {
+            *program = QStringLiteral("7z");
+            *args = {QStringLiteral("x"), QStringLiteral("-aoa"),
+                     QStringLiteral("-o%1").arg(destination), archivePath};
+            return true;
+        }
+        if (!QStandardPaths::findExecutable(QStringLiteral("bsdtar")).isEmpty()) {
+            *program = QStringLiteral("bsdtar");
+            *args = {QStringLiteral("-xf"), archivePath, QStringLiteral("-C"), destination};
+            return true;
+        }
+        return false;
+    case ArchiveKind::None:
+        return false;
+    }
+
+    return false;
+}
+
+bool archiveListCommand(const QString &archivePath, QString *program, QStringList *args)
+{
+    switch (archiveKindForPath(archivePath)) {
+    case ArchiveKind::Zip:
+        *program = QStringLiteral("unzip");
+        *args = {QStringLiteral("-Z1"), archivePath};
+        return true;
+    case ArchiveKind::TarGz:
+        *program = QStringLiteral("tar");
+        *args = {QStringLiteral("-tzf"), archivePath};
+        return true;
+    case ArchiveKind::TarXz:
+        *program = QStringLiteral("tar");
+        *args = {QStringLiteral("-tJf"), archivePath};
+        return true;
+    case ArchiveKind::TarBz2:
+        *program = QStringLiteral("tar");
+        *args = {QStringLiteral("-tjf"), archivePath};
+        return true;
+    case ArchiveKind::Tar:
+        *program = QStringLiteral("tar");
+        *args = {QStringLiteral("-tf"), archivePath};
+        return true;
+    case ArchiveKind::SevenZip:
+    case ArchiveKind::Rar:
+        if (!QStandardPaths::findExecutable(QStringLiteral("bsdtar")).isEmpty()) {
+            *program = QStringLiteral("bsdtar");
+            *args = {QStringLiteral("-tf"), archivePath};
+            return true;
+        }
+        if (!QStandardPaths::findExecutable(QStringLiteral("7z")).isEmpty()) {
+            *program = QStringLiteral("7z");
+            *args = {QStringLiteral("l"), QStringLiteral("-ba"), QStringLiteral("-slt"), archivePath};
+            return true;
+        }
+        return false;
+    case ArchiveKind::Gz:
+    case ArchiveKind::Xz:
+    case ArchiveKind::Bz2:
+    case ArchiveKind::None:
+        return false;
+    }
+
+    return false;
+}
+
+QStringList archiveEntriesFromOutput(const QString &program, const QString &output)
+{
+    QStringList entries;
+
+    if (program == QStringLiteral("7z")) {
+        bool inEntries = false;
+        const QStringList lines = output.split('\n');
+        for (const QString &line : lines) {
+            const QString trimmed = line.trimmed();
+            if (trimmed == QStringLiteral("----------")) {
+                inEntries = true;
+                continue;
+            }
+            if (!inEntries || !trimmed.startsWith(QStringLiteral("Path = ")))
+                continue;
+
+            const QString entry = QDir::cleanPath(trimmed.mid(7).trimmed());
+            if (!entry.isEmpty() && entry != QStringLiteral("."))
+                entries.append(entry);
+        }
+        return entries;
+    }
+
+    const QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        QString entry = line.trimmed();
+        if (entry.startsWith(QStringLiteral("./")))
+            entry.remove(0, 2);
+        entry = QDir::cleanPath(entry);
+        if (!entry.isEmpty() && entry != QStringLiteral("."))
+            entries.append(entry);
+    }
+
+    return entries;
+}
+
+QString commonArchiveRootFolder(const QStringList &entries)
+{
+    QString root;
+    for (QString entry : entries) {
+        while (entry.startsWith('/'))
+            entry.remove(0, 1);
+        if (entry.isEmpty())
+            continue;
+
+        const QString top = entry.section('/', 0, 0);
+        if (top.isEmpty())
+            return {};
+
+        if (root.isEmpty())
+            root = top;
+        else if (top != root)
+            return {};
+    }
+
+    return root;
+}
+
 QStringList nameParts(const QString &name)
 {
     const int dotIndex = name.lastIndexOf('.');
@@ -1049,6 +1250,11 @@ void FileOperations::compressFiles(const QStringList &paths, const QString &form
               " -C " + QString("'%1'").arg(parentDir);
         for (const auto &p : paths)
             cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
+    } else if (format == "7z") {
+        QString outPath = parentDir + "/" + baseName + ".7z";
+        cmd = "cd " + shellQuote(parentDir) + " && 7z a " + shellQuote(outPath);
+        for (const auto &p : paths)
+            cmd += " " + shellQuote(QFileInfo(p).fileName());
     } else {
         return;
     }
@@ -1060,87 +1266,39 @@ void FileOperations::compressFiles(const QStringList &paths, const QString &form
 
 void FileOperations::extractArchive(const QString &archivePath, const QString &destination)
 {
-    QFileInfo fi(archivePath);
-    QString ext = fi.suffix().toLower();
-    QString fullExt = fi.fileName().toLower();
-
-    // Extract directly to destination — archives with a root folder stay clean,
-    // loose files land in the current directory (same as Nautilus "Extract Here")
-    QString cmd;
-    if (ext == "zip")
-        cmd = "unzip -o " + QString("'%1'").arg(archivePath) + " -d " + QString("'%1'").arg(destination);
-    else if (fullExt.endsWith(".tar.gz") || fullExt.endsWith(".tgz"))
-        cmd = "tar -xzf " + QString("'%1'").arg(archivePath) + " -C " + QString("'%1'").arg(destination);
-    else if (fullExt.endsWith(".tar.xz") || fullExt.endsWith(".txz"))
-        cmd = "tar -xJf " + QString("'%1'").arg(archivePath) + " -C " + QString("'%1'").arg(destination);
-    else if (fullExt.endsWith(".tar.bz2") || fullExt.endsWith(".tbz2"))
-        cmd = "tar -xjf " + QString("'%1'").arg(archivePath) + " -C " + QString("'%1'").arg(destination);
-    else if (ext == "tar")
-        cmd = "tar -xf " + QString("'%1'").arg(archivePath) + " -C " + QString("'%1'").arg(destination);
-    else if (ext == "gz")
-        cmd = "gunzip -k " + QString("'%1'").arg(archivePath);
-    else if (ext == "xz")
-        cmd = "unxz -k " + QString("'%1'").arg(archivePath);
-    else if (ext == "bz2")
-        cmd = "bunzip2 -k " + QString("'%1'").arg(archivePath);
-    else
+    QString program;
+    QStringList args;
+    if (!archiveExtractCommand(archivePath, destination, &program, &args))
         return;
 
     m_statusText = "Extracting...";
     emit statusTextChanged();
-    runProcess("sh", {"-c", cmd});
+    runProcess(program, args);
 }
 
 QString FileOperations::archiveRootFolder(const QString &archivePath)
 {
-    QFileInfo fi(archivePath);
-    QString ext = fi.suffix().toLower();
-    QString fullExt = fi.fileName().toLower();
-
-    // List archive contents and check if all entries share a single root folder
-    QString cmd;
-    if (ext == "zip")
-        cmd = "unzip -Z1 " + QString("'%1'").arg(archivePath);
-    else if (fullExt.endsWith(".tar.gz") || fullExt.endsWith(".tgz"))
-        cmd = "tar -tzf " + QString("'%1'").arg(archivePath);
-    else if (fullExt.endsWith(".tar.xz") || fullExt.endsWith(".txz"))
-        cmd = "tar -tJf " + QString("'%1'").arg(archivePath);
-    else if (fullExt.endsWith(".tar.bz2") || fullExt.endsWith(".tbz2"))
-        cmd = "tar -tjf " + QString("'%1'").arg(archivePath);
-    else if (ext == "tar")
-        cmd = "tar -tf " + QString("'%1'").arg(archivePath);
-    else
+    QString program;
+    QStringList args;
+    if (!archiveListCommand(archivePath, &program, &args))
         return {};
 
     QProcess proc;
-    proc.start("sh", {"-c", cmd});
-    if (!proc.waitForFinished(5000))
+    proc.start(program, args);
+    if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
         return {};
 
-    QStringList entries = QString::fromUtf8(proc.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
+    const QString output = QString::fromUtf8(proc.readAllStandardOutput());
+    const QStringList entries = archiveEntriesFromOutput(program, output);
     if (entries.isEmpty())
         return {};
 
-    // Find common root: first path component of every entry
-    QString root;
-    for (const auto &entry : entries) {
-        QString top = entry.section('/', 0, 0);
-        if (root.isEmpty())
-            root = top;
-        else if (top != root)
-            return {}; // multiple top-level entries, no single root
-    }
-    return root;
+    return commonArchiveRootFolder(entries);
 }
 
 bool FileOperations::isArchive(const QString &path)
 {
-    QString lower = path.toLower();
-    return lower.endsWith(".zip") || lower.endsWith(".tar") ||
-           lower.endsWith(".tar.gz") || lower.endsWith(".tgz") ||
-           lower.endsWith(".tar.xz") || lower.endsWith(".txz") ||
-           lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2") ||
-           lower.endsWith(".gz") || lower.endsWith(".xz") || lower.endsWith(".bz2");
+    return archiveKindForPath(path) != ArchiveKind::None;
 }
 
 void FileOperations::runProcess(const QString &program, const QStringList &args)

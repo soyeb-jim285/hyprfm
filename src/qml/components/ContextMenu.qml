@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Shapes
 import HyprFM
 
 // Custom context menu — Hyprland compositor handles blur via windowrule
@@ -65,9 +66,40 @@ Item {
     property real _pendingX: 0
     property real _pendingY: 0
     property bool _pendingPopup: false
+    property var submenuItems: []
+    property string activeSubmenuKey: ""
+    property Item activeSubmenuSource: null
+    property bool submenuVisible: false
+    property bool _pendingSubmenuPopup: false
+    property bool _animateSubmenuOnShow: false
+    property real _submenuStartOffset: -10
+    property real _submenuGap: 10
+    property real _submenuPointerDepth: 8
+    property real _submenuPointerBase: 12
+    property bool _submenuOpensRight: true
+    property real _submenuPointerCenterY: 24
+
+    function submenuKeyForItem(item) {
+        return item ? (item.action || item.text || "") : ""
+    }
+
+    function openWithSubmenuItems(apps) {
+        var items = []
+        for (var i = 0; i < apps.length; ++i) {
+            items.push({
+                text: apps[i].name,
+                shortcut: "",
+                action: "openwith",
+                desktopFile: apps[i].desktopFile || "",
+                iconName: apps[i].iconName || "",
+                checked: !!apps[i].isDefault
+            })
+        }
+        return items
+    }
 
     function popup(x, y) {
-        openWithApps = []
+        closeSubmenu(true)
         _pendingX = x
         _pendingY = y
         _pendingPopup = true
@@ -111,7 +143,124 @@ Item {
         openAnim.start()
     }
 
+    function _positionSubmenu() {
+        if (!activeSubmenuSource)
+            return
+
+        var submenuBodyW = submenuColumn.width + 12
+        var submenuW = submenuBodyW + root._submenuPointerDepth
+        var submenuH = submenuColumn.height + 12
+        var winW = root.width > 0 ? root.width : Window.width
+        var winH = root.height > 0 ? root.height : Window.height
+        var viewportMargin = 8
+        var sourcePos = activeSubmenuSource.mapToItem(root, 0, 0)
+        var sourceCenterY = sourcePos.y + activeSubmenuSource.height / 2
+        var gap = _submenuGap
+        var preferRight = sourcePos.x + activeSubmenuSource.width + gap + submenuBodyW + viewportMargin <= winW
+
+        var posX = preferRight
+            ? sourcePos.x + activeSubmenuSource.width + gap - root._submenuPointerDepth
+            : sourcePos.x - submenuBodyW - gap
+        posX = Math.max(viewportMargin, Math.min(posX, winW - submenuW - viewportMargin))
+
+        var bubbleRadius = Math.min(Theme.radiusLarge, (submenuH / 2) - 1)
+        var pointerHalf = root._submenuPointerBase / 2
+        var pointerInset = bubbleRadius + pointerHalf + 2
+        var pointerMin = Math.max(pointerHalf + 2, pointerInset)
+        var pointerMax = Math.max(pointerMin, submenuH - pointerInset)
+        var preferredPointerCenter = Math.max(pointerMin,
+                                              Math.min(activeSubmenuSource.height / 2 + 6,
+                                                       pointerMax))
+        var posY = sourceCenterY - preferredPointerCenter
+        posY = Math.max(viewportMargin,
+                        Math.min(posY, winH - submenuH - viewportMargin))
+
+        _submenuOpensRight = preferRight
+        _submenuStartOffset = preferRight ? -10 : 10
+        _submenuPointerCenterY = Math.max(pointerMin,
+                                          Math.min(sourceCenterY - posY,
+                                                   pointerMax))
+        submenuContainer.transformOrigin = preferRight ? Item.TopLeft : Item.TopRight
+        submenuContainer.x = posX
+        submenuContainer.y = posY
+    }
+
+    function _showPendingSubmenu() {
+        if (!_pendingSubmenuPopup || !submenuVisible)
+            return
+
+        _pendingSubmenuPopup = false
+        _positionSubmenu()
+
+        if (_animateSubmenuOnShow) {
+            submenuContainer.opacity = 0
+            submenuContainer.scale = 0.98
+            submenuContainer.xOffset = _submenuStartOffset
+            submenuOpenAnim.restart()
+        } else {
+            submenuContainer.opacity = 1
+            submenuContainer.scale = 1
+            submenuContainer.xOffset = 0
+        }
+    }
+
+    function openSubmenu(item, sourceItem) {
+        if (!item || !item.submenuItems || item.submenuItems.length === 0 || !sourceItem) {
+            closeSubmenu(true)
+            return
+        }
+
+        submenuCloseAnim.stop()
+        submenuOpenAnim.stop()
+
+        activeSubmenuKey = submenuKeyForItem(item)
+        activeSubmenuSource = sourceItem
+        submenuItems = item.submenuItems
+        submenuVisible = true
+        _pendingSubmenuPopup = true
+        _animateSubmenuOnShow = submenuContainer.opacity <= 0.001
+        Qt.callLater(_showPendingSubmenu)
+    }
+
+    function toggleSubmenu(item, sourceItem) {
+        var key = submenuKeyForItem(item)
+        if (submenuVisible && activeSubmenuKey === key) {
+            closeSubmenu(true)
+            return
+        }
+
+        openSubmenu(item, sourceItem)
+    }
+
+    function closeSubmenu(immediate) {
+        if (immediate === undefined)
+            immediate = false
+
+        _pendingSubmenuPopup = false
+        activeSubmenuKey = ""
+        activeSubmenuSource = null
+
+        if (immediate) {
+            submenuOpenAnim.stop()
+            submenuCloseAnim.stop()
+            submenuVisible = false
+            submenuItems = []
+            submenuContainer.opacity = 0
+            submenuContainer.scale = 0.98
+            submenuContainer.xOffset = 0
+            return
+        }
+
+        if (!submenuVisible && !submenuOpenAnim.running)
+            return
+
+        submenuVisible = false
+        submenuOpenAnim.stop()
+        submenuCloseAnim.restart()
+    }
+
     function close() {
+        closeSubmenu(true)
         closeAnim.start()
     }
 
@@ -159,6 +308,48 @@ Item {
         ScriptAction { script: root.visible = false }
     }
 
+    ParallelAnimation {
+        id: submenuOpenAnim
+        NumberAnimation {
+            target: submenuContainer; property: "opacity"
+            from: 0; to: 1; duration: 150
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: submenuContainer; property: "scale"
+            from: 0.98; to: 1; duration: 170
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: submenuContainer; property: "xOffset"
+            from: root._submenuStartOffset; to: 0; duration: 170
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    ParallelAnimation {
+        id: submenuCloseAnim
+        onFinished: {
+            if (!root.submenuVisible)
+                root.submenuItems = []
+        }
+        NumberAnimation {
+            target: submenuContainer; property: "opacity"
+            to: 0; duration: 110
+            easing.type: Easing.InCubic
+        }
+        NumberAnimation {
+            target: submenuContainer; property: "scale"
+            to: 0.98; duration: 110
+            easing.type: Easing.InCubic
+        }
+        NumberAnimation {
+            target: submenuContainer; property: "xOffset"
+            to: root._submenuStartOffset; duration: 110
+            easing.type: Easing.InCubic
+        }
+    }
+
     // Click outside to close
     MouseArea {
         anchors.fill: parent
@@ -204,8 +395,7 @@ Item {
                     id: delegateLoader
                     width: menuColumn.width
                     sourceComponent: modelData.separator ? separatorComponent
-                                   : modelData.isOpenWith ? openWithComponent
-                                   : modelData.isSubmenu ? submenuComponent
+                                   : modelData.isSubmenu ? submenuTriggerComponent
                                    : itemComponent
                     property var itemData: modelData
                     property int itemIndex: index
@@ -214,13 +404,159 @@ Item {
         }
     }
 
-    // ── Open With apps cache (populated when menu opens) ──────────────────
-    property var openWithApps: []
+    Item {
+        id: submenuContainer
+        x: 0
+        y: 0
+        property real bodyWidth: submenuColumn.width + 12
+        property real bodyHeight: submenuColumn.height + 12
+        property real bodyX: root._submenuOpensRight ? root._submenuPointerDepth : 0
+        property real bodyRight: bodyX + bodyWidth
+        property real bubbleRadius: Math.min(Theme.radiusLarge, (height / 2) - 1)
+        property real pointerHalf: root._submenuPointerBase / 2
+        property real pointerTop: root._submenuPointerCenterY - pointerHalf
+        property real pointerBottom: root._submenuPointerCenterY + pointerHalf
+        width: bodyWidth + root._submenuPointerDepth
+        height: bodyHeight
+        visible: root.submenuVisible || submenuOpenAnim.running || submenuCloseAnim.running
+        opacity: 0
+        scale: 0.98
+        transformOrigin: Item.TopLeft
+        property real xOffset: 0
+        transform: Translate { x: submenuContainer.xOffset }
+
+        Behavior on x {
+            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+        }
+        Behavior on y {
+            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+        }
+
+        Shape {
+            anchors.fill: parent
+            visible: root._submenuOpensRight
+
+            ShapePath {
+                fillColor: Theme.crust
+                strokeColor: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                strokeWidth: 1
+                joinStyle: ShapePath.MiterJoin
+                capStyle: ShapePath.FlatCap
+                startX: submenuContainer.bodyX + submenuContainer.bubbleRadius
+                startY: 0.5
+
+                PathLine { x: submenuContainer.bodyRight - submenuContainer.bubbleRadius; y: 0.5 }
+                PathQuad {
+                    x: submenuContainer.bodyRight - 0.5
+                    y: submenuContainer.bubbleRadius + 0.5
+                    controlX: submenuContainer.bodyRight - 0.5
+                    controlY: 0.5
+                }
+                PathLine { x: submenuContainer.bodyRight - 0.5; y: submenuContainer.height - submenuContainer.bubbleRadius - 0.5 }
+                PathQuad {
+                    x: submenuContainer.bodyRight - submenuContainer.bubbleRadius
+                    y: submenuContainer.height - 0.5
+                    controlX: submenuContainer.bodyRight - 0.5
+                    controlY: submenuContainer.height - 0.5
+                }
+                PathLine { x: submenuContainer.bodyX + submenuContainer.bubbleRadius; y: submenuContainer.height - 0.5 }
+                PathQuad {
+                    x: submenuContainer.bodyX + 0.5
+                    y: submenuContainer.height - submenuContainer.bubbleRadius - 0.5
+                    controlX: submenuContainer.bodyX + 0.5
+                    controlY: submenuContainer.height - 0.5
+                }
+                PathLine { x: submenuContainer.bodyX + 0.5; y: submenuContainer.pointerBottom }
+                PathLine { x: 0.5; y: root._submenuPointerCenterY }
+                PathLine { x: submenuContainer.bodyX + 0.5; y: submenuContainer.pointerTop }
+                PathLine { x: submenuContainer.bodyX + 0.5; y: submenuContainer.bubbleRadius + 0.5 }
+                PathQuad {
+                    x: submenuContainer.bodyX + submenuContainer.bubbleRadius
+                    y: 0.5
+                    controlX: submenuContainer.bodyX + 0.5
+                    controlY: 0.5
+                }
+            }
+        }
+
+        Shape {
+            anchors.fill: parent
+            visible: !root._submenuOpensRight
+
+            ShapePath {
+                fillColor: Theme.crust
+                strokeColor: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                strokeWidth: 1
+                joinStyle: ShapePath.MiterJoin
+                capStyle: ShapePath.FlatCap
+                startX: submenuContainer.bubbleRadius
+                startY: 0.5
+
+                PathLine { x: submenuContainer.bodyRight - submenuContainer.bubbleRadius; y: 0.5 }
+                PathQuad {
+                    x: submenuContainer.bodyRight - 0.5
+                    y: submenuContainer.bubbleRadius + 0.5
+                    controlX: submenuContainer.bodyRight - 0.5
+                    controlY: 0.5
+                }
+                PathLine { x: submenuContainer.bodyRight - 0.5; y: submenuContainer.pointerTop }
+                PathLine { x: submenuContainer.width - 0.5; y: root._submenuPointerCenterY }
+                PathLine { x: submenuContainer.bodyRight - 0.5; y: submenuContainer.pointerBottom }
+                PathLine { x: submenuContainer.bodyRight - 0.5; y: submenuContainer.height - submenuContainer.bubbleRadius - 0.5 }
+                PathQuad {
+                    x: submenuContainer.bodyRight - submenuContainer.bubbleRadius
+                    y: submenuContainer.height - 0.5
+                    controlX: submenuContainer.bodyRight - 0.5
+                    controlY: submenuContainer.height - 0.5
+                }
+                PathLine { x: submenuContainer.bubbleRadius; y: submenuContainer.height - 0.5 }
+                PathQuad {
+                    x: 0.5
+                    y: submenuContainer.height - submenuContainer.bubbleRadius - 0.5
+                    controlX: 0.5
+                    controlY: submenuContainer.height - 0.5
+                }
+                PathLine { x: 0.5; y: submenuContainer.bubbleRadius + 0.5 }
+                PathQuad {
+                    x: submenuContainer.bubbleRadius
+                    y: 0.5
+                    controlX: 0.5
+                    controlY: 0.5
+                }
+            }
+        }
+
+        Column {
+            id: submenuColumn
+            x: submenuContainer.bodyX + 6
+            y: 6
+            width: root.menuWidth
+            spacing: 2
+
+            Repeater {
+                model: submenuContainer.visible ? root.submenuItems : []
+                delegate: Loader {
+                    width: submenuColumn.width
+                    sourceComponent: modelData.separator ? submenuSeparatorComponent : submenuItemComponent
+                    property var subItemData: modelData
+                }
+            }
+        }
+    }
+
+    Connections {
+        target: submenuColumn
+        function onHeightChanged() {
+            if (root._pendingSubmenuPopup)
+                root._showPendingSubmenu()
+            else if (root.submenuVisible)
+                root._positionSubmenu()
+        }
+    }
 
     function buildModel() {
         var items = []
         if (hasCustomItems) {
-            openWithApps = []
             return customItems
         }
         if (!isEmptySpace && targetPath !== "") {
@@ -242,17 +578,9 @@ Item {
                 var mime = props["mimeType"] || ""
                 if (mime !== "") {
                     var apps = fileModel.availableApps(mime)
-                    if (apps.length > 0) {
-                        openWithApps = apps
-                        items.push({ text: "Open With", shortcut: "", action: "openwith_toggle", isOpenWith: true })
-                    } else {
-                        openWithApps = []
-                    }
-                } else {
-                    openWithApps = []
+                    if (apps.length > 0)
+                        items.push({ text: "Open With", shortcut: "", action: "openwith_toggle", isSubmenu: true, icon: "ExternalLink", submenuItems: openWithSubmenuItems(apps) })
                 }
-            } else {
-                openWithApps = []
             }
             if (targetIsDir && !isTrashView && !remoteContext)
                 items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
@@ -271,6 +599,7 @@ Item {
                     items.push({ text: "Compress", shortcut: "", action: "compress_toggle", isSubmenu: true, icon: "FolderArchive",
                         submenuItems: [
                             { text: "ZIP", shortcut: "", action: "compress_zip" },
+                            { text: "7z", shortcut: "", action: "compress_7z" },
                             { text: "tar.gz", shortcut: "", action: "compress_targz" },
                             { text: "tar.xz", shortcut: "", action: "compress_tarxz" },
                             { text: "tar.bz2", shortcut: "", action: "compress_tarbz2" },
@@ -377,6 +706,7 @@ Item {
         case "sort_asc": sortRequested(currentSortBy, true); break
         case "sort_desc": sortRequested(currentSortBy, false); break
         case "compress_zip": fileOps.compressFiles(effectivePaths, "zip"); break
+        case "compress_7z": fileOps.compressFiles(effectivePaths, "7z"); break
         case "compress_targz": fileOps.compressFiles(effectivePaths, "tar.gz"); break
         case "compress_tarxz": fileOps.compressFiles(effectivePaths, "tar.xz"); break
         case "compress_tarbz2": fileOps.compressFiles(effectivePaths, "tar.bz2"); break
@@ -435,6 +765,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                onEntered: root.closeSubmenu(true)
                 onClicked: {
                     if (itemData && itemData.action)
                         root.executeAction(itemData.action, itemData.desktopFile || "")
@@ -443,239 +774,64 @@ Item {
         }
     }
 
-    // ── Expandable "Open With" button + animated app list ────────────────
+    // ── Side submenu trigger row ───────────────────────────────────────────
     Component {
-        id: openWithComponent
-        Column {
-            id: openWithCol
+        id: submenuTriggerComponent
+        Rectangle {
+            id: submenuTrigger
+            height: 32
             width: parent ? parent.width : 260
-
-            property bool expanded: false
-
-            // The "Open With" button row
-            Rectangle {
-                width: parent.width
-                height: 32
-                radius: Theme.radiusMedium
-                color: owMa.containsMouse
-                    ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                    : "transparent"
-                Behavior on color {
-                    ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
-                }
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 12
-                    spacing: 8
-                    Loader {
-                        Layout.preferredWidth: 16
-                        Layout.preferredHeight: 16
-                        Layout.alignment: Qt.AlignVCenter
-                        source: "../icons/IconExternalLink.qml"
-                        onLoaded: {
-                            item.size = 16
-                            item.color = Qt.binding(() => Theme.muted)
-                        }
-                    }
-                    Text {
-                        text: "Open With"
-                        font.pointSize: Theme.fontNormal
-                        color: Theme.text
-                        Layout.fillWidth: true
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    Item {
-                        Layout.preferredWidth: 14
-                        Layout.preferredHeight: 14
-                        Layout.alignment: Qt.AlignVCenter
-                        rotation: openWithCol.expanded ? 0 : -90
-                        Behavior on rotation {
-                            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-                        }
-                        IconChevronDown {
-                            anchors.centerIn: parent
-                            size: 14
-                            color: Theme.muted
-                        }
+            radius: Theme.radiusMedium
+            readonly property bool isActive: root.submenuVisible && root.activeSubmenuKey === root.submenuKeyForItem(itemData)
+            color: (submenuMa.containsMouse || isActive)
+                ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                : "transparent"
+            Behavior on color {
+                ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
+            }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                spacing: 8
+                Loader {
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                    Layout.alignment: Qt.AlignVCenter
+                    active: itemData && itemData.icon
+                    source: (itemData && itemData.icon) ? "../icons/Icon" + itemData.icon + ".qml" : ""
+                    onLoaded: {
+                        item.size = 16
+                        item.color = Qt.binding(() => submenuTrigger.isActive ? Theme.text : Theme.muted)
                     }
                 }
-                MouseArea {
-                    id: owMa
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: openWithCol.expanded = !openWithCol.expanded
+                Text {
+                    text: itemData ? itemData.text : ""
+                    font.pointSize: Theme.fontNormal
+                    color: Theme.text
+                    Layout.fillWidth: true
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Text {
+                    text: itemData ? (itemData.shortcut || "") : ""
+                    font.pointSize: Theme.fontSmall
+                    color: Theme.muted
+                    visible: text !== ""
+                    verticalAlignment: Text.AlignVCenter
+                }
+                IconChevronRight {
+                    size: 14
+                    color: submenuTrigger.isActive ? Theme.text : Theme.muted
+                    Layout.alignment: Qt.AlignVCenter
                 }
             }
-
-            // Animated expandable app list
-            Item {
-                width: parent.width
-                height: openWithCol.expanded ? appColumn.height : 0
-                clip: true
-                Behavior on height {
-                    NumberAnimation {
-                        duration: 200
-                        easing.type: Easing.OutCubic
-                    }
-                }
-
-                Column {
-                    id: appColumn
-                    width: parent.width
-                    spacing: 2
-
-                    Repeater {
-                        model: root.openWithApps
-                        delegate: Rectangle {
-                            width: appColumn.width
-                            height: 30
-                            radius: Theme.radiusMedium
-                            opacity: openWithCol.expanded ? 1 : 0
-                            Behavior on opacity {
-                                NumberAnimation {
-                                    duration: 150
-                                    easing.type: Easing.OutCubic
-                                }
-                            }
-                            color: appItemMa.containsMouse
-                                ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                                : "transparent"
-                            Behavior on color {
-                                ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
-                            }
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 24
-                                anchors.rightMargin: 12
-                                spacing: 8
-                                Image {
-                                    source: modelData.iconName ? ("image://icon/" + modelData.iconName) : ""
-                                    sourceSize: Qt.size(18, 18)
-                                    Layout.preferredWidth: 18
-                                    Layout.preferredHeight: 18
-                                    Layout.alignment: Qt.AlignVCenter
-                                    visible: modelData.iconName && status === Image.Ready
-                                }
-                                Text {
-                                    text: modelData.name
-                                    font.pointSize: Theme.fontSmall
-                                    color: Theme.text
-                                    Layout.fillWidth: true
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                IconCheck {
-                                    visible: modelData.isDefault
-                                    size: 14
-                                    color: Theme.accent
-                                    Layout.alignment: Qt.AlignVCenter
-                                }
-                            }
-                            MouseArea {
-                                id: appItemMa
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.executeAction("openwith", modelData.desktopFile)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ── Expandable submenu (View / Sort By) ─────────────────────────────
-    Component {
-        id: submenuComponent
-        Column {
-            id: submenuCol
-            width: parent ? parent.width : 260
-
-            property bool expanded: false
-
-            // Header row
-            Rectangle {
-                width: parent.width
-                height: 32
-                radius: Theme.radiusMedium
-                color: submenuMa.containsMouse
-                    ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                    : "transparent"
-                Behavior on color {
-                    ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
-                }
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 12
-                    spacing: 8
-                    Loader {
-                        Layout.preferredWidth: 16
-                        Layout.preferredHeight: 16
-                        Layout.alignment: Qt.AlignVCenter
-                        active: itemData && itemData.icon
-                        source: (itemData && itemData.icon) ? "../icons/Icon" + itemData.icon + ".qml" : ""
-                        onLoaded: {
-                            item.size = 16
-                            item.color = Qt.binding(() => Theme.muted)
-                        }
-                    }
-                    Text {
-                        text: itemData ? itemData.text : ""
-                        font.pointSize: Theme.fontNormal
-                        color: Theme.text
-                        Layout.fillWidth: true
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    Item {
-                        Layout.preferredWidth: 14
-                        Layout.preferredHeight: 14
-                        Layout.alignment: Qt.AlignVCenter
-                        rotation: submenuCol.expanded ? 0 : -90
-                        Behavior on rotation {
-                            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-                        }
-                        IconChevronDown {
-                            anchors.centerIn: parent
-                            size: 14
-                            color: Theme.muted
-                        }
-                    }
-                }
-                MouseArea {
-                    id: submenuMa
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: submenuCol.expanded = !submenuCol.expanded
-                }
-            }
-
-            // Animated expandable items
-            Item {
-                width: parent.width
-                height: submenuCol.expanded ? submenuInnerCol.height : 0
-                clip: true
-                Behavior on height {
-                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-                }
-
-                Column {
-                    id: submenuInnerCol
-                    width: parent.width
-                    spacing: 2
-
-                    Repeater {
-                        model: (itemData && itemData.submenuItems) ? itemData.submenuItems : []
-                        delegate: Loader {
-                            width: submenuInnerCol.width
-                            sourceComponent: modelData.separator ? submenuSeparatorComponent : submenuItemComponent
-                            property var subItemData: modelData
-                        }
-                    }
-                }
+            MouseArea {
+                id: submenuMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onEntered: root.openSubmenu(itemData, submenuTrigger)
+                onClicked: root.openSubmenu(itemData, submenuTrigger)
             }
         }
     }
@@ -698,8 +854,16 @@ Item {
                 anchors.leftMargin: 24
                 anchors.rightMargin: 12
                 spacing: 8
+                Image {
+                    source: subItemData && subItemData.iconName ? ("image://icon/" + subItemData.iconName) : ""
+                    sourceSize: Qt.size(18, 18)
+                    Layout.preferredWidth: visible ? 18 : 0
+                    Layout.preferredHeight: 18
+                    Layout.alignment: Qt.AlignVCenter
+                    visible: !!(subItemData && subItemData.iconName) && status === Image.Ready
+                }
                 Loader {
-                    Layout.preferredWidth: 14
+                    Layout.preferredWidth: active ? 14 : 0
                     Layout.preferredHeight: 14
                     Layout.alignment: Qt.AlignVCenter
                     active: !!(subItemData && subItemData.icon)
@@ -737,7 +901,7 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     if (subItemData && subItemData.action)
-                        root.executeAction(subItemData.action, "")
+                        root.executeAction(subItemData.action, subItemData.desktopFile || "")
                 }
             }
         }
