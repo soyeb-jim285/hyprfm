@@ -1639,6 +1639,40 @@ ApplicationWindow {
                         PropRow { label: "Content"; value: propertiesDialog.props.contentText || ""; show: propertiesDialog.props.isDir || false }
                     }
 
+                    // Image metadata
+                    Q.Separator {
+                        visible: propertiesDialog.props.isImage || false
+                        width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                    Column {
+                        visible: propertiesDialog.props.isImage || false
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
+
+                        PropRow { label: "Dimensions"; value: propertiesDialog.props.imageDimensions || ""; show: (propertiesDialog.props.imageDimensions || "") !== "" }
+                        PropRow { label: "Megapixels"; value: propertiesDialog.props.imageMegapixels || ""; show: (propertiesDialog.props.imageMegapixels || "") !== "" }
+                        PropRow { label: "Bit depth"; value: propertiesDialog.props.imageBitDepth || ""; show: (propertiesDialog.props.imageBitDepth || "") !== "" }
+
+                        // EXIF fields (dynamic — show whatever Qt extracted)
+                        Repeater {
+                            model: {
+                                var result = []
+                                var p = propertiesDialog.props
+                                var keys = Object.keys(p)
+                                for (var i = 0; i < keys.length; ++i) {
+                                    var k = keys[i]
+                                    if (k.startsWith("exif_") && p[k] !== "") {
+                                        var label = k.substring(5).replace(/([A-Z])/g, ' $1').trim()
+                                        label = label.charAt(0).toUpperCase() + label.slice(1)
+                                        result.push({ label: label, value: String(p[k]) })
+                                    }
+                                }
+                                return result
+                            }
+                            delegate: PropRow { label: modelData.label; value: modelData.value }
+                        }
+                    }
+
                     Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
                     // Disk usage

@@ -10,6 +10,9 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QBuffer>
+#include <QImage>
+#include <QImageReader>
 
 namespace {
 
@@ -1006,6 +1009,75 @@ QVariantMap FileSystemModel::fileProperties(const QString &path) const
     auto mime = mimeDb.mimeTypeForFile(info);
     props["mimeType"] = mime.name();
     props["mimeDescription"] = mime.comment();
+
+    // Image metadata
+    if (mime.name().startsWith("image/")) {
+        QImageReader reader(normalizedPath);
+        reader.setAutoTransform(false);
+        const QSize imgSize = reader.size();
+        if (imgSize.isValid()) {
+            props["imageWidth"] = imgSize.width();
+            props["imageHeight"] = imgSize.height();
+            props["imageDimensions"] = QString("%1 x %2").arg(imgSize.width()).arg(imgSize.height());
+
+            // Megapixels
+            const double mp = (imgSize.width() * static_cast<double>(imgSize.height())) / 1e6;
+            if (mp >= 0.1)
+                props["imageMegapixels"] = QString("%1 MP").arg(mp, 0, 'f', 1);
+        }
+
+        // Color depth / format
+        const QImage::Format fmt = reader.imageFormat();
+        if (fmt != QImage::Format_Invalid) {
+            const int depth = QImage::toPixelFormat(fmt).bitsPerPixel();
+            if (depth > 0)
+                props["imageBitDepth"] = QString("%1-bit").arg(depth);
+        }
+
+        // EXIF data from JPEG files
+        if (mime.name() == "image/jpeg" || mime.name() == "image/tiff") {
+            QFile imgFile(normalizedPath);
+            if (imgFile.open(QIODevice::ReadOnly)) {
+                const QByteArray header = imgFile.read(65536); // EXIF is in first 64KB
+                imgFile.close();
+
+                // Find EXIF marker (0xFFE1) in JPEG
+                auto readExifString = [&header](const char *tag) -> QString {
+                    const int idx = header.indexOf(tag);
+                    if (idx < 0) return {};
+                    // Find the null-terminated string after the tag
+                    int start = idx + static_cast<int>(strlen(tag));
+                    // Skip potential padding bytes
+                    while (start < header.size() && header.at(start) == '\0') ++start;
+                    int end = header.indexOf('\0', start);
+                    if (end < 0 || end - start > 200) return {};
+                    return QString::fromLatin1(header.mid(start, end - start)).trimmed();
+                };
+
+                // Read common EXIF text fields by looking for known strings
+                // EXIF stores Make/Model as ASCII strings that are easily findable
+                const QByteArray data = header;
+
+                // Use QImage::text() for metadata Qt can extract
+                QImage img;
+                QBuffer buf;
+                buf.setBuffer(const_cast<QByteArray*>(&header));
+                buf.open(QIODevice::ReadOnly);
+                QImageReader metaReader(&buf);
+                if (metaReader.canRead()) {
+                    // Some Qt builds expose EXIF via text keys
+                    img = metaReader.read();
+                    for (const QString &key : img.textKeys()) {
+                        const QString val = img.text(key);
+                        if (!val.isEmpty())
+                            props["exif_" + key] = val;
+                    }
+                }
+            }
+        }
+
+        props["isImage"] = true;
+    }
 
     // Timestamps
     props["created"] = QLocale().toString(info.birthTime(), QLocale::LongFormat);
