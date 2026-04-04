@@ -335,6 +335,8 @@ ListView {
         required property string fileModifiedText
         required property bool isDir
         required property string fileIconName
+        required property string gitStatus
+        required property string gitStatusIcon
 
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
@@ -360,14 +362,41 @@ ListView {
                 anchors.rightMargin: 8
                 spacing: 8
 
-                // Icon
-                Image {
+                // Icon with git badge
+                Item {
                     width: 20
                     height: 20
                     anchors.verticalCenter: parent.verticalCenter
-                    source: "image://icon/" + rowItem.fileIconName
-                    sourceSize: Qt.size(20, 20)
-                    asynchronous: false
+
+                    Image {
+                        anchors.fill: parent
+                        source: "image://icon/" + rowItem.fileIconName
+                        sourceSize: Qt.size(20, 20)
+                        asynchronous: false
+                    }
+
+                    Loader {
+                        active: rowItem.gitStatus !== ""
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.rightMargin: -3
+                        anchors.bottomMargin: -3
+                        width: 10
+                        height: 10
+                        sourceComponent: {
+                            switch (rowItem.gitStatusIcon) {
+                                case "git-modified":   return gitModifiedIcon
+                                case "git-staged":     return gitStagedIcon
+                                case "git-untracked":  return gitUntrackedIcon
+                                case "git-deleted":    return gitDeletedIcon
+                                case "git-renamed":    return gitRenamedIcon
+                                case "git-conflicted": return gitConflictedIcon
+                                case "git-ignored":    return gitIgnoredIcon
+                                case "git-dirty":      return gitDirtyIcon
+                                default: return null
+                            }
+                        }
+                    }
                 }
 
                 // Name (fills remaining space)
@@ -602,4 +631,13 @@ ListView {
         kineticGain: 1.01
         onScrollStarted: root.interactionStarted()
     }
+
+    Component { id: gitModifiedIcon;   IconGitModified   { size: 10 } }
+    Component { id: gitStagedIcon;     IconGitStaged     { size: 10 } }
+    Component { id: gitUntrackedIcon;  IconGitUntracked  { size: 10 } }
+    Component { id: gitDeletedIcon;    IconGitDeleted    { size: 10 } }
+    Component { id: gitRenamedIcon;    IconGitRenamed    { size: 10 } }
+    Component { id: gitConflictedIcon; IconGitConflicted { size: 10 } }
+    Component { id: gitIgnoredIcon;    IconGitIgnored    { size: 10 } }
+    Component { id: gitDirtyIcon;      IconGitDirty      { size: 10 } }
 }
