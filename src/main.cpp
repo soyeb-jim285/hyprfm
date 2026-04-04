@@ -36,6 +36,7 @@
 #include "services/diskusageservice.h"
 #include "services/remoteaccessservice.h"
 #include "services/runtimefeaturesservice.h"
+#include "services/gitstatusservice.h"
 #include "providers/thumbnailprovider.h"
 #include "providers/iconprovider.h"
 #ifdef HYPRFM_HAS_POPPLER_QT6
@@ -160,6 +161,9 @@ int main(int argc, char *argv[])
     DiskUsageService *diskUsageService = new DiskUsageService(&app);
     RemoteAccessService *remoteAccessService = new RemoteAccessService(&app);
     RuntimeFeaturesService *runtimeFeatures = new RuntimeFeaturesService(&app);
+    GitStatusService *gitService = new GitStatusService(&app);
+    fsModel->setGitStatusService(gitService);
+    splitFsModel->setGitStatusService(gitService);
 
     // Connect config changes to reload theme, bookmarks, and showHidden
     QObject::connect(config, &ConfigManager::configChanged, [=]() {
