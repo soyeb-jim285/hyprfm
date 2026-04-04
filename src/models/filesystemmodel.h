@@ -67,6 +67,7 @@ signals:
     void rootPathChanged();
     void showHiddenChanged();
     void countsChanged();
+    void watchedDirectoryChanged(const QString &path);
 
 private:
     void reload();

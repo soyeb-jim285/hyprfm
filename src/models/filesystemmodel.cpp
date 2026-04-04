@@ -360,6 +360,8 @@ FileSystemModel::FileSystemModel(QObject *parent)
     : QAbstractListModel(parent)
 {
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this]() {
+        if (!m_rootPath.isEmpty())
+            emit watchedDirectoryChanged(m_rootPath);
         refresh();
     });
 }

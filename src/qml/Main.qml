@@ -888,16 +888,6 @@ ApplicationWindow {
         }
     }
 
-    Connections {
-        target: fsModel
-        function onCountsChanged() { diskUsageService.clearCache() }
-    }
-
-    Connections {
-        target: splitFsModel
-        function onCountsChanged() { diskUsageService.clearCache() }
-    }
-
     BulkRenameDialog {
         id: bulkRenameDialog
         onRenameApplied: (paths) => root.handleBulkRenameApplied(paths)
@@ -2935,8 +2925,13 @@ ApplicationWindow {
 
     Connections {
         target: fileOps
+        function onPathsChanged(paths) {
+            diskUsageService.invalidatePaths(paths)
+            if (propertiesDialog.visible && propertiesDialog.props.path)
+                propertiesDialog.refreshFolderDiskUsage()
+        }
+
         function onOperationFinished(success, error) {
-            diskUsageService.clearCache()
             fsModel.refresh()
             splitFsModel.refresh()
             root.updateSelectionStatus()
@@ -2948,6 +2943,20 @@ ApplicationWindow {
                 toast.show("Operation completed successfully", "success")
             else
                 toast.show(error || "Operation failed", "error")
+        }
+    }
+
+    Connections {
+        target: fsModel
+        function onWatchedDirectoryChanged(path) {
+            diskUsageService.invalidatePath(path)
+        }
+    }
+
+    Connections {
+        target: splitFsModel
+        function onWatchedDirectoryChanged(path) {
+            diskUsageService.invalidatePath(path)
         }
     }
 }
