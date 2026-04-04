@@ -4,6 +4,7 @@ set(HYPRFM_SOURCES
     services/themeloader.cpp
     services/clipboardmanager.cpp
     services/fileoperations.cpp
+    services/giotransferworker.cpp
     services/draghelper.cpp
     models/tabmodel.cpp
     models/tablistmodel.cpp
