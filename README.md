@@ -1,7 +1,6 @@
 # HyprFM
 
 A lightweight Qt6/QML file manager built for Hyprland.
-
 ![License](https://img.shields.io/github/license/soyeb-jim285/hyprfm)
 ![Release](https://img.shields.io/github/v/release/soyeb-jim285/hyprfm)
 
@@ -24,6 +23,14 @@ A lightweight Qt6/QML file manager built for Hyprland.
 
 ```bash
 yay -S hyprfm-git
+```
+
+### .deb (Ubuntu 24.04)
+
+Download the `.deb` from [Releases](https://github.com/soyeb-jim285/hyprfm/releases) and install:
+
+```bash
+sudo apt install ./hyprfm_*.deb
 ```
 
 ### AppImage

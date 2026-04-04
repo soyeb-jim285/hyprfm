@@ -47,6 +47,12 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/usr
           cmake --build build
 
+      - name: Build .deb package
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cd build
+          cpack -G DEB
+
       - name: Install into AppDir
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -76,5 +82,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: HyprFM-${{ github.ref_name }}-x86_64.AppImage
+          files: |
+            HyprFM-${{ github.ref_name }}-x86_64.AppImage
+            build/hyprfm_*.deb
           generate_release_notes: true
