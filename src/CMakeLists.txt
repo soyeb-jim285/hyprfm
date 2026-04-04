@@ -16,6 +16,7 @@ set(HYPRFM_SOURCES
     services/searchservice.cpp
     services/undomanager.cpp
     services/previewservice.cpp
+    services/diskusageservice.cpp
     providers/thumbnailprovider.cpp
 )
 

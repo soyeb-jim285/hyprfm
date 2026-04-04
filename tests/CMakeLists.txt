@@ -71,6 +71,13 @@ if(POPPLER_QT6_FOUND)
 endif()
 add_test(NAME tst_previewservice COMMAND tst_previewservice)
 
+add_executable(tst_diskusageservice tst_diskusageservice.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/diskusageservice.cpp
+)
+target_include_directories(tst_diskusageservice PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_diskusageservice PRIVATE Qt6::Test Qt6::Core)
+add_test(NAME tst_diskusageservice COMMAND tst_diskusageservice)
+
 # --- New test targets ---
 
 add_executable(tst_filesystemmodel tst_filesystemmodel.cpp

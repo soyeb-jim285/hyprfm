@@ -145,6 +145,8 @@ ApplicationWindow {
     // ── Selection state for StatusBar ────────────────────────────────────────
     property int currentSelectedCount: 0
     property string currentSelectedSize: ""
+    property bool currentSelectedSizePending: false
+    property int currentSelectedSizeRequestId: -1
 
     function splitViewEnabled() {
         return tabModel.activeTab ? tabModel.activeTab.splitViewEnabled : false
@@ -170,6 +172,10 @@ ApplicationWindow {
     function parentDirForPath(path) {
         var slashIndex = path.lastIndexOf("/")
         return slashIndex > 0 ? path.substring(0, slashIndex) : "/"
+    }
+
+    function isLocalPath(path) {
+        return !!path && path.indexOf("://") < 0
     }
 
     function paneIsRecents(pane) {
@@ -630,8 +636,10 @@ ApplicationWindow {
         var subView = activeSubView()
 
         if (!subView || !subView.selectedIndices) {
+            cancelSelectedSizeRequest()
             currentSelectedCount = 0
             currentSelectedSize = ""
+            currentSelectedSizePending = false
             return
         }
 
@@ -639,13 +647,37 @@ ApplicationWindow {
         currentSelectedCount = indices.length
 
         if (indices.length === 0) {
+            cancelSelectedSizeRequest()
             currentSelectedSize = ""
+            currentSelectedSizePending = false
             return
         }
 
-        // Size display is omitted here as it requires per-file stat
-        // (fsModel.data is not Q_INVOKABLE; count alone suffices for the status bar)
-        currentSelectedSize = ""
+        var paths = []
+        var model = paneModel(activePane)
+        for (var i = 0; i < indices.length; ++i) {
+            var selectedPath = filePathFromModel(model, indices[i])
+            if (isLocalPath(selectedPath))
+                paths.push(selectedPath)
+        }
+
+        if (paths.length === 0) {
+            cancelSelectedSizeRequest()
+            currentSelectedSize = ""
+            currentSelectedSizePending = false
+            return
+        }
+
+        cancelSelectedSizeRequest()
+        currentSelectedSizePending = true
+        currentSelectedSize = "Calculating size..."
+        currentSelectedSizeRequestId = diskUsageService.requestSize(paths)
+    }
+
+    function cancelSelectedSizeRequest() {
+        if (currentSelectedSizeRequestId >= 0)
+            diskUsageService.cancelRequest(currentSelectedSizeRequestId)
+        currentSelectedSizeRequestId = -1
     }
 
     // ── Helper: collect selected file paths from active view ─────────────────
@@ -805,6 +837,34 @@ ApplicationWindow {
     Connections {
         target: splitSearchService
         function onSearchFinished() { root.selectFirstSearchResult("secondary") }
+    }
+
+    Connections {
+        target: diskUsageService
+
+        function onRequestFinished(requestId, result) {
+            if (requestId === root.currentSelectedSizeRequestId) {
+                root.currentSelectedSizeRequestId = -1
+                root.currentSelectedSizePending = false
+                root.currentSelectedSize = result.sizeText || ""
+            }
+
+            if (requestId === propertiesDialog.folderDiskUsageRequestId) {
+                propertiesDialog.folderDiskUsageRequestId = -1
+                propertiesDialog.folderDiskUsagePending = false
+                propertiesDialog.folderDiskUsageText = result.sizeTextVerbose || result.sizeText || ""
+            }
+        }
+    }
+
+    Connections {
+        target: fsModel
+        function onCountsChanged() { diskUsageService.clearCache() }
+    }
+
+    Connections {
+        target: splitFsModel
+        function onCountsChanged() { diskUsageService.clearCache() }
     }
 
     BulkRenameDialog {
@@ -1299,12 +1359,36 @@ ApplicationWindow {
         property var apps: []
         property var fileModelRef: fsModel
         property int currentTab: 0  // 0=General, 1=Permissions, 2=Open With
+        property string folderDiskUsageText: ""
+        property bool folderDiskUsagePending: false
+        property int folderDiskUsageRequestId: -1
+
+        function cancelFolderDiskUsageRequest() {
+            if (folderDiskUsageRequestId >= 0)
+                diskUsageService.cancelRequest(folderDiskUsageRequestId)
+            folderDiskUsageRequestId = -1
+        }
+
+        function refreshFolderDiskUsage() {
+            cancelFolderDiskUsageRequest()
+
+            if (!props.isDir || props.isTrashItem || !root.isLocalPath(props.path)) {
+                folderDiskUsageText = ""
+                folderDiskUsagePending = false
+                return
+            }
+
+            folderDiskUsagePending = true
+            folderDiskUsageText = "Calculating..."
+            folderDiskUsageRequestId = diskUsageService.requestSize([props.path])
+        }
 
         function showProperties(path) {
             fileModelRef = root.paneBaseModel(root.activePane) || fsModel
             props = fileModelRef.fileProperties(path)
             currentTab = 0
             propsTabs.currentIndex = 0
+            refreshFolderDiskUsage()
             if (!props.isDir && props.mimeType)
                 apps = fileModelRef.availableApps(props.mimeType)
             else
@@ -1315,7 +1399,10 @@ ApplicationWindow {
             propsBox.yOffset = -8
             propsOpenAnim.start()
         }
-        function close() { propsCloseAnim.start() }
+        function close() {
+            cancelFolderDiskUsageRequest()
+            propsCloseAnim.start()
+        }
 
         ParallelAnimation {
             id: propsOpenAnim
@@ -1489,7 +1576,16 @@ ApplicationWindow {
                         anchors.left: parent.left; anchors.right: parent.right
                         anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
 
-                        PropRow { label: "Size"; value: propertiesDialog.props.sizeText || "" }
+                        PropRow {
+                            label: "Size"
+                            value: propertiesDialog.props.sizeText || ""
+                            show: !(propertiesDialog.props.isDir || false)
+                        }
+                        PropRow {
+                            label: "Disk usage"
+                            value: propertiesDialog.folderDiskUsageText
+                            show: propertiesDialog.props.isDir || false
+                        }
                         PropRow { label: "Content"; value: propertiesDialog.props.contentText || ""; show: propertiesDialog.props.isDir || false }
                     }
 
@@ -2694,6 +2790,7 @@ ApplicationWindow {
                         : "")
                 selectedCount: root.currentSelectedCount
                 selectedSize: root.currentSelectedSize
+                selectedSizePending: root.currentSelectedSizePending
             }
             }
         }
@@ -2743,8 +2840,14 @@ ApplicationWindow {
     Connections {
         target: fileOps
         function onOperationFinished(success, error) {
+            diskUsageService.clearCache()
             fsModel.refresh()
             splitFsModel.refresh()
+            root.updateSelectionStatus()
+            if (propertiesDialog.visible && propertiesDialog.props.path) {
+                propertiesDialog.props = propertiesDialog.fileModelRef.fileProperties(propertiesDialog.props.path)
+                propertiesDialog.refreshFolderDiskUsage()
+            }
             if (success)
                 toast.show("Operation completed successfully", "success")
             else

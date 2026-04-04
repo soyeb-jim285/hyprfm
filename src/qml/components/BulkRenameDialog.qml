@@ -195,6 +195,8 @@ Q.Dialog {
     }
 
     function actionText() {
+        if (changedCount <= 0)
+            return "Rename Items"
         if (changedCount === 1)
             return "Rename Item"
         return "Rename " + changedCount + " Items"
@@ -323,12 +325,22 @@ Q.Dialog {
     // --- Mode controls ---
 
     Item {
+        id: controlsContainer
         Layout.fillWidth: true
-        implicitHeight: modeTabs.currentIndex === 0
+        clip: true
+        property real contentHeight: modeTabs.currentIndex === 0
             ? replaceControls.implicitHeight
             : modeTabs.currentIndex === 1
                 ? addControls.implicitHeight
                 : sequenceControls.implicitHeight
+        implicitHeight: contentHeight
+
+        Behavior on contentHeight {
+            NumberAnimation {
+                duration: 220
+                easing.type: Easing.OutCubic
+            }
+        }
 
         ColumnLayout {
             id: replaceControls
