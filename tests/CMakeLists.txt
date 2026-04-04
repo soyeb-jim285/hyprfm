@@ -152,3 +152,10 @@ target_include_directories(tst_searchservice PRIVATE
 )
 target_link_libraries(tst_searchservice PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME tst_searchservice COMMAND tst_searchservice)
+
+add_executable(tst_giotransferworker tst_giotransferworker.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/giotransferworker.cpp
+)
+target_include_directories(tst_giotransferworker PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_giotransferworker PRIVATE Qt6::Test Qt6::Core PkgConfig::GIO)
+add_test(NAME tst_giotransferworker COMMAND tst_giotransferworker)
