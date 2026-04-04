@@ -30,7 +30,7 @@ void GioTransferWorker::execute(const QList<TransferItem> &items, bool moveOpera
     for (const auto &item : items) {
         if (m_cancelled.load()) {
             success = false;
-            errorMsg = QStringLiteral("Cancelled");
+            errorMsg = {};
             break;
         }
 
@@ -259,6 +259,7 @@ qint64 GioTransferWorker::scanPathBytes(GFile *file)
             g_object_unref(childInfo);
         }
 
+        g_file_enumerator_close(enumerator, nullptr, nullptr);
         g_object_unref(enumerator);
         return total;
     }
@@ -341,11 +342,13 @@ bool GioTransferWorker::copyRecursive(GFile *source, GFile *destination, GFileCo
         g_object_unref(childInfo);
 
         if (!ok) {
+            g_file_enumerator_close(enumerator, nullptr, nullptr);
             g_object_unref(enumerator);
             return false;
         }
     }
 
+    g_file_enumerator_close(enumerator, nullptr, nullptr);
     g_object_unref(enumerator);
 
     // Copy directory metadata (permissions, timestamps) from source to destination
@@ -395,12 +398,14 @@ bool GioTransferWorker::deleteRecursive(GFile *file, QString *error)
 
         if (!deleteRecursive(child, error)) {
             g_object_unref(child);
+            g_file_enumerator_close(enumerator, nullptr, nullptr);
             g_object_unref(enumerator);
             return false;
         }
         g_object_unref(child);
     }
 
+    g_file_enumerator_close(enumerator, nullptr, nullptr);
     g_object_unref(enumerator);
 
     // Delete the directory itself
@@ -508,7 +513,7 @@ QString GioTransferWorker::gErrorToUserMessage(GError *error)
         case G_IO_ERROR_NOT_FOUND:
             return QStringLiteral("Source file not found");
         case G_IO_ERROR_CANCELLED:
-            return QStringLiteral("Cancelled");
+            return {};
         default:
             break;
         }
