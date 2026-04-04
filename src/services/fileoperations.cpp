@@ -18,6 +18,10 @@
 #include <QUrl>
 #include <unistd.h>
 
+#undef signals
+#include <gio/gio.h>
+#define signals Q_SIGNALS
+
 namespace {
 
 bool isTrashUriPath(const QString &path)
@@ -157,42 +161,51 @@ QString joinLocation(const QString &parentPath, const QString &name)
     return QDir(normalizedParent).filePath(name);
 }
 
+GFile *gFileForLocation(const QString &path)
+{
+    const QByteArray utf8 = path.toUtf8();
+    if (isUriPath(path))
+        return g_file_new_for_uri(utf8.constData());
+    return g_file_new_for_path(utf8.constData());
+}
+
 bool gioPathExists(const QString &path)
 {
-    QProcess proc;
-    proc.start(QStringLiteral("gio"), {QStringLiteral("info"), gioLocationArg(path)});
-    return proc.waitForFinished(3000) && proc.exitCode() == 0;
+    GFile *file = gFileForLocation(path);
+    GFileInfo *info = g_file_query_info(file, G_FILE_ATTRIBUTE_STANDARD_TYPE,
+                                        G_FILE_QUERY_INFO_NONE, nullptr, nullptr);
+    const bool exists = info != nullptr;
+    if (info) g_object_unref(info);
+    g_object_unref(file);
+    return exists;
 }
 
 QVariantMap remotePathInfo(const QString &path)
 {
     QVariantMap result;
     const QString normalized = normalizeLocation(path);
-    const QStringList args = {
-        QStringLiteral("info"),
-        QStringLiteral("-a"),
-        QStringLiteral("standard::type,standard::size,standard::is-symlink"),
-        gioLocationArg(normalized)
-    };
 
-    QProcess proc;
-    proc.start(QStringLiteral("gio"), args);
-    if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
+    GFile *file = gFileForLocation(normalized);
+    GFileInfo *info = g_file_query_info(file,
+        G_FILE_ATTRIBUTE_STANDARD_TYPE ","
+        G_FILE_ATTRIBUTE_STANDARD_SIZE ","
+        G_FILE_ATTRIBUTE_STANDARD_IS_SYMLINK,
+        G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, nullptr, nullptr);
+
+    if (!info) {
+        g_object_unref(file);
         return result;
+    }
 
-    const QString output = QString::fromUtf8(proc.readAllStandardOutput());
     result[QStringLiteral("exists")] = true;
     result[QStringLiteral("fileName")] = locationFileName(normalized);
     result[QStringLiteral("path")] = normalized;
+    result[QStringLiteral("isDir")] = g_file_info_get_file_type(info) == G_FILE_TYPE_DIRECTORY;
+    result[QStringLiteral("size")] = static_cast<qint64>(g_file_info_get_size(info));
+    result[QStringLiteral("isSymlink")] = static_cast<bool>(g_file_info_get_is_symlink(info));
 
-    static const QRegularExpression typeRe(R"(^type:\s*(.+)$)", QRegularExpression::MultilineOption);
-    static const QRegularExpression sizeRe(R"(^\s*standard::size:\s*(\d+).*$)", QRegularExpression::MultilineOption);
-    static const QRegularExpression symlinkRe(R"(^\s*standard::is-symlink:\s*(TRUE|FALSE).*$)", QRegularExpression::MultilineOption);
-
-    const QString typeText = typeRe.match(output).captured(1).trimmed().toLower();
-    result[QStringLiteral("isDir")] = typeText.contains(QStringLiteral("directory"));
-    result[QStringLiteral("size")] = sizeRe.match(output).captured(1).toLongLong();
-    result[QStringLiteral("isSymlink")] = symlinkRe.match(output).captured(1) == QStringLiteral("TRUE");
+    g_object_unref(info);
+    g_object_unref(file);
     return result;
 }
 
@@ -225,16 +238,16 @@ bool moveLocationSync(const QString &sourcePath, const QString &targetPath, QStr
         return ok;
     }
 
-    QProcess proc;
-    proc.start(QStringLiteral("gio"), {QStringLiteral("move"), QStringLiteral("-T"),
-                                        gioLocationArg(normalizedSource), gioLocationArg(normalizedTarget)});
-    if (!proc.waitForFinished(10000) || proc.exitCode() != 0) {
-        if (error)
-            *error = QString::fromUtf8(proc.readAllStandardError()).trimmed();
-        return false;
-    }
-
-    return true;
+    GFile *src = gFileForLocation(normalizedSource);
+    GFile *dst = gFileForLocation(normalizedTarget);
+    GError *gErr = nullptr;
+    const bool ok = g_file_move(src, dst, G_FILE_COPY_NONE, nullptr, nullptr, nullptr, &gErr);
+    if (!ok && error)
+        *error = gErr ? QString::fromUtf8(gErr->message) : QStringLiteral("Move failed");
+    if (gErr) g_error_free(gErr);
+    g_object_unref(src);
+    g_object_unref(dst);
+    return ok;
 }
 
 bool makeDirectorySync(const QString &path, QString *error = nullptr)
@@ -247,15 +260,15 @@ bool makeDirectorySync(const QString &path, QString *error = nullptr)
         return ok;
     }
 
-    QProcess proc;
-    proc.start(QStringLiteral("gio"), {QStringLiteral("mkdir"), QStringLiteral("-p"), gioLocationArg(normalized)});
-    if (!proc.waitForFinished(10000) || proc.exitCode() != 0) {
-        if (error)
-            *error = QString::fromUtf8(proc.readAllStandardError()).trimmed();
-        return false;
-    }
-
-    return true;
+    GFile *file = gFileForLocation(normalized);
+    GError *gErr = nullptr;
+    const bool ok = g_file_make_directory_with_parents(file, nullptr, &gErr);
+    const bool alreadyExists = gErr && g_error_matches(gErr, G_IO_ERROR, G_IO_ERROR_EXISTS);
+    if (!ok && !alreadyExists && error)
+        *error = gErr ? QString::fromUtf8(gErr->message) : QStringLiteral("Could not create folder");
+    if (gErr) g_error_free(gErr);
+    g_object_unref(file);
+    return ok || alreadyExists;
 }
 
 bool createEmptyFileSync(const QString &path, QString *error = nullptr)
@@ -270,23 +283,20 @@ bool createEmptyFileSync(const QString &path, QString *error = nullptr)
         return ok;
     }
 
-    QTemporaryFile tempFile;
-    if (!tempFile.open()) {
+    GFile *file = gFileForLocation(normalized);
+    GError *gErr = nullptr;
+    GFileOutputStream *stream = g_file_create(file, G_FILE_CREATE_NONE, nullptr, &gErr);
+    if (stream) {
+        g_output_stream_close(G_OUTPUT_STREAM(stream), nullptr, nullptr);
+        g_object_unref(stream);
+    } else {
         if (error)
-            *error = QStringLiteral("Could not create temporary file");
+            *error = gErr ? QString::fromUtf8(gErr->message) : QStringLiteral("Could not create file");
+        if (gErr) g_error_free(gErr);
+        g_object_unref(file);
         return false;
     }
-    tempFile.close();
-
-    QProcess proc;
-    proc.start(QStringLiteral("gio"), {QStringLiteral("copy"), QStringLiteral("-T"),
-                                        gioLocationArg(tempFile.fileName()), gioLocationArg(normalized)});
-    if (!proc.waitForFinished(10000) || proc.exitCode() != 0) {
-        if (error)
-            *error = QString::fromUtf8(proc.readAllStandardError()).trimmed();
-        return false;
-    }
-
+    g_object_unref(file);
     return true;
 }
 
@@ -832,35 +842,91 @@ void FileOperations::moveResolvedItems(const QVariantList &operations)
 
 void FileOperations::trashFiles(const QStringList &paths)
 {
-    QStringList args = {"trash"};
-    args.append(paths);
-    m_statusText = QString("Trashing %1 item(s)...").arg(paths.size());
-    emit statusTextChanged();
-    setPendingChangedPaths(paths);
-    runProcess("gio", args);
+    bool allOk = true;
+    QString lastError;
+
+    for (const QString &path : paths) {
+        GFile *file = gFileForLocation(normalizeLocation(path));
+        GError *gErr = nullptr;
+        if (!g_file_trash(file, nullptr, &gErr)) {
+            allOk = false;
+            if (gErr) {
+                lastError = QString::fromUtf8(gErr->message);
+                g_error_free(gErr);
+            }
+        }
+        g_object_unref(file);
+    }
+
+    emitChangedPaths(paths);
+    emit operationFinished(allOk, allOk ? QString() : lastError);
 }
 
 void FileOperations::restoreFromTrash(const QStringList &paths)
 {
-    QStringList trashUris;
+    bool allOk = true;
+    QString lastError;
+    QStringList changedPaths = paths;
+
     for (const QString &path : paths) {
         const QString uri = trashUriForPath(path);
-        if (!uri.isEmpty() && !trashUris.contains(uri))
-            trashUris.append(uri);
+        if (uri.isEmpty())
+            continue;
+
+        GFile *trashFile = g_file_new_for_uri(uri.toUtf8().constData());
+        GError *gErr = nullptr;
+        GFileInfo *info = g_file_query_info(trashFile,
+            G_FILE_ATTRIBUTE_TRASH_ORIG_PATH,
+            G_FILE_QUERY_INFO_NONE, nullptr, &gErr);
+
+        if (!info) {
+            allOk = false;
+            if (gErr) {
+                lastError = QString::fromUtf8(gErr->message);
+                g_error_free(gErr);
+            }
+            g_object_unref(trashFile);
+            continue;
+        }
+
+        const char *origPath = g_file_info_get_attribute_byte_string(info, G_FILE_ATTRIBUTE_TRASH_ORIG_PATH);
+        if (!origPath) {
+            allOk = false;
+            lastError = QStringLiteral("Could not determine original path");
+            g_object_unref(info);
+            g_object_unref(trashFile);
+            continue;
+        }
+
+        GFile *destFile = g_file_new_for_path(origPath);
+
+        // Ensure parent directory exists
+        GFile *parent = g_file_get_parent(destFile);
+        if (parent) {
+            GError *mkErr = nullptr;
+            g_file_make_directory_with_parents(parent, nullptr, &mkErr);
+            if (mkErr) g_error_free(mkErr); // ignore EXISTS
+            g_object_unref(parent);
+        }
+
+        GError *mvErr = nullptr;
+        if (!g_file_move(trashFile, destFile, G_FILE_COPY_NONE, nullptr, nullptr, nullptr, &mvErr)) {
+            allOk = false;
+            if (mvErr) {
+                lastError = QString::fromUtf8(mvErr->message);
+                g_error_free(mvErr);
+            }
+        } else {
+            changedPaths.append(QString::fromUtf8(origPath));
+        }
+
+        g_object_unref(info);
+        g_object_unref(destFile);
+        g_object_unref(trashFile);
     }
 
-    if (trashUris.isEmpty()) {
-        emit operationFinished(false, "No trashed items could be restored");
-        return;
-    }
-
-    QStringList args = {"trash", "--restore", "--force"};
-    args.append(trashUris);
-
-    m_statusText = QString("Restoring %1 item(s)...").arg(trashUris.size());
-    emit statusTextChanged();
-    setPendingChangedPaths(paths);
-    runProcess("gio", args);
+    emitChangedPaths(changedPaths);
+    emit operationFinished(allOk, allOk ? QString() : lastError);
 }
 
 bool FileOperations::isTrashPath(const QString &path) const
@@ -946,35 +1012,42 @@ QString FileOperations::uniqueNameForDestination(const QString &destinationDir, 
 
 void FileOperations::deleteFiles(const QStringList &paths)
 {
-    QStringList uriTargets;
-    bool localSuccess = true;
+    bool allOk = true;
+    QString lastError;
 
     for (const auto &path : paths) {
         const QString normalized = normalizeLocation(path);
+
         if (isUriPath(normalized)) {
-            uriTargets.append(gioLocationArg(normalized));
+            GFile *file = gFileForLocation(normalized);
+            GError *gErr = nullptr;
+            if (!g_file_delete(file, nullptr, &gErr)) {
+                allOk = false;
+                if (gErr) {
+                    lastError = QString::fromUtf8(gErr->message);
+                    g_error_free(gErr);
+                }
+            }
+            g_object_unref(file);
             continue;
         }
 
         QFileInfo info(normalized);
-        if (info.isDir())
-            localSuccess = QDir(normalized).removeRecursively() && localSuccess;
-        else
-            localSuccess = QFile::remove(normalized) && localSuccess;
-    }
-
-    if (!uriTargets.isEmpty()) {
-        m_statusText = QString("Deleting %1 item(s)...").arg(uriTargets.size());
-        emit statusTextChanged();
-        QStringList args = {"remove", "-f"};
-        args.append(uriTargets);
-        setPendingChangedPaths(paths);
-        runProcess("gio", args);
-        return;
+        if (info.isDir()) {
+            if (!QDir(normalized).removeRecursively()) {
+                allOk = false;
+                lastError = QStringLiteral("Failed to delete one or more items");
+            }
+        } else {
+            if (!QFile::remove(normalized)) {
+                allOk = false;
+                lastError = QStringLiteral("Failed to delete one or more items");
+            }
+        }
     }
 
     emitChangedPaths(paths);
-    emit operationFinished(localSuccess, localSuccess ? QString() : QStringLiteral("Failed to delete one or more items"));
+    emit operationFinished(allOk, allOk ? QString() : lastError);
 }
 
 void FileOperations::transferResolvedItems(const QVariantList &operations, bool moveOperation)
@@ -1228,9 +1301,43 @@ QVariantList FileOperations::breadcrumbSegments(const QString &path) const
 
 void FileOperations::emptyTrash()
 {
-    m_statusText = "Emptying trash...";
-    emit statusTextChanged();
-    runProcess("gio", {"trash", "--empty"});
+    GFile *trash = g_file_new_for_uri("trash:///");
+    GError *enumErr = nullptr;
+    GFileEnumerator *enumerator = g_file_enumerate_children(trash,
+        G_FILE_ATTRIBUTE_STANDARD_NAME,
+        G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, nullptr, &enumErr);
+
+    bool allOk = true;
+    QString lastError;
+
+    if (enumerator) {
+        GFileInfo *childInfo = nullptr;
+        while ((childInfo = g_file_enumerator_next_file(enumerator, nullptr, nullptr)) != nullptr) {
+            const char *name = g_file_info_get_name(childInfo);
+            GFile *child = g_file_get_child(trash, name);
+            GError *delErr = nullptr;
+            if (!g_file_delete(child, nullptr, &delErr)) {
+                allOk = false;
+                if (delErr) {
+                    lastError = QString::fromUtf8(delErr->message);
+                    g_error_free(delErr);
+                }
+            }
+            g_object_unref(child);
+            g_object_unref(childInfo);
+        }
+        g_file_enumerator_close(enumerator, nullptr, nullptr);
+        g_object_unref(enumerator);
+    } else {
+        if (enumErr) {
+            lastError = QString::fromUtf8(enumErr->message);
+            g_error_free(enumErr);
+        }
+        allOk = false;
+    }
+
+    g_object_unref(trash);
+    emit operationFinished(allOk, allOk ? QString() : lastError);
 }
 
 void FileOperations::openFileWith(const QString &path, const QString &desktopFile)
