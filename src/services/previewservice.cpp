@@ -328,6 +328,82 @@ QVariantMap PreviewService::loadDirectoryPreview(const QString &path, int maxEnt
     return result;
 }
 
+QVariantMap PreviewService::loadArchivePreview(const QString &path, int maxEntries) const
+{
+    QVariantMap result;
+    result["entries"] = QStringList();
+    result["truncated"] = false;
+    result["error"] = QString();
+    result["count"] = 0;
+
+    // Determine list command based on archive type
+    // Reuse the same detection as fileoperations
+    const QString lower = path.toLower();
+    QString program;
+    QStringList args;
+
+    if (lower.endsWith(".zip")) {
+        program = "unzip";
+        args = {"-Z1", path};
+    } else if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) {
+        program = "tar";
+        args = {"-tzf", path};
+    } else if (lower.endsWith(".tar.xz") || lower.endsWith(".txz")) {
+        program = "tar";
+        args = {"-tJf", path};
+    } else if (lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2")) {
+        program = "tar";
+        args = {"-tjf", path};
+    } else if (lower.endsWith(".tar")) {
+        program = "tar";
+        args = {"-tf", path};
+    } else if (lower.endsWith(".7z") || lower.endsWith(".rar")) {
+        program = "7z";
+        args = {"l", "-slt", path};
+    } else {
+        result["error"] = "Unsupported archive format";
+        return result;
+    }
+
+    QProcess proc;
+    proc.start(program, args);
+    if (!proc.waitForFinished(10000) || proc.exitCode() != 0) {
+        result["error"] = "Could not list archive contents";
+        return result;
+    }
+
+    const QString output = QString::fromUtf8(proc.readAllStandardOutput());
+    QStringList entries;
+    bool truncated = false;
+
+    if (program == "7z") {
+        // 7z -slt output: "Path = filename" lines
+        static const QRegularExpression pathRe(R"(^Path = (.+)$)", QRegularExpression::MultilineOption);
+        auto it = pathRe.globalMatch(output);
+        while (it.hasNext()) {
+            const QString entry = it.next().captured(1).trimmed();
+            if (entry.isEmpty() || entry == path)
+                continue;
+            if (entries.size() >= maxEntries) { truncated = true; break; }
+            entries.append(entry);
+        }
+    } else {
+        const QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        for (const QString &line : lines) {
+            const QString trimmed = line.trimmed();
+            if (trimmed.isEmpty())
+                continue;
+            if (entries.size() >= maxEntries) { truncated = true; break; }
+            entries.append(trimmed);
+        }
+    }
+
+    result["entries"] = entries;
+    result["truncated"] = truncated;
+    result["count"] = entries.size();
+    return result;
+}
+
 QString PreviewService::localPreviewPath(const QString &path) const
 {
     if (path.isEmpty())

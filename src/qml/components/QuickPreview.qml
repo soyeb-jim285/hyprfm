@@ -37,6 +37,7 @@ Item {
     }
 
     readonly property bool isDirectory: fileProps.isDir || false
+    readonly property bool isArchive: !isDirectory && fileOps.isArchive(filePath)
     readonly property bool isTrashUri: filePath.startsWith("trash:///")
     readonly property bool isRemoteUri: fileOps.isRemotePath(filePath)
     readonly property bool isImage: {
@@ -114,6 +115,8 @@ Item {
     readonly property string detailKind: {
         if (isDirectory)
             return "Folder"
+        if (isArchive)
+            return "Archive"
         if (isAudio)
             return "Audio"
         if (isVideo)
@@ -200,6 +203,8 @@ Item {
 
         if (isDirectory)
             directoryPreview = previewService.loadDirectoryPreview(filePath)
+        else if (isArchive)
+            directoryPreview = previewService.loadArchivePreview(filePath)
         else
             directoryPreview = ({ entries: [], truncated: false, error: "", count: 0 })
     }
@@ -658,11 +663,11 @@ Item {
                             anchors.fill: parent
                             anchors.margins: 8
                             spacing: 12
-                            visible: root.isDirectory
+                            visible: root.isDirectory || root.isArchive
 
                             Text {
                                 Layout.fillWidth: true
-                                text: fileProps.contentText || "Folder contents"
+                                text: root.isArchive ? "Archive contents" : (fileProps.contentText || "Folder contents")
                                 color: Theme.text
                                 font.pointSize: Theme.fontNormal
                                 font.bold: true
@@ -753,7 +758,7 @@ Item {
                         Column {
                             anchors.centerIn: parent
                             spacing: 12
-                            visible: !root.hasVisualPreview && !root.isText && !root.isDirectory && !root.isPdf
+                            visible: !root.hasVisualPreview && !root.isText && !root.isDirectory && !root.isArchive && !root.isPdf
 
                             Image {
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -846,7 +851,7 @@ Item {
 
                             Text {
                                 width: parent.width
-                                visible: root.isDirectory && directoryPreview.truncated
+                                visible: (root.isDirectory || root.isArchive) && directoryPreview.truncated
                                 text: "Only the first items are shown here."
                                 color: Theme.subtext
                                 font.pointSize: Theme.fontSmall
