@@ -40,52 +40,35 @@ Item {
     readonly property bool isArchive: !isDirectory && fileOps.isArchive(filePath)
     readonly property bool isTrashUri: filePath.startsWith("trash:///")
     readonly property bool isRemoteUri: fileOps.isRemotePath(filePath)
-    readonly property bool isImage: {
-        var img = ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "ico", "tiff", "tif"]
-        return !isRemoteUri && !isDirectory && img.indexOf(fileExtension) >= 0
-    }
-    readonly property bool isVideo: {
-        if (isRemoteUri || isDirectory) return false
-        var vid = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "3gp"]
-        if (vid.indexOf(fileExtension) >= 0) return true
-        // .ts is ambiguous (TypeScript vs MPEG transport stream) — use MIME type
-        if (fileExtension === "ts") return (fileProps.mimeType || "").startsWith("video/")
-        return false
-    }
-    readonly property bool isAudio: {
-        var audio = ["mp3", "flac", "ogg", "wav", "m4a", "aac", "opus"]
-        return !isRemoteUri && !isDirectory && audio.indexOf(fileExtension) >= 0
-    }
-    readonly property bool isPdf: !isRemoteUri && !isDirectory && fileExtension === "pdf"
-    readonly property bool isNamedTextFile: {
-        var names = [
-            "makefile", "gnumakefile", "kbuild", "dockerfile", "justfile",
-            ".bashrc", ".zshrc", ".profile", ".bash_profile", ".bash_logout",
-            ".gitignore", ".gitmodules", ".editorconfig"
-        ]
-        return !isRemoteUri && !isDirectory && names.indexOf(fileName.toLowerCase()) >= 0
-    }
-    readonly property bool isTextMime: {
-        var mime = fileProps.mimeType || ""
-        if (mime.startsWith("text/"))
+    readonly property string _mime: fileProps.mimeType || ""
+    readonly property bool isImage: !isRemoteUri && !isDirectory && _mime.startsWith("image/")
+    readonly property bool isVideo: !isRemoteUri && !isDirectory && _mime.startsWith("video/")
+    readonly property bool isAudio: !isRemoteUri && !isDirectory && _mime.startsWith("audio/")
+    readonly property bool isPdf: !isRemoteUri && !isDirectory && _mime === "application/pdf"
+    readonly property bool isText: {
+        if (isRemoteUri || isDirectory || isPdf || isImage || isVideo || isAudio || isArchive)
+            return false
+        if (_mime.startsWith("text/"))
             return true
-
-        var knownTextMimes = [
+        var textMimes = [
             "application/json", "application/xml", "application/x-yaml",
             "application/toml", "application/x-shellscript",
-            "application/javascript", "application/x-tex", "application/x-makefile",
-            "application/x-desktop"
+            "application/javascript", "application/typescript",
+            "application/x-tex", "application/x-makefile",
+            "application/x-desktop", "application/x-ruby",
+            "application/x-perl", "application/x-python"
         ]
-        return knownTextMimes.indexOf(mime) >= 0
-    }
-    readonly property bool isText: {
-        var txt = ["txt", "md", "json", "yaml", "yml", "toml", "ini", "cfg", "conf",
-                   "sh", "bash", "zsh", "fish", "py", "js", "ts", "css", "html",
-                   "htm", "xml", "c", "cpp", "h", "hpp", "rs", "go", "java", "tex",
-                   "rb", "lua", "vim", "log", "diff", "patch", "cmake", "qml", "mk", "desktop"]
-        if (isRemoteUri || isDirectory || isPdf || isImage || isVideo || isAudio)
-            return false
-        return txt.indexOf(fileExtension) >= 0 || isNamedTextFile || isTextMime || fileExtension === ""
+        if (textMimes.indexOf(_mime) >= 0)
+            return true
+        // Fallback: extensionless files and known text extensions not covered by MIME
+        if (fileExtension === "")
+            return true
+        var textExt = ["txt", "md", "json", "yaml", "yml", "toml", "ini", "cfg", "conf",
+                       "sh", "bash", "zsh", "fish", "py", "js", "ts", "tsx", "jsx",
+                       "css", "html", "htm", "xml", "c", "cpp", "h", "hpp", "rs",
+                       "go", "java", "tex", "rb", "lua", "vim", "log", "diff",
+                       "patch", "cmake", "qml", "mk", "desktop"]
+        return textExt.indexOf(fileExtension) >= 0
     }
     readonly property bool pdfPreviewAvailable: previewService.pdfPreviewAvailable
     readonly property bool videoPreviewAvailable: runtimeFeatures.ffmpegAvailable
