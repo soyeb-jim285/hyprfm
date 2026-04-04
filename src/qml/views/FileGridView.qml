@@ -428,6 +428,8 @@ GridView {
         required property string filePath
         required property bool isDir
         required property string fileIconName
+        required property string gitStatus
+        required property string gitStatusIcon
 
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
@@ -485,6 +487,31 @@ GridView {
             source: "image://icon/" + delegateItem.fileIconName
             sourceSize: Qt.size(root.iconRequestSize, root.iconRequestSize)
             asynchronous: false
+        }
+
+        // Git status overlay badge
+        Loader {
+            id: gitBadge
+            active: delegateItem.gitStatus !== ""
+            anchors.right: (iconImg.visible ? iconImg : thumbImg).right
+            anchors.bottom: (iconImg.visible ? iconImg : thumbImg).bottom
+            anchors.rightMargin: -2
+            anchors.bottomMargin: -2
+            width: 12
+            height: 12
+            sourceComponent: {
+                switch (delegateItem.gitStatusIcon) {
+                    case "git-modified":   return gitModifiedIcon
+                    case "git-staged":     return gitStagedIcon
+                    case "git-untracked":  return gitUntrackedIcon
+                    case "git-deleted":    return gitDeletedIcon
+                    case "git-renamed":    return gitRenamedIcon
+                    case "git-conflicted": return gitConflictedIcon
+                    case "git-ignored":    return gitIgnoredIcon
+                    case "git-dirty":      return gitDirtyIcon
+                    default: return null
+                }
+            }
         }
 
         // Hidden text to check if name fits in 2 lines
@@ -788,4 +815,13 @@ GridView {
         kineticGain: 1.01
         onScrollStarted: root.interactionStarted()
     }
+
+    Component { id: gitModifiedIcon;   IconGitModified   { size: 12 } }
+    Component { id: gitStagedIcon;     IconGitStaged     { size: 12 } }
+    Component { id: gitUntrackedIcon;  IconGitUntracked  { size: 12 } }
+    Component { id: gitDeletedIcon;    IconGitDeleted    { size: 12 } }
+    Component { id: gitRenamedIcon;    IconGitRenamed    { size: 12 } }
+    Component { id: gitConflictedIcon; IconGitConflicted { size: 12 } }
+    Component { id: gitIgnoredIcon;    IconGitIgnored    { size: 12 } }
+    Component { id: gitDirtyIcon;      IconGitDirty      { size: 12 } }
 }
