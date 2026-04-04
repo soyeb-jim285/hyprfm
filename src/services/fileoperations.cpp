@@ -1,6 +1,8 @@
 #include "services/fileoperations.h"
+#include "services/giotransferworker.h"
 #include <QClipboard>
 #include <QDir>
+#include <QThread>
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -86,6 +88,23 @@ QString locationFileName(const QString &path)
 
     const QFileInfo info(normalized);
     return info.fileName().isEmpty() ? normalized : info.fileName();
+}
+
+void appendUniqueLocation(QStringList *paths, const QString &path)
+{
+    const QString normalized = normalizeLocation(path);
+    if (normalized.isEmpty() || paths->contains(normalized))
+        return;
+
+    paths->append(normalized);
+}
+
+QStringList uniqueLocations(const QStringList &paths)
+{
+    QStringList result;
+    for (const QString &path : paths)
+        appendUniqueLocation(&result, path);
+    return result;
 }
 
 QString parentLocation(const QString &path)
@@ -709,6 +728,10 @@ FileOperations::FileOperations(QObject *parent)
 bool FileOperations::busy() const { return m_busy; }
 double FileOperations::progress() const { return m_progress; }
 QString FileOperations::statusText() const { return m_statusText; }
+QString FileOperations::speed() const { return m_speed; }
+QString FileOperations::eta() const { return m_eta; }
+bool FileOperations::paused() const { return m_paused; }
+QString FileOperations::currentFile() const { return m_currentFile; }
 
 void FileOperations::copyFiles(const QStringList &sources, const QString &destination)
 {
@@ -736,6 +759,7 @@ void FileOperations::trashFiles(const QStringList &paths)
     args.append(paths);
     m_statusText = QString("Trashing %1 item(s)...").arg(paths.size());
     emit statusTextChanged();
+    setPendingChangedPaths(paths);
     runProcess("gio", args);
 }
 
@@ -758,6 +782,7 @@ void FileOperations::restoreFromTrash(const QStringList &paths)
 
     m_statusText = QString("Restoring %1 item(s)...").arg(trashUris.size());
     emit statusTextChanged();
+    setPendingChangedPaths(paths);
     runProcess("gio", args);
 }
 
@@ -866,10 +891,12 @@ void FileOperations::deleteFiles(const QStringList &paths)
         emit statusTextChanged();
         QStringList args = {"remove", "-f"};
         args.append(uriTargets);
+        setPendingChangedPaths(paths);
         runProcess("gio", args);
         return;
     }
 
+    emitChangedPaths(paths);
     emit operationFinished(localSuccess, localSuccess ? QString() : QStringLiteral("Failed to delete one or more items"));
 }
 
@@ -880,15 +907,13 @@ void FileOperations::transferResolvedItems(const QVariantList &operations, bool 
         return;
     }
 
-    QStringList commands;
-    int itemCount = 0;
-    bool useGio = false;
+    QVariantList preparedOperations;
 
     for (const QVariant &variant : operations) {
-        const QVariantMap item = variant.toMap();
+        QVariantMap item = variant.toMap();
         const QString sourcePath = normalizeLocation(item.value("sourcePath").toString());
         const QString targetPath = normalizeLocation(item.value("targetPath").toString());
-        const QString backupPath = item.value("backupPath").toString();
+        const QString backupPath = normalizeLocation(item.value("backupPath").toString());
         const bool overwrite = item.value("overwrite").toBool();
 
         if (sourcePath.isEmpty() || targetPath.isEmpty()) {
@@ -901,40 +926,58 @@ void FileOperations::transferResolvedItems(const QVariantList &operations, bool 
             return;
         }
 
-        useGio = useGio || isUriPath(sourcePath) || isUriPath(targetPath);
+        item["sourcePath"] = sourcePath;
+        item["targetPath"] = targetPath;
+        item["backupPath"] = backupPath;
+        item["overwrite"] = overwrite;
 
-        const QString targetDirPath = parentLocation(targetPath);
-        if (useGio)
-            commands.append(QString("gio mkdir -p %1").arg(shellQuote(gioLocationArg(targetDirPath))));
-        else
-            commands.append(QString("mkdir -p -- %1").arg(shellQuote(targetDirPath)));
-
-        if (!useGio && overwrite && !backupPath.isEmpty()) {
-            const QString backupDirPath = QFileInfo(backupPath).absolutePath();
-            commands.append(QString("mkdir -p -- %1").arg(shellQuote(backupDirPath)));
-            commands.append(QString("if [ -e %1 ] || [ -L %1 ]; then rm -rf -- %2 && mv -- %1 %2; fi")
-                                .arg(shellQuote(targetPath), shellQuote(backupPath)));
-        } else if (useGio && overwrite) {
-            commands.append(QString("gio remove -f %1 || true").arg(shellQuote(gioLocationArg(targetPath))));
-        }
-
-        if (useGio) {
-            commands.append(QString("gio %1 -T %2 %3")
-                                .arg(moveOperation ? QStringLiteral("move") : QStringLiteral("copy"),
-                                     shellQuote(gioLocationArg(sourcePath)),
-                                     shellQuote(gioLocationArg(targetPath))));
-        } else if (moveOperation) {
-            commands.append(QString("mv -- %1 %2").arg(shellQuote(sourcePath), shellQuote(targetPath)));
-        } else {
-            commands.append(QString("cp -a -- %1 %2").arg(shellQuote(sourcePath), shellQuote(targetPath)));
-        }
-
-        ++itemCount;
+        preparedOperations.append(item);
     }
 
-    m_statusText = QString(moveOperation ? "Moving %1 item(s)..." : "Copying %1 item(s)...").arg(itemCount);
-    emit statusTextChanged();
-    runProcess("sh", {"-c", commands.join(" && ")});
+    startGioTransfer(preparedOperations, moveOperation);
+}
+
+void FileOperations::resetTransferState()
+{
+    m_processErrorOutput.clear();
+    m_pendingChangedPaths.clear();
+}
+
+void FileOperations::setProgressValue(double progress, const QString &speed, const QString &eta)
+{
+    // Never let progress go backward (rsync reports non-monotonic values)
+    if (progress < 1.0 && progress < m_progress)
+        progress = m_progress;
+
+    const bool progressDiff = m_progress != progress;
+    const bool speedDiff = !speed.isEmpty() && m_speed != speed;
+    const bool etaDiff = !eta.isEmpty() && m_eta != eta;
+
+    m_progress = progress;
+    if (speedDiff) m_speed = speed;
+    if (etaDiff) m_eta = eta;
+
+    if (progressDiff) emit progressChanged();
+    if (speedDiff) emit speedChanged();
+    if (etaDiff) emit etaChanged();
+}
+
+void FileOperations::setPendingChangedPaths(const QStringList &paths)
+{
+    m_pendingChangedPaths = uniqueLocations(paths);
+}
+
+void FileOperations::emitPendingChangedPaths()
+{
+    emitChangedPaths(m_pendingChangedPaths);
+    m_pendingChangedPaths.clear();
+}
+
+void FileOperations::emitChangedPaths(const QStringList &paths)
+{
+    const QStringList normalizedPaths = uniqueLocations(paths);
+    if (!normalizedPaths.isEmpty())
+        emit pathsChanged(normalizedPaths);
 }
 
 bool FileOperations::rename(const QString &path, const QString &newName)
@@ -1040,8 +1083,13 @@ QVariantMap FileOperations::renameResolvedItems(const QVariantList &operations)
     }
 
     QStringList changedPaths;
-    for (const RenameOperation &op : renameOperations)
+    QStringList invalidatedPaths;
+    for (const RenameOperation &op : renameOperations) {
         changedPaths.append(op.targetPath);
+        invalidatedPaths << op.sourcePath << op.targetPath;
+    }
+
+    emitChangedPaths(invalidatedPaths);
 
     return renameResult(true, {}, changedPaths);
 }
@@ -1050,8 +1098,10 @@ void FileOperations::createFolder(const QString &parentPath, const QString &name
 {
     const QString targetPath = joinLocation(parentPath, name);
     QString error;
-    if (makeDirectorySync(targetPath, &error) || error.isEmpty())
+    if (makeDirectorySync(targetPath, &error) || error.isEmpty()) {
+        emitChangedPaths({targetPath});
         return;
+    }
     emit operationFinished(false, error);
 }
 
@@ -1059,8 +1109,10 @@ void FileOperations::createFile(const QString &parentPath, const QString &name)
 {
     const QString targetPath = joinLocation(parentPath, name);
     QString error;
-    if (createEmptyFileSync(targetPath, &error) || error.isEmpty())
+    if (createEmptyFileSync(targetPath, &error) || error.isEmpty()) {
+        emitChangedPaths({targetPath});
         return;
+    }
     emit operationFinished(false, error);
 }
 
@@ -1147,6 +1199,7 @@ QString FileOperations::pasteClipboardImage(const QString &destinationDir)
         }
         file.write(rawImage);
         file.close();
+        emitChangedPaths({outputPath});
         emit operationFinished(true, QString());
         return outputPath;
     }
@@ -1177,6 +1230,7 @@ QString FileOperations::pasteClipboardImage(const QString &destinationDir)
         return {};
     }
 
+    emitChangedPaths({outputPath});
     emit operationFinished(true, QString());
     return outputPath;
 }
@@ -1212,10 +1266,12 @@ void FileOperations::compressFiles(const QStringList &paths, const QString &form
     QFileInfo first(paths.first());
     QString baseName = (paths.size() == 1) ? first.completeBaseName() : "archive";
     QString parentDir = first.absolutePath();
+    QString outputPath;
 
     QString cmd;
     if (format == "zip") {
         QString outPath = parentDir + "/" + baseName + ".zip";
+        outputPath = outPath;
         cmd = "zip -r " + QString("'%1'").arg(outPath);
         for (const auto &p : paths) {
             QFileInfo fi(p);
@@ -1228,30 +1284,35 @@ void FileOperations::compressFiles(const QStringList &paths, const QString &form
             cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
     } else if (format == "tar.gz") {
         QString outPath = parentDir + "/" + baseName + ".tar.gz";
+        outputPath = outPath;
         cmd = "tar -czf " + QString("'%1'").arg(outPath) +
               " -C " + QString("'%1'").arg(parentDir);
         for (const auto &p : paths)
             cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
     } else if (format == "tar.xz") {
         QString outPath = parentDir + "/" + baseName + ".tar.xz";
+        outputPath = outPath;
         cmd = "tar -cJf " + QString("'%1'").arg(outPath) +
               " -C " + QString("'%1'").arg(parentDir);
         for (const auto &p : paths)
             cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
     } else if (format == "tar.bz2") {
         QString outPath = parentDir + "/" + baseName + ".tar.bz2";
+        outputPath = outPath;
         cmd = "tar -cjf " + QString("'%1'").arg(outPath) +
               " -C " + QString("'%1'").arg(parentDir);
         for (const auto &p : paths)
             cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
     } else if (format == "tar") {
         QString outPath = parentDir + "/" + baseName + ".tar";
+        outputPath = outPath;
         cmd = "tar -cf " + QString("'%1'").arg(outPath) +
               " -C " + QString("'%1'").arg(parentDir);
         for (const auto &p : paths)
             cmd += " " + QString("'%1'").arg(QFileInfo(p).fileName());
     } else if (format == "7z") {
         QString outPath = parentDir + "/" + baseName + ".7z";
+        outputPath = outPath;
         cmd = "cd " + shellQuote(parentDir) + " && 7z a " + shellQuote(outPath);
         for (const auto &p : paths)
             cmd += " " + shellQuote(QFileInfo(p).fileName());
@@ -1261,6 +1322,7 @@ void FileOperations::compressFiles(const QStringList &paths, const QString &form
 
     m_statusText = QString("Compressing %1 item(s)...").arg(paths.size());
     emit statusTextChanged();
+    setPendingChangedPaths({outputPath});
     runProcess("sh", {"-c", cmd});
 }
 
@@ -1273,6 +1335,7 @@ void FileOperations::extractArchive(const QString &archivePath, const QString &d
 
     m_statusText = "Extracting...";
     emit statusTextChanged();
+    setPendingChangedPaths({destination});
     runProcess(program, args);
 }
 
@@ -1301,62 +1364,188 @@ bool FileOperations::isArchive(const QString &path)
     return archiveKindForPath(path) != ArchiveKind::None;
 }
 
+void FileOperations::pauseTransfer()
+{
+    if (m_transferWorker) {
+        m_transferWorker->pause();
+        m_paused = true;
+        m_statusText = QStringLiteral("Paused");
+        emit pausedChanged();
+        emit statusTextChanged();
+    }
+}
+
+void FileOperations::resumeTransfer()
+{
+    if (m_transferWorker) {
+        m_transferWorker->resume();
+        m_paused = false;
+        emit pausedChanged();
+    }
+}
+
+void FileOperations::cancelTransfer()
+{
+    if (m_transferWorker)
+        m_transferWorker->cancel();
+}
+
+void FileOperations::cleanupTransferWorker()
+{
+    if (m_transferThread) {
+        m_transferThread->quit();
+        m_transferThread->wait();
+        m_transferThread->deleteLater();
+        m_transferThread = nullptr;
+    }
+    m_transferWorker = nullptr;
+}
+
+void FileOperations::startGioTransfer(const QVariantList &operations, bool moveOperation)
+{
+    cleanupTransferWorker();
+
+    QList<GioTransferWorker::TransferItem> items;
+    int itemCount = 0;
+    QStringList changedPaths;
+
+    for (const QVariant &variant : operations) {
+        const QVariantMap item = variant.toMap();
+        const QString sourcePath = item.value("sourcePath").toString();
+        const QString targetPath = item.value("targetPath").toString();
+        const QString backupPath = item.value("backupPath").toString();
+        const bool overwrite = item.value("overwrite").toBool();
+
+        items.append({sourcePath, targetPath, backupPath, overwrite});
+        ++itemCount;
+
+        if (moveOperation)
+            appendUniqueLocation(&changedPaths, sourcePath);
+        appendUniqueLocation(&changedPaths, targetPath);
+        appendUniqueLocation(&changedPaths, backupPath);
+    }
+
+    setPendingChangedPaths(changedPaths);
+
+    m_statusText = QString(moveOperation ? "Moving %1 item(s)..." : "Copying %1 item(s)...").arg(itemCount);
+    emit statusTextChanged();
+    setProgressValue(-1.0);
+    m_busy = true;
+    emit busyChanged();
+
+    m_transferThread = new QThread;
+    m_transferWorker = new GioTransferWorker;
+    m_transferWorker->moveToThread(m_transferThread);
+
+    connect(m_transferThread, &QThread::finished, m_transferWorker, &QObject::deleteLater);
+
+    connect(m_transferWorker, &GioTransferWorker::progressUpdated, this,
+            [this](double progress, const QString &speed, const QString &eta) {
+        setProgressValue(progress, speed, eta);
+    });
+
+    connect(m_transferWorker, &GioTransferWorker::itemStarted, this,
+            [this](const QString &sourcePath, const QString &targetPath) {
+        Q_UNUSED(targetPath)
+        m_currentFile = sourcePath.mid(sourcePath.lastIndexOf('/') + 1);
+        emit currentFileChanged();
+    });
+
+    connect(m_transferWorker, &GioTransferWorker::finished, this,
+            [this](bool success, const QString &error) {
+        m_busy = false;
+        m_paused = false;
+        m_currentFile.clear();
+        if (success)
+            setProgressValue(1.0);
+        m_statusText.clear();
+        m_speed.clear();
+        m_eta.clear();
+        emit busyChanged();
+        emit pausedChanged();
+        emit statusTextChanged();
+        emit speedChanged();
+        emit etaChanged();
+        emit currentFileChanged();
+        emitPendingChangedPaths();
+        emit operationFinished(success, error);
+        cleanupTransferWorker();
+    });
+
+    m_transferThread->start();
+    QMetaObject::invokeMethod(m_transferWorker, [this, items, moveOperation]() {
+        m_transferWorker->execute(items, moveOperation);
+    }, Qt::QueuedConnection);
+}
+
 void FileOperations::runProcess(const QString &program, const QStringList &args)
 {
     if (m_process) {
         m_process->kill();
         m_process->deleteLater();
+        m_process = nullptr;
     }
 
-    m_busy = true;
-    m_progress = 0.0;
-    emit busyChanged();
+    setProgressValue(-1.0);
 
+    if (!m_busy) {
+        m_busy = true;
+        emit busyChanged();
+    }
+
+    m_processErrorOutput.clear();
     m_process = new QProcess(this);
 
-    connect(m_process, &QProcess::readyReadStandardOutput, this, [this]() {
-        parseRsyncProgress(m_process->readAllStandardOutput());
+    connect(m_process, &QProcess::readyReadStandardError, this, [this]() {
+        const QByteArray data = m_process->readAllStandardError();
+        m_processErrorOutput.append(data);
     });
 
     connect(m_process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             this, [this](int exitCode, QProcess::ExitStatus) {
-        m_busy = false;
-        m_progress = 1.0;
-        m_statusText.clear();
-        emit busyChanged();
-        emit statusTextChanged();
-        emit operationFinished(exitCode == 0,
-            exitCode != 0 ? QString::fromUtf8(m_process->readAllStandardError()) : QString());
+        const QString error = exitCode != 0
+            ? QString::fromUtf8(m_processErrorOutput + m_process->readAllStandardError())
+            : QString();
         m_process->deleteLater();
         m_process = nullptr;
+
+        m_busy = false;
+        setProgressValue(1.0);
+        m_statusText.clear();
+        m_speed.clear();
+        m_eta.clear();
+        emit busyChanged();
+        emit statusTextChanged();
+        emit speedChanged();
+        emit etaChanged();
+        emitPendingChangedPaths();
+        emit operationFinished(exitCode == 0, error);
+        resetTransferState();
     });
 
     connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         Q_UNUSED(error)
         if (!m_process)
             return;
-        m_busy = false;
-        m_statusText.clear();
-        emit busyChanged();
-        emit statusTextChanged();
-        emit operationFinished(false, m_process->errorString());
+
+        const QString processError = m_process->errorString();
         m_process->deleteLater();
         m_process = nullptr;
+
+        m_busy = false;
+        m_statusText.clear();
+        m_speed.clear();
+        m_eta.clear();
+        emit busyChanged();
+        emit statusTextChanged();
+        emit speedChanged();
+        emit etaChanged();
+        emitPendingChangedPaths();
+        emit operationFinished(false, processError);
+        resetTransferState();
     });
 
     m_process->start(program, args);
-}
-
-void FileOperations::parseRsyncProgress(const QByteArray &data)
-{
-    static QRegularExpression re(R"((\d+)%\s+(\S+/s))");
-    QString text = QString::fromUtf8(data);
-    auto match = re.match(text);
-    if (match.hasMatch()) {
-        m_progress = match.captured(1).toDouble() / 100.0;
-        QString speed = match.captured(2);
-        emit progressChanged(m_progress, speed, QString());
-    }
 }
 
 QString FileOperations::uniqueImagePastePath(const QString &destinationDir) const

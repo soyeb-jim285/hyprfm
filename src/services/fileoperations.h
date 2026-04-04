@@ -7,12 +7,19 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+class QThread;
+class GioTransferWorker;
+
 class FileOperations : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(double progress READ progress NOTIFY progressChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
+    Q_PROPERTY(QString speed READ speed NOTIFY speedChanged)
+    Q_PROPERTY(QString eta READ eta NOTIFY etaChanged)
+    Q_PROPERTY(bool paused READ paused NOTIFY pausedChanged)
+    Q_PROPERTY(QString currentFile READ currentFile NOTIFY currentFileChanged)
 
 public:
     explicit FileOperations(QObject *parent = nullptr);
@@ -20,6 +27,13 @@ public:
     bool busy() const;
     double progress() const;
     QString statusText() const;
+    QString speed() const;
+    QString eta() const;
+    bool paused() const;
+    QString currentFile() const;
+    Q_INVOKABLE void pauseTransfer();
+    Q_INVOKABLE void resumeTransfer();
+    Q_INVOKABLE void cancelTransfer();
 
     Q_INVOKABLE void copyFiles(const QStringList &sources, const QString &destination);
     Q_INVOKABLE void copyResolvedItems(const QVariantList &operations);
@@ -57,19 +71,38 @@ public:
 
 signals:
     void busyChanged();
-    void progressChanged(double progress, const QString &speed, const QString &eta);
+    void progressChanged();
     void statusTextChanged();
+    void speedChanged();
+    void etaChanged();
+    void pausedChanged();
+    void currentFileChanged();
+    void pathsChanged(const QStringList &paths);
     void operationFinished(bool success, const QString &error);
 
 private:
     void transferResolvedItems(const QVariantList &operations, bool moveOperation);
+    void resetTransferState();
+    void setProgressValue(double progress, const QString &speed = {}, const QString &eta = {});
+    void setPendingChangedPaths(const QStringList &paths);
+    void emitPendingChangedPaths();
+    void emitChangedPaths(const QStringList &paths);
     void runProcess(const QString &program, const QStringList &args);
-    void parseRsyncProgress(const QByteArray &data);
     QByteArray clipboardImageData() const;
     QString uniqueImagePastePath(const QString &destinationDir) const;
+    void startGioTransfer(const QVariantList &operations, bool moveOperation);
+    void cleanupTransferWorker();
 
     QProcess *m_process = nullptr;
     bool m_busy = false;
     double m_progress = 0.0;
     QString m_statusText;
+    QString m_speed;
+    QString m_eta;
+    bool m_paused = false;
+    QString m_currentFile;
+    QThread *m_transferThread = nullptr;
+    GioTransferWorker *m_transferWorker = nullptr;
+    QByteArray m_processErrorOutput;
+    QStringList m_pendingChangedPaths;
 };
