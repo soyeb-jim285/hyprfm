@@ -11,6 +11,7 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QStorageInfo>
+#include <QTemporaryFile>
 #include <QUuid>
 #include <QUrl>
 #include <unistd.h>
@@ -20,6 +21,329 @@ namespace {
 bool isTrashUriPath(const QString &path)
 {
     return QUrl(path).scheme() == "trash";
+}
+
+bool isUriPath(const QString &path)
+{
+    const QUrl url(path);
+    return url.isValid() && !url.scheme().isEmpty();
+}
+
+bool isRemoteUriPath(const QString &path)
+{
+    const QUrl url(path);
+    return url.isValid() && !url.scheme().isEmpty()
+        && url.scheme() != QStringLiteral("file")
+        && url.scheme() != QStringLiteral("trash");
+}
+
+QString normalizeLocation(const QString &path)
+{
+    if (path.isEmpty())
+        return {};
+
+    const QUrl url(path);
+    if (url.isValid() && url.scheme() == QStringLiteral("file"))
+        return QDir::cleanPath(url.toLocalFile());
+
+    if (url.isValid() && !url.scheme().isEmpty()) {
+        QUrl normalized = url.adjusted(QUrl::NormalizePathSegments);
+        QString urlPath = normalized.path();
+        if (urlPath.isEmpty())
+            urlPath = QStringLiteral("/");
+        if (urlPath.size() > 1 && urlPath.endsWith('/'))
+            urlPath.chop(1);
+        normalized.setPath(urlPath);
+        return normalized.toString(QUrl::FullyEncoded);
+    }
+
+    return QDir::cleanPath(path);
+}
+
+QString gioLocationArg(const QString &path)
+{
+    const QString normalized = normalizeLocation(path);
+    if (isUriPath(normalized))
+        return QUrl(normalized).toString(QUrl::FullyEncoded);
+    return normalized;
+}
+
+QString locationFileName(const QString &path)
+{
+    const QString normalized = normalizeLocation(path);
+    if (isUriPath(normalized)) {
+        const QUrl url(normalized);
+        QString fileName = QUrl::fromPercentEncoding(url.fileName().toUtf8());
+        if (!fileName.isEmpty())
+            return fileName;
+        if (!url.host().isEmpty())
+            return url.host();
+        return url.scheme().toUpper();
+    }
+
+    if (normalized == QStringLiteral("/"))
+        return normalized;
+
+    const QFileInfo info(normalized);
+    return info.fileName().isEmpty() ? normalized : info.fileName();
+}
+
+QString parentLocation(const QString &path)
+{
+    const QString normalized = normalizeLocation(path);
+
+    if (isTrashUriPath(normalized)) {
+        QString current = normalized;
+        if (current.size() > 9 && current.endsWith('/'))
+            current.chop(1);
+        if (current == QStringLiteral("trash://"))
+            current = QStringLiteral("trash:///");
+        if (current == QStringLiteral("trash:///") || current == QStringLiteral("trash://"))
+            return QStringLiteral("trash:///");
+
+        const int slashIndex = current.lastIndexOf('/');
+        return slashIndex <= 8 ? QStringLiteral("trash:///") : current.left(slashIndex);
+    }
+
+    if (isRemoteUriPath(normalized)) {
+        QUrl url(normalized);
+        QString urlPath = url.path();
+        if (urlPath.isEmpty() || urlPath == QStringLiteral("/"))
+            return normalizeLocation(url.toString(QUrl::FullyEncoded));
+
+        if (urlPath.endsWith('/'))
+            urlPath.chop(1);
+
+        const int slashIndex = urlPath.lastIndexOf('/');
+        url.setPath(slashIndex <= 0 ? QStringLiteral("/") : urlPath.left(slashIndex));
+        return normalizeLocation(url.toString(QUrl::FullyEncoded));
+    }
+
+    const QFileInfo info(normalized);
+    return info.absolutePath();
+}
+
+QString joinLocation(const QString &parentPath, const QString &name)
+{
+    const QString normalizedParent = normalizeLocation(parentPath);
+    if (isUriPath(normalizedParent)) {
+        QUrl url(normalizedParent);
+        QString urlPath = url.path();
+        if (!urlPath.endsWith('/'))
+            urlPath += '/';
+        url.setPath(urlPath + name);
+        return normalizeLocation(url.toString(QUrl::FullyEncoded));
+    }
+
+    return QDir(normalizedParent).filePath(name);
+}
+
+bool gioPathExists(const QString &path)
+{
+    QProcess proc;
+    proc.start(QStringLiteral("gio"), {QStringLiteral("info"), gioLocationArg(path)});
+    return proc.waitForFinished(3000) && proc.exitCode() == 0;
+}
+
+QVariantMap remotePathInfo(const QString &path)
+{
+    QVariantMap result;
+    const QString normalized = normalizeLocation(path);
+    const QStringList args = {
+        QStringLiteral("info"),
+        QStringLiteral("-a"),
+        QStringLiteral("standard::type,standard::size,standard::is-symlink"),
+        gioLocationArg(normalized)
+    };
+
+    QProcess proc;
+    proc.start(QStringLiteral("gio"), args);
+    if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
+        return result;
+
+    const QString output = QString::fromUtf8(proc.readAllStandardOutput());
+    result[QStringLiteral("exists")] = true;
+    result[QStringLiteral("fileName")] = locationFileName(normalized);
+    result[QStringLiteral("path")] = normalized;
+
+    static const QRegularExpression typeRe(R"(^type:\s*(.+)$)", QRegularExpression::MultilineOption);
+    static const QRegularExpression sizeRe(R"(^\s*standard::size:\s*(\d+).*$)", QRegularExpression::MultilineOption);
+    static const QRegularExpression symlinkRe(R"(^\s*standard::is-symlink:\s*(TRUE|FALSE).*$)", QRegularExpression::MultilineOption);
+
+    const QString typeText = typeRe.match(output).captured(1).trimmed().toLower();
+    result[QStringLiteral("isDir")] = typeText.contains(QStringLiteral("directory"));
+    result[QStringLiteral("size")] = sizeRe.match(output).captured(1).toLongLong();
+    result[QStringLiteral("isSymlink")] = symlinkRe.match(output).captured(1) == QStringLiteral("TRUE");
+    return result;
+}
+
+QVariantMap sourceInfoForPath(const QString &path)
+{
+    const QString normalized = normalizeLocation(path);
+    if (isRemoteUriPath(normalized))
+        return remotePathInfo(normalized);
+
+    QVariantMap result;
+    QFileInfo info(normalized);
+    result[QStringLiteral("exists")] = info.exists();
+    result[QStringLiteral("fileName")] = info.fileName();
+    result[QStringLiteral("path")] = info.absoluteFilePath();
+    result[QStringLiteral("isDir")] = info.isDir();
+    result[QStringLiteral("size")] = info.size();
+    result[QStringLiteral("isSymlink")] = info.isSymLink();
+    return result;
+}
+
+bool moveLocationSync(const QString &sourcePath, const QString &targetPath, QString *error = nullptr)
+{
+    const QString normalizedSource = normalizeLocation(sourcePath);
+    const QString normalizedTarget = normalizeLocation(targetPath);
+
+    if (!isUriPath(normalizedSource) && !isUriPath(normalizedTarget)) {
+        const bool ok = QFile::rename(normalizedSource, normalizedTarget);
+        if (!ok && error)
+            *error = QStringLiteral("Could not rename %1").arg(locationFileName(normalizedSource));
+        return ok;
+    }
+
+    QProcess proc;
+    proc.start(QStringLiteral("gio"), {QStringLiteral("move"), QStringLiteral("-T"),
+                                        gioLocationArg(normalizedSource), gioLocationArg(normalizedTarget)});
+    if (!proc.waitForFinished(10000) || proc.exitCode() != 0) {
+        if (error)
+            *error = QString::fromUtf8(proc.readAllStandardError()).trimmed();
+        return false;
+    }
+
+    return true;
+}
+
+bool makeDirectorySync(const QString &path, QString *error = nullptr)
+{
+    const QString normalized = normalizeLocation(path);
+    if (!isUriPath(normalized)) {
+        const bool ok = QDir().mkpath(normalized);
+        if (!ok && error)
+            *error = QStringLiteral("Could not create folder");
+        return ok;
+    }
+
+    QProcess proc;
+    proc.start(QStringLiteral("gio"), {QStringLiteral("mkdir"), QStringLiteral("-p"), gioLocationArg(normalized)});
+    if (!proc.waitForFinished(10000) || proc.exitCode() != 0) {
+        if (error)
+            *error = QString::fromUtf8(proc.readAllStandardError()).trimmed();
+        return false;
+    }
+
+    return true;
+}
+
+bool createEmptyFileSync(const QString &path, QString *error = nullptr)
+{
+    const QString normalized = normalizeLocation(path);
+    if (!isUriPath(normalized)) {
+        QFile file(normalized);
+        const bool ok = file.open(QIODevice::WriteOnly);
+        file.close();
+        if (!ok && error)
+            *error = QStringLiteral("Could not create file");
+        return ok;
+    }
+
+    QTemporaryFile tempFile;
+    if (!tempFile.open()) {
+        if (error)
+            *error = QStringLiteral("Could not create temporary file");
+        return false;
+    }
+    tempFile.close();
+
+    QProcess proc;
+    proc.start(QStringLiteral("gio"), {QStringLiteral("copy"), QStringLiteral("-T"),
+                                        gioLocationArg(tempFile.fileName()), gioLocationArg(normalized)});
+    if (!proc.waitForFinished(10000) || proc.exitCode() != 0) {
+        if (error)
+            *error = QString::fromUtf8(proc.readAllStandardError()).trimmed();
+        return false;
+    }
+
+    return true;
+}
+
+bool pathExistsSync(const QString &path)
+{
+    const QString normalized = normalizeLocation(path);
+    if (isUriPath(normalized))
+        return gioPathExists(normalized);
+    return QFileInfo::exists(normalized);
+}
+
+QVariantList buildBreadcrumbs(const QString &path)
+{
+    QVariantList segments;
+    const QString normalized = normalizeLocation(path);
+
+    if (normalized.isEmpty())
+        return segments;
+
+    if (isTrashUriPath(normalized)) {
+        if (normalized == QStringLiteral("trash:///") || normalized == QStringLiteral("trash://")) {
+            segments.append(QVariantMap{{QStringLiteral("label"), QStringLiteral("Trash")},
+                                        {QStringLiteral("fullPath"), QStringLiteral("trash:///")}});
+            return segments;
+        }
+
+        QString current = normalized;
+        if (current.endsWith('/'))
+            current.chop(1);
+        QString remainder = current.mid(QStringLiteral("trash:///").size());
+        segments.append(QVariantMap{{QStringLiteral("label"), QStringLiteral("Trash")},
+                                    {QStringLiteral("fullPath"), QStringLiteral("trash:///")}});
+
+        QString accumulated = QStringLiteral("trash:///");
+        const QStringList parts = remainder.split('/', Qt::SkipEmptyParts);
+        for (const QString &part : parts) {
+            accumulated = joinLocation(accumulated, QUrl::fromPercentEncoding(part.toUtf8()));
+            segments.append(QVariantMap{{QStringLiteral("label"), QUrl::fromPercentEncoding(part.toUtf8())},
+                                        {QStringLiteral("fullPath"), accumulated}});
+        }
+        return segments;
+    }
+
+    if (isRemoteUriPath(normalized)) {
+        const QUrl url(normalized);
+        const QString authority = !url.userName().isEmpty()
+            ? QStringLiteral("%1@%2").arg(url.userName(), url.host())
+            : url.host().isEmpty() ? url.scheme().toUpper() : url.host();
+        const QString rootPath = normalizeLocation(QUrl(url.scheme() + QStringLiteral("://") + url.authority()).toString(QUrl::FullyEncoded));
+        segments.append(QVariantMap{{QStringLiteral("label"), authority},
+                                    {QStringLiteral("fullPath"), rootPath}});
+
+        QString accumulatedPath;
+        const QStringList parts = url.path().split('/', Qt::SkipEmptyParts);
+        for (const QString &part : parts) {
+            accumulatedPath += QStringLiteral("/") + part;
+            QUrl step = url;
+            step.setPath(accumulatedPath);
+            segments.append(QVariantMap{{QStringLiteral("label"), QUrl::fromPercentEncoding(part.toUtf8())},
+                                        {QStringLiteral("fullPath"), normalizeLocation(step.toString(QUrl::FullyEncoded))}});
+        }
+        return segments;
+    }
+
+    if (normalized == QStringLiteral("/"))
+        return segments;
+
+    QString accumulated;
+    const QStringList parts = normalized.split('/', Qt::SkipEmptyParts);
+    for (const QString &part : parts) {
+        accumulated += QStringLiteral("/") + part;
+        segments.append(QVariantMap{{QStringLiteral("label"), part},
+                                    {QStringLiteral("fullPath"), accumulated}});
+    }
+
+    return segments;
 }
 
 QString currentUidString()
@@ -151,25 +475,24 @@ QVariantMap renameResult(bool success, const QString &error = {}, const QStringL
 
 QString temporaryRenamePathFor(const QString &sourcePath)
 {
-    const QDir dir = QFileInfo(sourcePath).dir();
-
     QString tempPath;
     do {
-        tempPath = dir.filePath(QStringLiteral(".hyprfm-rename-%1.tmp")
+        tempPath = joinLocation(parentLocation(sourcePath),
+                                QStringLiteral(".hyprfm-rename-%1.tmp")
                                     .arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
-    } while (QFileInfo::exists(tempPath));
+    } while (pathExistsSync(tempPath));
 
     return tempPath;
 }
 
 QString renameTargetError(const QString &targetPath)
 {
-    const QString fileName = QFileInfo(targetPath).fileName();
+    const QString fileName = locationFileName(targetPath);
     if (fileName.isEmpty() || fileName == "." || fileName == "..")
         return QStringLiteral("Enter a valid target name");
 
-    const QString parentDir = QFileInfo(targetPath).absolutePath();
-    if (parentDir.isEmpty() || !QDir(parentDir).exists())
+    const QString parentDir = parentLocation(targetPath);
+    if (parentDir.isEmpty() || !pathExistsSync(parentDir))
         return QStringLiteral("Target folder does not exist");
 
     return {};
@@ -261,24 +584,25 @@ QString FileOperations::trashFilesPathFor(const QString &path) const
 QVariantList FileOperations::transferPlan(const QStringList &sources, const QString &destination) const
 {
     QVariantList plan;
-    const QDir destinationDir(destination);
+    const QString normalizedDestination = normalizeLocation(destination);
 
     for (const QString &sourcePath : sources) {
-        const QFileInfo sourceInfo(sourcePath);
-        if (!sourceInfo.exists())
+        const QVariantMap sourceInfo = sourceInfoForPath(sourcePath);
+        if (!sourceInfo.value(QStringLiteral("exists")).toBool())
             continue;
 
-        const QString sourceName = sourceInfo.fileName();
-        const QString targetPath = destinationDir.filePath(sourceName);
+        const QString sourceName = sourceInfo.value(QStringLiteral("fileName")).toString();
+        const QString normalizedSourcePath = sourceInfo.value(QStringLiteral("path")).toString();
+        const QString targetPath = normalizeLocation(joinLocation(normalizedDestination, sourceName));
 
         QVariantMap item;
-        item["sourcePath"] = sourceInfo.absoluteFilePath();
+        item["sourcePath"] = normalizedSourcePath;
         item["sourceName"] = sourceName;
-        item["targetPath"] = QDir::cleanPath(targetPath);
+        item["targetPath"] = targetPath;
         item["targetName"] = sourceName;
-        item["targetExists"] = QFileInfo::exists(targetPath);
-        item["samePath"] = (QDir::cleanPath(sourceInfo.absoluteFilePath()) == QDir::cleanPath(targetPath));
-        item["isDir"] = sourceInfo.isDir();
+        item["targetExists"] = pathExistsSync(targetPath);
+        item["samePath"] = (normalizedSourcePath == targetPath);
+        item["isDir"] = sourceInfo.value(QStringLiteral("isDir")).toBool();
         plan.append(item);
     }
 
@@ -286,7 +610,7 @@ QVariantList FileOperations::transferPlan(const QStringList &sources, const QStr
 }
 
 QString FileOperations::uniqueNameForDestination(const QString &destinationDir, const QString &desiredName,
-                                                const QStringList &blockedNames) const
+                                                 const QStringList &blockedNames) const
 {
     if (desiredName.isEmpty())
         return {};
@@ -294,10 +618,10 @@ QString FileOperations::uniqueNameForDestination(const QString &destinationDir, 
     const auto parts = nameParts(desiredName);
     const QString stem = parts.at(0);
     const QString suffix = parts.at(1);
-    const QDir dir(destinationDir);
+    const QString normalizedDestination = normalizeLocation(destinationDir);
 
     auto isBlocked = [&](const QString &candidate) {
-        return blockedNames.contains(candidate) || QFileInfo::exists(dir.filePath(candidate));
+        return blockedNames.contains(candidate) || pathExistsSync(joinLocation(normalizedDestination, candidate));
     };
 
     if (!isBlocked(desiredName))
@@ -319,27 +643,28 @@ QString FileOperations::uniqueNameForDestination(const QString &destinationDir, 
 
 void FileOperations::deleteFiles(const QStringList &paths)
 {
-    QStringList trashUris;
+    QStringList uriTargets;
     bool localSuccess = true;
 
     for (const auto &path : paths) {
-        if (isTrashUriPath(path)) {
-            trashUris.append(QUrl(path).toString(QUrl::FullyEncoded));
+        const QString normalized = normalizeLocation(path);
+        if (isUriPath(normalized)) {
+            uriTargets.append(gioLocationArg(normalized));
             continue;
         }
 
-        QFileInfo info(path);
+        QFileInfo info(normalized);
         if (info.isDir())
-            localSuccess = QDir(path).removeRecursively() && localSuccess;
+            localSuccess = QDir(normalized).removeRecursively() && localSuccess;
         else
-            localSuccess = QFile::remove(path) && localSuccess;
+            localSuccess = QFile::remove(normalized) && localSuccess;
     }
 
-    if (!trashUris.isEmpty()) {
-        m_statusText = QString("Deleting %1 item(s)...").arg(trashUris.size());
+    if (!uriTargets.isEmpty()) {
+        m_statusText = QString("Deleting %1 item(s)...").arg(uriTargets.size());
         emit statusTextChanged();
         QStringList args = {"remove", "-f"};
-        args.append(trashUris);
+        args.append(uriTargets);
         runProcess("gio", args);
         return;
     }
@@ -356,11 +681,12 @@ void FileOperations::transferResolvedItems(const QVariantList &operations, bool 
 
     QStringList commands;
     int itemCount = 0;
+    bool useGio = false;
 
     for (const QVariant &variant : operations) {
         const QVariantMap item = variant.toMap();
-        const QString sourcePath = QDir::cleanPath(item.value("sourcePath").toString());
-        const QString targetPath = QDir::cleanPath(item.value("targetPath").toString());
+        const QString sourcePath = normalizeLocation(item.value("sourcePath").toString());
+        const QString targetPath = normalizeLocation(item.value("targetPath").toString());
         const QString backupPath = item.value("backupPath").toString();
         const bool overwrite = item.value("overwrite").toBool();
 
@@ -370,24 +696,37 @@ void FileOperations::transferResolvedItems(const QVariantList &operations, bool 
         }
 
         if (sourcePath == targetPath) {
-            emit operationFinished(false, QString("Source and destination are the same for %1").arg(QFileInfo(sourcePath).fileName()));
+            emit operationFinished(false, QString("Source and destination are the same for %1").arg(locationFileName(sourcePath)));
             return;
         }
 
-        const QString targetDirPath = QFileInfo(targetPath).absolutePath();
-        commands.append(QString("mkdir -p -- %1").arg(shellQuote(targetDirPath)));
+        useGio = useGio || isUriPath(sourcePath) || isUriPath(targetPath);
 
-        if (overwrite && !backupPath.isEmpty()) {
+        const QString targetDirPath = parentLocation(targetPath);
+        if (useGio)
+            commands.append(QString("gio mkdir -p %1").arg(shellQuote(gioLocationArg(targetDirPath))));
+        else
+            commands.append(QString("mkdir -p -- %1").arg(shellQuote(targetDirPath)));
+
+        if (!useGio && overwrite && !backupPath.isEmpty()) {
             const QString backupDirPath = QFileInfo(backupPath).absolutePath();
             commands.append(QString("mkdir -p -- %1").arg(shellQuote(backupDirPath)));
             commands.append(QString("if [ -e %1 ] || [ -L %1 ]; then rm -rf -- %2 && mv -- %1 %2; fi")
                                 .arg(shellQuote(targetPath), shellQuote(backupPath)));
+        } else if (useGio && overwrite) {
+            commands.append(QString("gio remove -f %1 || true").arg(shellQuote(gioLocationArg(targetPath))));
         }
 
-        if (moveOperation)
+        if (useGio) {
+            commands.append(QString("gio %1 -T %2 %3")
+                                .arg(moveOperation ? QStringLiteral("move") : QStringLiteral("copy"),
+                                     shellQuote(gioLocationArg(sourcePath)),
+                                     shellQuote(gioLocationArg(targetPath))));
+        } else if (moveOperation) {
             commands.append(QString("mv -- %1 %2").arg(shellQuote(sourcePath), shellQuote(targetPath)));
-        else
+        } else {
             commands.append(QString("cp -a -- %1 %2").arg(shellQuote(sourcePath), shellQuote(targetPath)));
+        }
 
         ++itemCount;
     }
@@ -399,10 +738,11 @@ void FileOperations::transferResolvedItems(const QVariantList &operations, bool 
 
 bool FileOperations::rename(const QString &path, const QString &newName)
 {
-    const QFileInfo info(path);
+    const QString normalizedPath = normalizeLocation(path);
+    const QString targetPath = joinLocation(parentLocation(normalizedPath), newName);
     const QVariantMap result = renameResolvedItems({QVariantMap {
-        {"sourcePath", path},
-        {"targetPath", info.dir().filePath(newName)}
+        {"sourcePath", normalizedPath},
+        {"targetPath", targetPath}
     }});
     return result.value("success").toBool();
 }
@@ -416,8 +756,8 @@ QVariantMap FileOperations::renameResolvedItems(const QVariantList &operations)
 
     for (const QVariant &variant : operations) {
         const QVariantMap item = variant.toMap();
-        const QString sourcePath = QDir::cleanPath(item.value("sourcePath").toString());
-        const QString targetPath = QDir::cleanPath(item.value("targetPath").toString());
+        const QString sourcePath = normalizeLocation(item.value("sourcePath").toString());
+        const QString targetPath = normalizeLocation(item.value("targetPath").toString());
 
         if (sourcePath.isEmpty() || targetPath.isEmpty())
             return renameResult(false, QStringLiteral("Rename operation is missing a path"));
@@ -436,9 +776,9 @@ QVariantMap FileOperations::renameResolvedItems(const QVariantList &operations)
 
         finalTargetPaths.insert(targetPath);
 
-        if (!QFileInfo::exists(sourcePath)) {
+        if (!pathExistsSync(sourcePath)) {
             return renameResult(false, QStringLiteral("%1 no longer exists")
-                .arg(QFileInfo(sourcePath).fileName()));
+                .arg(locationFileName(sourcePath)));
         }
 
         if (sourcePath == targetPath)
@@ -449,9 +789,9 @@ QVariantMap FileOperations::renameResolvedItems(const QVariantList &operations)
     }
 
     for (const RenameOperation &op : renameOperations) {
-        if (QFileInfo::exists(op.targetPath) && !changedSourcePaths.contains(op.targetPath)) {
+        if (pathExistsSync(op.targetPath) && !changedSourcePaths.contains(op.targetPath)) {
             return renameResult(false, QStringLiteral("%1 already exists")
-                .arg(QFileInfo(op.targetPath).fileName()));
+                .arg(locationFileName(op.targetPath)));
         }
     }
 
@@ -463,23 +803,24 @@ QVariantMap FileOperations::renameResolvedItems(const QVariantList &operations)
     auto rollback = [&renameOperations, &stagedIndices, &finalizedIndices]() {
         for (int i = finalizedIndices.size() - 1; i >= 0; --i) {
             const RenameOperation &op = renameOperations.at(finalizedIndices.at(i));
-            if (QFileInfo::exists(op.targetPath))
-                QFile::rename(op.targetPath, op.sourcePath);
+            if (pathExistsSync(op.targetPath))
+                moveLocationSync(op.targetPath, op.sourcePath);
         }
 
         for (int i = stagedIndices.size() - 1; i >= 0; --i) {
             const RenameOperation &op = renameOperations.at(stagedIndices.at(i));
-            if (QFileInfo::exists(op.tempPath))
-                QFile::rename(op.tempPath, op.sourcePath);
+            if (pathExistsSync(op.tempPath))
+                moveLocationSync(op.tempPath, op.sourcePath);
         }
     };
 
     for (int i = 0; i < renameOperations.size(); ++i) {
         const RenameOperation &op = renameOperations.at(i);
-        if (!QFile::rename(op.sourcePath, op.tempPath)) {
+        QString error;
+        if (!moveLocationSync(op.sourcePath, op.tempPath, &error)) {
             rollback();
             return renameResult(false, QStringLiteral("Could not prepare %1 for renaming")
-                .arg(QFileInfo(op.sourcePath).fileName()));
+                .arg(locationFileName(op.sourcePath)));
         }
 
         stagedIndices.append(i);
@@ -487,10 +828,11 @@ QVariantMap FileOperations::renameResolvedItems(const QVariantList &operations)
 
     for (int i = 0; i < renameOperations.size(); ++i) {
         const RenameOperation &op = renameOperations.at(i);
-        if (!QFile::rename(op.tempPath, op.targetPath)) {
+        QString error;
+        if (!moveLocationSync(op.tempPath, op.targetPath, &error)) {
             rollback();
             return renameResult(false, QStringLiteral("Could not rename %1")
-                .arg(QFileInfo(op.sourcePath).fileName()));
+                .arg(locationFileName(op.sourcePath)));
         }
 
         finalizedIndices.append(i);
@@ -505,37 +847,57 @@ QVariantMap FileOperations::renameResolvedItems(const QVariantList &operations)
 
 void FileOperations::createFolder(const QString &parentPath, const QString &name)
 {
-    QDir(parentPath).mkdir(name);
+    const QString targetPath = joinLocation(parentPath, name);
+    QString error;
+    if (makeDirectorySync(targetPath, &error) || error.isEmpty())
+        return;
+    emit operationFinished(false, error);
 }
 
 void FileOperations::createFile(const QString &parentPath, const QString &name)
 {
-    QFile f(QDir(parentPath).filePath(name));
-    if (!f.open(QIODevice::WriteOnly))
+    const QString targetPath = joinLocation(parentPath, name);
+    QString error;
+    if (createEmptyFileSync(targetPath, &error) || error.isEmpty())
         return;
-    f.close();
+    emit operationFinished(false, error);
 }
 
 void FileOperations::openFile(const QString &path)
 {
     auto *proc = new QProcess(this);
-    if (isTrashUriPath(path))
-        proc->start("gio", {"open", QUrl(path).toString(QUrl::FullyEncoded)});
+    const QString normalized = normalizeLocation(path);
+    if (isUriPath(normalized))
+        proc->start("gio", {"open", gioLocationArg(normalized)});
     else
-        proc->start("xdg-open", {path});
+        proc->start("xdg-open", {normalized});
     connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             proc, &QProcess::deleteLater);
 }
 
 bool FileOperations::pathExists(const QString &path) const
 {
-    if (isTrashUriPath(path)) {
-        QProcess proc;
-        proc.start("gio", {"info", QUrl(path).toString(QUrl::FullyEncoded)});
-        return proc.waitForFinished(2000) && proc.exitCode() == 0;
-    }
+    return pathExistsSync(path);
+}
 
-    return QFileInfo::exists(path);
+bool FileOperations::isRemotePath(const QString &path) const
+{
+    return isRemoteUriPath(normalizeLocation(path));
+}
+
+QString FileOperations::parentPath(const QString &path) const
+{
+    return parentLocation(path);
+}
+
+QString FileOperations::displayNameForPath(const QString &path) const
+{
+    return locationFileName(path);
+}
+
+QVariantList FileOperations::breadcrumbSegments(const QString &path) const
+{
+    return buildBreadcrumbs(path);
 }
 
 void FileOperations::emptyTrash()
@@ -548,7 +910,7 @@ void FileOperations::emptyTrash()
 void FileOperations::openFileWith(const QString &path, const QString &desktopFile)
 {
     auto *proc = new QProcess(this);
-    proc->start("gtk-launch", {desktopFile, path});
+    proc->start("gtk-launch", {desktopFile, normalizeLocation(path)});
     connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             proc, &QProcess::deleteLater);
 }
@@ -628,6 +990,11 @@ void FileOperations::copyPathToClipboard(const QString &path)
 
 void FileOperations::openInTerminal(const QString &dirPath)
 {
+    if (isUriPath(dirPath)) {
+        emit operationFinished(false, QStringLiteral("Open in Terminal is only available for local folders"));
+        return;
+    }
+
     QString terminal = qEnvironmentVariable("TERMINAL", "kitty");
     auto *proc = new QProcess(this);
     proc->setWorkingDirectory(dirPath);

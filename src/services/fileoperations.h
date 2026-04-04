@@ -40,6 +40,10 @@ public:
     Q_INVOKABLE void createFile(const QString &parentPath, const QString &name);
     Q_INVOKABLE void openFile(const QString &path);
     Q_INVOKABLE bool pathExists(const QString &path) const;
+    Q_INVOKABLE bool isRemotePath(const QString &path) const;
+    Q_INVOKABLE QString parentPath(const QString &path) const;
+    Q_INVOKABLE QString displayNameForPath(const QString &path) const;
+    Q_INVOKABLE QVariantList breadcrumbSegments(const QString &path) const;
     Q_INVOKABLE void emptyTrash();
     Q_INVOKABLE void openFileWith(const QString &path, const QString &desktopFile);
     Q_INVOKABLE bool hasClipboardImage() const;

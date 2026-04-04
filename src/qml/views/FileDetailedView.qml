@@ -656,8 +656,7 @@ Item {
                     var paths = []
                     for (var i = 0; i < urls.length; i++) {
                         var s = urls[i].toString()
-                        if (s.startsWith("file://"))
-                            paths.push(s.substring(7))
+                        paths.push(s.startsWith("file://") ? decodeURIComponent(s.substring(7)) : s)
                     }
                     if (paths.length === 0) return
                     if (drop.proposedAction === Qt.MoveAction)

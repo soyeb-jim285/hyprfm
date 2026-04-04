@@ -34,6 +34,7 @@
 #include "services/undomanager.h"
 #include "services/previewservice.h"
 #include "services/diskusageservice.h"
+#include "services/remoteaccessservice.h"
 #include "providers/thumbnailprovider.h"
 #include "providers/iconprovider.h"
 #ifdef HYPRFM_HAS_POPPLER_QT6
@@ -156,6 +157,7 @@ int main(int argc, char *argv[])
 
     PreviewService *previewService = new PreviewService(&app);
     DiskUsageService *diskUsageService = new DiskUsageService(&app);
+    RemoteAccessService *remoteAccessService = new RemoteAccessService(&app);
 
     // Connect config changes to reload theme, bookmarks, and showHidden
     QObject::connect(config, &ConfigManager::configChanged, [=]() {
@@ -226,6 +228,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("splitSearchService", splitSearchService);
     engine.rootContext()->setContextProperty("previewService", previewService);
     engine.rootContext()->setContextProperty("diskUsageService", diskUsageService);
+    engine.rootContext()->setContextProperty("remoteAccessService", remoteAccessService);
 
     engine.loadFromModule("HyprFM", "Main");
 

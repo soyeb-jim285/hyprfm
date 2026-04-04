@@ -12,6 +12,7 @@ Rectangle {
     property bool splitViewEnabled: false
     property bool isRecentsView: false
     property bool isTrashView: false
+    property bool isRemoteView: false
     property bool searchMode: false
     property string currentSearchQuery: ""
     property string searchTypeFilter: ""
@@ -45,6 +46,7 @@ Rectangle {
     onFilterPanelOpenChanged: syncFilterPanelState()
 
     signal searchClicked()
+    signal connectRemoteRequested()
     signal homeClicked()
     signal searchQueryChanged(string query)
     signal searchFilterToggled()
@@ -210,6 +212,13 @@ Rectangle {
                 HoverRect {
                     width: 32; height: 32
                     visible: !root.searchMode && !root.isTrashView
+                    onClicked: root.connectRemoteRequested()
+                    IconExternalLink { anchors.centerIn: parent; size: 18; color: Theme.text }
+                }
+
+                HoverRect {
+                    width: 32; height: 32
+                    visible: !root.searchMode && !root.isTrashView && !root.isRemoteView
                     onClicked: root.searchClicked()
                     IconSearch { anchors.centerIn: parent; size: 18; color: Theme.text }
                 }
@@ -341,14 +350,27 @@ Rectangle {
                                     var paths = []
                                     for (var i = 0; i < urls.length; i++) {
                                         var s = urls[i].toString()
-                                        if (s.startsWith("file://"))
-                                            paths.push(s.substring(7))
+                                        paths.push(s.startsWith("file://") ? decodeURIComponent(s.substring(7)) : s)
                                     }
                                     if (paths.length === 0) return
-                                    if (drop.proposedAction === Qt.MoveAction)
-                                        undoManager.moveFiles(paths, destPath)
-                                    else
-                                        undoManager.copyFiles(paths, destPath)
+                                    var usesRemotePath = fileOps.isRemotePath(destPath)
+                                    for (var j = 0; j < paths.length; ++j) {
+                                        if (fileOps.isRemotePath(paths[j])) {
+                                            usesRemotePath = true
+                                            break
+                                        }
+                                    }
+                                    if (drop.proposedAction === Qt.MoveAction) {
+                                        if (usesRemotePath)
+                                            fileOps.moveFiles(paths, destPath)
+                                        else
+                                            undoManager.moveFiles(paths, destPath)
+                                    } else {
+                                        if (usesRemotePath)
+                                            fileOps.copyFiles(paths, destPath)
+                                        else
+                                            undoManager.copyFiles(paths, destPath)
+                                    }
                                     drop.acceptProposedAction()
                                 }
                             }

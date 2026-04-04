@@ -17,6 +17,7 @@ set(HYPRFM_SOURCES
     services/undomanager.cpp
     services/previewservice.cpp
     services/diskusageservice.cpp
+    services/remoteaccessservice.cpp
     providers/thumbnailprovider.cpp
 )
 
@@ -57,6 +58,7 @@ list(APPEND hyprfm_qml_module_args
         qml/views/KineticWheelScroller.qml
         qml/components/ContextMenu.qml
         qml/components/BulkRenameDialog.qml
+        qml/components/RemoteConnectDialog.qml
         qml/components/QuickPreview.qml
         qml/components/Toast.qml
         qml/components/RubberBand.qml
@@ -83,6 +85,7 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconMusic.qml
         qml/icons/IconVideo.qml
         qml/icons/IconMonitor.qml
+        qml/icons/IconGlobe.qml
         qml/icons/IconRocket.qml
         qml/icons/IconSettings.qml
         qml/icons/IconFilter.qml

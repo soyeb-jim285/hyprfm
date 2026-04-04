@@ -1,6 +1,35 @@
 #include "models/bookmarkmodel.h"
 #include <QDir>
 #include <QFileInfo>
+#include <QUrl>
+
+namespace {
+
+bool isRemoteUri(const QString &path)
+{
+    const QUrl url(path);
+    return url.isValid() && !url.scheme().isEmpty()
+        && url.scheme() != QStringLiteral("file")
+        && url.scheme() != QStringLiteral("trash");
+}
+
+QString bookmarkDisplayName(const QString &path)
+{
+    if (!isRemoteUri(path)) {
+        QString name = QDir(path).dirName();
+        return name.isEmpty() ? path : name;
+    }
+
+    const QUrl url(path);
+    const QString fileName = QUrl::fromPercentEncoding(url.fileName().toUtf8());
+    if (!fileName.isEmpty())
+        return fileName;
+    if (!url.host().isEmpty())
+        return url.host();
+    return url.scheme().toUpper();
+}
+
+}
 
 BookmarkModel::BookmarkModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -144,14 +173,15 @@ bool BookmarkModel::containsPath(const QString &path) const
 BookmarkModel::Bookmark BookmarkModel::makeBookmark(const QString &rawPath) const
 {
     QString expanded = expandPath(rawPath);
-    QString name = QDir(expanded).dirName();
-    if (name.isEmpty())
-        name = expanded;
+    QString name = bookmarkDisplayName(expanded);
     return {name, expanded, iconForPath(name.toLower())};
 }
 
 QString BookmarkModel::expandPath(const QString &path)
 {
+    const QUrl url(path);
+    if (url.isValid() && !url.scheme().isEmpty() && url.scheme() != QStringLiteral("file"))
+        return url.toString(QUrl::FullyEncoded);
     if (path.startsWith("~/"))
         return QDir::homePath() + path.mid(1);
     return path;
@@ -168,6 +198,10 @@ QString BookmarkModel::iconForPath(const QString &name)
         {"videos", "folder-videos"},
         {"desktop", "user-desktop"},
         {"projects", "folder-development"},
+        {"sftp", "folder-remote"},
+        {"smb", "folder-remote"},
+        {"ftp", "folder-remote"},
+        {"network", "folder-remote"},
     };
     return icons.value(name, "folder");
 }

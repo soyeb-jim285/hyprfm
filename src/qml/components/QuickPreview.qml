@@ -38,26 +38,27 @@ Item {
 
     readonly property bool isDirectory: fileProps.isDir || false
     readonly property bool isTrashUri: filePath.startsWith("trash:///")
+    readonly property bool isRemoteUri: fileOps.isRemotePath(filePath)
     readonly property bool isImage: {
         var img = ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "ico", "tiff", "tif"]
-        return !isDirectory && img.indexOf(fileExtension) >= 0
+        return !isRemoteUri && !isDirectory && img.indexOf(fileExtension) >= 0
     }
     readonly property bool isVideo: {
         var vid = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "3gp", "ts"]
-        return !isDirectory && vid.indexOf(fileExtension) >= 0
+        return !isRemoteUri && !isDirectory && vid.indexOf(fileExtension) >= 0
     }
     readonly property bool isAudio: {
         var audio = ["mp3", "flac", "ogg", "wav", "m4a", "aac", "opus"]
-        return !isDirectory && audio.indexOf(fileExtension) >= 0
+        return !isRemoteUri && !isDirectory && audio.indexOf(fileExtension) >= 0
     }
-    readonly property bool isPdf: !isDirectory && fileExtension === "pdf"
+    readonly property bool isPdf: !isRemoteUri && !isDirectory && fileExtension === "pdf"
     readonly property bool isNamedTextFile: {
         var names = [
             "makefile", "gnumakefile", "kbuild", "dockerfile", "justfile",
             ".bashrc", ".zshrc", ".profile", ".bash_profile", ".bash_logout",
             ".gitignore", ".gitmodules", ".editorconfig"
         ]
-        return !isDirectory && names.indexOf(fileName.toLowerCase()) >= 0
+        return !isRemoteUri && !isDirectory && names.indexOf(fileName.toLowerCase()) >= 0
     }
     readonly property bool isTextMime: {
         var mime = fileProps.mimeType || ""
@@ -77,7 +78,7 @@ Item {
                    "sh", "bash", "zsh", "fish", "py", "js", "ts", "css", "html",
                    "htm", "xml", "c", "cpp", "h", "hpp", "rs", "go", "java", "tex",
                    "rb", "lua", "vim", "log", "diff", "patch", "cmake", "qml", "mk", "desktop"]
-        if (isDirectory || isPdf || isImage || isVideo || isAudio)
+        if (isRemoteUri || isDirectory || isPdf || isImage || isVideo || isAudio)
             return false
         return txt.indexOf(fileExtension) >= 0 || isNamedTextFile || isTextMime || fileExtension === ""
     }

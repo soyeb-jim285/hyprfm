@@ -84,6 +84,7 @@ Item {
                 width: 18; height: 18
                 anchors.verticalCenter: parent.verticalCenter
                 sourceComponent: {
+                    if (fileOps.isRemotePath(root.path)) return bcIconMonitor
                     if (segmentsRepeater.count === 0) return bcIconFolder
                     var firstLabel = segmentsRepeater.model[0] ? segmentsRepeater.model[0].label : ""
                     return root.iconForLabel(firstLabel)
@@ -95,30 +96,12 @@ Item {
                 model: {
                     if (root.isRecentsView) return [{ label: "Recents", fullPath: "" }]
                     if (!root.path || root.path === "/") return []
+
+                    var result = fileOps.breadcrumbSegments(root.path)
                     const homePath = fsModel.homePath()
-                    const trashPath = fileOps.trashFilesPathFor(root.path)
-                    if (fileOps.isTrashPath(root.path)) {
-                        if (root.path === trashPath) return [{ label: "Trash", fullPath: trashPath }]
-                        const sub = root.path.substring(trashPath.length + 1).split("/")
-                        const result = [{ label: "Trash", fullPath: trashPath }]
-                        let acc = trashPath
-                        for (const part of sub) {
-                            acc += "/" + part
-                            result.push({ label: part, fullPath: acc })
-                        }
-                        return result
-                    }
-                    const parts = root.path.split("/").filter(p => p !== "")
-                    const result = []
-                    let accumulated = ""
-                    for (const part of parts) {
-                        accumulated += "/" + part
-                        if (accumulated === homePath) {
-                            result.length = 0
-                            result.push({ label: "Home", fullPath: accumulated })
-                        } else {
-                            result.push({ label: part, fullPath: accumulated })
-                        }
+                    for (var i = 0; i < result.length; ++i) {
+                        if (result[i].fullPath === homePath)
+                            result[i].label = "Home"
                     }
                     return result
                 }

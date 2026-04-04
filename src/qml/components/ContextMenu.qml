@@ -47,6 +47,7 @@ Item {
     property string currentSortBy: "name"
     property bool currentSortAscending: true
     readonly property bool hasCustomItems: customItems && customItems.length > 0
+    readonly property bool remoteContext: fileOps.isRemotePath(targetPath) || fileOps.isRemotePath(effectiveDir)
 
     property var effectivePaths: (selectedPaths.length > 0) ? selectedPaths : (targetPath !== "" ? [targetPath] : [])
     property string effectiveDir: {
@@ -253,7 +254,7 @@ Item {
             } else {
                 openWithApps = []
             }
-            if (targetIsDir && !isTrashView)
+            if (targetIsDir && !isTrashView && !remoteContext)
                 items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
             items.push({ separator: true })
             if (isTrashView) {
@@ -266,18 +267,20 @@ Item {
                 items.push({ separator: true })
 
                 // Compress submenu — always available for files/folders
-                items.push({ text: "Compress", shortcut: "", action: "compress_toggle", isSubmenu: true, icon: "FolderArchive",
-                    submenuItems: [
-                        { text: "ZIP", shortcut: "", action: "compress_zip" },
-                        { text: "tar.gz", shortcut: "", action: "compress_targz" },
-                        { text: "tar.xz", shortcut: "", action: "compress_tarxz" },
-                        { text: "tar.bz2", shortcut: "", action: "compress_tarbz2" },
-                        { text: "tar", shortcut: "", action: "compress_tar" }
-                    ]
-                })
+                if (!remoteContext) {
+                    items.push({ text: "Compress", shortcut: "", action: "compress_toggle", isSubmenu: true, icon: "FolderArchive",
+                        submenuItems: [
+                            { text: "ZIP", shortcut: "", action: "compress_zip" },
+                            { text: "tar.gz", shortcut: "", action: "compress_targz" },
+                            { text: "tar.xz", shortcut: "", action: "compress_tarxz" },
+                            { text: "tar.bz2", shortcut: "", action: "compress_tarbz2" },
+                            { text: "tar", shortcut: "", action: "compress_tar" }
+                        ]
+                    })
+                }
 
                 // Extract option for archives
-                if (!targetIsDir && fileOps.isArchive(targetPath))
+                if (!remoteContext && !targetIsDir && fileOps.isArchive(targetPath))
                     items.push({ text: "Extract Here", shortcut: "", action: "extract", icon: "PackageOpen" })
 
                 items.push({ separator: true })
@@ -317,7 +320,7 @@ Item {
                 items.push({ text: "New Folder...", shortcut: "Shift+Ctrl+N", action: "newfolder", icon: "Folder" })
                 items.push({ text: "New File...", shortcut: "", action: "newfile", icon: "FileText" })
                 items.push({ separator: true })
-                if (clipboard.hasContent || fileOps.hasClipboardImage()) {
+                if (clipboard.hasContent || (!remoteContext && fileOps.hasClipboardImage())) {
                     items.push({
                         text: clipboard.hasContent ? "Paste" : "Paste Image",
                         shortcut: "Ctrl+V",
@@ -330,7 +333,8 @@ Item {
                 else
                     items.push({ text: "Close Split View", shortcut: "", action: "close_split", icon: "SquareSplitHorizontal" })
                 items.push({ separator: true })
-                items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
+                if (!remoteContext)
+                    items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
                 items.push({ text: "Properties", shortcut: "", action: "properties", icon: "Info" })
             } else {
                 items.push({ separator: true })

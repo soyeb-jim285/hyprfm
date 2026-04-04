@@ -118,6 +118,15 @@ private slots:
         QCOMPARE(model.data(idx, BookmarkModel::NameRole).toString(), QString("tmp"));
     }
 
+    void testRemoteBookmarkName()
+    {
+        BookmarkModel model;
+        model.setBookmarks({"sftp://example.com/home/jim"});
+        QModelIndex idx = model.index(0);
+        QCOMPARE(model.data(idx, BookmarkModel::PathRole).toString(), QString("sftp://example.com/home/jim"));
+        QCOMPARE(model.data(idx, BookmarkModel::NameRole).toString(), QString("jim"));
+    }
+
     void testRowsResetSignal()
     {
         BookmarkModel model;

@@ -33,6 +33,7 @@ ApplicationWindow {
     property bool paneFocusScheduled: false
     readonly property string unifiedTrashPath: "trash:///"
     readonly property bool isTrashView: fileOps.isTrashPath(panePath(activePane))
+    readonly property bool isRemoteView: fileOps.isRemotePath(panePath(activePane))
 
     // ── Sync fsModel when active tab changes; quit on last tab closed ───────
     Connections {
@@ -175,7 +176,12 @@ ApplicationWindow {
     }
 
     function isLocalPath(path) {
-        return !!path && path.indexOf("://") < 0
+        return !!path && !fileOps.isRemotePath(path) && path.indexOf("://") < 0
+    }
+
+    function openRemoteConnectDialog() {
+        remoteConnectDialog.resetForm()
+        remoteConnectDialog.open()
     }
 
     function paneIsRecents(pane) {
@@ -385,12 +391,28 @@ ApplicationWindow {
         if (!items || items.length === 0)
             return
 
+        var usesRemotePath = false
+        for (var i = 0; i < items.length; ++i) {
+            if (fileOps.isRemotePath(items[i].sourcePath) || fileOps.isRemotePath(items[i].targetPath)) {
+                usesRemotePath = true
+                break
+            }
+        }
+
         if (clearClipboardOnSuccess) {
             fileOps.operationFinished.connect(function(success) {
                 fileOps.operationFinished.disconnect(arguments.callee)
                 if (success)
                     clipboard.clear()
             })
+        }
+
+        if (usesRemotePath) {
+            if (moveOperation)
+                fileOps.moveResolvedItems(items)
+            else
+                fileOps.copyResolvedItems(items)
+            return
         }
 
         if (moveOperation)
@@ -548,6 +570,13 @@ ApplicationWindow {
             return
 
         var currentPath = panePath(activePane)
+        if (fileOps.isRemotePath(currentPath)) {
+            var parentRemotePath = fileOps.parentPath(currentPath)
+            if (parentRemotePath && parentRemotePath !== currentPath)
+                root.navigateActivePaneTo(parentRemotePath)
+            return
+        }
+
         if (currentPath.startsWith("trash:///")) {
             var normalized = currentPath.length > 9 && currentPath.endsWith("/")
                 ? currentPath.slice(0, -1)
@@ -759,6 +788,8 @@ ApplicationWindow {
 
     // ── Search helpers ────────────────────────────────────────────────────────
     function openSearch() {
+        if (fileOps.isRemotePath(panePath(activePane)))
+            return
         setPaneRecents(activePane, false)
         setPaneSearchMode(activePane, true)
     }
@@ -872,6 +903,11 @@ ApplicationWindow {
         onRenameApplied: (paths) => root.handleBulkRenameApplied(paths)
     }
 
+    RemoteConnectDialog {
+        id: remoteConnectDialog
+        onConnected: (uri) => root.navigateActivePaneTo(uri)
+    }
+
     // ── Rename dialog ───────────────────────────────────────────────────────
     property string renameTargetPath: ""
 
@@ -897,12 +933,24 @@ ApplicationWindow {
         function accept() {
             var name = renameField.text.trim()
             if (renameTargetPath === "" || name === "") return
-            var parentDir = renameTargetPath.substring(0, renameTargetPath.lastIndexOf("/"))
-            if (fileOps.pathExists(parentDir + "/" + name)) {
+            var parentDir = fileOps.parentPath(renameTargetPath)
+            var targetPath = parentDir + "/" + name
+            if (fileOps.pathExists(targetPath)) {
                 renameErrorText.text = "\"" + name + "\" already exists"
                 return
             }
-            undoManager.rename(renameTargetPath, name)
+
+            if (fileOps.isRemotePath(renameTargetPath)) {
+                var result = fileOps.renameResolvedItems([{ sourcePath: renameTargetPath, targetPath: targetPath }])
+                if (!result.success) {
+                    renameErrorText.text = result.error || "Rename failed"
+                    return
+                }
+                fsModel.refresh()
+                splitFsModel.refresh()
+            } else {
+                undoManager.rename(renameTargetPath, name)
+            }
             renameCloseAnim.start()
         }
         function reject() { renameCloseAnim.start() }
@@ -1059,7 +1107,13 @@ ApplicationWindow {
                 newFolderErrorText.text = "\"" + name + "\" already exists"
                 return
             }
-            undoManager.createFolder(newItemParentPath, name)
+            if (fileOps.isRemotePath(newItemParentPath)) {
+                fileOps.createFolder(newItemParentPath, name)
+                fsModel.refresh()
+                splitFsModel.refresh()
+            } else {
+                undoManager.createFolder(newItemParentPath, name)
+            }
             if (fileOps.pathExists(createdPath))
                 root.focusPathInPane(root.activePane, createdPath, true)
             folderCloseAnim.start()
@@ -1216,7 +1270,13 @@ ApplicationWindow {
                 newFileErrorText.text = "\"" + name + "\" already exists"
                 return
             }
-            undoManager.createFile(newItemParentPath, name)
+            if (fileOps.isRemotePath(newItemParentPath)) {
+                fileOps.createFile(newItemParentPath, name)
+                fsModel.refresh()
+                splitFsModel.refresh()
+            } else {
+                undoManager.createFile(newItemParentPath, name)
+            }
             if (fileOps.pathExists(createdPath))
                 root.focusPathInPane(root.activePane, createdPath, true)
             fileCloseAnim.start()
@@ -2039,7 +2099,20 @@ ApplicationWindow {
         onRenameRequested: (path) => root.openRenameDialogForPath(path)
         onBulkRenameRequested: (paths) => root.openBulkRenameDialog(paths)
 
-        onTrashRequested: (paths) => undoManager.trashFiles(paths)
+        onTrashRequested: (paths) => {
+            var hasRemotePath = false
+            for (var i = 0; i < paths.length; ++i) {
+                if (fileOps.isRemotePath(paths[i])) {
+                    hasRemotePath = true
+                    break
+                }
+            }
+
+            if (hasRemotePath)
+                fileOps.trashFiles(paths)
+            else
+                undoManager.trashFiles(paths)
+        }
         onRestoreRequested: (paths) => fileOps.restoreFromTrash(paths)
         onEmptyTrashRequested: emptyTrashConfirmDialog.open()
 
@@ -2261,7 +2334,18 @@ ApplicationWindow {
                 deleteConfirmPaths = paths
                 deleteConfirmDialog.open()
             } else {
-                undoManager.trashFiles(paths)
+                var hasRemotePath = false
+                for (var i = 0; i < paths.length; ++i) {
+                    if (fileOps.isRemotePath(paths[i])) {
+                        hasRemotePath = true
+                        break
+                    }
+                }
+
+                if (hasRemotePath)
+                    fileOps.trashFiles(paths)
+                else
+                    undoManager.trashFiles(paths)
             }
         }
     }
@@ -2489,6 +2573,9 @@ ApplicationWindow {
             return
         }
 
+        if (fileOps.isRemotePath(destPath))
+            return
+
         if (fileOps.hasClipboardImage())
             fileOps.pasteClipboardImage(destPath)
     }
@@ -2604,6 +2691,7 @@ ApplicationWindow {
                 splitViewEnabled: root.splitViewEnabled()
                 isRecentsView: root.isRecentsView
                 isTrashView: root.isTrashView
+                isRemoteView: root.isRemoteView
                 searchMode: root.searchMode
                 currentSearchQuery: root.searchProxyForPane(activePane).searchQuery
                 searchTypeFilter: root.searchProxyForPane(activePane).fileTypeFilter
@@ -2614,6 +2702,7 @@ ApplicationWindow {
                 onForwardRequested: root.goActivePaneForward()
                 onUpRequested: root.goActivePaneUp()
                 onNavigateRequested: (targetPath) => root.navigateActivePaneTo(targetPath)
+                onConnectRemoteRequested: root.openRemoteConnectDialog()
                 onRestoreTrashRequested: {
                     var paths = getSelectedPaths()
                     if (paths.length > 0)

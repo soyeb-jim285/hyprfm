@@ -11,7 +11,10 @@ QString normalizedSessionPath(const QString &path)
     if (path.isEmpty())
         return QDir::homePath();
 
-    if (QUrl(path).scheme() == "trash")
+    const QUrl url(path);
+    if (url.scheme() == QStringLiteral("trash"))
+        return path;
+    if (url.isValid() && !url.scheme().isEmpty() && url.scheme() != QStringLiteral("file"))
         return path;
 
     QFileInfo info(path);

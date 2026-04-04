@@ -65,16 +65,20 @@ signals:
 private:
     void reload();
     void reloadLocal();
+    void reloadRemote();
     void reloadTrash();
     QList<QFileInfo> currentLocalEntries() const;
     void updateLocalCounts();
     bool applyLocalDiff(const QList<QFileInfo> &newEntries);
     bool isTrashRoot() const;
+    bool isRemoteRoot() const;
+    QVariantMap remoteFileProperties(const QString &path) const;
     QVariantMap trashFileProperties(const QString &path) const;
 
     QString m_rootPath;
     bool m_showHidden = false;
     QList<QFileInfo> m_entries;
+    QList<QVariantMap> m_remoteEntries;
     QList<QVariantMap> m_trashEntries;
     int m_fileCount = 0;
     int m_folderCount = 0;

@@ -36,8 +36,10 @@ void DragHelper::startDrag(const QStringList &filePaths,
 
         QList<QUrl> urls;
         urls.reserve(paths.size());
-        for (const QString &path : paths)
-            urls.append(QUrl::fromLocalFile(path));
+        for (const QString &path : paths) {
+            const QUrl url(path);
+            urls.append(url.isValid() && !url.scheme().isEmpty() ? url : QUrl::fromLocalFile(path));
+        }
         mimeData->setUrls(urls);
         drag->setMimeData(mimeData);
 

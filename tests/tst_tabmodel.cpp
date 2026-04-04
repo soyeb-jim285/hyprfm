@@ -192,6 +192,21 @@ private slots:
         QCOMPARE(tab.title(), QString("bin"));
     }
 
+    void testRemoteTabTitleAndGoUp()
+    {
+        TabModel tab;
+        tab.navigateTo("sftp://example.com/home/jim/projects");
+        QCOMPARE(tab.title(), QString("projects"));
+
+        tab.goUp();
+        QCOMPARE(tab.currentPath(), QString("sftp://example.com/home/jim"));
+
+        tab.navigateTo("sftp://example.com/");
+        QCOMPARE(tab.title(), QString("example.com"));
+        tab.goUp();
+        QCOMPARE(tab.currentPath(), QString("sftp://example.com/"));
+    }
+
     // === TabListModel tests ===
 
     void testTabListModelInitialState()

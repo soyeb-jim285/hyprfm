@@ -332,12 +332,15 @@ GridView {
     function parseDragPaths(drop) {
         var paths = []
 
+        function decodePath(value) {
+            return value.startsWith("file://") ? decodeURIComponent(value.substring(7)) : value
+        }
+
         // Try drop.urls first (system DnD)
         if (drop.urls && drop.urls.length > 0) {
             for (var i = 0; i < drop.urls.length; i++) {
                 var s = drop.urls[i].toString()
-                if (s.startsWith("file://"))
-                    paths.push(s.substring(7))
+                paths.push(decodePath(s))
             }
         }
 
@@ -347,8 +350,8 @@ GridView {
             var lines = text.split("\n")
             for (var j = 0; j < lines.length; j++) {
                 var line = lines[j].trim()
-                if (line.startsWith("file://"))
-                    paths.push(line.substring(7))
+                if (line !== "")
+                    paths.push(decodePath(line))
             }
         }
 
@@ -452,7 +455,7 @@ GridView {
             /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(delegateItem.filePath)
         readonly property bool isVideo: !delegateItem.isDir &&
             /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ts)$/i.test(delegateItem.filePath)
-        readonly property bool hasThumbnail: isImage || isVideo
+        readonly property bool hasThumbnail: !fileOps.isRemotePath(delegateItem.filePath) && (isImage || isVideo)
 
         Image {
             id: thumbImg

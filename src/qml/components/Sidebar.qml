@@ -22,6 +22,7 @@ Rectangle {
     Component { id: iconTrash; IconTrash { size: 18; color: Theme.subtext } }
     Component { id: iconImage; IconImage { size: 18; color: Theme.subtext } }
     Component { id: iconDownload; IconDownload { size: 18; color: Theme.subtext } }
+    Component { id: iconGlobe; IconGlobe { size: 18; color: Theme.subtext } }
     Component { id: iconHardDrive; IconHardDrive { size: 18; color: Theme.subtext } }
     Component { id: iconHardDriveOff; IconHardDriveOff { size: 18; color: Theme.muted } }
     Component { id: iconFolder; IconFolder { size: 18; color: Theme.subtext } }
@@ -99,6 +100,7 @@ Rectangle {
                     ListElement { name: "Home"; iconType: "home" }
                     ListElement { name: "Recents"; iconType: "clock" }
                     ListElement { name: "Trash"; iconType: "trash" }
+                    ListElement { name: "Network"; iconType: "globe" }
                     ListElement { name: "Pictures"; iconType: "image" }
                     ListElement { name: "Downloads"; iconType: "download" }
                 }
@@ -111,6 +113,7 @@ Rectangle {
                         if (model.name === "Home") return home
                         if (model.name === "Recents") return ""
                         if (model.name === "Trash") return root.trashPath
+                        if (model.name === "Network") return "network:///"
                         if (model.name === "Pictures") return home + "/Pictures"
                         if (model.name === "Downloads") return home + "/Downloads"
                         return ""
@@ -122,6 +125,7 @@ Rectangle {
                     readonly property bool isActive: {
                         if (model.name === "Recents") return root.isRecentsView
                         if (model.name === "Trash") return !root.isRecentsView && fileOps.isTrashPath(root.currentPath)
+                        if (model.name === "Network") return !root.isRecentsView && fileOps.isRemotePath(root.currentPath)
                         if (resolvedPath === "") return false
                         return !root.isRecentsView && resolvedPath === root.currentPath
                     }
@@ -149,6 +153,8 @@ Rectangle {
                                 if (model.iconType === "home") return iconHome
                                 if (model.iconType === "clock") return iconClock
                                 if (model.iconType === "trash") return iconTrash
+                                if (model.iconType === "monitor") return iconMonitor
+                                if (model.iconType === "globe") return iconGlobe
                                 if (model.iconType === "image") return iconImage
                                 if (model.iconType === "download") return iconDownload
                                 return iconHome
@@ -225,12 +231,13 @@ Rectangle {
             function dragUrls(data) {
                 var urls = data.urls || []
                 if ((!urls || urls.length === 0) && data.text)
-                    urls = data.text.split("\n").filter(u => u.startsWith("file://"))
+                    urls = data.text.split("\n").filter(u => u.trim() !== "")
                 return urls
             }
 
             function decodedPath(url) {
-                return decodeURIComponent(url.toString().replace("file://", "").replace(/\/$/, ""))
+                var value = url.toString().replace(/\/$/, "")
+                return value.startsWith("file://") ? decodeURIComponent(value.replace("file://", "")) : value
             }
 
             function displayName(path) {
