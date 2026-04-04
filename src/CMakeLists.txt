@@ -18,6 +18,8 @@ set(HYPRFM_SOURCES
     services/previewservice.cpp
     services/diskusageservice.cpp
     services/remoteaccessservice.cpp
+    services/runtimefeaturesservice.cpp
+    services/gitstatusservice.cpp
     providers/thumbnailprovider.cpp
 )
 
