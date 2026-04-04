@@ -842,91 +842,82 @@ void FileOperations::moveResolvedItems(const QVariantList &operations)
 
 void FileOperations::trashFiles(const QStringList &paths)
 {
-    bool allOk = true;
-    QString lastError;
-
-    for (const QString &path : paths) {
-        GFile *file = gFileForLocation(normalizeLocation(path));
-        GError *gErr = nullptr;
-        if (!g_file_trash(file, nullptr, &gErr)) {
-            allOk = false;
-            if (gErr) {
-                lastError = QString::fromUtf8(gErr->message);
-                g_error_free(gErr);
+    startSimpleOperation(
+        QString("Trashing %1 item(s)...").arg(paths.size()), paths,
+        [paths](ProgressReporter report) -> QString {
+            QString lastError;
+            const int total = paths.size();
+            for (int i = 0; i < total; ++i) {
+                const QString normalized = normalizeLocation(paths[i]);
+                report(i, total, locationFileName(normalized));
+                GFile *file = gFileForLocation(normalized);
+                GError *gErr = nullptr;
+                if (!g_file_trash(file, nullptr, &gErr)) {
+                    if (gErr) {
+                        lastError = QString::fromUtf8(gErr->message);
+                        g_error_free(gErr);
+                    }
+                }
+                g_object_unref(file);
             }
-        }
-        g_object_unref(file);
-    }
-
-    emitChangedPaths(paths);
-    emit operationFinished(allOk, allOk ? QString() : lastError);
+            return lastError;
+        });
 }
 
 void FileOperations::restoreFromTrash(const QStringList &paths)
 {
-    bool allOk = true;
-    QString lastError;
-    QStringList changedPaths = paths;
+    startSimpleOperation(
+        QString("Restoring %1 item(s)...").arg(paths.size()), paths,
+        [paths](ProgressReporter report) -> QString {
+            QString lastError;
+            const int total = paths.size();
+            for (int i = 0; i < total; ++i) {
+                const QString uri = trashUriForPath(paths[i]);
+                if (uri.isEmpty())
+                    continue;
 
-    for (const QString &path : paths) {
-        const QString uri = trashUriForPath(path);
-        if (uri.isEmpty())
-            continue;
+                report(i, total, locationFileName(paths[i]));
 
-        GFile *trashFile = g_file_new_for_uri(uri.toUtf8().constData());
-        GError *gErr = nullptr;
-        GFileInfo *info = g_file_query_info(trashFile,
-            G_FILE_ATTRIBUTE_TRASH_ORIG_PATH,
-            G_FILE_QUERY_INFO_NONE, nullptr, &gErr);
+                GFile *trashFile = g_file_new_for_uri(uri.toUtf8().constData());
+                GError *gErr = nullptr;
+                GFileInfo *info = g_file_query_info(trashFile,
+                    G_FILE_ATTRIBUTE_TRASH_ORIG_PATH,
+                    G_FILE_QUERY_INFO_NONE, nullptr, &gErr);
 
-        if (!info) {
-            allOk = false;
-            if (gErr) {
-                lastError = QString::fromUtf8(gErr->message);
-                g_error_free(gErr);
+                if (!info) {
+                    if (gErr) { lastError = QString::fromUtf8(gErr->message); g_error_free(gErr); }
+                    g_object_unref(trashFile);
+                    continue;
+                }
+
+                const char *origPath = g_file_info_get_attribute_byte_string(info, G_FILE_ATTRIBUTE_TRASH_ORIG_PATH);
+                if (!origPath) {
+                    lastError = QStringLiteral("Could not determine original path");
+                    g_object_unref(info);
+                    g_object_unref(trashFile);
+                    continue;
+                }
+
+                GFile *destFile = g_file_new_for_path(origPath);
+                GFile *parent = g_file_get_parent(destFile);
+                if (parent) {
+                    GError *mkErr = nullptr;
+                    g_file_make_directory_with_parents(parent, nullptr, &mkErr);
+                    if (mkErr) g_error_free(mkErr);
+                    g_object_unref(parent);
+                }
+
+                GError *mvErr = nullptr;
+                if (!g_file_move(trashFile, destFile, G_FILE_COPY_NONE, nullptr, nullptr, nullptr, &mvErr)) {
+                    if (mvErr) { lastError = QString::fromUtf8(mvErr->message); g_error_free(mvErr); }
+                }
+
+                g_object_unref(info);
+                g_object_unref(destFile);
+                g_object_unref(trashFile);
             }
-            g_object_unref(trashFile);
-            continue;
-        }
-
-        const char *origPath = g_file_info_get_attribute_byte_string(info, G_FILE_ATTRIBUTE_TRASH_ORIG_PATH);
-        if (!origPath) {
-            allOk = false;
-            lastError = QStringLiteral("Could not determine original path");
-            g_object_unref(info);
-            g_object_unref(trashFile);
-            continue;
-        }
-
-        GFile *destFile = g_file_new_for_path(origPath);
-
-        // Ensure parent directory exists
-        GFile *parent = g_file_get_parent(destFile);
-        if (parent) {
-            GError *mkErr = nullptr;
-            g_file_make_directory_with_parents(parent, nullptr, &mkErr);
-            if (mkErr) g_error_free(mkErr); // ignore EXISTS
-            g_object_unref(parent);
-        }
-
-        GError *mvErr = nullptr;
-        if (!g_file_move(trashFile, destFile, G_FILE_COPY_NONE, nullptr, nullptr, nullptr, &mvErr)) {
-            allOk = false;
-            if (mvErr) {
-                lastError = QString::fromUtf8(mvErr->message);
-                g_error_free(mvErr);
-            }
-        } else {
-            changedPaths.append(QString::fromUtf8(origPath));
-        }
-
-        g_object_unref(info);
-        g_object_unref(destFile);
-        g_object_unref(trashFile);
-    }
-
-    emitChangedPaths(changedPaths);
-    emit operationFinished(allOk, allOk ? QString() : lastError);
+            return lastError;
+        });
 }
 
 bool FileOperations::isTrashPath(const QString &path) const
@@ -1012,42 +1003,35 @@ QString FileOperations::uniqueNameForDestination(const QString &destinationDir, 
 
 void FileOperations::deleteFiles(const QStringList &paths)
 {
-    bool allOk = true;
-    QString lastError;
+    startSimpleOperation(
+        QString("Deleting %1 item(s)...").arg(paths.size()), paths,
+        [paths](ProgressReporter report) -> QString {
+            QString lastError;
+            const int total = paths.size();
+            for (int i = 0; i < total; ++i) {
+                const QString normalized = normalizeLocation(paths[i]);
+                report(i, total, locationFileName(normalized));
 
-    for (const auto &path : paths) {
-        const QString normalized = normalizeLocation(path);
-
-        if (isUriPath(normalized)) {
-            GFile *file = gFileForLocation(normalized);
-            GError *gErr = nullptr;
-            if (!g_file_delete(file, nullptr, &gErr)) {
-                allOk = false;
-                if (gErr) {
-                    lastError = QString::fromUtf8(gErr->message);
-                    g_error_free(gErr);
+                if (isUriPath(normalized)) {
+                    GFile *file = gFileForLocation(normalized);
+                    GError *gErr = nullptr;
+                    if (!g_file_delete(file, nullptr, &gErr)) {
+                        if (gErr) { lastError = QString::fromUtf8(gErr->message); g_error_free(gErr); }
+                    }
+                    g_object_unref(file);
+                } else {
+                    QFileInfo info(normalized);
+                    if (info.isDir()) {
+                        if (!QDir(normalized).removeRecursively())
+                            lastError = QStringLiteral("Failed to delete one or more items");
+                    } else {
+                        if (!QFile::remove(normalized))
+                            lastError = QStringLiteral("Failed to delete one or more items");
+                    }
                 }
             }
-            g_object_unref(file);
-            continue;
-        }
-
-        QFileInfo info(normalized);
-        if (info.isDir()) {
-            if (!QDir(normalized).removeRecursively()) {
-                allOk = false;
-                lastError = QStringLiteral("Failed to delete one or more items");
-            }
-        } else {
-            if (!QFile::remove(normalized)) {
-                allOk = false;
-                lastError = QStringLiteral("Failed to delete one or more items");
-            }
-        }
-    }
-
-    emitChangedPaths(paths);
-    emit operationFinished(allOk, allOk ? QString() : lastError);
+            return lastError;
+        });
 }
 
 void FileOperations::transferResolvedItems(const QVariantList &operations, bool moveOperation)
@@ -1301,43 +1285,48 @@ QVariantList FileOperations::breadcrumbSegments(const QString &path) const
 
 void FileOperations::emptyTrash()
 {
-    GFile *trash = g_file_new_for_uri("trash:///");
-    GError *enumErr = nullptr;
-    GFileEnumerator *enumerator = g_file_enumerate_children(trash,
-        G_FILE_ATTRIBUTE_STANDARD_NAME,
-        G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, nullptr, &enumErr);
+    startSimpleOperation(
+        QStringLiteral("Emptying trash..."), {},
+        [](ProgressReporter report) -> QString {
+            // First pass: count items
+            GFile *trash = g_file_new_for_uri("trash:///");
+            GError *enumErr = nullptr;
+            GFileEnumerator *counter = g_file_enumerate_children(trash,
+                G_FILE_ATTRIBUTE_STANDARD_NAME,
+                G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, nullptr, &enumErr);
 
-    bool allOk = true;
-    QString lastError;
-
-    if (enumerator) {
-        GFileInfo *childInfo = nullptr;
-        while ((childInfo = g_file_enumerator_next_file(enumerator, nullptr, nullptr)) != nullptr) {
-            const char *name = g_file_info_get_name(childInfo);
-            GFile *child = g_file_get_child(trash, name);
-            GError *delErr = nullptr;
-            if (!g_file_delete(child, nullptr, &delErr)) {
-                allOk = false;
-                if (delErr) {
-                    lastError = QString::fromUtf8(delErr->message);
-                    g_error_free(delErr);
+            QStringList names;
+            if (counter) {
+                GFileInfo *ci = nullptr;
+                while ((ci = g_file_enumerator_next_file(counter, nullptr, nullptr)) != nullptr) {
+                    names.append(QString::fromUtf8(g_file_info_get_name(ci)));
+                    g_object_unref(ci);
                 }
+                g_file_enumerator_close(counter, nullptr, nullptr);
+                g_object_unref(counter);
+            } else {
+                QString err;
+                if (enumErr) { err = QString::fromUtf8(enumErr->message); g_error_free(enumErr); }
+                g_object_unref(trash);
+                return err.isEmpty() ? QStringLiteral("Could not enumerate trash") : err;
             }
-            g_object_unref(child);
-            g_object_unref(childInfo);
-        }
-        g_file_enumerator_close(enumerator, nullptr, nullptr);
-        g_object_unref(enumerator);
-    } else {
-        if (enumErr) {
-            lastError = QString::fromUtf8(enumErr->message);
-            g_error_free(enumErr);
-        }
-        allOk = false;
-    }
 
-    g_object_unref(trash);
-    emit operationFinished(allOk, allOk ? QString() : lastError);
+            // Second pass: delete with progress
+            QString lastError;
+            const int total = names.size();
+            for (int i = 0; i < total; ++i) {
+                report(i, total, names[i]);
+                GFile *child = g_file_get_child(trash, names[i].toUtf8().constData());
+                GError *delErr = nullptr;
+                if (!g_file_delete(child, nullptr, &delErr)) {
+                    if (delErr) { lastError = QString::fromUtf8(delErr->message); g_error_free(delErr); }
+                }
+                g_object_unref(child);
+            }
+
+            g_object_unref(trash);
+            return lastError;
+        });
 }
 
 void FileOperations::openFileWith(const QString &path, const QString &desktopFile)
@@ -1500,10 +1489,16 @@ void FileOperations::compressFiles(const QStringList &paths, const QString &form
         return;
     }
 
-    m_statusText = QString("Compressing %1 item(s)...").arg(paths.size());
-    emit statusTextChanged();
-    setPendingChangedPaths({outputPath});
-    runProcess("sh", {"-c", cmd});
+    const QString statusText = QString("Compressing %1 item(s)...").arg(paths.size());
+    startSimpleOperation(statusText, {outputPath},
+        [cmd](ProgressReporter report) -> QString {
+            report(-1, 0, {}); // indeterminate
+            QProcess proc;
+            proc.start(QStringLiteral("sh"), {QStringLiteral("-c"), cmd});
+            if (!proc.waitForFinished(600000) || proc.exitCode() != 0)
+                return QString::fromUtf8(proc.readAllStandardError()).trimmed();
+            return {};
+        });
 }
 
 void FileOperations::extractArchive(const QString &archivePath, const QString &destination)
@@ -1513,10 +1508,15 @@ void FileOperations::extractArchive(const QString &archivePath, const QString &d
     if (!archiveExtractCommand(archivePath, destination, &program, &args))
         return;
 
-    m_statusText = "Extracting...";
-    emit statusTextChanged();
-    setPendingChangedPaths({destination});
-    runProcess(program, args);
+    startSimpleOperation(QStringLiteral("Extracting..."), {destination},
+        [program, args](ProgressReporter report) -> QString {
+            report(-1, 0, {}); // indeterminate
+            QProcess proc;
+            proc.start(program, args);
+            if (!proc.waitForFinished(600000) || proc.exitCode() != 0)
+                return QString::fromUtf8(proc.readAllStandardError()).trimmed();
+            return {};
+        });
 }
 
 QString FileOperations::archiveRootFolder(const QString &archivePath)
@@ -1599,6 +1599,54 @@ void FileOperations::cleanupTransfer(int transferId)
         }
     }
     emitAggregatedState();
+}
+
+void FileOperations::startSimpleOperation(const QString &statusText, const QStringList &changedPaths,
+                                           std::function<QString(ProgressReporter)> work)
+{
+    const int id = m_nextTransferId++;
+    ActiveTransfer transfer;
+    transfer.id = id;
+    transfer.statusText = statusText;
+    transfer.progress = -1.0;
+    transfer.changedPaths = changedPaths;
+
+    auto *thread = new QThread;
+    transfer.thread = thread;
+    transfer.worker = nullptr;
+    m_activeTransfers.append(transfer);
+    emitAggregatedState();
+
+    auto reportProgress = [this, id](int current, int total, const QString &fileName) {
+        QMetaObject::invokeMethod(this, [this, id, current, total, fileName]() {
+            if (auto *t = findTransfer(id)) {
+                t->progress = total > 0 ? static_cast<double>(current) / total : -1.0;
+                t->currentFile = fileName;
+                emitAggregatedState();
+            }
+        }, Qt::QueuedConnection);
+    };
+
+    auto *runner = new QObject;
+    runner->moveToThread(thread);
+
+    connect(thread, &QThread::started, runner, [runner, work, reportProgress, this, id]() {
+        const QString error = work(reportProgress);
+        const bool ok = error.isEmpty();
+        QMetaObject::invokeMethod(this, [this, id, ok, error]() {
+            if (auto *t = findTransfer(id)) {
+                t->progress = 1.0;
+                emitChangedPaths(t->changedPaths);
+            }
+            m_progress = 1.0;
+            emit operationFinished(ok, error);
+            cleanupTransfer(id);
+        }, Qt::QueuedConnection);
+        runner->deleteLater();
+    });
+
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
 }
 
 void FileOperations::startGioTransfer(const QVariantList &operations, bool moveOperation)

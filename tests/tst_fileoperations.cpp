@@ -425,7 +425,7 @@ private slots:
 
         ops.deleteFiles({dir.path() + "/doomed.txt"});
 
-        QCOMPARE(spy.count(), 1);
+        QVERIFY(spy.wait(5000));
         QCOMPARE(spy.at(0).at(0).toBool(), true);
         QVERIFY(!dir.exists("doomed.txt"));
     }
@@ -441,7 +441,7 @@ private slots:
 
         ops.deleteFiles({dir.path() + "/doomed_dir"});
 
-        QCOMPARE(spy.count(), 1);
+        QVERIFY(spy.wait(5000));
         QVERIFY(!dir.exists("doomed_dir"));
     }
 
@@ -456,7 +456,7 @@ private slots:
 
         ops.deleteFiles({dir.path() + "/a.txt", dir.path() + "/b.txt"});
 
-        QCOMPARE(spy.count(), 1);
+        QVERIFY(spy.wait(5000));
         QVERIFY(!dir.exists("a.txt"));
         QVERIFY(!dir.exists("b.txt"));
     }

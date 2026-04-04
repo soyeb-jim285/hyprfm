@@ -6,6 +6,7 @@
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
+#include <functional>
 
 class QThread;
 class GioTransferWorker;
@@ -108,6 +109,9 @@ private:
     QByteArray clipboardImageData() const;
     QString uniqueImagePastePath(const QString &destinationDir) const;
     void startGioTransfer(const QVariantList &operations, bool moveOperation);
+    using ProgressReporter = std::function<void(int current, int total, const QString &fileName)>;
+    void startSimpleOperation(const QString &statusText, const QStringList &changedPaths,
+                              std::function<QString(ProgressReporter)> work);
     void cleanupTransfer(int transferId);
     void emitAggregatedState();
     ActiveTransfer *findTransfer(int id);
