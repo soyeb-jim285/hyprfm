@@ -14,12 +14,13 @@ public:
 
     void setRootPath(const QString &path);
     QString statusForPath(const QString &path) const;
+    bool isGitRepo() const;
 
 signals:
     void statusChanged();
 
 private:
-    QString findRepoRoot(const QString &path) const;
+    void findRepoRoot(const QString &path);
     void queryGitStatus();
     void onGitStatusFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void onGitIndexChanged(const QString &path);

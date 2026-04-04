@@ -31,17 +31,16 @@ void GitStatusService::setRootPath(const QString &path)
         return;
     }
 
-    const QString newRoot = findRepoRoot(path);
+    const QString oldRoot = m_repoRoot;
+    findRepoRoot(path);
 
-    if (newRoot != m_repoRoot) {
+    if (m_repoRoot != oldRoot) {
         // Stop watching old index
-        if (!m_repoRoot.isEmpty()) {
-            const QString oldIndex = m_repoRoot + QStringLiteral("/.git/index");
+        if (!oldRoot.isEmpty()) {
+            const QString oldIndex = oldRoot + QStringLiteral("/.git/index");
             if (m_indexWatcher->files().contains(oldIndex))
                 m_indexWatcher->removePath(oldIndex);
         }
-
-        m_repoRoot = newRoot;
 
         // Watch new index
         if (!m_repoRoot.isEmpty()) {
@@ -72,19 +71,32 @@ QString GitStatusService::statusForPath(const QString &path) const
     return {};
 }
 
-QString GitStatusService::findRepoRoot(const QString &path) const
+bool GitStatusService::isGitRepo() const
+{
+    return !m_repoRoot.isEmpty();
+}
+
+void GitStatusService::findRepoRoot(const QString &path)
 {
     QDir dir(path);
-    if (!dir.exists())
-        return {};
+    if (!dir.exists()) {
+        m_repoRoot.clear();
+        emit statusChanged();
+        return;
+    }
 
-    // Walk up looking for .git directory or file (submodules use .git files)
-    do {
-        if (QFileInfo::exists(dir.filePath(QStringLiteral(".git"))))
-            return dir.absolutePath();
-    } while (dir.cdUp());
-
-    return {};
+    QProcess revParse;
+    revParse.setWorkingDirectory(path);
+    revParse.setProgram(QStringLiteral("git"));
+    revParse.setArguments({QStringLiteral("rev-parse"), QStringLiteral("--show-toplevel")});
+    revParse.start();
+    revParse.waitForFinished(2000);
+    if (revParse.exitCode() != 0) {
+        m_repoRoot.clear();
+        emit statusChanged();
+        return;
+    }
+    m_repoRoot = QString::fromUtf8(revParse.readAllStandardOutput()).trimmed();
 }
 
 void GitStatusService::queryGitStatus()
