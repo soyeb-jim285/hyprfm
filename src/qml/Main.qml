@@ -1433,6 +1433,9 @@ ApplicationWindow {
             folderDiskUsageRequestId = diskUsageService.requestSize([props.path])
         }
 
+        property var _metadataKeys: []
+        property string _metadataHint: ""
+
         function showProperties(path) {
             fileModelRef = root.paneBaseModel(root.activePane) || fsModel
             props = fileModelRef.fileProperties(path)
@@ -1443,6 +1446,18 @@ ApplicationWindow {
                 apps = fileModelRef.availableApps(props.mimeType)
             else
                 apps = []
+
+            // Extract rich metadata
+            var md = metadataExtractor.extract(path)
+            var keys = Object.keys(md)
+            var result = []
+            for (var i = 0; i < keys.length; ++i) {
+                if (md[keys[i]] !== "")
+                    result.push({ label: keys[i], value: String(md[keys[i]]) })
+            }
+            _metadataKeys = result
+            _metadataHint = metadataExtractor.missingDepsHint(props.mimeType || "")
+
             visible = true
             propsBox.opacity = 0
             propsBox.scale = 0.88
@@ -1639,37 +1654,30 @@ ApplicationWindow {
                         PropRow { label: "Content"; value: propertiesDialog.props.contentText || ""; show: propertiesDialog.props.isDir || false }
                     }
 
-                    // Image metadata
+                    // Rich metadata (images, audio, video, PDF)
                     Q.Separator {
-                        visible: propertiesDialog.props.isImage || false
+                        visible: propertiesDialog._metadataKeys.length > 0
                         width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter
                     }
                     Column {
-                        visible: propertiesDialog.props.isImage || false
+                        visible: propertiesDialog._metadataKeys.length > 0
                         anchors.left: parent.left; anchors.right: parent.right
                         anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
 
-                        PropRow { label: "Dimensions"; value: propertiesDialog.props.imageDimensions || ""; show: (propertiesDialog.props.imageDimensions || "") !== "" }
-                        PropRow { label: "Megapixels"; value: propertiesDialog.props.imageMegapixels || ""; show: (propertiesDialog.props.imageMegapixels || "") !== "" }
-                        PropRow { label: "Bit depth"; value: propertiesDialog.props.imageBitDepth || ""; show: (propertiesDialog.props.imageBitDepth || "") !== "" }
-
-                        // EXIF fields (dynamic — show whatever Qt extracted)
                         Repeater {
-                            model: {
-                                var result = []
-                                var p = propertiesDialog.props
-                                var keys = Object.keys(p)
-                                for (var i = 0; i < keys.length; ++i) {
-                                    var k = keys[i]
-                                    if (k.startsWith("exif_") && p[k] !== "") {
-                                        var label = k.substring(5).replace(/([A-Z])/g, ' $1').trim()
-                                        label = label.charAt(0).toUpperCase() + label.slice(1)
-                                        result.push({ label: label, value: String(p[k]) })
-                                    }
-                                }
-                                return result
-                            }
+                            model: propertiesDialog._metadataKeys
                             delegate: PropRow { label: modelData.label; value: modelData.value }
+                        }
+
+                        Text {
+                            visible: propertiesDialog._metadataHint !== ""
+                            width: parent.width
+                            text: propertiesDialog._metadataHint
+                            color: Theme.muted
+                            font.pointSize: Theme.fontSmall
+                            font.italic: true
+                            wrapMode: Text.WordWrap
+                            topPadding: 4; bottomPadding: 4
                         }
                     }
 

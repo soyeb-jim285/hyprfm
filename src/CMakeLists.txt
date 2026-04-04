@@ -21,6 +21,7 @@ set(HYPRFM_SOURCES
     services/remoteaccessservice.cpp
     services/runtimefeaturesservice.cpp
     services/gitstatusservice.cpp
+    services/metadataextractor.cpp
     providers/thumbnailprovider.cpp
 )
 
@@ -145,6 +146,15 @@ target_link_libraries(hyprfm PRIVATE
 if(POPPLER_QT6_FOUND)
     target_link_libraries(hyprfm PRIVATE PkgConfig::POPPLER_QT6)
 endif()
+if(LIBEXIF_FOUND)
+    target_link_libraries(hyprfm PRIVATE PkgConfig::LIBEXIF)
+endif()
+if(TAGLIB_FOUND)
+    target_link_libraries(hyprfm PRIVATE PkgConfig::TAGLIB)
+endif()
+if(LIBAVFORMAT_FOUND)
+    target_link_libraries(hyprfm PRIVATE PkgConfig::LIBAVFORMAT)
+endif()
 
 target_include_directories(hyprfm PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -160,6 +170,15 @@ target_compile_definitions(hyprfm PRIVATE
 
 if(POPPLER_QT6_FOUND)
     target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_POPPLER_QT6=1)
+endif()
+if(LIBEXIF_FOUND)
+    target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_LIBEXIF=1)
+endif()
+if(TAGLIB_FOUND)
+    target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_TAGLIB=1)
+endif()
+if(LIBAVFORMAT_FOUND)
+    target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_LIBAVFORMAT=1)
 endif()
 
 install(TARGETS hyprfm DESTINATION bin)

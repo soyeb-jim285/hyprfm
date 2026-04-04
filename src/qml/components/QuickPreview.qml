@@ -15,6 +15,8 @@ Item {
     property var textPreview: ({ content: "", truncated: false, isBinary: false, error: "" })
     property var directoryPreview: ({ entries: [], truncated: false, error: "", count: 0 })
     property var pdfPreview: ({ localPath: "", pageCount: 0, error: "" })
+    property var fileMetadata: ({})
+    property string metadataHint: ""
     property int pdfPageIndex: 0
     property real pdfWheelAccumulator: 0
 
@@ -194,6 +196,10 @@ Item {
             directoryPreview = previewService.loadArchivePreview(filePath)
         else
             directoryPreview = ({ entries: [], truncated: false, error: "", count: 0 })
+
+        // Extract rich metadata
+        fileMetadata = metadataExtractor.extract(filePath)
+        metadataHint = metadataExtractor.missingDepsHint(fileProps.mimeType || "")
     }
 
     onActiveChanged: {
@@ -820,15 +826,39 @@ Item {
                             }
 
                             InfoBlock { label: "Kind"; value: root.detailKind; visibleWhenEmpty: true }
-                            InfoBlock { label: "Dimensions"; value: fileProps.imageDimensions || "" }
-                            InfoBlock { label: "Megapixels"; value: fileProps.imageMegapixels || "" }
-                            InfoBlock { label: "Bit depth"; value: fileProps.imageBitDepth || "" }
-                            InfoBlock { label: "Pages"; value: root.isPdf && root.pdfPreview.pageCount > 0 ? String(root.pdfPreview.pageCount) : "" }
                             InfoBlock { label: "Size"; value: fileProps.sizeText || "" }
+
+                            // Dynamic metadata from MetadataExtractor
+                            Repeater {
+                                model: {
+                                    var result = []
+                                    var md = root.fileMetadata || {}
+                                    var keys = Object.keys(md)
+                                    for (var i = 0; i < keys.length; ++i) {
+                                        if (md[keys[i]] !== "")
+                                            result.push({ label: keys[i], value: String(md[keys[i]]) })
+                                    }
+                                    return result
+                                }
+                                delegate: InfoBlock { label: modelData.label; value: modelData.value }
+                            }
+
                             InfoBlock { label: root.fileProps.originalPath ? "Original Location" : "Location"; value: root.sidebarPathLabel }
                             InfoBlock { label: "Deleted"; value: fileProps.deleted || "" }
                             InfoBlock { label: "Modified"; value: fileProps.modified || "" }
                             InfoBlock { label: "Contents"; value: fileProps.contentText || "" }
+
+                            // Missing dependency hint
+                            Text {
+                                width: parent.width
+                                visible: root.metadataHint !== ""
+                                text: root.metadataHint
+                                color: Theme.muted
+                                font.pointSize: Theme.fontSmall
+                                font.italic: true
+                                wrapMode: Text.WordWrap
+                                topPadding: 8
+                            }
 
                             Text {
                                 width: parent.width
