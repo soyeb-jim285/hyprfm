@@ -820,6 +820,9 @@ Item {
                             }
 
                             InfoBlock { label: "Kind"; value: root.detailKind; visibleWhenEmpty: true }
+                            InfoBlock { label: "Dimensions"; value: fileProps.imageDimensions || "" }
+                            InfoBlock { label: "Megapixels"; value: fileProps.imageMegapixels || "" }
+                            InfoBlock { label: "Bit depth"; value: fileProps.imageBitDepth || "" }
                             InfoBlock { label: "Pages"; value: root.isPdf && root.pdfPreview.pageCount > 0 ? String(root.pdfPreview.pageCount) : "" }
                             InfoBlock { label: "Size"; value: fileProps.sizeText || "" }
                             InfoBlock { label: root.fileProps.originalPath ? "Original Location" : "Location"; value: root.sidebarPathLabel }
