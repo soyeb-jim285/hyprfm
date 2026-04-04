@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QVariantList>
+#include <QVariantMap>
 #include <QStringList>
 #include <QStack>
 
@@ -40,6 +41,7 @@ public:
     Q_INVOKABLE void moveResolvedItems(const QVariantList &operations);
     Q_INVOKABLE void trashFiles(const QStringList &paths);
     Q_INVOKABLE bool rename(const QString &path, const QString &newName);
+    Q_INVOKABLE QVariantMap renameResolvedItems(const QVariantList &operations);
     Q_INVOKABLE void createFolder(const QString &parentPath, const QString &name);
     Q_INVOKABLE void createFile(const QString &parentPath, const QString &name);
 

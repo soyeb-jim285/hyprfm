@@ -6,6 +6,8 @@ MouseArea {
     required property var flickable
 
     property real wheelStep: 56
+    property real mouseWheelMultiplier: 1.0
+    property real touchpadMultiplier: 1.0
     property real minVelocity: 180
     property real maxVelocity: 5200
     property real kineticGain: 1.35
@@ -91,9 +93,10 @@ MouseArea {
     }
 
     function deltaFor(wheel) {
-        var rawDelta = wheel.pixelDelta.y !== 0
-            ? wheel.pixelDelta.y
-            : (wheel.angleDelta.y / 120.0) * wheelStep
+        var isTouchpad = wheel.pixelDelta.y !== 0
+        var rawDelta = isTouchpad
+            ? wheel.pixelDelta.y * touchpadMultiplier
+            : (wheel.angleDelta.y / 120.0) * wheelStep * mouseWheelMultiplier
 
         return wheel.inverted ? rawDelta : -rawDelta
     }

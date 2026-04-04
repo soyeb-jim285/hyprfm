@@ -20,13 +20,15 @@ Item {
     property bool splitViewEnabled: false
     property bool isTrashView: false
 
-    signal openRequested(string path)
+    signal openRequested(string path, bool isDir)
     signal openWithRequested(string path, string desktopFile)
+    signal openInNewTabRequested(string path)
     signal cutRequested(var paths)
     signal copyRequested(var paths)
     signal pasteRequested(string destPath)
     signal copyPathRequested(string path)
     signal renameRequested(string path)
+    signal bulkRenameRequested(var paths)
     signal trashRequested(var paths)
     signal restoreRequested(var paths)
     signal deleteRequested(var paths)
@@ -222,6 +224,8 @@ Item {
         }
         if (!isEmptySpace && targetPath !== "") {
             items.push({ text: "Open", shortcut: "Return", action: "open", icon: "ExternalLink" })
+            if (targetIsDir)
+                items.push({ text: "Open in New Tab", shortcut: "", action: "opennewtab", icon: "Folder" })
             if (!splitViewEnabled && !isTrashView) {
                 items.push({
                     text: targetIsDir ? "Open in Split View" : "Split View Here",
@@ -229,6 +233,8 @@ Item {
                     action: targetIsDir ? "split_open" : "split_here",
                     icon: "SquareSplitHorizontal"
                 })
+            } else if (splitViewEnabled) {
+                items.push({ text: "Close Split View", shortcut: "", action: "close_split", icon: "SquareSplitHorizontal" })
             }
             if (!targetIsDir && fileModel) {
                 var props = fileModel.fileProperties(targetPath)
@@ -275,7 +281,12 @@ Item {
                     items.push({ text: "Extract Here", shortcut: "", action: "extract", icon: "PackageOpen" })
 
                 items.push({ separator: true })
-                items.push({ text: "Rename...", shortcut: "F2", action: "rename", icon: "FolderPen" })
+                items.push({
+                    text: effectivePaths.length > 1 ? "Bulk Rename..." : "Rename...",
+                    shortcut: "F2",
+                    action: effectivePaths.length > 1 ? "bulkrename" : "rename",
+                    icon: "FolderPen"
+                })
                 items.push({ text: "Move to Trash", shortcut: "Delete", action: "trash", icon: "Trash", destructive: true })
             }
             items.push({ separator: true })
@@ -316,6 +327,8 @@ Item {
                 }
                 if (!splitViewEnabled)
                     items.push({ text: "Split View Here", shortcut: "", action: "split_here", icon: "SquareSplitHorizontal" })
+                else
+                    items.push({ text: "Close Split View", shortcut: "", action: "close_split", icon: "SquareSplitHorizontal" })
                 items.push({ separator: true })
                 items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
                 items.push({ text: "Properties", shortcut: "", action: "properties", icon: "Info" })
@@ -330,12 +343,14 @@ Item {
     function executeAction(action, extraData) {
         root.close()
         switch (action) {
-        case "open": openRequested(targetPath); break
+        case "open": openRequested(targetPath, targetIsDir || isEmptySpace); break
+        case "opennewtab": openInNewTabRequested(targetPath); break
         case "openwith": openWithRequested(targetPath, extraData); break
         case "cut": cutRequested(effectivePaths); break
         case "copy": copyRequested(effectivePaths); break
         case "copypath": copyPathRequested(targetPath); break
         case "rename": renameRequested(targetPath); break
+        case "bulkrename": bulkRenameRequested(effectivePaths); break
         case "trash": trashRequested(effectivePaths); break
         case "restore": restoreRequested(effectivePaths); break
         case "delete": deleteRequested(effectivePaths); break
@@ -347,6 +362,7 @@ Item {
         case "properties": propertiesRequested(targetPath); break
         case "split_open": splitViewRequested(targetPath); break
         case "split_here": splitViewRequested(effectiveDir); break
+        case "close_split": customActionRequested("close_split"); break
         case "view_grid": viewModeRequested("grid"); break
         case "view_list": viewModeRequested("list"); break
         case "view_detailed": viewModeRequested("detailed"); break

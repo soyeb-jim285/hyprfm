@@ -84,6 +84,16 @@ Item {
         return viewModel.data(viewModel.index(row, 0), 257 /* FileNameRole */) || ""
     }
 
+    function isDirForRow(row) {
+        if (!viewModel || row < 0)
+            return false
+
+        if (viewModel.isDir)
+            return viewModel.isDir(row)
+
+        return viewModel.data(viewModel.index(row, 0), 265 /* IsDirRole */) || false
+    }
+
     function rowForPath(path) {
         if (!path)
             return -1
@@ -141,13 +151,6 @@ Item {
             return
         }
 
-        if (event.key === Qt.Key_Escape && typeAheadBuffer.length > 0) {
-            typeAheadBuffer = ""
-            typeAheadTimer.stop()
-            event.accepted = true
-            return
-        }
-
         if (!isPrintableTypeAheadText(event.text))
             return
 
@@ -166,6 +169,35 @@ Item {
             listView.positionViewAtIndex(match, ListView.Contain)
         }
         event.accepted = true
+    }
+
+    function activateCurrentSelection() {
+        var idx = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
+        if (idx < 0)
+            return
+
+        root.fileActivated(pathForRow(idx), isDirForRow(idx))
+    }
+
+    function moveSelectionTo(index, extend) {
+        wheelScroller.stopAndSettle()
+        if (listView.count <= 0)
+            return
+
+        var next = Math.max(0, Math.min(listView.count - 1, index))
+        if (extend && lastSelectedIndex >= 0) {
+            var lo = Math.min(next, lastSelectedIndex)
+            var hi = Math.max(next, lastSelectedIndex)
+            var newSel = []
+            for (var i = lo; i <= hi; i++) newSel.push(i)
+            selectedIndices = newSel
+        } else {
+            selectedIndices = [next]
+            lastSelectedIndex = next
+        }
+
+        cursorIndex = next
+        listView.positionViewAtIndex(next, ListView.Contain)
     }
 
     Timer {
@@ -348,6 +380,8 @@ Item {
 
             function moveSelection(delta, extend) {
                 wheelScroller.stopAndSettle()
+                if (count <= 0)
+                    return
                 var current = root.cursorIndex >= 0 ? root.cursorIndex : (root.selectedIndices.length > 0 ? root.selectedIndices[root.selectedIndices.length - 1] : -1)
                 var next = Math.max(0, Math.min(count - 1, current + delta))
                 if (next === current && current >= 0) return
@@ -367,7 +401,34 @@ Item {
 
             Keys.onUpPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
             Keys.onDownPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
-            Keys.onPressed: (event) => root.handleTypeAhead(event)
+            Keys.onPressed: (event) => {
+                if (event.key === Qt.Key_Home) {
+                    root.moveSelectionTo(0, event.modifiers & Qt.ShiftModifier)
+                    event.accepted = true
+                    return
+                }
+                if (event.key === Qt.Key_End) {
+                    root.moveSelectionTo(count - 1, event.modifiers & Qt.ShiftModifier)
+                    event.accepted = true
+                    return
+                }
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    root.activateCurrentSelection()
+                    event.accepted = true
+                    return
+                }
+                if (event.key === Qt.Key_Escape) {
+                    if (root.typeAheadBuffer.length > 0) {
+                        root.typeAheadBuffer = ""
+                        typeAheadTimer.stop()
+                    } else if (root.selectedIndices.length > 0) {
+                        root.clearSelection()
+                    }
+                    event.accepted = true
+                    return
+                }
+                root.handleTypeAhead(event)
+            }
 
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
@@ -450,7 +511,7 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 source: "image://icon/" + detRow.fileIconName
                                 sourceSize: Qt.size(16, 16)
-                                asynchronous: true
+                                asynchronous: false
                             }
 
                             Text {
@@ -703,6 +764,11 @@ Item {
         anchors.fill: parent
         z: 12
         flickable: listView
+        wheelStep: 42
+        mouseWheelMultiplier: 0.75
+        minVelocity: 135
+        maxVelocity: 3900
+        kineticGain: 1.01
         onScrollStarted: root.interactionStarted()
     }
 

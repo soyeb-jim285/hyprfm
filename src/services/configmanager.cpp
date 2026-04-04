@@ -209,3 +209,38 @@ void ConfigManager::saveBookmarks(const QStringList &paths)
     if (QFile::exists(m_configPath))
         m_watcher.addPath(m_configPath);
 }
+
+void ConfigManager::saveSidebarWidth(int width)
+{
+    const int clampedWidth = qBound(160, width, 480);
+    m_sidebarWidth = clampedWidth;
+
+    const bool wasWatchingConfig = m_watcher.files().contains(m_configPath);
+    if (wasWatchingConfig)
+        m_watcher.removePath(m_configPath);
+
+    toml::table config;
+    if (QFile::exists(m_configPath)) {
+        try {
+            config = toml::parse_file(m_configPath.toStdString());
+        } catch (...) {}
+    }
+
+    toml::table sidebar;
+    if (auto existingSidebar = config["sidebar"].as_table())
+        sidebar = *existingSidebar;
+
+    sidebar.insert_or_assign("width", clampedWidth);
+    config.insert_or_assign("sidebar", std::move(sidebar));
+
+    std::ofstream ofs(m_configPath.toStdString());
+    if (ofs.is_open()) {
+        ofs << config;
+        ofs.close();
+    }
+
+    if (QFile::exists(m_configPath))
+        m_watcher.addPath(m_configPath);
+
+    emit configChanged();
+}

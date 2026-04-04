@@ -1,4 +1,4 @@
-qt_add_executable(hyprfm
+set(HYPRFM_SOURCES
     main.cpp
     services/configmanager.cpp
     services/themeloader.cpp
@@ -15,8 +15,15 @@ qt_add_executable(hyprfm
     models/searchproxymodel.cpp
     services/searchservice.cpp
     services/undomanager.cpp
+    services/previewservice.cpp
     providers/thumbnailprovider.cpp
 )
+
+if(POPPLER_QT6_FOUND)
+    list(APPEND HYPRFM_SOURCES providers/pdfpreviewprovider.cpp)
+endif()
+
+qt_add_executable(hyprfm ${HYPRFM_SOURCES})
 
 set_source_files_properties(qml/theme/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
@@ -48,6 +55,7 @@ list(APPEND hyprfm_qml_module_args
         qml/views/FileDetailedView.qml
         qml/views/KineticWheelScroller.qml
         qml/components/ContextMenu.qml
+        qml/components/BulkRenameDialog.qml
         qml/components/QuickPreview.qml
         qml/components/Toast.qml
         qml/components/RubberBand.qml
@@ -116,6 +124,10 @@ target_link_libraries(hyprfm PRIVATE
     Qt6::Svg
 )
 
+if(POPPLER_QT6_FOUND)
+    target_link_libraries(hyprfm PRIVATE PkgConfig::POPPLER_QT6)
+endif()
+
 target_include_directories(hyprfm PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
@@ -127,6 +139,10 @@ target_compile_definitions(hyprfm PRIVATE
     HYPRFM_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     HYPRFM_DATA_DIR="${HYPRFM_DATA_DIR}"
 )
+
+if(POPPLER_QT6_FOUND)
+    target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_POPPLER_QT6=1)
+endif()
 
 install(TARGETS hyprfm DESTINATION bin)
 install(FILES "${CMAKE_SOURCE_DIR}/dist/hyprfm.desktop" DESTINATION share/applications)

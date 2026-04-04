@@ -53,6 +53,7 @@ QString iconNameForSuffix(const QString &suffix)
         {"cpp", "text-x-generic"}, {"h", "text-x-generic"},
         {"py", "text-x-generic"}, {"js", "text-x-generic"},
         {"rs", "text-x-generic"}, {"go", "text-x-generic"},
+        {"tex", "text-x-generic"},
         {"sh", "text-x-script"}, {"bash", "text-x-script"},
         {"html", "text-html"}, {"css", "text-css"},
         {"json", "text-x-generic"}, {"xml", "text-xml"},

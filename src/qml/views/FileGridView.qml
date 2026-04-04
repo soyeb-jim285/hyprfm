@@ -39,6 +39,8 @@ GridView {
         Math.min(columnCount, Math.min(maxColumns, Math.max(1, Math.floor(width / minCellWidth))))
     )
     readonly property int labelHeight: 32  // two lines of text below icon
+    readonly property int iconRequestSize: 96 * Screen.devicePixelRatio
+    readonly property int thumbnailRequestSize: 256 * Screen.devicePixelRatio
 
     cellWidth: Math.floor(width / effectiveColumnCount)
     cellHeight: cellWidth  // square cells
@@ -58,6 +60,8 @@ GridView {
 
     function moveSelection(delta, extend) {
         wheelScroller.stopAndSettle()
+        if (count <= 0)
+            return
         var current = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
         var next = Math.max(0, Math.min(count - 1, current + delta))
         if (next === current && current >= 0) return
@@ -75,11 +79,59 @@ GridView {
         positionViewAtIndex(next, GridView.Contain)
     }
 
+    function moveSelectionTo(index, extend) {
+        wheelScroller.stopAndSettle()
+        if (count <= 0)
+            return
+
+        var next = Math.max(0, Math.min(count - 1, index))
+        if (extend && lastSelectedIndex >= 0) {
+            var lo = Math.min(next, lastSelectedIndex)
+            var hi = Math.max(next, lastSelectedIndex)
+            var newSel = []
+            for (var i = lo; i <= hi; i++) newSel.push(i)
+            selectedIndices = newSel
+        } else {
+            selectedIndices = [next]
+            lastSelectedIndex = next
+        }
+
+        cursorIndex = next
+        positionViewAtIndex(next, GridView.Contain)
+    }
+
     Keys.onLeftPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
     Keys.onRightPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
     Keys.onUpPressed: (event) => moveSelection(-effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
     Keys.onDownPressed: (event) => moveSelection(effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
-    Keys.onPressed: (event) => handleTypeAhead(event)
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Home) {
+            moveSelectionTo(0, event.modifiers & Qt.ShiftModifier)
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_End) {
+            moveSelectionTo(count - 1, event.modifiers & Qt.ShiftModifier)
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            activateCurrentSelection()
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Escape) {
+            if (typeAheadBuffer.length > 0) {
+                typeAheadBuffer = ""
+                typeAheadTimer.stop()
+            } else if (selectedIndices.length > 0) {
+                clearSelection()
+            }
+            event.accepted = true
+            return
+        }
+        handleTypeAhead(event)
+    }
 
     Timer {
         id: typeAheadTimer
@@ -143,6 +195,16 @@ GridView {
         return model.data(model.index(row, 0), 257 /* FileNameRole */) || ""
     }
 
+    function isDirForRow(row) {
+        if (!model || row < 0)
+            return false
+
+        if (model.isDir)
+            return model.isDir(row)
+
+        return model.data(model.index(row, 0), 265 /* IsDirRole */) || false
+    }
+
     function rowForPath(path) {
         if (!path)
             return -1
@@ -200,13 +262,6 @@ GridView {
             return
         }
 
-        if (event.key === Qt.Key_Escape && typeAheadBuffer.length > 0) {
-            typeAheadBuffer = ""
-            typeAheadTimer.stop()
-            event.accepted = true
-            return
-        }
-
         if (!isPrintableTypeAheadText(event.text))
             return
 
@@ -225,6 +280,14 @@ GridView {
             positionViewAtIndex(match, GridView.Contain)
         }
         event.accepted = true
+    }
+
+    function activateCurrentSelection() {
+        var idx = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
+        if (idx < 0)
+            return
+
+        root.fileActivated(pathForRow(idx), isDirForRow(idx))
     }
 
     function schedulePendingFocus() {
@@ -403,8 +466,8 @@ GridView {
             source: delegateItem.hasThumbnail
                 ? ("image://thumbnail/" + delegateItem.filePath)
                 : ""
-            sourceSize: Qt.size(root.iconSize * Screen.devicePixelRatio,
-                                root.iconSize * Screen.devicePixelRatio)
+            sourceSize: Qt.size(root.thumbnailRequestSize,
+                                root.thumbnailRequestSize)
             asynchronous: true
         }
 
@@ -417,8 +480,8 @@ GridView {
             width: root.iconSize
             height: root.iconSize
             source: "image://icon/" + delegateItem.fileIconName
-            sourceSize: Qt.size(root.iconSize, root.iconSize)
-            asynchronous: true
+            sourceSize: Qt.size(root.iconRequestSize, root.iconRequestSize)
+            asynchronous: false
         }
 
         // Hidden text to check if name fits in 2 lines
@@ -715,6 +778,11 @@ GridView {
         anchors.fill: parent
         z: 12
         flickable: root
+        wheelStep: 42
+        mouseWheelMultiplier: 0.75
+        minVelocity: 135
+        maxVelocity: 3900
+        kineticGain: 1.01
         onScrollStarted: root.interactionStarted()
     }
 }

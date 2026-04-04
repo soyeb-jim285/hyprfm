@@ -46,6 +46,7 @@ public:
     QVariantList customContextActions() const;
     Q_INVOKABLE QString shortcut(const QString &action) const;
     Q_INVOKABLE void saveBookmarks(const QStringList &paths);
+    Q_INVOKABLE void saveSidebarWidth(int width);
 
 signals:
     void configChanged();

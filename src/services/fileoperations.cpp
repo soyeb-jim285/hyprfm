@@ -8,6 +8,7 @@
 #include <QMimeData>
 #include <QPixmap>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QUuid>
@@ -131,6 +132,47 @@ QStringList nameParts(const QString &name)
     if (dotIndex > 0)
         return {name.left(dotIndex), name.mid(dotIndex)};
     return {name, QString()};
+}
+
+struct RenameOperation {
+    QString sourcePath;
+    QString targetPath;
+    QString tempPath;
+};
+
+QVariantMap renameResult(bool success, const QString &error = {}, const QStringList &changedPaths = {})
+{
+    QVariantMap result;
+    result["success"] = success;
+    result["error"] = error;
+    result["changedPaths"] = changedPaths;
+    return result;
+}
+
+QString temporaryRenamePathFor(const QString &sourcePath)
+{
+    const QDir dir = QFileInfo(sourcePath).dir();
+
+    QString tempPath;
+    do {
+        tempPath = dir.filePath(QStringLiteral(".hyprfm-rename-%1.tmp")
+                                    .arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+    } while (QFileInfo::exists(tempPath));
+
+    return tempPath;
+}
+
+QString renameTargetError(const QString &targetPath)
+{
+    const QString fileName = QFileInfo(targetPath).fileName();
+    if (fileName.isEmpty() || fileName == "." || fileName == "..")
+        return QStringLiteral("Enter a valid target name");
+
+    const QString parentDir = QFileInfo(targetPath).absolutePath();
+    if (parentDir.isEmpty() || !QDir(parentDir).exists())
+        return QStringLiteral("Target folder does not exist");
+
+    return {};
 }
 
 }
@@ -357,9 +399,108 @@ void FileOperations::transferResolvedItems(const QVariantList &operations, bool 
 
 bool FileOperations::rename(const QString &path, const QString &newName)
 {
-    QFileInfo info(path);
-    QString newPath = info.dir().filePath(newName);
-    return QFile::rename(path, newPath);
+    const QFileInfo info(path);
+    const QVariantMap result = renameResolvedItems({QVariantMap {
+        {"sourcePath", path},
+        {"targetPath", info.dir().filePath(newName)}
+    }});
+    return result.value("success").toBool();
+}
+
+QVariantMap FileOperations::renameResolvedItems(const QVariantList &operations)
+{
+    QList<RenameOperation> renameOperations;
+    QSet<QString> sourcePaths;
+    QSet<QString> changedSourcePaths;
+    QSet<QString> finalTargetPaths;
+
+    for (const QVariant &variant : operations) {
+        const QVariantMap item = variant.toMap();
+        const QString sourcePath = QDir::cleanPath(item.value("sourcePath").toString());
+        const QString targetPath = QDir::cleanPath(item.value("targetPath").toString());
+
+        if (sourcePath.isEmpty() || targetPath.isEmpty())
+            return renameResult(false, QStringLiteral("Rename operation is missing a path"));
+
+        if (sourcePaths.contains(sourcePath))
+            return renameResult(false, QStringLiteral("Cannot rename the same item twice in one batch"));
+
+        sourcePaths.insert(sourcePath);
+
+        const QString targetError = renameTargetError(targetPath);
+        if (!targetError.isEmpty())
+            return renameResult(false, targetError);
+
+        if (finalTargetPaths.contains(targetPath))
+            return renameResult(false, QStringLiteral("Two items cannot end with the same name"));
+
+        finalTargetPaths.insert(targetPath);
+
+        if (!QFileInfo::exists(sourcePath)) {
+            return renameResult(false, QStringLiteral("%1 no longer exists")
+                .arg(QFileInfo(sourcePath).fileName()));
+        }
+
+        if (sourcePath == targetPath)
+            continue;
+
+        changedSourcePaths.insert(sourcePath);
+        renameOperations.append({sourcePath, targetPath, temporaryRenamePathFor(sourcePath)});
+    }
+
+    for (const RenameOperation &op : renameOperations) {
+        if (QFileInfo::exists(op.targetPath) && !changedSourcePaths.contains(op.targetPath)) {
+            return renameResult(false, QStringLiteral("%1 already exists")
+                .arg(QFileInfo(op.targetPath).fileName()));
+        }
+    }
+
+    if (renameOperations.isEmpty())
+        return renameResult(true, {}, {});
+
+    QList<int> stagedIndices;
+    QList<int> finalizedIndices;
+    auto rollback = [&renameOperations, &stagedIndices, &finalizedIndices]() {
+        for (int i = finalizedIndices.size() - 1; i >= 0; --i) {
+            const RenameOperation &op = renameOperations.at(finalizedIndices.at(i));
+            if (QFileInfo::exists(op.targetPath))
+                QFile::rename(op.targetPath, op.sourcePath);
+        }
+
+        for (int i = stagedIndices.size() - 1; i >= 0; --i) {
+            const RenameOperation &op = renameOperations.at(stagedIndices.at(i));
+            if (QFileInfo::exists(op.tempPath))
+                QFile::rename(op.tempPath, op.sourcePath);
+        }
+    };
+
+    for (int i = 0; i < renameOperations.size(); ++i) {
+        const RenameOperation &op = renameOperations.at(i);
+        if (!QFile::rename(op.sourcePath, op.tempPath)) {
+            rollback();
+            return renameResult(false, QStringLiteral("Could not prepare %1 for renaming")
+                .arg(QFileInfo(op.sourcePath).fileName()));
+        }
+
+        stagedIndices.append(i);
+    }
+
+    for (int i = 0; i < renameOperations.size(); ++i) {
+        const RenameOperation &op = renameOperations.at(i);
+        if (!QFile::rename(op.tempPath, op.targetPath)) {
+            rollback();
+            return renameResult(false, QStringLiteral("Could not rename %1")
+                .arg(QFileInfo(op.sourcePath).fileName()));
+        }
+
+        finalizedIndices.append(i);
+    }
+
+    QStringList changedPaths;
+    for (const RenameOperation &op : renameOperations)
+        changedPaths.append(op.targetPath);
+
+    return renameResult(true, {}, changedPaths);
 }
 
 void FileOperations::createFolder(const QString &parentPath, const QString &name)

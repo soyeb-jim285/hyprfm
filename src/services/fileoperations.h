@@ -5,6 +5,7 @@
 #include <QByteArray>
 #include <QStringList>
 #include <QVariantList>
+#include <QVariantMap>
 
 class FileOperations : public QObject
 {
@@ -34,6 +35,7 @@ public:
     QString conflictBackupPath(const QString &targetPath) const;
     Q_INVOKABLE void deleteFiles(const QStringList &paths);
     Q_INVOKABLE bool rename(const QString &path, const QString &newName);
+    Q_INVOKABLE QVariantMap renameResolvedItems(const QVariantList &operations);
     Q_INVOKABLE void createFolder(const QString &parentPath, const QString &name);
     Q_INVOKABLE void createFile(const QString &parentPath, const QString &name);
     Q_INVOKABLE void openFile(const QString &path);

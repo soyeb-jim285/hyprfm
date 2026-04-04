@@ -44,6 +44,8 @@ ListView {
 
     function moveSelection(delta, extend) {
         wheelScroller.stopAndSettle()
+        if (count <= 0)
+            return
         var current = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
         var next = Math.max(0, Math.min(count - 1, current + delta))
         if (next === current && current >= 0) return
@@ -61,9 +63,57 @@ ListView {
         positionViewAtIndex(next, ListView.Contain)
     }
 
+    function moveSelectionTo(index, extend) {
+        wheelScroller.stopAndSettle()
+        if (count <= 0)
+            return
+
+        var next = Math.max(0, Math.min(count - 1, index))
+        if (extend && lastSelectedIndex >= 0) {
+            var lo = Math.min(next, lastSelectedIndex)
+            var hi = Math.max(next, lastSelectedIndex)
+            var newSel = []
+            for (var i = lo; i <= hi; i++) newSel.push(i)
+            selectedIndices = newSel
+        } else {
+            selectedIndices = [next]
+            lastSelectedIndex = next
+        }
+
+        cursorIndex = next
+        positionViewAtIndex(next, ListView.Contain)
+    }
+
     Keys.onUpPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
     Keys.onDownPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
-    Keys.onPressed: (event) => handleTypeAhead(event)
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Home) {
+            moveSelectionTo(0, event.modifiers & Qt.ShiftModifier)
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_End) {
+            moveSelectionTo(count - 1, event.modifiers & Qt.ShiftModifier)
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            activateCurrentSelection()
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Escape) {
+            if (typeAheadBuffer.length > 0) {
+                typeAheadBuffer = ""
+                typeAheadTimer.stop()
+            } else if (selectedIndices.length > 0) {
+                clearSelection()
+            }
+            event.accepted = true
+            return
+        }
+        handleTypeAhead(event)
+    }
 
     Timer {
         id: typeAheadTimer
@@ -127,6 +177,16 @@ ListView {
         return model.data(model.index(row, 0), 257 /* FileNameRole */) || ""
     }
 
+    function isDirForRow(row) {
+        if (!model || row < 0)
+            return false
+
+        if (model.isDir)
+            return model.isDir(row)
+
+        return model.data(model.index(row, 0), 265 /* IsDirRole */) || false
+    }
+
     function rowForPath(path) {
         if (!path)
             return -1
@@ -184,13 +244,6 @@ ListView {
             return
         }
 
-        if (event.key === Qt.Key_Escape && typeAheadBuffer.length > 0) {
-            typeAheadBuffer = ""
-            typeAheadTimer.stop()
-            event.accepted = true
-            return
-        }
-
         if (!isPrintableTypeAheadText(event.text))
             return
 
@@ -209,6 +262,14 @@ ListView {
             positionViewAtIndex(match, ListView.Contain)
         }
         event.accepted = true
+    }
+
+    function activateCurrentSelection() {
+        var idx = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
+        if (idx < 0)
+            return
+
+        root.fileActivated(pathForRow(idx), isDirForRow(idx))
     }
 
     function schedulePendingFocus() {
@@ -306,7 +367,7 @@ ListView {
                     anchors.verticalCenter: parent.verticalCenter
                     source: "image://icon/" + rowItem.fileIconName
                     sourceSize: Qt.size(20, 20)
-                    asynchronous: true
+                    asynchronous: false
                 }
 
                 // Name (fills remaining space)
@@ -535,6 +596,11 @@ ListView {
         anchors.fill: parent
         z: 12
         flickable: root
+        wheelStep: 42
+        mouseWheelMultiplier: 0.75
+        minVelocity: 135
+        maxVelocity: 3900
+        kineticGain: 1.01
         onScrollStarted: root.interactionStarted()
     }
 }

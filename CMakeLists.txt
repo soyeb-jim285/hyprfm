@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(hyprfm VERSION 0.3.1 LANGUAGES CXX)
 
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(POPPLER_QT6 QUIET IMPORTED_TARGET poppler-qt6)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)

@@ -42,6 +42,7 @@ signals:
     void activeIndexChanged();
     void countChanged();
     void lastTabClosed();
+    void sessionChanged();
 
 private:
     void connectTab(int row, TabModel *tab);

@@ -47,6 +47,7 @@ ApplicationWindow {
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
                 splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
                 root.applyActiveTabSort()
+                root.scheduleActivePaneFocus()
             }
         }
         function onLastTabClosed() {
@@ -62,6 +63,7 @@ ApplicationWindow {
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
                 root.setPaneRecents("primary", false)
                 root.clearPaneSearch("primary")
+                root.scheduleActivePaneFocus()
             }
         }
         function onSecondaryCurrentPathChanged() {
@@ -69,6 +71,7 @@ ApplicationWindow {
                 splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
                 root.setPaneRecents("secondary", false)
                 root.clearPaneSearch("secondary")
+                root.scheduleActivePaneFocus()
             }
         }
         function onSortChanged() {
@@ -126,6 +129,12 @@ ApplicationWindow {
 
     // ── Sidebar visibility (local property; config.sidebarVisible is read-only) ─
     property bool sidebarVisible: config.sidebarVisible
+    property int sidebarWidth: config.sidebarWidth
+    readonly property int minSidebarWidth: 160
+    readonly property int maxSidebarWidth: 480
+    property bool sidebarResizeActive: false
+    property real sidebarResizeStartGlobalX: 0
+    property int sidebarResizeStartWidth: 0
 
     // ── Search state ──────────────────────────────────────────────────────────
     property var debounceTimer: null
@@ -145,6 +154,10 @@ ApplicationWindow {
         return pane === "secondary" ? splitFsModel : fsModel
     }
 
+    function clampedSidebarWidth(width) {
+        return Math.max(minSidebarWidth, Math.min(maxSidebarWidth, Math.round(width)))
+    }
+
     function panePath(pane) {
         if (!tabModel.activeTab)
             return fsModel.homePath()
@@ -152,6 +165,11 @@ ApplicationWindow {
         return pane === "secondary"
             ? tabModel.activeTab.secondaryCurrentPath
             : tabModel.activeTab.currentPath
+    }
+
+    function parentDirForPath(path) {
+        var slashIndex = path.lastIndexOf("/")
+        return slashIndex > 0 ? path.substring(0, slashIndex) : "/"
     }
 
     function paneIsRecents(pane) {
@@ -280,6 +298,7 @@ ApplicationWindow {
     function shouldFocusActivePane() {
         return root.active
             && !root.searchMode
+            && !bulkRenameDialog.visible
             && !renameDialog.visible
             && !newFolderDialog.visible
             && !newFileDialog.visible
@@ -333,6 +352,17 @@ ApplicationWindow {
 
     function navigateActivePaneTo(path) {
         navigatePaneTo(activePane, path)
+    }
+
+    function openPathInNewTab(path) {
+        if (!path)
+            return
+
+        root.setPaneRecents(root.activePane, false)
+        tabModel.addTab()
+        if (tabModel.activeTab)
+            tabModel.activeTab.navigateTo(path)
+        root.scheduleActivePaneFocus()
     }
 
     function resetTransferConflictState() {
@@ -638,6 +668,50 @@ ApplicationWindow {
         return paths
     }
 
+    function openRenameDialogForPath(path) {
+        if (!path)
+            return
+
+        root.renameTargetPath = path
+        renameField.text = path.substring(path.lastIndexOf("/") + 1)
+        renameDialog.open()
+    }
+
+    function openBulkRenameDialog(paths) {
+        if (!paths || paths.length < 2)
+            return
+
+        bulkRenameDialog.openForPaths(paths)
+    }
+
+    function openRenameWorkflow(paths) {
+        if (!paths || paths.length === 0)
+            return
+
+        if (paths.length === 1)
+            openRenameDialogForPath(paths[0])
+        else
+            openBulkRenameDialog(paths)
+    }
+
+    function handleBulkRenameApplied(paths) {
+        if (!paths || paths.length === 0) {
+            root.scheduleActivePaneFocus()
+            return
+        }
+
+        if (!root.paneIsRecents(root.activePane) && !root.paneSearchMode(root.activePane)) {
+            var firstPath = paths[0]
+            if (root.parentDirForPath(firstPath) === panePath(root.activePane)) {
+                Qt.callLater(function() {
+                    root.focusPathInPane(root.activePane, firstPath, true)
+                })
+            }
+        }
+
+        root.scheduleActivePaneFocus()
+    }
+
     // ── Helper: list of all file paths in current directory (for preview cycling)
     function getDirectoryFiles() {
         var files = []
@@ -731,6 +805,11 @@ ApplicationWindow {
     Connections {
         target: splitSearchService
         function onSearchFinished() { root.selectFirstSearchResult("secondary") }
+    }
+
+    BulkRenameDialog {
+        id: bulkRenameDialog
+        onRenameApplied: (paths) => root.handleBulkRenameApplied(paths)
     }
 
     // ── Rename dialog ───────────────────────────────────────────────────────
@@ -1842,7 +1921,13 @@ ApplicationWindow {
         currentSortBy: tabModel.activeTab ? tabModel.activeTab.sortBy : "name"
         currentSortAscending: tabModel.activeTab ? tabModel.activeTab.sortAscending : true
 
-        onOpenRequested: (path) => fileOps.openFile(path)
+        onOpenRequested: (path, isDir) => {
+            if (isDir)
+                root.navigateActivePaneTo(path)
+            else
+                fileOps.openFile(path)
+        }
+        onOpenInNewTabRequested: (path) => root.openPathInNewTab(path)
         onOpenWithRequested: (path, desktopFile) => fileOps.openFileWith(path, desktopFile)
 
         onCutRequested: (paths) => clipboard.cut(paths)
@@ -1855,12 +1940,8 @@ ApplicationWindow {
 
         onCopyPathRequested: (path) => fileOps.copyPathToClipboard(path)
 
-        onRenameRequested: (path) => {
-            root.renameTargetPath = path
-            var name = path.substring(path.lastIndexOf("/") + 1)
-            renameField.text = name
-            renameDialog.open()
-        }
+        onRenameRequested: (path) => root.openRenameDialogForPath(path)
+        onBulkRenameRequested: (paths) => root.openBulkRenameDialog(paths)
 
         onTrashRequested: (paths) => undoManager.trashFiles(paths)
         onRestoreRequested: (paths) => fileOps.restoreFromTrash(paths)
@@ -1898,6 +1979,11 @@ ApplicationWindow {
 
         onSplitViewRequested: (path) => {
             root.openPathInSplitView(path)
+        }
+
+        onCustomActionRequested: (action) => {
+            if (action === "close_split")
+                root.toggleSplitView()
         }
 
         onViewModeRequested: (mode) => {
@@ -1941,10 +2027,7 @@ ApplicationWindow {
 
         onCustomActionRequested: (action) => {
             if (action === "opennewtab") {
-                root.setPaneRecents(root.activePane, false)
-                tabModel.addTab()
-                if (tabModel.activeTab)
-                    tabModel.activeTab.navigateTo(sidebarContextMenu.targetPath)
+                root.openPathInNewTab(sidebarContextMenu.targetPath)
             } else if (action === "emptytrash") {
                 emptyTrashConfirmDialog.open()
             } else if (action === "removebookmark") {
@@ -2120,12 +2203,7 @@ ApplicationWindow {
         sequence: config.shortcut("rename")
         onActivated: {
             var paths = getSelectedPaths()
-            if (paths.length === 1) {
-                root.renameTargetPath = paths[0]
-                var name = paths[0].substring(paths[0].lastIndexOf("/") + 1)
-                renameField.text = name
-                renameDialog.open()
-            }
+            root.openRenameWorkflow(paths)
         }
     }
 
@@ -2163,6 +2241,7 @@ ApplicationWindow {
             }
             var paths = getSelectedPaths()
             if (paths.length === 0) return
+            quickPreview.fileModel = root.paneBaseModel(activePane)
             quickPreview.filePath = paths[0]
             quickPreview.directoryFiles = getDirectoryFiles()
             quickPreview.active = true
@@ -2183,6 +2262,7 @@ ApplicationWindow {
         sequence: "Escape"
         enabled: root.searchMode
                  && !quickPreview.active
+                 && !bulkRenameDialog.visible
                  && !renameDialog.visible
                  && !newFolderDialog.visible
                  && !newFileDialog.visible
@@ -2325,16 +2405,18 @@ ApplicationWindow {
 
         // Sidebar (full height, animated)
         Item {
-            Layout.preferredWidth: root.sidebarVisible ? config.sidebarWidth : 0
+            id: sidebarHost
+            Layout.preferredWidth: root.sidebarVisible ? root.sidebarWidth : 0
             Layout.fillHeight: true
             clip: true
 
             Behavior on Layout.preferredWidth {
+                enabled: !root.sidebarResizeActive
                 NumberAnimation { duration: 200; easing.type: Easing.InOutCubic }
             }
 
             Sidebar {
-                width: config.sidebarWidth
+                width: root.sidebarWidth
                 height: parent.height
                 currentPath: panePath(activePane)
                 trashPath: root.unifiedTrashPath
@@ -2356,6 +2438,53 @@ ApplicationWindow {
                     root.setPaneRecents(root.activePane, true)
                 }
                 onCollapseClicked: root.sidebarVisible = !root.sidebarVisible
+            }
+
+            Rectangle {
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.right: parent.right
+                width: 1
+                color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, sidebarResizeHandle.containsMouse || root.sidebarResizeActive ? 0.22 : 0.08)
+            }
+
+            MouseArea {
+                id: sidebarResizeHandle
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.right: parent.right
+                width: 10
+                hoverEnabled: true
+                enabled: root.sidebarVisible
+                cursorShape: Qt.SizeHorCursor
+                z: 10
+
+                onPressed: (mouse) => {
+                    root.sidebarResizeActive = true
+                    root.sidebarResizeStartGlobalX = sidebarResizeHandle.mapToItem(mainContent, mouse.x, mouse.y).x
+                    root.sidebarResizeStartWidth = root.sidebarWidth
+                    mouse.accepted = true
+                }
+
+                onPositionChanged: (mouse) => {
+                    if (!pressed)
+                        return
+                    var globalX = sidebarResizeHandle.mapToItem(mainContent, mouse.x, mouse.y).x
+                    root.sidebarWidth = root.clampedSidebarWidth(root.sidebarResizeStartWidth + (globalX - root.sidebarResizeStartGlobalX))
+                    mouse.accepted = true
+                }
+
+                onReleased: {
+                    root.sidebarResizeActive = false
+                    config.saveSidebarWidth(root.sidebarWidth)
+                }
+
+                onCanceled: {
+                    root.sidebarResizeActive = false
+                    config.saveSidebarWidth(root.sidebarWidth)
+                }
+
+                preventStealing: true
             }
         }
 
@@ -2589,7 +2718,18 @@ ApplicationWindow {
         id: quickPreview
         anchors.fill: parent
         z: 100
-        onClosed: quickPreview.active = false
+        onOpenRequested: (path, isDirectory) => {
+            if (isDirectory) {
+                root.navigateActivePaneTo(path)
+            } else {
+                fileOps.openFile(path)
+                recentFiles.addRecent(path)
+            }
+        }
+        onClosed: {
+            quickPreview.active = false
+            root.scheduleActivePaneFocus()
+        }
     }
 
     // ── Toast notifications ──────────────────────────────────────────────────

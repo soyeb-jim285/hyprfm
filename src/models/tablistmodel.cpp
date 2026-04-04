@@ -1,5 +1,32 @@
 #include "models/tablistmodel.h"
+#include <QDir>
 #include <QJsonObject>
+#include <QFileInfo>
+#include <QUrl>
+
+namespace {
+
+QString normalizedSessionPath(const QString &path)
+{
+    if (path.isEmpty())
+        return QDir::homePath();
+
+    if (QUrl(path).scheme() == "trash")
+        return path;
+
+    QFileInfo info(path);
+    QString candidate = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+    while (!candidate.isEmpty() && !QFileInfo::exists(candidate)) {
+        const QString parent = QFileInfo(candidate).absolutePath();
+        if (parent == candidate)
+            break;
+        candidate = parent;
+    }
+
+    return QFileInfo::exists(candidate) ? QDir(candidate).absolutePath() : QDir::homePath();
+}
+
+}
 
 TabListModel::TabListModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -17,7 +44,12 @@ void TabListModel::connectTab(int row, TabModel *tab)
             QModelIndex mi = index(idx);
             emit dataChanged(mi, mi, {TitleRole, PathRole});
         }
+        emit sessionChanged();
     });
+    connect(tab, &TabModel::secondaryCurrentPathChanged, this, &TabListModel::sessionChanged);
+    connect(tab, &TabModel::viewModeChanged, this, &TabListModel::sessionChanged);
+    connect(tab, &TabModel::splitViewEnabledChanged, this, &TabListModel::sessionChanged);
+    connect(tab, &TabModel::sortChanged, this, &TabListModel::sessionChanged);
 }
 
 int TabListModel::rowCount(const QModelIndex &) const
@@ -55,6 +87,7 @@ void TabListModel::setActiveIndex(int index)
     if (index >= 0 && index < m_tabs.size() && m_activeIndex != index) {
         m_activeIndex = index;
         emit activeIndexChanged();
+        emit sessionChanged();
     }
 }
 
@@ -81,6 +114,7 @@ void TabListModel::addTab()
     endInsertRows();
     setActiveIndex(m_tabs.size() - 1);
     emit countChanged();
+    emit sessionChanged();
 }
 
 void TabListModel::closeTab(int index)
@@ -116,6 +150,7 @@ void TabListModel::closeTab(int index)
         emit activeIndexChanged();
 
     emit countChanged();
+    emit sessionChanged();
 }
 
 void TabListModel::reopenClosedTab()
@@ -138,6 +173,7 @@ void TabListModel::reopenClosedTab()
     endInsertRows();
     setActiveIndex(m_tabs.size() - 1);
     emit countChanged();
+    emit sessionChanged();
 }
 
 QJsonArray TabListModel::saveSession() const
@@ -168,10 +204,10 @@ void TabListModel::restoreSession(const QJsonArray &tabs, int activeIdx)
     for (const auto &val : tabs) {
         QJsonObject obj = val.toObject();
         auto *tab = new TabModel(this);
-        tab->navigateTo(obj.value("path").toString());
+        tab->navigateTo(normalizedSessionPath(obj.value("path").toString()));
         tab->setViewMode(obj.value("viewMode").toString("grid"));
         tab->setSplitViewEnabled(obj.value("splitViewEnabled").toBool(false));
-        tab->setSecondaryCurrentPath(obj.value("secondaryPath").toString(tab->currentPath()));
+        tab->setSecondaryCurrentPath(normalizedSessionPath(obj.value("secondaryPath").toString(tab->currentPath())));
         tab->setSortBy(obj.value("sortBy").toString("name"));
         tab->setSortAscending(obj.value("sortAscending").toBool(true));
         m_tabs.append(tab);
@@ -182,4 +218,5 @@ void TabListModel::restoreSession(const QJsonArray &tabs, int activeIdx)
     m_activeIndex = qBound(0, activeIdx, m_tabs.size() - 1);
     emit activeIndexChanged();
     emit countChanged();
+    emit sessionChanged();
 }

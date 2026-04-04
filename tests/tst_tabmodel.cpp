@@ -1,6 +1,9 @@
 #include <QTest>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QAbstractItemModelTester>
+#include <QFileInfo>
 #include "models/tabmodel.h"
 #include "models/tablistmodel.h"
 
@@ -326,6 +329,40 @@ private slots:
         model.closeTab(1);
         QVERIFY(model.activeIndex() >= 0);
         QVERIFY(model.activeIndex() < model.rowCount());
+    }
+
+    void testTabListModelSessionChanged()
+    {
+        TabListModel model;
+        QSignalSpy sessionSpy(&model, &TabListModel::sessionChanged);
+
+        model.activeTab()->navigateTo("/tmp");
+        QVERIFY(sessionSpy.count() >= 1);
+
+        sessionSpy.clear();
+        model.addTab();
+        QVERIFY(sessionSpy.count() >= 1);
+    }
+
+    void testRestoreSessionFallsBackToExistingPath()
+    {
+        TabListModel model;
+
+        QJsonArray tabs;
+        QJsonObject tab;
+        tab["path"] = "/definitely/missing/path/for/hyprfm";
+        tab["viewMode"] = "grid";
+        tab["splitViewEnabled"] = false;
+        tab["secondaryPath"] = "/another/missing/path";
+        tab["sortBy"] = "name";
+        tab["sortAscending"] = true;
+        tabs.append(tab);
+
+        model.restoreSession(tabs, 0);
+
+        QVERIFY(model.activeTab() != nullptr);
+        QVERIFY(QFileInfo::exists(model.activeTab()->currentPath()));
+        QVERIFY(QFileInfo::exists(model.activeTab()->secondaryCurrentPath()));
     }
 };
 

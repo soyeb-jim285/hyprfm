@@ -106,6 +106,20 @@ QVariantList buildOperations(const QStringList &sources, const QStringList &targ
     return operations;
 }
 
+QVariantList changedRenameOperations(const QVariantList &operations)
+{
+    QVariantList changed;
+    for (const QVariant &variant : operations) {
+        const QVariantMap item = variant.toMap();
+        const QString sourcePath = QDir::cleanPath(item.value("sourcePath").toString());
+        const QString targetPath = QDir::cleanPath(item.value("targetPath").toString());
+        if (!sourcePath.isEmpty() && !targetPath.isEmpty() && sourcePath != targetPath)
+            changed.append(item);
+    }
+
+    return changed;
+}
+
 bool hasBackupPaths(const QStringList &backupPaths)
 {
     for (const QString &backupPath : backupPaths) {
@@ -207,13 +221,25 @@ void UndoManager::trashFiles(const QStringList &paths)
 
 bool UndoManager::rename(const QString &path, const QString &newName)
 {
-    QString oldName = QFileInfo(path).fileName();
-    bool ok = m_fileOps->rename(path, newName);
-    if (ok) {
-        QString dir = QFileInfo(path).absolutePath();
-        record({UndoRecord::Rename, {path}, dir, oldName, newName, {dir + "/" + newName}, {}});
+    const QFileInfo info(path);
+    const QVariantMap result = renameResolvedItems({QVariantMap {
+        {"sourcePath", path},
+        {"targetPath", info.dir().filePath(newName)}
+    }});
+    return result.value("success").toBool();
+}
+
+QVariantMap UndoManager::renameResolvedItems(const QVariantList &operations)
+{
+    const QVariantList changedOperations = changedRenameOperations(operations);
+    const QVariantMap result = m_fileOps->renameResolvedItems(operations);
+    if (result.value("success").toBool() && !changedOperations.isEmpty()) {
+        const QStringList sourcePaths = operationsField(changedOperations, "sourcePath");
+        const QStringList targetPaths = operationsField(changedOperations, "targetPath");
+        record({UndoRecord::Rename, sourcePaths, {}, {}, {}, targetPaths, {}});
     }
-    return ok;
+
+    return result;
 }
 
 void UndoManager::createFolder(const QString &parentPath, const QString &name)
@@ -277,10 +303,7 @@ void UndoManager::executeUndo(const UndoRecord &rec)
         break;
 
     case UndoRecord::Rename: {
-        // Undo rename = rename back
-        QString dir = rec.destination;
-        QString currentPath = dir + "/" + rec.newName;
-        m_fileOps->rename(currentPath, rec.oldName);
+        m_fileOps->renameResolvedItems(buildOperations(rec.createdPaths, rec.sourcePaths));
         break;
     }
 
@@ -328,8 +351,7 @@ void UndoManager::executeRedo(const UndoRecord &rec)
         break;
 
     case UndoRecord::Rename: {
-        QString path = rec.destination + "/" + rec.oldName;
-        m_fileOps->rename(path, rec.newName);
+        m_fileOps->renameResolvedItems(buildOperations(rec.sourcePaths, rec.createdPaths));
         break;
     }
 

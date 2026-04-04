@@ -122,6 +122,78 @@ private slots:
             QCOMPARE(QString::fromUtf8(file.readAll()), QString("old value"));
         }
     }
+
+    void testUndoRedoBulkRenameSwap()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const QString aPath = dir.path() + "/a.txt";
+        const QString bPath = dir.path() + "/b.txt";
+
+        {
+            QFile file(aPath);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("aaa");
+        }
+        {
+            QFile file(bPath);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("bbb");
+        }
+
+        FileOperations fileOps;
+        UndoManager undoManager(&fileOps);
+
+        QVariantMap renameA;
+        renameA["sourcePath"] = aPath;
+        renameA["targetPath"] = bPath;
+
+        QVariantMap renameB;
+        renameB["sourcePath"] = bPath;
+        renameB["targetPath"] = aPath;
+
+        const QVariantMap result = undoManager.renameResolvedItems({renameA, renameB});
+        QCOMPARE(result.value("success").toBool(), true);
+        QVERIFY(undoManager.canUndo());
+
+        {
+            QFile file(aPath);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(file.readAll()), QString("bbb"));
+        }
+        {
+            QFile file(bPath);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(file.readAll()), QString("aaa"));
+        }
+
+        undoManager.undo();
+
+        {
+            QFile file(aPath);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(file.readAll()), QString("aaa"));
+        }
+        {
+            QFile file(bPath);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(file.readAll()), QString("bbb"));
+        }
+
+        undoManager.redo();
+
+        {
+            QFile file(aPath);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(file.readAll()), QString("bbb"));
+        }
+        {
+            QFile file(bPath);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(file.readAll()), QString("aaa"));
+        }
+    }
 };
 
 QTEST_MAIN(TestUndoManager)

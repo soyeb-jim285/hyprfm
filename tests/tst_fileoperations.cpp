@@ -311,6 +311,78 @@ private slots:
         QVERIFY(QFile::exists(dir.path() + "/file with spaces.txt"));
     }
 
+    void testRenameResolvedItemsSwapsNames()
+    {
+        TestDir dir;
+        const QString aPath = dir.createFile("a.txt", "aaa");
+        const QString bPath = dir.createFile("b.txt", "bbb");
+
+        FileOperations ops;
+
+        QVariantMap renameA;
+        renameA["sourcePath"] = aPath;
+        renameA["targetPath"] = bPath;
+
+        QVariantMap renameB;
+        renameB["sourcePath"] = bPath;
+        renameB["targetPath"] = aPath;
+
+        const QVariantMap result = ops.renameResolvedItems({renameA, renameB});
+
+        QCOMPARE(result.value("success").toBool(), true);
+        QCOMPARE(result.value("changedPaths").toStringList(), QStringList({bPath, aPath}));
+
+        QFile aFile(aPath);
+        QVERIFY(aFile.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(aFile.readAll()), QString("bbb"));
+
+        QFile bFile(bPath);
+        QVERIFY(bFile.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(bFile.readAll()), QString("aaa"));
+    }
+
+    void testRenameResolvedItemsRejectsExistingTarget()
+    {
+        TestDir dir;
+        const QString sourcePath = dir.createFile("source.txt", "source");
+        const QString takenPath = dir.createFile("taken.txt", "taken");
+
+        FileOperations ops;
+
+        QVariantMap item;
+        item["sourcePath"] = sourcePath;
+        item["targetPath"] = takenPath;
+
+        const QVariantMap result = ops.renameResolvedItems({item});
+
+        QCOMPARE(result.value("success").toBool(), false);
+        QVERIFY(QFile::exists(sourcePath));
+        QVERIFY(QFile::exists(takenPath));
+    }
+
+    void testRenameResolvedItemsRejectsDuplicateFinalTarget()
+    {
+        TestDir dir;
+        const QString aPath = dir.createFile("a.txt", "aaa");
+        const QString bPath = dir.createFile("b.txt", "bbb");
+
+        FileOperations ops;
+
+        QVariantMap keepA;
+        keepA["sourcePath"] = aPath;
+        keepA["targetPath"] = aPath;
+
+        QVariantMap renameB;
+        renameB["sourcePath"] = bPath;
+        renameB["targetPath"] = aPath;
+
+        const QVariantMap result = ops.renameResolvedItems({keepA, renameB});
+
+        QCOMPARE(result.value("success").toBool(), false);
+        QVERIFY(QFile::exists(aPath));
+        QVERIFY(QFile::exists(bPath));
+    }
+
     // --- Delete (permanent) ---
 
     void testDeleteFile()

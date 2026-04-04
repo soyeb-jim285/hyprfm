@@ -15,6 +15,8 @@
 #include <QJsonArray>
 #include <QFile>
 #include <QQuickWindow>
+#include <QSaveFile>
+#include <QTimer>
 
 #include "services/configmanager.h"
 #include "services/themeloader.h"
@@ -30,8 +32,12 @@
 #include "models/searchproxymodel.h"
 #include "services/searchservice.h"
 #include "services/undomanager.h"
+#include "services/previewservice.h"
 #include "providers/thumbnailprovider.h"
 #include "providers/iconprovider.h"
+#ifdef HYPRFM_HAS_POPPLER_QT6
+#include "providers/pdfpreviewprovider.h"
+#endif
 #include <QIcon>
 
 int main(int argc, char *argv[])
@@ -91,8 +97,12 @@ int main(int argc, char *argv[])
     QJsonObject sessionData;
     {
         QFile sf(sessionPath);
-        if (sf.open(QIODevice::ReadOnly))
-            sessionData = QJsonDocument::fromJson(sf.readAll()).object();
+        if (sf.open(QIODevice::ReadOnly)) {
+            QJsonParseError parseError;
+            const QJsonDocument doc = QJsonDocument::fromJson(sf.readAll(), &parseError);
+            if (parseError.error == QJsonParseError::NoError && doc.isObject())
+                sessionData = doc.object();
+        }
     }
     if (sessionData.contains("tabs"))
         tabModel->restoreSession(sessionData.value("tabs").toArray(),
@@ -143,6 +153,8 @@ int main(int argc, char *argv[])
     splitSearchService->setObjectName("secondary");
     splitSearchService->setResultsModel(splitSearchResults);
 
+    PreviewService *previewService = new PreviewService(&app);
+
     // Connect config changes to reload theme, bookmarks, and showHidden
     QObject::connect(config, &ConfigManager::configChanged, [=]() {
         theme->loadTheme(config->theme(), themesDir);
@@ -185,6 +197,9 @@ int main(int argc, char *argv[])
     auto *iconProvider = new IconProvider(config->iconTheme());
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
     engine.addImageProvider("icon", iconProvider);
+#ifdef HYPRFM_HAS_POPPLER_QT6
+    engine.addImageProvider("pdfpreview", new PdfPreviewProvider);
+#endif
 
     DragHelper *dragHelper = new DragHelper(iconProvider, &app);
 
@@ -207,19 +222,22 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("splitSearchProxy", splitSearchProxy);
     engine.rootContext()->setContextProperty("splitSearchResults", splitSearchResults);
     engine.rootContext()->setContextProperty("splitSearchService", splitSearchService);
+    engine.rootContext()->setContextProperty("previewService", previewService);
 
     engine.loadFromModule("HyprFM", "Main");
 
     if (engine.rootObjects().isEmpty())
         return -1;
 
-    // Save session on quit
-    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
+    QTimer sessionSaveTimer;
+    sessionSaveTimer.setSingleShot(true);
+    sessionSaveTimer.setInterval(250);
+
+    auto saveSession = [&]() {
         QJsonObject session;
         session["tabs"] = tabModel->saveSession();
         session["activeTab"] = tabModel->activeIndex();
 
-        // Save window geometry
         if (!engine.rootObjects().isEmpty()) {
             QObject *win = engine.rootObjects().first();
             session["windowX"] = win->property("x").toInt();
@@ -228,9 +246,31 @@ int main(int argc, char *argv[])
             session["windowHeight"] = win->property("height").toInt();
         }
 
-        QFile sf(sessionPath);
-        if (sf.open(QIODevice::WriteOnly))
+        QSaveFile sf(sessionPath);
+        if (sf.open(QIODevice::WriteOnly)) {
             sf.write(QJsonDocument(session).toJson(QJsonDocument::Compact));
+            sf.commit();
+        }
+    };
+
+    auto scheduleSessionSave = [&]() {
+        sessionSaveTimer.start();
+    };
+
+    QObject::connect(&sessionSaveTimer, &QTimer::timeout, &app, saveSession);
+    QObject::connect(tabModel, &TabListModel::sessionChanged, &app, scheduleSessionSave);
+
+    if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+        QObject::connect(win, &QQuickWindow::xChanged, &app, scheduleSessionSave);
+        QObject::connect(win, &QQuickWindow::yChanged, &app, scheduleSessionSave);
+        QObject::connect(win, &QQuickWindow::widthChanged, &app, scheduleSessionSave);
+        QObject::connect(win, &QQuickWindow::heightChanged, &app, scheduleSessionSave);
+    }
+
+    // Save session on quit
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
+        sessionSaveTimer.stop();
+        saveSession();
     });
 
     // Restore window geometry
