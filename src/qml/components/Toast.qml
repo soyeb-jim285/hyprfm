@@ -5,6 +5,8 @@ import HyprFM
 // Usage: toast.show("message", "info"|"error"|"success")
 Item {
     id: root
+    Accessible.role: Accessible.AlertMessage
+    Accessible.name: "Notifications"
 
     // Size to the column of toasts
     implicitWidth: toastColumn.implicitWidth

@@ -10,6 +10,8 @@ Item {
     anchors.fill: parent
     visible: false
     z: 9999
+    Accessible.role: Accessible.PopupMenu
+    Accessible.name: "Context menu"
 
     property string targetPath: ""
     property bool targetIsDir: false

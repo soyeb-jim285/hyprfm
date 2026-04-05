@@ -4,6 +4,8 @@ import HyprFM
 
 Item {
     id: root
+    Accessible.role: Accessible.Table
+    Accessible.name: "File details"
 
     property var selectedIndices: []
     property int lastSelectedIndex: -1   // anchor for shift-selection
@@ -440,6 +442,9 @@ Item {
                 id: detRow
                 width: listView.width
                 height: 28
+                Accessible.role: Accessible.ListItem
+                Accessible.name: fileName + (isDir ? ", folder" : ", " + fileType + ", " + fileSizeText)
+                Accessible.selected: isSelected
 
                 required property int index
                 required property string fileName

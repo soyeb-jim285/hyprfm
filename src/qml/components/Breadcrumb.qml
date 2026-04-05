@@ -6,6 +6,8 @@ import HyprFM
 
 Item {
     id: root
+    Accessible.role: Accessible.Pane
+    Accessible.name: "Breadcrumb navigation: " + root.path
 
     property string path: ""
     property var activeTab: null

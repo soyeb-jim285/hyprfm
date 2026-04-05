@@ -4,6 +4,9 @@ import HyprFM
 
 Item {
     id: root
+    Accessible.role: Accessible.EditableText
+    Accessible.name: "Search files"
+    Accessible.description: root.searchQuery
 
     property string searchQuery: ""
     property bool filterPanelOpen: false

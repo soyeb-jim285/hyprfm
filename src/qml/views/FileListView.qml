@@ -4,6 +4,8 @@ import HyprFM
 
 ListView {
     id: root
+    Accessible.role: Accessible.List
+    Accessible.name: "File list"
 
     property var selectedIndices: []
     property int lastSelectedIndex: -1   // anchor for shift-selection
@@ -327,6 +329,9 @@ ListView {
         id: rowItem
         width: root.width
         height: 32
+        Accessible.role: Accessible.ListItem
+        Accessible.name: fileName + (isDir ? ", folder" : ", " + fileSizeText)
+        Accessible.selected: isSelected
 
         required property int index
         required property string fileName

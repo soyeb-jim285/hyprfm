@@ -5,6 +5,15 @@ import HyprFM
 
 Rectangle {
     id: statusBar
+    Accessible.role: Accessible.StatusBar
+    Accessible.name: {
+        var parts = []
+        if (selectedCount > 0) parts.push(selectedCount + " selected")
+        else parts.push(itemCount + " items")
+        if (folderCount > 0) parts.push(folderCount + " folders")
+        if (selectedSize) parts.push(selectedSize)
+        return parts.join(", ")
+    }
 
     property int itemCount: 0
     property int folderCount: 0

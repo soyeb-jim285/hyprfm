@@ -12,6 +12,8 @@ ApplicationWindow {
     visible: true
     title: "HyprFM"
     color: "transparent"
+    Accessible.role: Accessible.Window
+    Accessible.name: "HyprFM File Manager"
 
     property bool primaryPaneIsRecents: false
     property bool secondaryPaneIsRecents: false
@@ -906,6 +908,8 @@ ApplicationWindow {
         anchors.fill: parent
         visible: false
         z: 1000
+        Accessible.role: Accessible.Dialog
+        Accessible.name: "Rename"
 
         function open() {
             renameErrorText.text = ""
@@ -1078,6 +1082,8 @@ ApplicationWindow {
         anchors.fill: parent
         visible: false
         z: 1000
+        Accessible.role: Accessible.Dialog
+        Accessible.name: "New folder"
 
         function open() {
             newFolderErrorText.text = ""
@@ -1241,6 +1247,8 @@ ApplicationWindow {
         anchors.fill: parent
         visible: false
         z: 1000
+        Accessible.role: Accessible.Dialog
+        Accessible.name: "New file"
 
         function open() {
             newFileErrorText.text = ""
@@ -1550,6 +1558,8 @@ ApplicationWindow {
         anchors.fill: parent
         visible: false
         z: 1000
+        Accessible.role: Accessible.Dialog
+        Accessible.name: "File properties"
 
         property var props: ({})
         property var apps: []

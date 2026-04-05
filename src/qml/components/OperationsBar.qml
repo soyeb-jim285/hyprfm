@@ -5,6 +5,8 @@ import Quill as Q
 
 Rectangle {
     id: root
+    Accessible.role: Accessible.StatusBar
+    Accessible.name: "File operations"
 
     property bool _showBar: false
 

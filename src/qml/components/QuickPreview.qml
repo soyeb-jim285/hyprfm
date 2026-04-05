@@ -5,6 +5,8 @@ import HyprFM
 
 Item {
     id: root
+    Accessible.role: Accessible.Pane
+    Accessible.name: "Quick preview" + (root.filePath ? ": " + root.filePath.split("/").pop() : "")
 
     property string filePath: ""
     property var directoryFiles: []

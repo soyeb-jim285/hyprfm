@@ -4,6 +4,8 @@ import HyprFM
 
 Rectangle {
     id: root
+    Accessible.role: Accessible.PageTabList
+    Accessible.name: "File tabs"
 
     height: 40
     color: Theme.mantle

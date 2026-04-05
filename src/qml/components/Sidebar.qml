@@ -5,6 +5,8 @@ import HyprFM
 
 Rectangle {
     id: root
+    Accessible.role: Accessible.Pane
+    Accessible.name: "Sidebar navigation"
 
     property string currentPath: ""
     property string trashPath: fsModel.homePath() + "/.local/share/Trash/files"

@@ -4,6 +4,8 @@ import HyprFM
 
 Rectangle {
     id: root
+    Accessible.role: Accessible.Grouping
+    Accessible.name: "Search filters"
 
     property var activeTypes: []  // array of active type values
     property string activeDateFilter: ""

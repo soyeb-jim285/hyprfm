@@ -4,6 +4,8 @@ import HyprFM
 
 Rectangle {
     id: root
+    Accessible.role: Accessible.ToolBar
+    Accessible.name: "Navigation toolbar"
 
     property var activeTab: null
     property string navigationPath: ""

@@ -4,6 +4,8 @@ import HyprFM
 
 GridView {
     id: root
+    Accessible.role: Accessible.List
+    Accessible.name: "File grid"
 
     property var selectedIndices: []
     property int lastSelectedIndex: -1   // anchor for shift-selection
@@ -422,6 +424,9 @@ GridView {
         id: delegateItem
         width: root.cellWidth
         height: root.cellHeight
+        Accessible.role: Accessible.ListItem
+        Accessible.name: fileName + (isDir ? ", folder" : "")
+        Accessible.selected: isSelected
 
         required property int index
         required property string fileName
