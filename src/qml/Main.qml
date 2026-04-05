@@ -1398,6 +1398,152 @@ ApplicationWindow {
         }
     }
 
+    // ── App Chooser dialog ──────────────────────────────────────────────────
+    Q.Dialog {
+        id: appChooserDialog
+        anchors.fill: parent
+        title: "Choose Application"
+        dialogWidth: 400
+        z: 1100
+
+        property string filePath: ""
+        property string mimeType: ""
+        property var allApps: []
+        property string searchText: ""
+
+        onOpened: {
+            appSearchField.text = ""
+            appChooserDialog.searchText = ""
+            appChooserDialog.allApps = root.paneBaseModel(root.activePane).allInstalledApps()
+            appSearchField.inputItem.forceActiveFocus()
+        }
+
+        onClosed: {
+            appChooserDialog.allApps = []
+            if (propertiesDialog.visible && propertiesDialog.props.mimeType)
+                propertiesDialog.apps = propertiesDialog.fileModelRef.availableApps(propertiesDialog.props.mimeType)
+        }
+
+        initialFocusItem: appSearchField.inputItem
+
+        Q.TextField {
+            id: appSearchField
+            Layout.fillWidth: true
+            placeholder: "Search applications\u2026"
+            variant: "filled"
+            onTextEdited: (text) => appChooserDialog.searchText = text
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(360, Math.max(36, appListView.contentHeight))
+            color: "transparent"
+            clip: true
+
+            ListView {
+                id: appListView
+                anchors.fill: parent
+                model: {
+                    var query = appChooserDialog.searchText.toLowerCase()
+                    if (query === "")
+                        return appChooserDialog.allApps
+                    return appChooserDialog.allApps.filter(function(app) {
+                        return app.name.toLowerCase().indexOf(query) >= 0
+                    })
+                }
+                delegate: Rectangle {
+                    required property var modelData
+                    required property int index
+                    width: appListView.width
+                    height: 40
+                    radius: Theme.radiusSmall
+                    color: delegateHover.hovered
+                        ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
+                        : "transparent"
+
+                    HoverHandler {
+                        id: delegateHover
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 10
+
+                        Image {
+                            id: appChooserIcon
+                            source: modelData.iconName ? ("image://icon/" + modelData.iconName) : ""
+                            sourceSize: Qt.size(22, 22)
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            Layout.alignment: Qt.AlignVCenter
+                            visible: modelData.iconName && status === Image.Ready
+                        }
+
+                        Text {
+                            text: modelData.name
+                            color: Theme.text
+                            font.pointSize: Theme.fontNormal
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            elide: Text.ElideRight
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    fileOps.openFileWith(appChooserDialog.filePath, modelData.desktopFile)
+                                    appChooserDialog.close()
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            id: setDefaultBtn
+                            Layout.preferredWidth: setDefaultLabel.implicitWidth + 16
+                            Layout.preferredHeight: 24
+                            Layout.alignment: Qt.AlignVCenter
+                            radius: Theme.radiusSmall
+                            color: setDefaultMa.containsMouse
+                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
+                                : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
+                            visible: delegateHover.hovered && appChooserDialog.mimeType !== ""
+
+                            Text {
+                                id: setDefaultLabel
+                                anchors.centerIn: parent
+                                text: "Set Default"
+                                color: Theme.accent
+                                font.pointSize: Theme.fontSmall
+                                font.weight: Font.DemiBold
+                            }
+
+                            MouseArea {
+                                id: setDefaultMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.paneBaseModel(root.activePane).setDefaultApp(appChooserDialog.mimeType, modelData.desktopFile)
+                                    appChooserDialog.close()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            visible: appListView.count === 0
+            text: "No applications found"
+            color: Theme.muted
+            font.pointSize: Theme.fontSmall
+            Layout.alignment: Qt.AlignHCenter
+        }
+    }
+
     // ── Properties dialog ──────────────────────────────────────────────────
     Item {
         id: propertiesDialog
@@ -1786,6 +1932,48 @@ ApplicationWindow {
                                 }
                             }
                         }
+
+                        // "Other Application..." button
+                        Rectangle {
+                            width: parent ? parent.width : 0; height: 30; radius: 4
+                            color: otherAppMa.containsMouse
+                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
+                                : "transparent"
+                            Layout.fillWidth: true
+
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                spacing: 6
+
+                                Loader {
+                                    source: "icons/IconSearch.qml"
+                                    width: 14; height: 14
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    onLoaded: {
+                                        item.size = 14
+                                        item.color = Qt.binding(() => Theme.muted)
+                                    }
+                                }
+
+                                Text {
+                                    text: "Other Application\u2026"
+                                    color: Theme.muted
+                                    font.pointSize: Theme.fontSmall
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            MouseArea {
+                                id: otherAppMa; anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    appChooserDialog.filePath = propertiesDialog.props.path || ""
+                                    appChooserDialog.mimeType = propertiesDialog.props.mimeType || ""
+                                    appChooserDialog.open()
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -2117,6 +2305,14 @@ ApplicationWindow {
         }
         onOpenInNewTabRequested: (path) => root.openPathInNewTab(path)
         onOpenWithRequested: (path, desktopFile) => fileOps.openFileWith(path, desktopFile)
+        onSetDefaultAppRequested: (mimeType, desktopFile) => {
+            root.paneBaseModel(root.activePane).setDefaultApp(mimeType, desktopFile)
+        }
+        onChooseAppRequested: (path, mimeType) => {
+            appChooserDialog.filePath = path
+            appChooserDialog.mimeType = mimeType
+            appChooserDialog.open()
+        }
 
         onCutRequested: (paths) => clipboard.cut(paths)
 

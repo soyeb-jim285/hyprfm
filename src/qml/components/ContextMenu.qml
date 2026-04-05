@@ -23,6 +23,8 @@ Item {
 
     signal openRequested(string path, bool isDir)
     signal openWithRequested(string path, string desktopFile)
+    signal setDefaultAppRequested(string mimeType, string desktopFile)
+    signal chooseAppRequested(string path, string mimeType)
     signal openInNewTabRequested(string path)
     signal cutRequested(var paths)
     signal copyRequested(var paths)
@@ -83,18 +85,43 @@ Item {
         return item ? (item.action || item.text || "") : ""
     }
 
-    function openWithSubmenuItems(apps) {
+    function openWithSubmenuItems(apps, mime) {
         var items = []
         for (var i = 0; i < apps.length; ++i) {
             items.push({
                 text: apps[i].name,
                 shortcut: "",
-                action: "openwith",
+                action: apps[i].isDefault ? "openwith" : "openwith",
                 desktopFile: apps[i].desktopFile || "",
                 iconName: apps[i].iconName || "",
                 checked: !!apps[i].isDefault
             })
         }
+        // "Set as Default" section
+        var nonDefaults = apps.filter(function(a) { return !a.isDefault })
+        if (nonDefaults.length > 0) {
+            items.push({ separator: true })
+            for (var j = 0; j < nonDefaults.length; ++j) {
+                items.push({
+                    text: "Default: " + nonDefaults[j].name,
+                    shortcut: "",
+                    action: "setdefault",
+                    desktopFile: nonDefaults[j].desktopFile || "",
+                    iconName: nonDefaults[j].iconName || "",
+                    icon: "Check",
+                    mimeType: mime
+                })
+            }
+        }
+        // "Other Application..."
+        items.push({ separator: true })
+        items.push({
+            text: "Other Application\u2026",
+            shortcut: "",
+            action: "chooseapp",
+            icon: "Search",
+            mimeType: mime
+        })
         return items
     }
 
@@ -579,7 +606,9 @@ Item {
                 if (mime !== "") {
                     var apps = fileModel.availableApps(mime)
                     if (apps.length > 0)
-                        items.push({ text: "Open With", shortcut: "", action: "openwith_toggle", isSubmenu: true, icon: "ExternalLink", submenuItems: openWithSubmenuItems(apps) })
+                        items.push({ text: "Open With", shortcut: "", action: "openwith_toggle", isSubmenu: true, icon: "ExternalLink", submenuItems: openWithSubmenuItems(apps, mime) })
+                    else
+                        items.push({ text: "Open With\u2026", shortcut: "", action: "chooseapp_direct", icon: "ExternalLink", mimeType: mime })
                 }
             }
             if (targetIsDir && !isTrashView && !remoteContext)
@@ -673,12 +702,15 @@ Item {
         return items
     }
 
-    function executeAction(action, extraData) {
+    function executeAction(action, extraData, mimeType) {
         root.close()
         switch (action) {
         case "open": openRequested(targetPath, targetIsDir || isEmptySpace); break
         case "opennewtab": openInNewTabRequested(targetPath); break
         case "openwith": openWithRequested(targetPath, extraData); break
+        case "setdefault": if (mimeType && extraData) setDefaultAppRequested(mimeType, extraData); break
+        case "chooseapp": chooseAppRequested(targetPath, mimeType || ""); break
+        case "chooseapp_direct": chooseAppRequested(targetPath, mimeType || ""); break
         case "cut": cutRequested(effectivePaths); break
         case "copy": copyRequested(effectivePaths); break
         case "copypath": copyPathRequested(targetPath); break
@@ -768,7 +800,7 @@ Item {
                 onEntered: root.closeSubmenu(true)
                 onClicked: {
                     if (itemData && itemData.action)
-                        root.executeAction(itemData.action, itemData.desktopFile || "")
+                        root.executeAction(itemData.action, itemData.desktopFile || "", itemData.mimeType || "")
                 }
             }
         }
@@ -901,7 +933,7 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     if (subItemData && subItemData.action)
-                        root.executeAction(subItemData.action, subItemData.desktopFile || "")
+                        root.executeAction(subItemData.action, subItemData.desktopFile || "", subItemData.mimeType || "")
                 }
             }
         }

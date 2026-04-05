@@ -9,6 +9,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QDirIterator>
 #include <QUrl>
 
 namespace {
@@ -1279,6 +1280,22 @@ QVariantList FileSystemModel::availableApps(const QString &mimeType) const
         }
     }
 
+    // Ensure the default app is in the list even if not registered/recommended
+    if (!defaultId.isEmpty() && !seen.contains(defaultId)) {
+        QString path = desktopFileName(defaultId);
+        QString name = readDesktopField(path, "Name");
+        if (name.isEmpty())
+            name = defaultId.chopped(8);
+        QString icon = readDesktopField(path, "Icon");
+
+        QVariantMap app;
+        app["desktopFile"] = defaultId;
+        app["name"] = name;
+        app["iconName"] = icon;
+        app["isDefault"] = true;
+        apps.prepend(app);
+    }
+
     return apps;
 }
 
@@ -1295,6 +1312,46 @@ void FileSystemModel::setDefaultApp(const QString &mimeType, const QString &desk
     QProcess proc;
     proc.start("xdg-mime", {"default", desktopFile, mimeType});
     proc.waitForFinished(2000);
+}
+
+QVariantList FileSystemModel::allInstalledApps() const
+{
+    QVariantList apps;
+    QSet<QString> seen;
+
+    auto dataDirs = QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation);
+    for (const auto &dir : dataDirs) {
+        QDirIterator it(dir, {"*.desktop"}, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            it.next();
+            // Use relative path as desktop ID (e.g. "org.kde.dolphin.desktop")
+            QString desktopId = QDir(dir).relativeFilePath(it.filePath());
+            if (seen.contains(desktopId))
+                continue;
+            seen.insert(desktopId);
+
+            QString name = readDesktopField(it.filePath(), "Name");
+            if (name.isEmpty())
+                continue;
+            QString icon = readDesktopField(it.filePath(), "Icon");
+            QString noDisplay = readDesktopField(it.filePath(), "NoDisplay");
+            if (noDisplay.compare("true", Qt::CaseInsensitive) == 0)
+                continue;
+
+            QVariantMap app;
+            app["desktopFile"] = desktopId;
+            app["name"] = name;
+            app["iconName"] = icon;
+            apps.append(app);
+        }
+    }
+
+    // Sort by name
+    std::sort(apps.begin(), apps.end(), [](const QVariant &a, const QVariant &b) {
+        return a.toMap()["name"].toString().compare(b.toMap()["name"].toString(), Qt::CaseInsensitive) < 0;
+    });
+
+    return apps;
 }
 
 bool FileSystemModel::setFilePermissions(const QString &path, int ownerAccess, int groupAccess, int otherAccess)
