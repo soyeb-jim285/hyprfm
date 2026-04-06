@@ -77,6 +77,7 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconGrid.qml
         qml/icons/IconList.qml
         qml/icons/IconAlignJustify.qml
+        qml/icons/IconColumns.qml
         qml/icons/IconHome.qml
         qml/icons/IconSearch.qml
         qml/icons/IconPanelLeft.qml
