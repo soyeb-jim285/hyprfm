@@ -59,6 +59,7 @@ list(APPEND hyprfm_qml_module_args
         qml/views/FileGridView.qml
         qml/views/FileListView.qml
         qml/views/FileDetailedView.qml
+        qml/views/FileMillerView.qml
         qml/views/KineticWheelScroller.qml
         qml/components/ContextMenu.qml
         qml/components/BulkRenameDialog.qml
