@@ -309,6 +309,7 @@ ApplicationWindow {
         var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
         if (vm === "grid") return view.gridViewItem
         if (vm === "list") return view.listViewItem
+        if (vm === "miller") return view.millerViewItem
         return view.detailedViewItem
     }
 
