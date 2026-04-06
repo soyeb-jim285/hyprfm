@@ -48,6 +48,15 @@ ApplicationWindow {
                 root.clearPaneSearch("primary")
                 root.clearPaneSearch("secondary")
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
+                    // Sync miller parent model
+                    if (tabModel.activeTab.currentPath && tabModel.activeTab.currentPath !== "/") {
+                        var cp = tabModel.activeTab.currentPath
+                        if (cp.endsWith("/") && cp.length > 1) cp = cp.slice(0, -1)
+                        var pidx = cp.lastIndexOf("/")
+                        millerParentModel.setRootPath(pidx <= 0 ? "/" : cp.substring(0, pidx))
+                    } else {
+                        millerParentModel.setRootPath("")
+                    }
                 splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
                 root.applyActiveTabSort()
                 root.scheduleActivePaneFocus()
@@ -64,6 +73,15 @@ ApplicationWindow {
         function onCurrentPathChanged() {
             if (tabModel.activeTab) {
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
+                // Sync miller parent model
+                if (tabModel.activeTab.currentPath && tabModel.activeTab.currentPath !== "/") {
+                    var cp = tabModel.activeTab.currentPath
+                    if (cp.endsWith("/") && cp.length > 1) cp = cp.slice(0, -1)
+                    var pidx = cp.lastIndexOf("/")
+                    millerParentModel.setRootPath(pidx <= 0 ? "/" : cp.substring(0, pidx))
+                } else {
+                    millerParentModel.setRootPath("")
+                }
                 root.setPaneRecents("primary", false)
                 root.clearPaneSearch("primary")
                 root.scheduleActivePaneFocus()
@@ -2541,6 +2559,11 @@ ApplicationWindow {
         onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "detailed" }
     }
 
+    Shortcut {
+        sequence: config.shortcut("miller_view")
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "miller" }
+    }
+
     // File operations
     Shortcut {
         sequence: config.shortcut("copy")
@@ -2967,6 +2990,7 @@ ApplicationWindow {
                     if (subView) subView.forceActiveFocus()
                 }
                 onSearchFilterToggled: root.setPaneFilterPanelOpen(activePane, !root.paneFilterPanelOpen(activePane))
+                onTransferRequested: (paths, destinationPath, moveOperation) => root.beginTransfer(paths, destinationPath, moveOperation, false)
                 onTypeFilterChanged: (filter) => root.searchProxyForPane(activePane).fileTypeFilter = filter
                 onDateFilterChanged: (filter) => root.searchProxyForPane(activePane).dateFilter = filter
                 onSizeFilterChanged: (filter) => root.searchProxyForPane(activePane).sizeFilter = filter
