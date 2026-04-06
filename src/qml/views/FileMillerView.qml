@@ -102,8 +102,17 @@ Item {
             model: millerParentModel
             focus: false
             boundsBehavior: Flickable.StopAtBounds
+            keyNavigationEnabled: false
 
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            // Right arrow from parent → focus middle column
+            Keys.onRightPressed: (event) => {
+                currentColumn.forceActiveFocus()
+                if (currentColumn.cursorIndex < 0 && currentColumn.count > 0)
+                    currentColumn.selectIndex(0, false, false)
+                event.accepted = true
+            }
 
             delegate: Item {
                 id: parentDelegate
@@ -172,6 +181,7 @@ Item {
                     hoverEnabled: true
                     onClicked: {
                         root.interactionStarted()
+                        parentColumn.forceActiveFocus()
                         if (parentDelegate.isDir) {
                             root.fileActivated(parentDelegate.filePath, true)
                         }
@@ -206,9 +216,17 @@ Item {
             Connections {
                 target: root
                 function onCurrentPathChanged() {
-                    currentColumn.clearSelection()
                     currentColumn.typeAheadBuffer = ""
                     typeAheadTimer.stop()
+                    // If we have a pendingFocusPath (going up), don't clear — let focusPath handle it
+                    if (currentColumn.pendingFocusPath === "") {
+                        currentColumn.selectedIndices = []
+                        currentColumn.lastSelectedIndex = -1
+                        currentColumn.cursorIndex = -1
+                        // Auto-select first item after model loads
+                        currentColumn.autoSelectFirst = true
+                    }
+                    root.updatePreview()
                 }
             }
 
@@ -398,14 +416,21 @@ Item {
             property string pendingFocusPath: ""
             property bool pendingFocusReveal: true
             property bool focusScheduled: false
+            property bool autoSelectFirst: false
 
             function schedulePendingFocus() {
                 if (focusScheduled) return
                 focusScheduled = true
                 Qt.callLater(function() {
                     focusScheduled = false
-                    if (pendingFocusPath !== "")
+                    if (pendingFocusPath !== "") {
                         focusPath(pendingFocusPath, pendingFocusReveal)
+                    } else if (autoSelectFirst && count > 0) {
+                        autoSelectFirst = false
+                        selectIndex(0, false, false)
+                        positionViewAtIndex(0, ListView.Beginning)
+                        forceActiveFocus()
+                    }
                 })
             }
 
