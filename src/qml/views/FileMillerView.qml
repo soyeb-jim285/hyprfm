@@ -63,6 +63,9 @@ Item {
 
     function goUp() {
         if (parentPath) {
+            // Remember current dir so we can highlight it after navigating up
+            currentColumn.pendingFocusPath = currentPath
+            currentColumn.pendingFocusReveal = true
             root.fileActivated(parentPath, true)
         }
     }
@@ -682,131 +685,273 @@ Item {
             property string previewFilePath: ""
             property bool previewIsDir: false
 
-            readonly property bool isImage: !previewIsDir && previewFilePath !== "" &&
-                /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(previewFilePath)
-            readonly property bool isVideo: !previewIsDir && previewFilePath !== "" &&
-                /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ts)$/i.test(previewFilePath)
-            readonly property bool hasThumbnail: isImage || isVideo
+            // Rich preview data (like QuickPreview)
+            property var fileProps: ({})
+            property var textPreview: ({ content: "", truncated: false, isBinary: false, error: "" })
+            property var directoryPreview: ({ entries: [], truncated: false, error: "", count: 0 })
 
-            ListView {
-                id: previewDirList
+            readonly property string _mime: fileProps.mimeType || ""
+            readonly property bool isRemoteUri: previewFilePath !== "" && fileOps.isRemotePath(previewFilePath)
+            readonly property bool isImage: !isRemoteUri && !previewIsDir && _mime.startsWith("image/")
+            readonly property bool isVideo: !isRemoteUri && !previewIsDir && _mime.startsWith("video/")
+            readonly property bool isAudio: !isRemoteUri && !previewIsDir && (_mime.startsWith("audio/") || false)
+            readonly property bool hasVisualPreview: isImage || (isVideo && runtimeFeatures.ffmpegAvailable)
+            readonly property string visualSource: {
+                if (!hasVisualPreview || previewFilePath === "") return ""
+                if (isVideo) return "image://thumbnail/" + previewFilePath
+                return "file://" + previewFilePath
+            }
+            readonly property bool isText: {
+                if (isRemoteUri || previewIsDir || isImage || isVideo || isAudio) return false
+                if (_mime.startsWith("text/")) return true
+                var textMimes = [
+                    "application/json", "application/xml", "application/x-yaml",
+                    "application/toml", "application/x-shellscript",
+                    "application/javascript", "application/typescript",
+                    "application/x-tex", "application/x-makefile",
+                    "application/x-desktop", "application/x-ruby",
+                    "application/x-perl", "application/x-python"
+                ]
+                if (textMimes.indexOf(_mime) >= 0) return true
+                var ext = previewFileName.lastIndexOf(".") >= 0
+                    ? previewFileName.substring(previewFileName.lastIndexOf(".") + 1).toLowerCase() : ""
+                if (ext === "") return previewFilePath !== ""
+                var textExt = ["txt", "md", "json", "yaml", "yml", "toml", "ini", "cfg", "conf",
+                               "sh", "bash", "zsh", "fish", "py", "js", "ts", "tsx", "jsx",
+                               "css", "html", "htm", "xml", "c", "cpp", "h", "hpp", "rs",
+                               "go", "java", "tex", "rb", "lua", "vim", "log", "diff",
+                               "patch", "cmake", "qml", "mk", "desktop"]
+                return textExt.indexOf(ext) >= 0
+            }
+
+            readonly property string previewFileName: {
+                if (previewFilePath === "") return ""
+                var idx = previewFilePath.lastIndexOf("/")
+                return idx >= 0 ? previewFilePath.substring(idx + 1) : previewFilePath
+            }
+
+            readonly property string detailKind: {
+                if (previewIsDir) return "Folder"
+                if (fileProps.mimeDescription) return fileProps.mimeDescription
+                var ext = previewFileName.lastIndexOf(".") >= 0
+                    ? previewFileName.substring(previewFileName.lastIndexOf(".") + 1).toUpperCase() : ""
+                return ext !== "" ? ext + " file" : "File"
+            }
+
+            function refreshPreview() {
+                if (previewFilePath === "") {
+                    fileProps = ({})
+                    textPreview = ({ content: "", truncated: false, isBinary: false, error: "" })
+                    directoryPreview = ({ entries: [], truncated: false, error: "", count: 0 })
+                    return
+                }
+
+                if (root.fileModel && root.fileModel.fileProperties)
+                    fileProps = root.fileModel.fileProperties(previewFilePath)
+                else
+                    fileProps = ({})
+
+                if (isText)
+                    textPreview = previewService.loadTextPreview(previewFilePath)
+                else
+                    textPreview = ({ content: "", truncated: false, isBinary: false, error: "" })
+
+                if (previewIsDir)
+                    directoryPreview = previewService.loadDirectoryPreview(previewFilePath)
+                else
+                    directoryPreview = ({ entries: [], truncated: false, error: "", count: 0 })
+            }
+
+            onPreviewFilePathChanged: refreshPreview()
+
+            // ── Preview content area (top) + info bar (bottom) ───────────
+            Column {
                 anchors.fill: parent
-                visible: previewColumn.previewIsDir
-                model: millerPreviewModel
-                clip: true
-                interactive: true
-                boundsBehavior: Flickable.StopAtBounds
 
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                // Preview area
+                Item {
+                    id: previewArea
+                    width: parent.width
+                    height: parent.height - infoBar.height
 
-                delegate: Item {
-                    width: previewDirList.width
-                    height: 24
-
-                    required property int index
-                    required property string fileName
-                    required property bool isDir
-                    required property string fileIconName
-
-                    Row {
+                    // Directory listing
+                    ListView {
+                        id: previewDirList
                         anchors.fill: parent
-                        anchors.leftMargin: 6
-                        anchors.rightMargin: 4
-                        spacing: 6
+                        visible: previewColumn.previewIsDir
+                        model: millerPreviewModel
+                        clip: true
+                        interactive: true
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                        delegate: Item {
+                            width: previewDirList.width
+                            height: 24
+
+                            required property int index
+                            required property string fileName
+                            required property bool isDir
+                            required property string fileIconName
+
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 6
+                                anchors.rightMargin: 4
+                                spacing: 6
+
+                                Image {
+                                    width: 14; height: 14
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    source: "image://icon/" + fileIconName
+                                    sourceSize: Qt.size(14, 14)
+                                    asynchronous: false
+                                }
+
+                                Text {
+                                    width: parent.width - 14 - parent.spacing - parent.anchors.leftMargin - parent.anchors.rightMargin
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: fileName
+                                    color: Theme.subtext
+                                    font.pointSize: Theme.fontSmall
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+
+                    // Image/Video preview
+                    Image {
+                        id: visualPreview
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        visible: previewColumn.hasVisualPreview && !previewColumn.previewIsDir
+                        source: previewColumn.visualSource
+                        sourceSize: Qt.size(width * Screen.devicePixelRatio, height * Screen.devicePixelRatio)
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                        smooth: true
+                    }
+
+                    // Text preview
+                    Flickable {
+                        id: textPreviewFlick
+                        anchors.fill: parent
+                        anchors.margins: 6
+                        visible: previewColumn.isText && !previewColumn.hasVisualPreview && !previewColumn.previewIsDir
+                        clip: true
+                        interactive: true
+                        boundsMovement: Flickable.StopAtBounds
+                        boundsBehavior: Flickable.StopAtBounds
+                        contentWidth: Math.max(width, textArea.contentWidth)
+                        contentHeight: Math.max(height, textArea.contentHeight)
+
+                        TextEdit {
+                            id: textArea
+                            readOnly: true
+                            selectByMouse: false
+                            textFormat: previewColumn.textPreview.usesBat && previewColumn.textPreview.html !== ""
+                                ? TextEdit.RichText
+                                : TextEdit.PlainText
+                            text: previewColumn.textPreview.error !== ""
+                                ? previewColumn.textPreview.error
+                                : (previewColumn.textPreview.isBinary
+                                    ? "Binary file"
+                                    : (previewColumn.textPreview.usesBat && previewColumn.textPreview.html !== ""
+                                        ? previewColumn.textPreview.html
+                                        : previewColumn.textPreview.content))
+                            color: Theme.text
+                            wrapMode: TextEdit.NoWrap
+                            font.family: "monospace"
+                            font.pointSize: Theme.fontSmall - 1
+                        }
+
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+                    }
+
+                    // Fallback: icon for non-previewable files
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 8
+                        visible: !previewColumn.previewIsDir && !previewColumn.hasVisualPreview
+                            && !previewColumn.isText && previewColumn.previewFilePath !== ""
 
                         Image {
-                            width: 14; height: 14
-                            anchors.verticalCenter: parent.verticalCenter
-                            source: "image://icon/" + fileIconName
-                            sourceSize: Qt.size(14, 14)
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 64; height: 64
+                            source: previewColumn.fileProps.iconName
+                                ? ("image://icon/" + previewColumn.fileProps.iconName)
+                                : "image://icon/text-x-generic"
+                            sourceSize: Qt.size(64, 64)
                             asynchronous: false
+                        }
+                    }
+
+                    // Empty state
+                    Text {
+                        anchors.centerIn: parent
+                        visible: previewColumn.previewFilePath === ""
+                        text: "No selection"
+                        color: Qt.rgba(Theme.subtext.r, Theme.subtext.g, Theme.subtext.b, 0.5)
+                        font.pointSize: Theme.fontSmall
+                    }
+                }
+
+                // Info bar at bottom
+                Rectangle {
+                    id: infoBar
+                    width: parent.width
+                    height: previewColumn.previewFilePath !== "" ? infoBarContent.implicitHeight + 12 : 0
+                    visible: previewColumn.previewFilePath !== ""
+                    color: Qt.rgba(Theme.base.r, Theme.base.g, Theme.base.b, 0.5)
+                    border.width: 0
+
+                    Rectangle {
+                        anchors.top: parent.top
+                        width: parent.width
+                        height: 1
+                        color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                    }
+
+                    Column {
+                        id: infoBarContent
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 6
+                        anchors.topMargin: 7
+                        spacing: 2
+
+                        Text {
+                            width: parent.width
+                            text: previewColumn.previewFileName
+                            color: Theme.text
+                            font.pointSize: Theme.fontSmall
+                            font.bold: true
+                            elide: Text.ElideMiddle
                         }
 
                         Text {
-                            width: parent.width - 14 - parent.spacing - parent.anchors.leftMargin - parent.anchors.rightMargin
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: fileName
+                            width: parent.width
+                            text: {
+                                var parts = []
+                                parts.push(previewColumn.detailKind)
+                                if (previewColumn.fileProps.sizeText)
+                                    parts.push(previewColumn.fileProps.sizeText)
+                                if (previewColumn.previewIsDir && previewColumn.fileProps.contentText)
+                                    parts.push(previewColumn.fileProps.contentText)
+                                if (previewColumn.fileProps.modified)
+                                    parts.push(previewColumn.fileProps.modified)
+                                return parts.join(" \u00b7 ")
+                            }
                             color: Theme.subtext
-                            font.pointSize: Theme.fontSmall
+                            font.pointSize: Theme.fontSmall - 1
                             elide: Text.ElideRight
                         }
                     }
                 }
-            }
-
-            Image {
-                id: previewThumbnail
-                anchors.centerIn: parent
-                width: Math.min(parent.width - 16, parent.height - 16)
-                height: width
-                visible: previewColumn.hasThumbnail && !previewColumn.previewIsDir
-                fillMode: Image.PreserveAspectFit
-                source: previewColumn.hasThumbnail
-                    ? ("image://thumbnail/" + previewColumn.previewFilePath)
-                    : ""
-                sourceSize: Qt.size(256 * Screen.devicePixelRatio, 256 * Screen.devicePixelRatio)
-                asynchronous: true
-            }
-
-            Column {
-                anchors.centerIn: parent
-                spacing: 8
-                visible: !previewColumn.previewIsDir && !previewColumn.hasThumbnail && previewColumn.previewFilePath !== ""
-                width: parent.width - 24
-
-                Image {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: 48; height: 48
-                    source: {
-                        if (previewColumn.previewFilePath === "") return ""
-                        var idx = currentColumn.cursorIndex >= 0 ? currentColumn.cursorIndex : -1
-                        if (idx < 0 || !root.fileModel) return ""
-                        var iconName = root.fileModel.data(root.fileModel.index(idx, 0), 267) || "text-x-generic"
-                        return "image://icon/" + iconName
-                    }
-                    sourceSize: Qt.size(48, 48)
-                    asynchronous: false
-                }
-
-                Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    text: {
-                        if (previewColumn.previewFilePath === "") return ""
-                        var idx = previewColumn.previewFilePath.lastIndexOf("/")
-                        return idx >= 0 ? previewColumn.previewFilePath.substring(idx + 1) : previewColumn.previewFilePath
-                    }
-                    color: Theme.text
-                    font.pointSize: Theme.fontSmall
-                    wrapMode: Text.WrapAnywhere
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                }
-
-                Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    text: {
-                        var idx = currentColumn.cursorIndex >= 0 ? currentColumn.cursorIndex : -1
-                        if (idx < 0 || !root.fileModel) return ""
-                        var size = root.fileModel.data(root.fileModel.index(idx, 0), 260) || ""
-                        var modified = root.fileModel.data(root.fileModel.index(idx, 0), 263) || ""
-                        var parts = []
-                        if (size) parts.push(size)
-                        if (modified) parts.push(modified)
-                        return parts.join(" \u00b7 ")
-                    }
-                    color: Theme.subtext
-                    font.pointSize: Theme.fontSmall
-                }
-            }
-
-            Text {
-                anchors.centerIn: parent
-                visible: previewColumn.previewFilePath === ""
-                text: "No selection"
-                color: Qt.rgba(Theme.subtext.r, Theme.subtext.g, Theme.subtext.b, 0.5)
-                font.pointSize: Theme.fontSmall
             }
         }
     }
