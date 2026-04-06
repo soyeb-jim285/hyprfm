@@ -200,10 +200,13 @@ Item {
             property int cursorIndex: -1
             property string typeAheadBuffer: ""
 
-            onCurrentPathChanged: {
-                clearSelection()
-                typeAheadBuffer = ""
-                typeAheadTimer.stop()
+            Connections {
+                target: root
+                function onCurrentPathChanged() {
+                    currentColumn.clearSelection()
+                    currentColumn.typeAheadBuffer = ""
+                    typeAheadTimer.stop()
+                }
             }
 
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
