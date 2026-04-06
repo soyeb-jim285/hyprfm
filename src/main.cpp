@@ -142,6 +142,12 @@ int main(int argc, char *argv[])
     splitFsModel->setRootPath(initialSecondaryPath);
     splitFsModel->setShowHidden(config->showHidden());
 
+    FileSystemModel *millerParentModel = new FileSystemModel(&app);
+    millerParentModel->setShowHidden(config->showHidden());
+
+    FileSystemModel *millerPreviewModel = new FileSystemModel(&app);
+    millerPreviewModel->setShowHidden(config->showHidden());
+
     SearchResultsModel *searchResults = new SearchResultsModel(&app);
     SearchProxyModel *searchProxy = new SearchProxyModel(&app);
     searchProxy->setSourceModel(searchResults);
@@ -166,6 +172,8 @@ int main(int argc, char *argv[])
     GitStatusService *gitService = new GitStatusService(&app);
     fsModel->setGitStatusService(gitService);
     splitFsModel->setGitStatusService(gitService);
+    millerParentModel->setGitStatusService(gitService);
+    millerPreviewModel->setGitStatusService(gitService);
 
     // Connect config changes to reload theme, bookmarks, and showHidden
     QObject::connect(config, &ConfigManager::configChanged, [=]() {
@@ -173,6 +181,8 @@ int main(int argc, char *argv[])
         bookmarks->setBookmarks(config->bookmarks());
         fsModel->setShowHidden(config->showHidden());
         splitFsModel->setShowHidden(config->showHidden());
+        millerParentModel->setShowHidden(config->showHidden());
+        millerPreviewModel->setShowHidden(config->showHidden());
     });
 
     // Connect lastWindowClosed to quit
@@ -238,6 +248,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("dragHelper", dragHelper);
     engine.rootContext()->setContextProperty("fsModel", fsModel);
     engine.rootContext()->setContextProperty("splitFsModel", splitFsModel);
+    engine.rootContext()->setContextProperty("millerParentModel", millerParentModel);
+    engine.rootContext()->setContextProperty("millerPreviewModel", millerPreviewModel);
     engine.rootContext()->setContextProperty("devices", devices);
     engine.rootContext()->setContextProperty("recentFiles", recentFiles);
     engine.rootContext()->setContextProperty("searchProxy", searchProxy);

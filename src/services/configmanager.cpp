@@ -32,6 +32,7 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"grid_view", "Ctrl+1"},
     {"list_view", "Ctrl+2"},
     {"detailed_view", "Ctrl+3"},
+    {"miller_view", "Ctrl+4"},
     {"select_all", "Ctrl+A"},
     {"undo", "Ctrl+Z"},
     {"redo", "Ctrl+Shift+Z"},
