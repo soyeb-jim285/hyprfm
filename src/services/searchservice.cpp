@@ -64,7 +64,11 @@ void SearchWorker::cancel()
 SearchService::SearchService(QObject *parent)
     : QObject(parent)
 {
+    // On Arch and most distros the binary is `fd`; on Debian/Ubuntu the
+    // `fd-find` package ships it as `fdfind` to avoid a name clash.
     m_fdPath = QStandardPaths::findExecutable("fd");
+    if (m_fdPath.isEmpty())
+        m_fdPath = QStandardPaths::findExecutable("fdfind");
 }
 
 SearchService::~SearchService()
