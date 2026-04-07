@@ -29,6 +29,11 @@ Item {
     property bool focusScheduled: false
     property string typeAheadBuffer: ""
 
+    property int rowHeight: 28
+    readonly property int minRowHeight: 22
+    readonly property int maxRowHeight: 56
+    readonly property int detailIconSize: Math.round(rowHeight * 0.571)  // 16 at default 28
+
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
     signal sortRequested(string column, bool ascending)
@@ -270,7 +275,7 @@ Item {
         // Header row
         Rectangle {
             width: root.width
-            height: 28
+            height: root.rowHeight
             color: Theme.mantle
 
             Row {
@@ -365,7 +370,7 @@ Item {
         ListView {
             id: listView
             width: root.width
-            height: root.height - 28
+            height: root.height - root.rowHeight
             clip: true
 
             focus: visible
@@ -441,7 +446,7 @@ Item {
             delegate: Item {
                 id: detRow
                 width: listView.width
-                height: 28
+                height: root.rowHeight
                 Accessible.role: Accessible.ListItem
                 Accessible.name: fileName + (isDir ? ", folder" : ", " + fileType + ", " + fileSizeText)
                 Accessible.selected: isSelected
@@ -514,14 +519,14 @@ Item {
 
                             // Icon with git badge
                             Item {
-                                width: 16
-                                height: 16
+                                width: root.detailIconSize
+                                height: root.detailIconSize
                                 anchors.verticalCenter: parent.verticalCenter
 
                                 Image {
                                     anchors.fill: parent
                                     source: "image://icon/" + detRow.fileIconName
-                                    sourceSize: Qt.size(16, 16)
+                                    sourceSize: Qt.size(root.detailIconSize, root.detailIconSize)
                                     asynchronous: false
                                 }
 
@@ -694,6 +699,12 @@ Item {
                         paths.push(s.startsWith("file://") ? decodeURIComponent(s.substring(7)) : s)
                     }
                     if (paths.length === 0) return
+                    // Don't move files into the directory they're already in
+                    var allSameDir = paths.every(function(p) {
+                        var parentDir = p.substring(0, p.lastIndexOf("/"))
+                        return parentDir === root.currentPath
+                    })
+                    if (allSameDir) return
                     if (drop.proposedAction === Qt.MoveAction)
                         root.transferRequested(paths, root.currentPath, true)
                     else
@@ -713,6 +724,23 @@ Item {
                 property point dragStart
                 property bool rubberBandActive: false
                 property bool rubberBandJustFinished: false
+
+                onWheel: (wheel) => {
+                    if (wheel.modifiers & Qt.ControlModifier) {
+                        wheelScroller.stopAndSettle()
+                        root.interactionStarted()
+                        var delta = wheelScroller.deltaFor(wheel)
+                        if (delta === 0) {
+                            wheel.accepted = false
+                            return
+                        }
+                        var step = delta < 0 ? -2 : 2
+                        root.rowHeight = Math.max(root.minRowHeight, Math.min(root.maxRowHeight, root.rowHeight + step))
+                        wheel.accepted = true
+                    } else {
+                        wheel.accepted = false
+                    }
+                }
 
                 onPressed: (mouse) => {
                     var idx = listView.indexAt(mouse.x + listView.contentX, mouse.y + listView.contentY)

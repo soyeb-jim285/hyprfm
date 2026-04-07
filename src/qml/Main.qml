@@ -308,7 +308,6 @@ ApplicationWindow {
 
         var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
         if (vm === "grid") return view.gridViewItem
-        if (vm === "list") return view.listViewItem
         if (vm === "miller") return view.millerViewItem
         return view.detailedViewItem
     }
@@ -2551,18 +2550,13 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: config.shortcut("list_view")
-        onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "list" }
+        sequence: config.shortcut("miller_view")
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "miller" }
     }
 
     Shortcut {
         sequence: config.shortcut("detailed_view")
         onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "detailed" }
-    }
-
-    Shortcut {
-        sequence: config.shortcut("miller_view")
-        onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "miller" }
     }
 
     // File operations
@@ -2890,14 +2884,6 @@ ApplicationWindow {
                 }
                 onCollapseClicked: root.sidebarVisible = !root.sidebarVisible
                 onFeatureHintRequested: (message) => toast.show(message, "info")
-            }
-
-            Rectangle {
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                anchors.right: parent.right
-                width: 1
-                color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, sidebarResizeHandle.containsMouse || root.sidebarResizeActive ? 0.22 : 0.08)
             }
 
             MouseArea {

@@ -660,7 +660,7 @@ Item {
             items.push({ text: "View", shortcut: "", action: "view_toggle", isSubmenu: true, icon: "Eye",
                 submenuItems: [
                     { text: "Grid", shortcut: "Ctrl+1", action: "view_grid", checked: currentViewMode === "grid", icon: "Grid" },
-                    { text: "List", shortcut: "Ctrl+2", action: "view_list", checked: currentViewMode === "list", icon: "List" },
+                    { text: "Miller", shortcut: "Ctrl+2", action: "view_miller", checked: currentViewMode === "miller", icon: "Columns" },
                     { text: "Detailed", shortcut: "Ctrl+3", action: "view_detailed", checked: currentViewMode === "detailed", icon: "AlignJustify" }
                 ]
             })
@@ -731,7 +731,7 @@ Item {
         case "split_here": splitViewRequested(effectiveDir); break
         case "close_split": customActionRequested("close_split"); break
         case "view_grid": viewModeRequested("grid"); break
-        case "view_list": viewModeRequested("list"); break
+        case "view_miller": viewModeRequested("miller"); break
         case "view_detailed": viewModeRequested("detailed"); break
         case "sort_name": sortRequested("name", currentSortAscending); break
         case "sort_size": sortRequested("size", currentSortAscending); break

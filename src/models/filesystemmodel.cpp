@@ -377,6 +377,7 @@ void FileSystemModel::setGitStatusService(GitStatusService *service)
             if (rowCount() > 0)
                 emit dataChanged(index(0), index(rowCount() - 1), {GitStatusRole, GitStatusIconRole});
         });
+        m_gitService->setRootPath(m_rootPath);
     }
 }
 

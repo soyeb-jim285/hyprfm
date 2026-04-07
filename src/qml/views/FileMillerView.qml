@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import HyprFM
 
-Item {
+FocusScope {
     id: root
     Accessible.role: Accessible.Pane
     Accessible.name: "Miller columns view"
@@ -23,19 +23,16 @@ Item {
     // Track which folder in parent column leads to currentPath
     readonly property string parentPath: {
         if (!currentPath || currentPath === "/") return ""
-        var p = currentPath
-        if (p.endsWith("/") && p.length > 1) p = p.slice(0, -1)
-        var idx = p.lastIndexOf("/")
-        return idx <= 0 ? "/" : p.substring(0, idx)
+        var parent = fileOps.parentPath(currentPath)
+        return parent === currentPath ? "" : parent
     }
 
-    readonly property string currentDirName: {
-        if (!currentPath || currentPath === "/") return "/"
-        var p = currentPath
-        if (p.endsWith("/") && p.length > 1) p = p.slice(0, -1)
-        var idx = p.lastIndexOf("/")
-        return idx < 0 ? p : p.substring(idx + 1)
-    }
+    readonly property string currentDirName: currentPath ? fileOps.displayNameForPath(currentPath) : ""
+
+    property int rowHeight: 28
+    readonly property int minRowHeight: 22
+    readonly property int maxRowHeight: 56
+    readonly property int millerIconSize: Math.round(rowHeight * 0.571)  // 16 at default 28
 
     onCurrentPathChanged: {
         if (parentPath) {
@@ -55,6 +52,36 @@ Item {
 
     function clearSelection() {
         currentColumn.clearSelection()
+    }
+
+    function ensureCurrentColumnFocus() {
+        currentColumn.forceActiveFocus()
+        if (currentColumn.cursorIndex >= 0) {
+            currentColumn.positionViewAtIndex(currentColumn.cursorIndex, ListView.Contain)
+            return
+        }
+        if (currentColumn.selectedIndices.length > 0) {
+            currentColumn.positionViewAtIndex(
+                currentColumn.selectedIndices[currentColumn.selectedIndices.length - 1],
+                ListView.Contain
+            )
+            return
+        }
+        if (currentColumn.count > 0) {
+            currentColumn.selectIndex(0, false, false)
+            currentColumn.positionViewAtIndex(0, ListView.Beginning)
+        }
+    }
+
+    onVisibleChanged: {
+        if (!visible)
+            return
+        Qt.callLater(root.ensureCurrentColumnFocus)
+    }
+
+    Component.onCompleted: {
+        if (visible)
+            Qt.callLater(root.ensureCurrentColumnFocus)
     }
 
     function enterDirectory(dirPath) {
@@ -104,20 +131,77 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             keyNavigationEnabled: false
 
+            property bool revealScheduled: false
+
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            function pathForRow(row) {
+                if (!millerParentModel || row < 0)
+                    return ""
+                if (millerParentModel.filePath)
+                    return millerParentModel.filePath(row)
+                return millerParentModel.data(millerParentModel.index(row, 0), 258) || ""
+            }
+
+            function rowForPath(path) {
+                if (!path)
+                    return -1
+                for (var i = 0; i < count; ++i) {
+                    if (pathForRow(i) === path)
+                        return i
+                }
+                return -1
+            }
+
+            function revealCurrentDir() {
+                if (!root.parentPath || count <= 0)
+                    return
+                var idx = rowForPath(root.currentPath)
+                if (idx >= 0)
+                    positionViewAtIndex(idx, ListView.Contain)
+            }
+
+            function scheduleRevealCurrentDir() {
+                if (revealScheduled)
+                    return
+                revealScheduled = true
+                Qt.callLater(function() {
+                    revealScheduled = false
+                    revealCurrentDir()
+                })
+            }
+
+            Connections {
+                target: root
+
+                function onCurrentPathChanged() {
+                    parentColumn.scheduleRevealCurrentDir()
+                }
+            }
+
+            Connections {
+                target: millerParentModel
+                ignoreUnknownSignals: true
+
+                function onModelReset() {
+                    parentColumn.scheduleRevealCurrentDir()
+                }
+
+                function onRowsInserted() {
+                    parentColumn.scheduleRevealCurrentDir()
+                }
+            }
 
             // Right arrow from parent → focus middle column
             Keys.onRightPressed: (event) => {
-                currentColumn.forceActiveFocus()
-                if (currentColumn.cursorIndex < 0 && currentColumn.count > 0)
-                    currentColumn.selectIndex(0, false, false)
+                root.ensureCurrentColumnFocus()
                 event.accepted = true
             }
 
             delegate: Item {
                 id: parentDelegate
                 width: parentColumn.width
-                height: 28
+                height: root.rowHeight
 
                 required property int index
                 required property string fileName
@@ -133,44 +217,61 @@ Item {
                     radius: Theme.radiusSmall
                     color: {
                         if (parentDelegate.isCurrentDir)
-                            return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
+                            return parentMa.containsMouse
+                                ? Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.95)
+                                : Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.72)
                         if (parentMa.containsMouse)
                             return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05)
+                        if (parentDelegate.index % 2 === 1)
+                            return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.025)
                         return "transparent"
                     }
-                    border.color: parentDelegate.isCurrentDir ? Theme.accent : "transparent"
-                    border.width: parentDelegate.isCurrentDir ? 1 : 0
+                    border.color: "transparent"
+                    border.width: 0
+
+                    Rectangle {
+                        visible: parentDelegate.isCurrentDir
+                        width: 3
+                        height: parent.height - 10
+                        radius: width / 2
+                        anchors.left: parent.left
+                        anchors.leftMargin: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.9)
+                    }
 
                     Row {
                         anchors.fill: parent
-                        anchors.leftMargin: 6
+                        anchors.leftMargin: parentDelegate.isCurrentDir ? 12 : 6
                         anchors.rightMargin: 4
                         spacing: 6
 
                         Image {
-                            width: 16; height: 16
+                            width: root.millerIconSize; height: root.millerIconSize
                             anchors.verticalCenter: parent.verticalCenter
                             source: "image://icon/" + parentDelegate.fileIconName
-                            sourceSize: Qt.size(16, 16)
+                            sourceSize: Qt.size(root.millerIconSize, root.millerIconSize)
                             asynchronous: false
+                            opacity: parentDelegate.isCurrentDir ? 0.95 : 0.8
                         }
 
                         Text {
-                            width: parent.width - 16 - parent.spacing - (parentDelegate.isDir ? 12 : 0) - parent.anchors.leftMargin - parent.anchors.rightMargin
+                            width: parent.width - root.millerIconSize - parent.spacing - (parentDelegate.isDir ? root.millerIconSize : 0) - parent.anchors.leftMargin - parent.anchors.rightMargin
                             anchors.verticalCenter: parent.verticalCenter
                             text: parentDelegate.fileName
                             color: parentDelegate.isCurrentDir ? Theme.text : Theme.subtext
                             font.pointSize: Theme.fontSmall
+                            font.bold: parentDelegate.isCurrentDir
                             elide: Text.ElideRight
                         }
 
-                        Text {
+                        IconChevronRight {
                             visible: parentDelegate.isDir
-                            width: 12
+                            size: root.millerIconSize
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "\u25B8"
-                            color: Theme.subtext
-                            font.pointSize: Theme.fontSmall
+                            color: parentDelegate.isCurrentDir
+                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.75)
+                                : Theme.subtext
                         }
                     }
                 }
@@ -500,7 +601,7 @@ Item {
             delegate: Item {
                 id: currentDelegate
                 width: currentColumn.width
-                height: 28
+                height: root.rowHeight
 
                 required property int index
                 required property string fileName
@@ -526,6 +627,8 @@ Item {
                             return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
                         if (currentDelegateMa.containsMouse)
                             return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05)
+                        if (currentDelegate.index % 2 === 1)
+                            return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.025)
                         return "transparent"
                     }
                     border.color: currentDelegate.isSelected ? Theme.accent : "transparent"
@@ -538,13 +641,13 @@ Item {
                         spacing: 6
 
                         Item {
-                            width: 18; height: 18
+                            width: root.millerIconSize + 2; height: root.millerIconSize + 2
                             anchors.verticalCenter: parent.verticalCenter
 
                             Image {
                                 anchors.fill: parent
                                 source: "image://icon/" + currentDelegate.fileIconName
-                                sourceSize: Qt.size(18, 18)
+                                sourceSize: Qt.size(root.millerIconSize + 2, root.millerIconSize + 2)
                                 asynchronous: false
                             }
 
@@ -572,7 +675,7 @@ Item {
                         }
 
                         Text {
-                            width: parent.width - 18 - (currentDelegate.isDir ? 12 : 0) - parent.spacing * (currentDelegate.isDir ? 2 : 1) - parent.anchors.leftMargin - parent.anchors.rightMargin
+                            width: parent.width - (root.millerIconSize + 2) - (currentDelegate.isDir ? (root.millerIconSize + 2) : 0) - parent.spacing * (currentDelegate.isDir ? 2 : 1) - parent.anchors.leftMargin - parent.anchors.rightMargin
                             anchors.verticalCenter: parent.verticalCenter
                             text: currentDelegate.fileName
                             color: Theme.text
@@ -580,13 +683,11 @@ Item {
                             elide: Text.ElideRight
                         }
 
-                        Text {
+                        IconChevronRight {
                             visible: currentDelegate.isDir
-                            width: 12
+                            size: root.millerIconSize + 2
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "\u25B8"
                             color: Theme.subtext
-                            font.pointSize: Theme.fontSmall
                         }
                     }
                 }
@@ -601,6 +702,7 @@ Item {
                     property bool dragPending: false
 
                     onPressed: (mouse) => {
+                        currentWheelScroller.stopAndSettle()
                         root.interactionStarted()
                         currentColumn.forceActiveFocus()
                         pressPos = Qt.point(mouse.x, mouse.y)
@@ -659,16 +761,6 @@ Item {
                 }
             }
 
-            MouseArea {
-                anchors.fill: parent
-                z: -1
-                acceptedButtons: Qt.RightButton
-                onClicked: (mouse) => {
-                    var mapped = mapToItem(null, mouse.x, mouse.y)
-                    root.contextMenuRequested("", false, Qt.point(mapped.x, mapped.y))
-                }
-            }
-
             DropArea {
                 anchors.fill: parent
                 keys: ["text/uri-list"]
@@ -692,6 +784,124 @@ Item {
                     drop.accept()
                 }
             }
+
+            // ── Rubber-band selection + empty space clicks ───────────────
+            MouseArea {
+                id: currentBgMa
+                anchors.fill: parent
+                z: 10
+                preventStealing: true
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                property point dragStart
+                property bool rubberBandActive: false
+                property bool rubberBandJustFinished: false
+
+                onWheel: (wheel) => {
+                    if (wheel.modifiers & Qt.ControlModifier) {
+                        currentWheelScroller.stopAndSettle()
+                        root.interactionStarted()
+                        var delta = currentWheelScroller.deltaFor(wheel)
+                        if (delta === 0) {
+                            wheel.accepted = false
+                            return
+                        }
+                        var step = delta < 0 ? -2 : 2
+                        root.rowHeight = Math.max(root.minRowHeight, Math.min(root.maxRowHeight, root.rowHeight + step))
+                        wheel.accepted = true
+                    } else {
+                        wheel.accepted = false
+                    }
+                }
+
+                onPressed: (mouse) => {
+                    var idx = currentColumn.indexAt(mouse.x + currentColumn.contentX, mouse.y + currentColumn.contentY)
+                    if (idx >= 0) {
+                        mouse.accepted = false
+                        return
+                    }
+                    currentWheelScroller.stopAndSettle()
+                    root.interactionStarted()
+                    currentColumn.forceActiveFocus()
+                    if (mouse.button === Qt.LeftButton) {
+                        currentColumn.interactive = false
+                        dragStart = Qt.point(mouse.x, mouse.y)
+                        currentRubberBand.begin(dragStart)
+                        rubberBandActive = true
+                    }
+                }
+
+                onClicked: (mouse) => {
+                    if (mouse.button === Qt.RightButton) {
+                        var mp = currentBgMa.mapToItem(null, mouse.x, mouse.y)
+                        root.contextMenuRequested("", false, Qt.point(mp.x, mp.y))
+                        return
+                    }
+                    if (rubberBandJustFinished) {
+                        rubberBandJustFinished = false
+                        return
+                    }
+                    currentColumn.clearSelection()
+                }
+
+                onPositionChanged: (mouse) => {
+                    if (rubberBandActive) {
+                        currentRubberBand.update(Qt.point(mouse.x, mouse.y))
+                        selectIntersecting()
+                    }
+                }
+
+                onReleased: {
+                    var wasRubberBand = rubberBandActive && currentRubberBand.visible
+                    currentRubberBand.end()
+                    rubberBandActive = false
+                    rubberBandJustFinished = wasRubberBand
+                    currentColumn.interactive = true
+                }
+
+                function selectIntersecting() {
+                    var rb = currentRubberBand.selectionRect
+                    if (rb.width < 4 && rb.height < 4) return
+
+                    var newSel = []
+                    var c = currentColumn.count
+                    for (var i = 0; i < c; i++) {
+                        var item = currentColumn.itemAtIndex(i)
+                        if (!item) continue
+                        var itemPos = currentColumn.mapFromItem(item, 0, 0)
+                        var itemRect = Qt.rect(itemPos.x, itemPos.y, item.width, item.height)
+                        if (rectsIntersect(rb, itemRect))
+                            newSel.push(i)
+                    }
+                    currentColumn.selectedIndices = newSel
+                }
+
+                function rectsIntersect(a, b) {
+                    return a.x < b.x + b.width  &&
+                           a.x + a.width  > b.x &&
+                           a.y < b.y + b.height &&
+                           a.y + a.height > b.y
+                }
+            }
+
+            RubberBand {
+                id: currentRubberBand
+                anchors.fill: parent
+                z: 11
+            }
+
+            KineticWheelScroller {
+                id: currentWheelScroller
+                anchors.fill: parent
+                z: 12
+                flickable: currentColumn
+                wheelStep: 42
+                mouseWheelMultiplier: 0.75
+                minVelocity: 135
+                maxVelocity: 3900
+                kineticGain: 1.01
+                onScrollStarted: root.interactionStarted()
+            }
         }
 
         Rectangle {
@@ -714,20 +924,42 @@ Item {
             property var fileProps: ({})
             property var textPreview: ({ content: "", truncated: false, isBinary: false, error: "" })
             property var directoryPreview: ({ entries: [], truncated: false, error: "", count: 0 })
+            property var pdfPreview: ({ localPath: "", pageCount: 0, error: "" })
+            property var fileMetadata: ({})
+            property string metadataHint: ""
+            property int pdfPageIndex: 0
+            property real pdfWheelAccumulator: 0
 
             readonly property string _mime: fileProps.mimeType || ""
             readonly property bool isRemoteUri: previewFilePath !== "" && fileOps.isRemotePath(previewFilePath)
+            readonly property bool isTrashUri: previewFilePath.startsWith("trash:///")
+            readonly property bool isArchive: !previewIsDir && fileOps.isArchive(previewFilePath)
             readonly property bool isImage: !isRemoteUri && !previewIsDir && _mime.startsWith("image/")
             readonly property bool isVideo: !isRemoteUri && !previewIsDir && _mime.startsWith("video/")
             readonly property bool isAudio: !isRemoteUri && !previewIsDir && (_mime.startsWith("audio/") || false)
-            readonly property bool hasVisualPreview: isImage || (isVideo && runtimeFeatures.ffmpegAvailable)
+            readonly property bool isPdf: !isRemoteUri && !previewIsDir && _mime === "application/pdf"
+            readonly property bool pdfPreviewAvailable: previewService.pdfPreviewAvailable
+            readonly property bool videoPreviewAvailable: runtimeFeatures.ffmpegAvailable
+            readonly property bool textHighlightAvailable: runtimeFeatures.batAvailable
+            readonly property bool hasVisualPreview: isImage || (isVideo && videoPreviewAvailable)
             readonly property string visualSource: {
                 if (!hasVisualPreview || previewFilePath === "") return ""
-                if (isVideo) return "image://thumbnail/" + previewFilePath
+                if (isVideo || isTrashUri) return "image://thumbnail/" + previewFilePath
                 return "file://" + previewFilePath
             }
+            readonly property string pdfImageSource: {
+                if (!isPdf || !pdfPreview.localPath || pdfPreview.error !== "")
+                    return ""
+                return "image://pdfpreview/" + encodeURIComponent(pdfPreview.localPath)
+                    + "?page=" + pdfPageIndex
+            }
+            readonly property string pdfPageLabel: {
+                if (!isPdf || pdfPreview.pageCount <= 0)
+                    return ""
+                return "Page " + (pdfPageIndex + 1) + " of " + pdfPreview.pageCount
+            }
             readonly property bool isText: {
-                if (isRemoteUri || previewIsDir || isImage || isVideo || isAudio) return false
+                if (isRemoteUri || previewIsDir || isPdf || isImage || isVideo || isAudio || isArchive) return false
                 if (_mime.startsWith("text/")) return true
                 var textMimes = [
                     "application/json", "application/xml", "application/x-yaml",
@@ -750,17 +982,66 @@ Item {
             }
 
             readonly property string previewFileName: {
+                if (fileProps.name)
+                    return fileProps.name
                 if (previewFilePath === "") return ""
                 var idx = previewFilePath.lastIndexOf("/")
                 return idx >= 0 ? previewFilePath.substring(idx + 1) : previewFilePath
             }
 
+            readonly property var metadataEntries: {
+                var result = []
+                var md = previewColumn.fileMetadata || {}
+                var keys = Object.keys(md)
+                for (var i = 0; i < keys.length; ++i) {
+                    var value = md[keys[i]]
+                    if (value !== undefined && value !== null && String(value) !== "")
+                        result.push({ label: keys[i], value: String(value) })
+                }
+                return result
+            }
+
             readonly property string detailKind: {
                 if (previewIsDir) return "Folder"
+                if (isArchive) return "Archive"
+                if (isAudio) return "Audio"
+                if (isVideo) return "Video"
                 if (fileProps.mimeDescription) return fileProps.mimeDescription
                 var ext = previewFileName.lastIndexOf(".") >= 0
                     ? previewFileName.substring(previewFileName.lastIndexOf(".") + 1).toUpperCase() : ""
                 return ext !== "" ? ext + " file" : "File"
+            }
+
+            function changePdfPage(delta) {
+                if (!isPdf || pdfPreview.pageCount <= 0)
+                    return
+                pdfPageIndex = Math.max(0, Math.min(pdfPreview.pageCount - 1, pdfPageIndex + delta))
+            }
+
+            function handlePdfWheel(wheel) {
+                if (!isPdf || pdfPreview.pageCount <= 1)
+                    return
+
+                var delta = 0
+                if (wheel.angleDelta && wheel.angleDelta.y !== 0)
+                    delta = wheel.angleDelta.y
+                else if (wheel.pixelDelta && wheel.pixelDelta.y !== 0)
+                    delta = wheel.pixelDelta.y * 3
+
+                if (delta === 0)
+                    return
+
+                pdfWheelAccumulator += delta
+                while (pdfWheelAccumulator >= 120) {
+                    changePdfPage(-1)
+                    pdfWheelAccumulator -= 120
+                }
+                while (pdfWheelAccumulator <= -120) {
+                    changePdfPage(1)
+                    pdfWheelAccumulator += 120
+                }
+
+                wheel.accepted = true
             }
 
             function refreshPreview() {
@@ -768,6 +1049,9 @@ Item {
                     fileProps = ({})
                     textPreview = ({ content: "", truncated: false, isBinary: false, error: "" })
                     directoryPreview = ({ entries: [], truncated: false, error: "", count: 0 })
+                    pdfPreview = ({ localPath: "", pageCount: 0, error: "" })
+                    fileMetadata = ({})
+                    metadataHint = ""
                     return
                 }
 
@@ -781,13 +1065,30 @@ Item {
                 else
                     textPreview = ({ content: "", truncated: false, isBinary: false, error: "" })
 
+                if (isPdf) {
+                    pdfPreview = previewService.loadPdfPreview(previewFilePath)
+                    if (pdfPageIndex >= (pdfPreview.pageCount || 0))
+                        pdfPageIndex = 0
+                } else {
+                    pdfPreview = ({ localPath: "", pageCount: 0, error: "" })
+                }
+
                 if (previewIsDir)
                     directoryPreview = previewService.loadDirectoryPreview(previewFilePath)
+                else if (isArchive)
+                    directoryPreview = previewService.loadArchivePreview(previewFilePath)
                 else
                     directoryPreview = ({ entries: [], truncated: false, error: "", count: 0 })
+
+                fileMetadata = metadataExtractor.extract(previewFilePath)
+                metadataHint = metadataExtractor.missingDepsHint(fileProps.mimeType || "")
             }
 
-            onPreviewFilePathChanged: refreshPreview()
+            onPreviewFilePathChanged: {
+                pdfPageIndex = 0
+                pdfWheelAccumulator = 0
+                refreshPreview()
+            }
 
             // ── Preview content area (top) + info bar (bottom) ───────────
             Column {
@@ -846,17 +1147,202 @@ Item {
                         }
                     }
 
+                    // Archive contents preview
+                    Item {
+                        anchors.fill: parent
+                        visible: previewColumn.isArchive
+
+                        Text {
+                            id: archivePreviewTitle
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.margins: 8
+                            text: "Archive contents"
+                            color: Theme.text
+                            font.pointSize: Theme.fontSmall
+                            font.bold: true
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            anchors.top: archivePreviewTitle.bottom
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.margins: 8
+                            visible: previewColumn.directoryPreview.error !== ""
+                            text: previewColumn.directoryPreview.error
+                            color: Theme.error
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                        }
+
+                        ListView {
+                            id: archivePreviewList
+                            anchors.top: archivePreviewTitle.bottom
+                            anchors.topMargin: 8
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            visible: previewColumn.directoryPreview.error === ""
+                            model: previewColumn.directoryPreview.entries || []
+                            clip: true
+                            spacing: 4
+
+                            delegate: Text {
+                                width: archivePreviewList.width - 12
+                                text: modelData
+                                color: Theme.subtext
+                                font.pointSize: Theme.fontSmall
+                                elide: Text.ElideMiddle
+                            }
+
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        }
+                    }
+
                     // Image/Video preview
                     Image {
                         id: visualPreview
                         anchors.fill: parent
                         anchors.margins: 8
-                        visible: previewColumn.hasVisualPreview && !previewColumn.previewIsDir
+                        visible: previewColumn.hasVisualPreview && !previewColumn.previewIsDir && !previewColumn.isPdf
                         source: previewColumn.visualSource
+                        sourceSize: Qt.size(width, height)
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                        smooth: true
+                    }
+
+                    // PDF preview
+                    Image {
+                        id: pdfPreviewImage
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        visible: previewColumn.isPdf
+                            && previewColumn.pdfPreviewAvailable
+                            && previewColumn.pdfPreview.localPath !== ""
+                            && previewColumn.pdfPreview.error === ""
+                        source: previewColumn.pdfImageSource
                         sourceSize: Qt.size(width * Screen.devicePixelRatio, height * Screen.devicePixelRatio)
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
                         smooth: true
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        visible: pdfPreviewImage.visible
+                        acceptedButtons: Qt.NoButton
+                        onWheel: (wheel) => previewColumn.handlePdfWheel(wheel)
+                    }
+
+                    Row {
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.topMargin: 10
+                        anchors.rightMargin: 10
+                        spacing: 6
+                        visible: pdfPreviewImage.visible && previewColumn.pdfPreview.pageCount > 1
+
+                        Rectangle {
+                            width: 26
+                            height: 26
+                            radius: 13
+                            enabled: previewColumn.pdfPageIndex > 0
+                            opacity: enabled ? 1 : 0.45
+                            color: pdfPrevMouse.containsMouse
+                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+
+                            IconChevronUp {
+                                anchors.centerIn: parent
+                                size: 14
+                                color: Theme.text
+                            }
+
+                            MouseArea {
+                                id: pdfPrevMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                enabled: parent.enabled
+                                onClicked: previewColumn.changePdfPage(-1)
+                            }
+                        }
+
+                        Rectangle {
+                            width: 26
+                            height: 26
+                            radius: 13
+                            enabled: previewColumn.pdfPageIndex < previewColumn.pdfPreview.pageCount - 1
+                            opacity: enabled ? 1 : 0.45
+                            color: pdfNextMouse.containsMouse
+                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+
+                            IconChevronDown {
+                                anchors.centerIn: parent
+                                size: 14
+                                color: Theme.text
+                            }
+
+                            MouseArea {
+                                id: pdfNextMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                enabled: parent.enabled
+                                onClicked: previewColumn.changePdfPage(1)
+                            }
+                        }
+                    }
+
+                    Text {
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.margins: 10
+                        visible: pdfPreviewImage.visible && previewColumn.pdfPageLabel !== ""
+                        text: previewColumn.pdfPageLabel
+                        color: Theme.subtext
+                        font.pointSize: Theme.fontSmall
+                    }
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        visible: (previewColumn.hasVisualPreview && visualPreview.status === Image.Loading)
+                            || (pdfPreviewImage.visible && pdfPreviewImage.status === Image.Loading)
+                        color: Qt.rgba(Theme.base.r, Theme.base.g, Theme.base.b, 0.72)
+                        radius: Theme.radiusMedium
+                        width: 170
+                        height: 40
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: previewColumn.isPdf ? "Rendering PDF..." : "Loading preview..."
+                            color: Theme.text
+                            font.pointSize: Theme.fontSmall
+                        }
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 8
+                        visible: (previewColumn.hasVisualPreview && visualPreview.status === Image.Error)
+                            || (pdfPreviewImage.visible && pdfPreviewImage.status === Image.Error)
+
+                        Image {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 64; height: 64
+                            source: "image://icon/" + (previewColumn.fileProps.iconName || (previewColumn.isPdf ? "application-pdf" : "image-x-generic"))
+                            sourceSize: Qt.size(64, 64)
+                            asynchronous: false
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: previewColumn.isPdf ? "PDF preview could not be loaded" : "Preview could not be loaded"
+                            color: Theme.subtext
+                            font.pointSize: Theme.fontSmall
+                        }
                     }
 
                     // Text preview
@@ -864,7 +1350,8 @@ Item {
                         id: textPreviewFlick
                         anchors.fill: parent
                         anchors.margins: 6
-                        visible: previewColumn.isText && !previewColumn.hasVisualPreview && !previewColumn.previewIsDir
+                        visible: previewColumn.isText && !previewColumn.hasVisualPreview
+                            && !previewColumn.previewIsDir && !previewColumn.isPdf && !previewColumn.isArchive
                         clip: true
                         interactive: true
                         boundsMovement: Flickable.StopAtBounds
@@ -875,14 +1362,14 @@ Item {
                         TextEdit {
                             id: textArea
                             readOnly: true
-                            selectByMouse: false
+                            selectByMouse: true
                             textFormat: previewColumn.textPreview.usesBat && previewColumn.textPreview.html !== ""
                                 ? TextEdit.RichText
                                 : TextEdit.PlainText
                             text: previewColumn.textPreview.error !== ""
                                 ? previewColumn.textPreview.error
                                 : (previewColumn.textPreview.isBinary
-                                    ? "Binary file"
+                                    ? "This file looks binary and cannot be previewed as text."
                                     : (previewColumn.textPreview.usesBat && previewColumn.textPreview.html !== ""
                                         ? previewColumn.textPreview.html
                                         : previewColumn.textPreview.content))
@@ -896,12 +1383,69 @@ Item {
                         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
                     }
 
+                    Text {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.margins: 8
+                        visible: textPreviewFlick.visible
+                            && previewColumn.textPreview.error === ""
+                            && !previewColumn.textPreview.isBinary
+                            && !previewColumn.textPreview.usesBat
+                            && !previewColumn.textHighlightAvailable
+                        text: runtimeFeatures.installHint("textHighlight")
+                        color: Theme.subtext
+                        font.pointSize: Theme.fontSmall
+                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 10
+                        visible: previewColumn.isPdf
+                            && (!previewColumn.pdfPreviewAvailable || previewColumn.pdfPreview.error !== "")
+
+                        Image {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 72; height: 72
+                            source: "image://icon/" + (previewColumn.fileProps.iconName || "application-pdf")
+                            sourceSize: Qt.size(72, 72)
+                            asynchronous: false
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 220
+                            text: previewColumn.pdfPreviewAvailable
+                                ? "PDF preview is unavailable for this file"
+                                : "PDF preview support is unavailable"
+                            color: Theme.text
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 220
+                            text: previewColumn.pdfPreview.error !== ""
+                                ? previewColumn.pdfPreview.error
+                                : runtimeFeatures.installHint("pdfPreview")
+                            color: Theme.subtext
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                    }
+
                     // Fallback: icon for non-previewable files
                     Column {
                         anchors.centerIn: parent
-                        spacing: 8
-                        visible: !previewColumn.previewIsDir && !previewColumn.hasVisualPreview
-                            && !previewColumn.isText && previewColumn.previewFilePath !== ""
+                        spacing: 10
+                        visible: !previewColumn.previewIsDir && !previewColumn.isArchive
+                            && !previewColumn.hasVisualPreview && !previewColumn.isText
+                            && !previewColumn.isPdf && previewColumn.previewFilePath !== ""
 
                         Image {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -911,6 +1455,32 @@ Item {
                                 : "image://icon/text-x-generic"
                             sourceSize: Qt.size(64, 64)
                             asynchronous: false
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 220
+                            text: previewColumn.isAudio
+                                ? "Audio preview is not available yet"
+                                : (previewColumn.isVideo && !previewColumn.videoPreviewAvailable
+                                    ? "Video preview support is unavailable"
+                                    : "Preview not available")
+                            color: Theme.text
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 220
+                            text: previewColumn.isVideo && !previewColumn.videoPreviewAvailable
+                                ? runtimeFeatures.installHint("videoPreview")
+                                : "Open Quick Preview for a larger preview surface."
+                            color: Theme.subtext
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            horizontalAlignment: Text.AlignHCenter
                         }
                     }
 
@@ -928,7 +1498,9 @@ Item {
                 Rectangle {
                     id: infoBar
                     width: parent.width
-                    height: previewColumn.previewFilePath !== "" ? infoBarContent.implicitHeight + 12 : 0
+                    height: previewColumn.previewFilePath !== ""
+                        ? Math.min(parent.height * 0.34, Math.max(54, infoBarContent.implicitHeight + 14))
+                        : 0
                     visible: previewColumn.previewFilePath !== ""
                     color: Qt.rgba(Theme.base.r, Theme.base.g, Theme.base.b, 0.5)
                     border.width: 0
@@ -940,41 +1512,124 @@ Item {
                         color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
                     }
 
-                    Column {
-                        id: infoBarContent
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.margins: 6
+                    Flickable {
+                        id: infoBarFlick
+                        anchors.fill: parent
+                        anchors.leftMargin: 6
+                        anchors.rightMargin: 6
                         anchors.topMargin: 7
-                        spacing: 2
+                        anchors.bottomMargin: 7
+                        clip: true
+                        interactive: contentHeight > height
+                        boundsMovement: Flickable.StopAtBounds
+                        boundsBehavior: Flickable.StopAtBounds
+                        contentWidth: width
+                        contentHeight: infoBarContent.implicitHeight
 
-                        Text {
-                            width: parent.width
-                            text: previewColumn.previewFileName
-                            color: Theme.text
-                            font.pointSize: Theme.fontSmall
-                            font.bold: true
-                            elide: Text.ElideMiddle
-                        }
+                        Column {
+                            id: infoBarContent
+                            width: infoBarFlick.width
+                            spacing: 4
 
-                        Text {
-                            width: parent.width
-                            text: {
-                                var parts = []
-                                parts.push(previewColumn.detailKind)
-                                if (previewColumn.fileProps.sizeText)
-                                    parts.push(previewColumn.fileProps.sizeText)
-                                if (previewColumn.previewIsDir && previewColumn.fileProps.contentText)
-                                    parts.push(previewColumn.fileProps.contentText)
-                                if (previewColumn.fileProps.modified)
-                                    parts.push(previewColumn.fileProps.modified)
-                                return parts.join(" \u00b7 ")
+                            Text {
+                                width: parent.width
+                                text: previewColumn.previewFileName
+                                color: Theme.text
+                                font.pointSize: Theme.fontSmall
+                                font.bold: true
+                                elide: Text.ElideMiddle
                             }
-                            color: Theme.subtext
-                            font.pointSize: Theme.fontSmall - 1
-                            elide: Text.ElideRight
+
+                            Text {
+                                width: parent.width
+                                text: {
+                                    var parts = []
+                                    parts.push(previewColumn.detailKind)
+                                    if (previewColumn.fileProps.sizeText)
+                                        parts.push(previewColumn.fileProps.sizeText)
+                                    if (previewColumn.previewIsDir && previewColumn.fileProps.contentText)
+                                        parts.push(previewColumn.fileProps.contentText)
+                                    if (previewColumn.pdfPageLabel !== "")
+                                        parts.push(previewColumn.pdfPageLabel)
+                                    if (previewColumn.fileProps.modified)
+                                        parts.push(previewColumn.fileProps.modified)
+                                    return parts.join(" \u00b7 ")
+                                }
+                                color: Theme.subtext
+                                font.pointSize: Theme.fontSmall - 1
+                                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: !!(previewColumn.fileProps.originalPath || previewColumn.fileProps.parentDir)
+                                text: (previewColumn.fileProps.originalPath ? "Original Location: " : "Location: ")
+                                    + (previewColumn.fileProps.originalPath || previewColumn.fileProps.parentDir || "")
+                                color: Theme.subtext
+                                font.pointSize: Theme.fontSmall - 1
+                                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: !previewColumn.previewIsDir && !!previewColumn.fileProps.contentText
+                                text: "Contents: " + previewColumn.fileProps.contentText
+                                color: Theme.subtext
+                                font.pointSize: Theme.fontSmall - 1
+                                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: !!previewColumn.fileProps.deleted
+                                text: "Deleted: " + previewColumn.fileProps.deleted
+                                color: Theme.subtext
+                                font.pointSize: Theme.fontSmall - 1
+                                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            }
+
+                            Repeater {
+                                model: previewColumn.metadataEntries
+
+                                delegate: Text {
+                                    width: infoBarContent.width
+                                    text: modelData.label + ": " + modelData.value
+                                    color: Theme.subtext
+                                    font.pointSize: Theme.fontSmall - 1
+                                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                }
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: previewColumn.metadataHint !== ""
+                                text: previewColumn.metadataHint
+                                color: Theme.muted
+                                font.pointSize: Theme.fontSmall - 1
+                                font.italic: true
+                                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: previewColumn.isText && previewColumn.textPreview.truncated
+                                text: "Showing a shortened text preview for quick browsing."
+                                color: Theme.subtext
+                                font.pointSize: Theme.fontSmall - 1
+                                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: (previewColumn.previewIsDir || previewColumn.isArchive) && previewColumn.directoryPreview.truncated
+                                text: "Only the first items are shown here."
+                                color: Theme.subtext
+                                font.pointSize: Theme.fontSmall - 1
+                                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            }
                         }
+
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
                     }
                 }
             }

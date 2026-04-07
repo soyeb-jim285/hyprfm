@@ -169,11 +169,10 @@ int main(int argc, char *argv[])
     DiskUsageService *diskUsageService = new DiskUsageService(&app);
     RemoteAccessService *remoteAccessService = new RemoteAccessService(&app);
     RuntimeFeaturesService *runtimeFeatures = new RuntimeFeaturesService(&app);
-    GitStatusService *gitService = new GitStatusService(&app);
-    fsModel->setGitStatusService(gitService);
-    splitFsModel->setGitStatusService(gitService);
-    millerParentModel->setGitStatusService(gitService);
-    millerPreviewModel->setGitStatusService(gitService);
+    GitStatusService *primaryGitService = new GitStatusService(&app);
+    GitStatusService *secondaryGitService = new GitStatusService(&app);
+    fsModel->setGitStatusService(primaryGitService);
+    splitFsModel->setGitStatusService(secondaryGitService);
 
     // Connect config changes to reload theme, bookmarks, and showHidden
     QObject::connect(config, &ConfigManager::configChanged, [=]() {

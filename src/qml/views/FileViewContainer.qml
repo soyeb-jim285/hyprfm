@@ -4,7 +4,7 @@ import HyprFM
 Item {
     id: root
 
-    // "grid" | "list" | "detailed" | "miller"
+    // "grid" | "detailed" | "miller"
     property string viewMode: "grid"
     property var fileModel: null
     property string currentPath: ""
@@ -17,21 +17,18 @@ Item {
 
     function selectAll() {
         if (viewMode === "grid") gridView.selectAll()
-        else if (viewMode === "list") listView.selectAll()
         else if (viewMode === "miller") millerView.selectAll()
         else detailedView.selectAll()
     }
 
     function focusPath(path, reveal) {
         gridView.focusPath(path, reveal)
-        listView.focusPath(path, reveal)
         detailedView.focusPath(path, reveal)
         millerView.focusPath(path, reveal)
     }
 
     // Expose sub-views so main.qml can access selection state
     property alias gridViewItem: gridView
-    property alias listViewItem: listView
     property alias detailedViewItem: detailedView
     property alias millerViewItem: millerView
 
@@ -39,20 +36,6 @@ Item {
         id: gridView
         anchors.fill: parent
         visible: root.viewMode === "grid"
-        model: root.fileModel
-        currentPath: root.currentPath
-
-        onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
-        onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
-        onSelectedIndicesChanged: root.selectionChanged()
-        onInteractionStarted: root.interactionStarted()
-        onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
-    }
-
-    FileListView {
-        id: listView
-        anchors.fill: parent
-        visible: root.viewMode === "list"
         model: root.fileModel
         currentPath: root.currentPath
 

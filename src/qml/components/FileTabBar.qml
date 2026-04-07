@@ -70,6 +70,12 @@ Rectangle {
                                     paths.push(s.startsWith("file://") ? decodeURIComponent(s.substring(7)) : s)
                                 }
                                 if (paths.length === 0) return
+                                // Don't move files into the directory they're already in
+                                var allSameDir = paths.every(function(p) {
+                                    var parentDir = p.substring(0, p.lastIndexOf("/"))
+                                    return parentDir === destPath
+                                })
+                                if (allSameDir) return
                                 var usesRemotePath = fileOps.isRemotePath(destPath)
                                 for (var j = 0; j < paths.length; ++j) {
                                     if (fileOps.isRemotePath(paths[j])) {

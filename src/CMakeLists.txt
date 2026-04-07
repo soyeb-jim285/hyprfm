@@ -57,7 +57,6 @@ list(APPEND hyprfm_qml_module_args
         qml/components/HoverRect.qml
         qml/views/FileViewContainer.qml
         qml/views/FileGridView.qml
-        qml/views/FileListView.qml
         qml/views/FileDetailedView.qml
         qml/views/FileMillerView.qml
         qml/views/KineticWheelScroller.qml
