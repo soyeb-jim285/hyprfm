@@ -18,6 +18,7 @@ depends=(
 )
 makedepends=(
     'cmake'
+    'ninja'
     'git'
     'qt6-base'
     'qt6-declarative'
@@ -54,12 +55,12 @@ prepare() {
 }
 
 build() {
-    cmake -B build -S "${pkgname}" \
+    cmake -B build -S "${pkgname}" -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr \
         -DBUILD_TESTS=OFF \
         -DHYPRFM_DATA_DIR=/usr/share/hyprfm
-    cmake --build build
+    cmake --build build --parallel
 }
 
 package() {

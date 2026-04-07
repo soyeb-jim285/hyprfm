@@ -31,6 +31,39 @@ endif()
 
 qt_add_executable(hyprfm ${HYPRFM_SOURCES})
 
+option(HYPRFM_ENABLE_PCH "Enable precompiled headers (faster builds)" ON)
+option(HYPRFM_ENABLE_UNITY_BUILD "Enable unity builds (faster clean builds)" ON)
+
+if(HYPRFM_ENABLE_PCH)
+    target_precompile_headers(hyprfm PRIVATE
+        <QtCore/QObject>
+        <QtCore/QString>
+        <QtCore/QStringList>
+        <QtCore/QVariant>
+        <QtCore/QDebug>
+        <QtCore/QAbstractListModel>
+        <QtCore/QHash>
+        <QtCore/QFileInfo>
+        <QtCore/QDir>
+    )
+endif()
+
+if(HYPRFM_ENABLE_UNITY_BUILD)
+    set_target_properties(hyprfm PROPERTIES
+        UNITY_BUILD ON
+        UNITY_BUILD_BATCH_SIZE 8
+    )
+    # Exclude files with anonymous-namespace symbol collisions from unity batches
+    # (multiple files define local helpers like isRemoteUri/parentLocation)
+    set_source_files_properties(
+        models/bookmarkmodel.cpp
+        models/tabmodel.cpp
+        models/filesystemmodel.cpp
+        services/fileoperations.cpp
+        PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
+    )
+endif()
+
 set_source_files_properties(qml/theme/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 option(HYPRFM_ENABLE_QML_CACHEGEN "Enable Qt QML cache compilation (faster startup, slower builds)" OFF)
