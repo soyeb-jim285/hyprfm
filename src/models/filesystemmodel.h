@@ -55,6 +55,7 @@ public:
     Q_INVOKABLE void sortByColumn(const QString &column, bool ascending);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE QVariantMap fileProperties(const QString &path) const;
+    Q_INVOKABLE QVariantMap folderItemCounts(const QStringList &paths) const;
     Q_INVOKABLE QVariantList availableApps(const QString &mimeType) const;
     Q_INVOKABLE QString defaultApp(const QString &mimeType) const;
     Q_INVOKABLE void setDefaultApp(const QString &mimeType, const QString &desktopFile);

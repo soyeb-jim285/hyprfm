@@ -195,26 +195,39 @@ int main(int argc, char *argv[])
 
     // Check for CLI tools and warn if missing
     const QStringList requiredTools = {"fd", "rsync", "gio", "xdg-open"};
-    const QStringList optionalTools = {"wl-copy", "wl-paste", "ffmpeg", "udisksctl", "bat", "batcat"};
+    // Each entry is a list of equivalent alternatives — only warn if none exist
+    const QList<QStringList> optionalToolGroups = {
+        {"wl-copy"},
+        {"wl-paste"},
+        {"ffmpeg"},
+        {"udisksctl"},
+        {"bat", "batcat"}, // bat on Arch, batcat on Debian/Ubuntu
+    };
 
-    for (const QString &tool : requiredTools) {
+    auto hasTool = [](const QString &tool) {
         QProcess which;
         which.setProgram("which");
         which.setArguments({tool});
         which.start();
         which.waitForFinished(2000);
-        if (which.exitCode() != 0)
+        return which.exitCode() == 0;
+    };
+
+    for (const QString &tool : requiredTools) {
+        if (!hasTool(tool))
             qWarning() << "HyprFM: required tool not found:" << tool;
     }
 
-    for (const QString &tool : optionalTools) {
-        QProcess which;
-        which.setProgram("which");
-        which.setArguments({tool});
-        which.start();
-        which.waitForFinished(2000);
-        if (which.exitCode() != 0)
-            qWarning() << "HyprFM: optional tool not found:" << tool;
+    for (const QStringList &group : optionalToolGroups) {
+        bool found = false;
+        for (const QString &tool : group) {
+            if (hasTool(tool)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            qWarning() << "HyprFM: optional tool not found:" << group.join(QStringLiteral(" or "));
     }
 
     QQmlApplicationEngine engine;

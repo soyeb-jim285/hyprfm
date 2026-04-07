@@ -12,8 +12,6 @@ ApplicationWindow {
     visible: true
     title: "HyprFM"
     color: "transparent"
-    Accessible.role: Accessible.Window
-    Accessible.name: "HyprFM File Manager"
 
     property bool primaryPaneIsRecents: false
     property bool secondaryPaneIsRecents: false

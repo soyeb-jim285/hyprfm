@@ -644,11 +644,27 @@ FocusScope {
                             width: root.millerIconSize + 2; height: root.millerIconSize + 2
                             anchors.verticalCenter: parent.verticalCenter
 
+                            readonly property bool isImage: !currentDelegate.isDir &&
+                                /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(currentDelegate.filePath)
+                            readonly property bool isVideo: !currentDelegate.isDir &&
+                                /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ts)$/i.test(currentDelegate.filePath)
+                            readonly property bool hasThumbnail: !fileOps.isRemotePath(currentDelegate.filePath) && (isImage || isVideo)
+
                             Image {
                                 anchors.fill: parent
+                                visible: !parent.hasThumbnail
                                 source: "image://icon/" + currentDelegate.fileIconName
                                 sourceSize: Qt.size(root.millerIconSize + 2, root.millerIconSize + 2)
                                 asynchronous: false
+                            }
+
+                            Image {
+                                anchors.fill: parent
+                                visible: parent.hasThumbnail
+                                fillMode: Image.PreserveAspectFit
+                                source: parent.hasThumbnail ? ("image://thumbnail/" + currentDelegate.filePath) : ""
+                                sourceSize: Qt.size(64 * Screen.devicePixelRatio, 64 * Screen.devicePixelRatio)
+                                asynchronous: true
                             }
 
                             Loader {
@@ -806,7 +822,7 @@ FocusScope {
                             wheel.accepted = false
                             return
                         }
-                        var step = delta < 0 ? -2 : 2
+                        var step = delta < 0 ? 2 : -2
                         root.rowHeight = Math.max(root.minRowHeight, Math.min(root.maxRowHeight, root.rowHeight + step))
                         wheel.accepted = true
                     } else {

@@ -2,10 +2,11 @@ import QtQuick
 import QtQuick.Controls
 import HyprFM
 
-Item {
+FocusScope {
     id: root
     Accessible.role: Accessible.Table
     Accessible.name: "File details"
+    focus: visible
 
     property var selectedIndices: []
     property int lastSelectedIndex: -1   // anchor for shift-selection
@@ -20,6 +21,7 @@ Item {
         pendingFocusPath = ""
         typeAheadBuffer = ""
         typeAheadTimer.stop()
+        Qt.callLater(refreshFolderItemCounts)
     }
 
     // Model bound by FileViewContainer
@@ -33,6 +35,26 @@ Item {
     readonly property int minRowHeight: 22
     readonly property int maxRowHeight: 56
     readonly property int detailIconSize: Math.round(rowHeight * 0.571)  // 16 at default 28
+
+    // Map of folder path → item count
+    property var folderItemCounts: ({})
+
+    function refreshFolderItemCounts() {
+        folderItemCounts = ({})
+        if (!viewModel || listView.count <= 0 || !viewModel.folderItemCounts)
+            return
+        var paths = []
+        for (var i = 0; i < listView.count; ++i) {
+            if (isDirForRow(i)) {
+                var p = pathForRow(i)
+                if (p && !fileOps.isRemotePath(p))
+                    paths.push(p)
+            }
+        }
+        if (paths.length === 0)
+            return
+        folderItemCounts = viewModel.folderItemCounts(paths)
+    }
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
@@ -263,11 +285,10 @@ Item {
     }
 
     // Column widths
-    readonly property int colName: root.width - 100 - 140 - 80 - 110
-    readonly property int colSize: 100
+    readonly property int colName: root.width - colSize - colModified - colType
+    readonly property int colSize: 110
     readonly property int colModified: 140
     readonly property int colType: 80
-    readonly property int colPerms: 110
 
     Column {
         anchors.fill: parent
@@ -277,6 +298,16 @@ Item {
             width: root.width
             height: root.rowHeight
             color: Theme.mantle
+            radius: Theme.radiusMedium
+
+            // Cover the bottom corners so only the top is rounded
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: parent.radius
+                color: parent.color
+            }
 
             Row {
                 anchors.fill: parent
@@ -289,8 +320,7 @@ Item {
                         { key: "name",     label: "Name",        width: root.colName },
                         { key: "size",     label: "Size",        width: root.colSize },
                         { key: "modified", label: "Modified",    width: root.colModified },
-                        { key: "type",     label: "Type",        width: root.colType },
-                        { key: "perms",    label: "Permissions", width: root.colPerms }
+                        { key: "type",     label: "Type",        width: root.colType }
                     ]
 
                     delegate: Item {
@@ -372,6 +402,8 @@ Item {
             width: root.width
             height: root.height - root.rowHeight
             clip: true
+
+            onCountChanged: Qt.callLater(root.refreshFolderItemCounts)
 
             focus: visible
             keyNavigationEnabled: false
@@ -457,7 +489,6 @@ Item {
                 required property string fileSizeText
                 required property string fileModifiedText
                 required property string fileType
-                required property int filePermissions
                 required property bool isDir
                 required property string fileIconName
                 required property string gitStatus
@@ -466,27 +497,6 @@ Item {
                 readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
                 property bool dragStarted: false
-
-                // Compute unix-style permissions string from Qt permissions flags
-                readonly property string permString: {
-                    var p = filePermissions
-                    // Qt::Permissions bit layout: owner r/w/x, group r/w/x, other r/w/x
-                    // Qt uses QFile::Permission enum:
-                    // ReadOwner=0x4000, WriteOwner=0x2000, ExeOwner=0x1000
-                    // ReadGroup=0x0040, WriteGroup=0x0020, ExeGroup=0x0010
-                    // ReadOther=0x0004, WriteOther=0x0002, ExeOther=0x0001
-                    var s = isDir ? "d" : "-"
-                    s += (p & 0x4000) ? "r" : "-"
-                    s += (p & 0x2000) ? "w" : "-"
-                    s += (p & 0x1000) ? "x" : "-"
-                    s += (p & 0x0040) ? "r" : "-"
-                    s += (p & 0x0020) ? "w" : "-"
-                    s += (p & 0x0010) ? "x" : "-"
-                    s += (p & 0x0004) ? "r" : "-"
-                    s += (p & 0x0002) ? "w" : "-"
-                    s += (p & 0x0001) ? "x" : "-"
-                    return s
-                }
 
                 Rectangle {
                     anchors.fill: parent
@@ -523,11 +533,27 @@ Item {
                                 height: root.detailIconSize
                                 anchors.verticalCenter: parent.verticalCenter
 
+                                readonly property bool isImage: !detRow.isDir &&
+                                    /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(detRow.filePath)
+                                readonly property bool isVideo: !detRow.isDir &&
+                                    /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ts)$/i.test(detRow.filePath)
+                                readonly property bool hasThumbnail: !fileOps.isRemotePath(detRow.filePath) && (isImage || isVideo)
+
                                 Image {
                                     anchors.fill: parent
+                                    visible: !parent.hasThumbnail
                                     source: "image://icon/" + detRow.fileIconName
                                     sourceSize: Qt.size(root.detailIconSize, root.detailIconSize)
                                     asynchronous: false
+                                }
+
+                                Image {
+                                    anchors.fill: parent
+                                    visible: parent.hasThumbnail
+                                    fillMode: Image.PreserveAspectFit
+                                    source: parent.hasThumbnail ? ("image://thumbnail/" + detRow.filePath) : ""
+                                    sourceSize: Qt.size(64 * Screen.devicePixelRatio, 64 * Screen.devicePixelRatio)
+                                    asynchronous: true
                                 }
 
                                 Loader {
@@ -568,7 +594,15 @@ Item {
                         Text {
                             width: root.colSize
                             anchors.verticalCenter: parent.verticalCenter
-                            text: detRow.fileSizeText
+                            text: {
+                                if (detRow.isDir) {
+                                    var cnt = root.folderItemCounts[detRow.filePath]
+                                    if (cnt !== undefined)
+                                        return cnt + (cnt === 1 ? " item" : " items")
+                                    return "—"
+                                }
+                                return detRow.fileSizeText
+                            }
                             color: Theme.subtext
                             font.pointSize: Theme.fontSmall
                             horizontalAlignment: Text.AlignRight
@@ -597,15 +631,6 @@ Item {
                             rightPadding: 4
                         }
 
-                        // Permissions (monospace)
-                        Text {
-                            width: root.colPerms
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: detRow.permString
-                            color: Theme.muted
-                            font.pointSize: Theme.fontSmall
-                            font.family: "monospace"
-                        }
                     }
 
                     MouseArea {
@@ -734,7 +759,7 @@ Item {
                             wheel.accepted = false
                             return
                         }
-                        var step = delta < 0 ? -2 : 2
+                        var step = delta < 0 ? 2 : -2
                         root.rowHeight = Math.max(root.minRowHeight, Math.min(root.maxRowHeight, root.rowHeight + step))
                         wheel.accepted = true
                     } else {

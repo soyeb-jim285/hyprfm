@@ -936,6 +936,22 @@ void FileSystemModel::reloadTrash()
     m_folderCount = folders;
 }
 
+QVariantMap FileSystemModel::folderItemCounts(const QStringList &paths) const
+{
+    QVariantMap result;
+    for (const QString &path : paths) {
+        if (path.isEmpty())
+            continue;
+        QDir dir(path);
+        if (!dir.exists())
+            continue;
+        const int count = dir.entryList(
+            QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System).count();
+        result.insert(path, count);
+    }
+    return result;
+}
+
 QVariantMap FileSystemModel::fileProperties(const QString &path) const
 {
     const QString normalizedPath = normalizeLocation(path);
