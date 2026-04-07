@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(hyprfm VERSION 0.4.1 LANGUAGES CXX)
+project(hyprfm VERSION 0.4.2 LANGUAGES CXX)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)

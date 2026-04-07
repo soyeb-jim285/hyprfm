@@ -76,22 +76,40 @@ int main(int argc, char *argv[])
     QDir().mkpath(configDir);
     const QString configPath = configDir + "/config.toml";
 
+    auto firstExistingDir = [](const QStringList &paths) {
+        for (const QString &path : paths) {
+            const QString cleanPath = QDir::cleanPath(path);
+            if (QDir(cleanPath).exists())
+                return cleanPath;
+        }
+        return QString();
+    };
+
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString dataDir = firstExistingDir({
+        QDir(appDir).filePath("../share/hyprfm"),
+        QDir(appDir).filePath("../../share/hyprfm"),
+        QStringLiteral(HYPRFM_DATA_DIR),
+        QStringLiteral(HYPRFM_SOURCE_DIR),
+    });
+
+    QStringList themeSearchPaths = {
+        QDir(appDir).filePath("../themes"),
+        QDir(appDir).filePath("../../themes"),
+        QStringLiteral(HYPRFM_DATA_DIR) + "/themes",
+        QStringLiteral(HYPRFM_SOURCE_DIR) + "/themes",
+    };
+    if (!dataDir.isEmpty())
+        themeSearchPaths.prepend(QDir(dataDir).filePath("themes"));
+
+    const QString themesDir = firstExistingDir(themeSearchPaths);
+    if (dataDir.isEmpty())
+        qWarning() << "HyprFM: unable to locate data directory";
+    if (themesDir.isEmpty())
+        qWarning() << "HyprFM: unable to locate themes directory";
+
     // Create backend instances
     ConfigManager *config = new ConfigManager(configPath, &app);
-
-    // Look for themes in multiple locations
-    QString themesDir;
-    QStringList searchPaths = {
-        QCoreApplication::applicationDirPath() + "/../themes",        // installed layout
-        QCoreApplication::applicationDirPath() + "/../../themes",     // build dir (build/src/)
-        QStringLiteral(HYPRFM_DATA_DIR) + "/themes",                 // data dir via compile def
-    };
-    for (const auto &path : searchPaths) {
-        if (QDir(path).exists()) {
-            themesDir = path;
-            break;
-        }
-    }
     ThemeLoader *theme = new ThemeLoader(&app);
     theme->loadTheme(config->theme(), themesDir);
 
@@ -232,9 +250,15 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
 
-    // Add import paths for installed modules
-    engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR));            // HyprFM module
-    engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR "/src/qml")); // Quill module
+    // Prefer the installed data layout, but keep source-tree fallbacks for dev builds.
+    if (!dataDir.isEmpty()) {
+        engine.addImportPath(dataDir);                           // HyprFM module
+        engine.addImportPath(QDir(dataDir).filePath("src/qml")); // Quill module
+    }
+    engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR));
+    engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR "/src/qml"));
+    engine.addImportPath(QStringLiteral(HYPRFM_SOURCE_DIR));
+    engine.addImportPath(QStringLiteral(HYPRFM_SOURCE_DIR "/src/qml"));
 
     // Set icon theme so QIcon::fromTheme() works (e.g. for drag pixmaps)
     QIcon::setThemeName(config->iconTheme());
