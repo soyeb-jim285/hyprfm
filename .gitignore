@@ -7,4 +7,5 @@ CMakeLists.txt.user
 compile_commands.json
 CLAUDE.md
 .claude/
-docs/
+docs/*
+!docs/screenshots/
