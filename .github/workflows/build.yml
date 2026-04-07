@@ -85,4 +85,5 @@ jobs:
           files: |
             HyprFM-${{ github.ref_name }}-x86_64.AppImage
             build/hyprfm_*.deb
+            build/hyprfm-*.deb
           generate_release_notes: true

@@ -46,4 +46,5 @@ set(CPACK_DEBIAN_PACKAGE_DEPENDS
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
     "wl-clipboard, gvfs, rsync")
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/soyeb-jim285/hyprfm")
+set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
 include(CPack)
