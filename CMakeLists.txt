@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(hyprfm VERSION 0.4.3 LANGUAGES CXX)
+project(hyprfm VERSION 0.4.4 LANGUAGES CXX)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -42,7 +42,7 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A lightweight Qt6/QML file manager for Hy
 set(CPACK_PACKAGE_CONTACT "Soyeb Pervez Jim <soyeb.jim@gmail.com>")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
-    "libqt6core6t64, libqt6gui6t64, libqt6qml6, libqt6quick6, libqt6dbus6t64, libqt6widgets6t64, libqt6svg6, libqt6svgwidgets6, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-shapes, libglib2.0-0, fd-find, xdg-utils")
+    "libqt6core6t64, libqt6gui6t64, libqt6qml6, libqt6quick6, libqt6dbus6t64, libqt6widgets6t64, libqt6svg6, libqt6svgwidgets6, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-shapes, qt6-wayland, libglib2.0-0, fd-find, xdg-utils")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
     "wl-clipboard, gvfs, rsync")
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/soyeb-jim285/hyprfm")
