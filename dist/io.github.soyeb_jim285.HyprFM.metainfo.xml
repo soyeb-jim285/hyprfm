@@ -42,15 +42,15 @@
   <screenshots>
     <screenshot type="default">
       <caption>Grid view with file preview</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/main/docs/screenshots/grid-view.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.7/docs/screenshots/grid-view.png</image>
     </screenshot>
     <screenshot>
       <caption>Miller column view</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/main/docs/screenshots/miller-view.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.7/docs/screenshots/miller-view.png</image>
     </screenshot>
     <screenshot>
       <caption>Quick preview overlay</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/main/docs/screenshots/quick-preview.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.7/docs/screenshots/quick-preview.png</image>
     </screenshot>
   </screenshots>
 
@@ -66,6 +66,11 @@
   </provides>
 
   <releases>
+    <release version="0.4.7" date="2026-04-08">
+      <description>
+        <p>Flathub submission polish: install the license file at the Flatpak-standard location, pin bundled git sources to immutable commit SHAs, drop unused DBus name claims and redundant filesystem permissions, and reference screenshots by tag instead of branch.</p>
+      </description>
+    </release>
     <release version="0.4.6" date="2026-04-08">
       <description>
         <p>Documentation polish: correct the feature list in the AppStream metadata to match the three views HyprFM actually ships (grid, detailed and Miller columns) and expand it to mention git status overlays, remote access, quick preview and archive support.</p>
