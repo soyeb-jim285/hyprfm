@@ -43,6 +43,7 @@ jobs:
             libwayland-dev \
             libegl-dev \
             libgles-dev \
+            libvulkan-dev \
             wayland-protocols \
             rsync \
             xdg-utils \
