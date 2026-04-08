@@ -435,6 +435,8 @@ GridView {
         required property string fileIconName
         required property string gitStatus
         required property string gitStatusIcon
+        required property bool hasImagePreview
+        required property bool hasVideoPreview
 
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
@@ -458,11 +460,8 @@ GridView {
             }
         }
 
-        readonly property bool isImage: !delegateItem.isDir &&
-            /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(delegateItem.filePath)
-        readonly property bool isVideo: !delegateItem.isDir &&
-            /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ts)$/i.test(delegateItem.filePath)
-        readonly property bool hasThumbnail: !fileOps.isRemotePath(delegateItem.filePath) && (isImage || isVideo)
+        readonly property bool hasThumbnail: !fileOps.isRemotePath(delegateItem.filePath)
+            && (delegateItem.hasImagePreview || delegateItem.hasVideoPreview)
 
         Image {
             id: thumbImg

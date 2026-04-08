@@ -33,6 +33,11 @@ public:
         FileIconNameRole,
         GitStatusRole,
         GitStatusIconRole,
+        // True when the file is an image / video that the thumbnailer can
+        // render. Computed via QMimeDatabase so it correctly handles
+        // ambiguous extensions like .ts (TypeScript vs MPEG-TS).
+        HasImagePreviewRole,
+        HasVideoPreviewRole,
     };
     Q_ENUM(Roles)
 

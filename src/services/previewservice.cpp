@@ -21,6 +21,26 @@ QString encodedUri(const QString &path)
     return QUrl(path).toString(QUrl::FullyEncoded);
 }
 
+bool runningInFlatpak()
+{
+    static const bool inSandbox = QFile::exists(QStringLiteral("/.flatpak-info"));
+    return inSandbox;
+}
+
+// Spawn `gio cat <uri>` for reading trash:// URIs. Inside a Flatpak we
+// route through `flatpak-spawn --host` so the host's gio reads from the
+// host's real trash (the sandbox's gio sees only an empty per-app trash).
+void startGioCat(QProcess &proc, const QString &uri)
+{
+    if (runningInFlatpak()) {
+        proc.start(QStringLiteral("flatpak-spawn"),
+                   {QStringLiteral("--host"), QStringLiteral("gio"),
+                    QStringLiteral("cat"), uri});
+    } else {
+        proc.start(QStringLiteral("gio"), {QStringLiteral("cat"), uri});
+    }
+}
+
 QString batExecutable()
 {
     static const QString executable = []() {
@@ -420,7 +440,7 @@ QString PreviewService::localPreviewPath(const QString &path) const
     const QString cachedPath = QDir(cacheRoot).filePath(suffix.isEmpty() ? hash : hash + "." + suffix);
 
     QProcess proc;
-    proc.start("gio", {"cat", encodedUri(path)});
+    startGioCat(proc, encodedUri(path));
     if (!proc.waitForFinished(10000) || proc.exitCode() != 0)
         return {};
 
@@ -481,7 +501,7 @@ QByteArray PreviewService::readPathBytes(const QString &path, qint64 maxBytes, b
 
     if (isTrashUri(path)) {
         QProcess proc;
-        proc.start("gio", {"cat", encodedUri(path)});
+        startGioCat(proc, encodedUri(path));
         if (!proc.waitForStarted(2000)) {
             if (error)
                 *error = QStringLiteral("Failed to start preview reader");

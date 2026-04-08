@@ -80,8 +80,8 @@ jobs:
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             --plugin qt \
-            --desktop-file dist/hyprfm.desktop \
-            --icon-file dist/hyprfm.svg \
+            --desktop-file dist/io.github.soyeb_jim285.HyprFM.desktop \
+            --icon-file dist/io.github.soyeb_jim285.HyprFM.svg \
             --output appimage
 
       - name: Create GitHub Release

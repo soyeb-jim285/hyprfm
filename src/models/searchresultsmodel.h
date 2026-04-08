@@ -21,6 +21,13 @@ public:
         IsDirRole,
         IsSymlinkRole,
         FileIconNameRole,
+        // Search results aren't git-tracked, but the view delegates declare
+        // these as required properties, so we expose empty values for them.
+        GitStatusRole,
+        GitStatusIconRole,
+        // Whether the file should be thumbnailed as image / video.
+        HasImagePreviewRole,
+        HasVideoPreviewRole,
     };
     Q_ENUM(Roles)
 

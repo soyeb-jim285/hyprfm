@@ -76,30 +76,31 @@ QVariant RecentFilesModel::data(const QModelIndex &index, int role) const
     case FileIconNameRole: {
         if (info.isDir())
             return QStringLiteral("folder");
-        QString suffix = info.suffix().toLower();
-        static const QHash<QString, QString> iconMap = {
-            {"png", "image-x-generic"}, {"jpg", "image-x-generic"},
-            {"jpeg", "image-x-generic"}, {"gif", "image-x-generic"},
-            {"svg", "image-x-generic"}, {"webp", "image-x-generic"},
-            {"bmp", "image-x-generic"},
-            {"mp3", "audio-x-generic"}, {"flac", "audio-x-generic"},
-            {"ogg", "audio-x-generic"}, {"wav", "audio-x-generic"},
-            {"mp4", "video-x-generic"}, {"mkv", "video-x-generic"},
-            {"avi", "video-x-generic"}, {"webm", "video-x-generic"},
-            {"pdf", "application-pdf"},
-            {"zip", "package-x-generic"}, {"tar", "package-x-generic"},
-            {"gz", "package-x-generic"}, {"xz", "package-x-generic"},
-            {"7z", "package-x-generic"}, {"rar", "package-x-generic"},
-            {"txt", "text-x-generic"}, {"md", "text-x-generic"},
-            {"cpp", "text-x-generic"}, {"h", "text-x-generic"},
-            {"py", "text-x-generic"}, {"js", "text-x-generic"},
-            {"rs", "text-x-generic"}, {"go", "text-x-generic"},
-            {"sh", "text-x-script"}, {"bash", "text-x-script"},
-            {"html", "text-html"}, {"css", "text-css"},
-            {"json", "text-x-generic"}, {"xml", "text-xml"},
-            {"toml", "text-x-generic"}, {"yaml", "text-x-generic"},
-        };
-        return iconMap.value(suffix, QStringLiteral("text-x-generic"));
+        // Same MIME-driven approach as FileSystemModel — handles ambiguous
+        // extensions like .ts correctly via QMimeDatabase content sniffing.
+        static QMimeDatabase mimeDb;
+        const QMimeType mime = mimeDb.mimeTypeForFile(info);
+        if (mime.isValid()) {
+            QString icon = mime.iconName();
+            if (icon.isEmpty())
+                icon = mime.genericIconName();
+            if (!icon.isEmpty())
+                return icon;
+        }
+        return QStringLiteral("text-x-generic");
+    }
+    case GitStatusRole:
+    case GitStatusIconRole:
+        return QString();
+    case HasImagePreviewRole: {
+        static QMimeDatabase mimeDb;
+        return mimeDb.mimeTypeForFile(info).name()
+            .startsWith(QLatin1String("image/"));
+    }
+    case HasVideoPreviewRole: {
+        static QMimeDatabase mimeDb;
+        return mimeDb.mimeTypeForFile(info).name()
+            .startsWith(QLatin1String("video/"));
     }
     default:
         return {};
@@ -120,6 +121,10 @@ QHash<int, QByteArray> RecentFilesModel::roleNames() const
         {IsDirRole,            "isDir"},
         {IsSymlinkRole,        "isSymlink"},
         {FileIconNameRole,     "fileIconName"},
+        {GitStatusRole,        "gitStatus"},
+        {GitStatusIconRole,    "gitStatusIcon"},
+        {HasImagePreviewRole,  "hasImagePreview"},
+        {HasVideoPreviewRole,  "hasVideoPreview"},
     };
 }
 

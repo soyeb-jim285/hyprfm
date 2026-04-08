@@ -1,8 +1,18 @@
 #include "models/devicemodel.h"
 
+#include <QDBusArgument>
 #include <QDBusConnection>
-#include <QJsonDocument>
-#include <QJsonArray>
+#include <QDBusMessage>
+#include <QDBusObjectPath>
+#include <QDBusPendingCall>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
+#include <QDBusReply>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QHash>
+#include <QStorageInfo>
 #include <QDebug>
 
 static const QStringList kVirtualTypes = {
@@ -50,93 +60,231 @@ void DeviceModel::setupUDisks2()
     );
 }
 
-void DeviceModel::processDevice(const QJsonObject &dev, bool parentRemovable)
+namespace {
+
+// Strip the trailing NUL that UDisks2 includes in `ay` byte arrays
+// (Device, Symlinks, MountPoints elements).
+QString cstrFromBytes(const QByteArray &bytes)
 {
-    bool rm = dev.value("rm").toBool() || dev.value("hotplug").toBool() || parentRemovable;
-
-    const QJsonArray children = dev.value("children").toArray();
-    for (const QJsonValue &child : children)
-        processDevice(child.toObject(), rm);
-
-    QString type = dev.value("type").toString();
-    if (type != "part" && type != "lvm" && type != "crypt") {
-        if (type != "disk" || !children.isEmpty())
-            return;
-    }
-
-    QString fstype = dev.value("fstype").toString();
-    if (fstype.isEmpty() || fstype == "swap")
-        return;
-    if (isVirtual(fstype))
-        return;
-
-    QString path = dev.value("path").toString();
-    if (path.startsWith("/dev/loop") || path.startsWith("/dev/zram"))
-        return;
-
-    QString mountpoint = dev.value("mountpoint").toString();
-    bool mounted = !mountpoint.isEmpty() && mountpoint != "[SWAP]";
-
-    if (mounted && (mountpoint.startsWith("/boot") ||
-                    mountpoint.startsWith("/snap") ||
-                    mountpoint.startsWith("/nix") ||
-                    mountpoint.startsWith("/efi")))
-        return;
-
-    // Skip EFI System Partition by GUID or by vfat heuristic
-    static const QString kEfiGuid = "c12a7328-f81f-11d2-ba4b-00a098cb80e7";
-    QString parttype = dev.value("parttype").toString().toLower();
-    if (parttype == kEfiGuid)
-        return;
-
-    qint64 size = dev.value("size").toVariant().toLongLong();
-
-    QString label = dev.value("label").toString();
-    QString name;
-    if (!label.isEmpty())
-        name = label;
-    else if (mounted && mountpoint == "/")
-        name = "/";
-    else if (mounted)
-        name = mountpoint.section('/', -1);
-    else
-        name = path.section('/', -1);
-
-    qint64 total = 0, free = 0;
-    int usage = 0;
-    if (mounted) {
-        total = dev.value("fssize").toVariant().toLongLong();
-        free  = dev.value("fsavail").toVariant().toLongLong();
-        if (total > 0)
-            usage = static_cast<int>((total - free) * 100 / total);
-    } else {
-        total = size;
-    }
-
-    m_devices.append({name, path, mounted ? mountpoint : "",
-                      total, free, usage, rm, mounted});
+    QByteArray copy = bytes;
+    if (copy.endsWith('\0'))
+        copy.chop(1);
+    return QString::fromUtf8(copy);
 }
+
+QStringList parseMountPoints(const QVariant &value)
+{
+    QStringList out;
+    // MountPoints is `aay` — a list of NUL-terminated byte arrays.
+    const QDBusArgument arg = value.value<QDBusArgument>();
+    if (arg.currentType() == QDBusArgument::ArrayType) {
+        arg.beginArray();
+        while (!arg.atEnd()) {
+            QByteArray mp;
+            arg >> mp;
+            out << cstrFromBytes(mp);
+        }
+        arg.endArray();
+    }
+    return out;
+}
+
+struct DriveInfo {
+    bool removable = false;
+    QString connectionBus;
+};
+
+struct BlockInfo {
+    QString device;          // /dev/sdXY
+    QString idLabel;
+    QString idType;          // filesystem type, e.g. "ext4"
+    bool hintIgnore = false;
+    QString drivePath;       // object path of parent drive
+    qint64 size = 0;
+    bool hasFilesystem = false;
+    QStringList mountPoints;
+    QString partitionType;   // GPT GUID / MBR type, lowercased
+};
+
+} // namespace
 
 void DeviceModel::refresh()
 {
     beginResetModel();
     m_devices.clear();
 
-    QProcess proc;
-    proc.start("lsblk", {"-Jbp", "-o",
-        "NAME,PATH,TYPE,FSTYPE,MOUNTPOINT,LABEL,RM,HOTPLUG,SIZE,FSSIZE,FSAVAIL,PARTTYPE"});
-    if (!proc.waitForFinished(3000)) {
-        qWarning() << "DeviceModel: lsblk timed out";
+    // Ask UDisks2 for everything it knows about. Returns a{oa{sa{sv}}}:
+    //   { object_path → { interface_name → { property_name → value } } }
+    QDBusMessage call = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.UDisks2"),
+        QStringLiteral("/org/freedesktop/UDisks2"),
+        QStringLiteral("org.freedesktop.DBus.ObjectManager"),
+        QStringLiteral("GetManagedObjects"));
+
+    QDBusMessage reply = QDBusConnection::systemBus().call(call, QDBus::Block, 3000);
+    if (reply.type() != QDBusMessage::ReplyMessage) {
+        qWarning() << "DeviceModel: UDisks2 GetManagedObjects failed:"
+                   << reply.errorMessage();
         endResetModel();
         return;
     }
 
-    const QJsonDocument doc = QJsonDocument::fromJson(proc.readAllStandardOutput());
-    const QJsonArray devices = doc.object().value("blockdevices").toArray();
-    for (const QJsonValue &dev : devices)
-        processDevice(dev.toObject());
+    QHash<QString, DriveInfo> drives;
+    QHash<QString, BlockInfo> blocks;
+
+    const QDBusArgument outer = reply.arguments().constFirst().value<QDBusArgument>();
+    outer.beginMap();
+    while (!outer.atEnd()) {
+        outer.beginMapEntry();
+        QDBusObjectPath objectPath;
+        outer >> objectPath;
+
+        // Inner map: { interface_name → { property_name → value } }
+        outer.beginMap();
+        while (!outer.atEnd()) {
+            outer.beginMapEntry();
+            QString interfaceName;
+            QVariantMap properties;
+            outer >> interfaceName >> properties;
+            outer.endMapEntry();
+
+            const QString path = objectPath.path();
+
+            if (interfaceName == QLatin1String("org.freedesktop.UDisks2.Drive")) {
+                DriveInfo &d = drives[path];
+                d.removable = properties.value(QStringLiteral("Removable")).toBool();
+                d.connectionBus = properties.value(QStringLiteral("ConnectionBus")).toString();
+            } else if (interfaceName == QLatin1String("org.freedesktop.UDisks2.Block")) {
+                BlockInfo &b = blocks[path];
+                b.device = cstrFromBytes(properties.value(QStringLiteral("Device")).toByteArray());
+                b.idLabel = properties.value(QStringLiteral("IdLabel")).toString();
+                b.idType = properties.value(QStringLiteral("IdType")).toString();
+                b.hintIgnore = properties.value(QStringLiteral("HintIgnore")).toBool();
+                b.size = properties.value(QStringLiteral("Size")).toLongLong();
+                b.drivePath = properties.value(QStringLiteral("Drive"))
+                                  .value<QDBusObjectPath>().path();
+            } else if (interfaceName == QLatin1String("org.freedesktop.UDisks2.Filesystem")) {
+                BlockInfo &b = blocks[path];
+                b.hasFilesystem = true;
+                b.mountPoints = parseMountPoints(
+                    properties.value(QStringLiteral("MountPoints")));
+            } else if (interfaceName == QLatin1String("org.freedesktop.UDisks2.Partition")) {
+                BlockInfo &b = blocks[path];
+                b.partitionType = properties.value(QStringLiteral("Type"))
+                                      .toString().toLower();
+            }
+        }
+        outer.endMap();
+        outer.endMapEntry();
+    }
+    outer.endMap();
+
+    static const QString kEfiGuid = QStringLiteral("c12a7328-f81f-11d2-ba4b-00a098cb80e7");
+
+    for (auto it = blocks.constBegin(); it != blocks.constEnd(); ++it) {
+        const BlockInfo &b = it.value();
+
+        if (b.hintIgnore)
+            continue;
+        if (b.idType.isEmpty() || b.idType == QLatin1String("swap"))
+            continue;
+        if (isVirtual(b.idType))
+            continue;
+        if (b.device.startsWith(QLatin1String("/dev/loop")) ||
+            b.device.startsWith(QLatin1String("/dev/zram")))
+            continue;
+        if (b.partitionType == kEfiGuid)
+            continue;
+
+        const bool mounted = !b.mountPoints.isEmpty();
+        const QString mountPoint = mounted ? b.mountPoints.constFirst() : QString();
+
+        if (mounted && (mountPoint.startsWith(QLatin1String("/boot")) ||
+                        mountPoint.startsWith(QLatin1String("/snap")) ||
+                        mountPoint.startsWith(QLatin1String("/nix")) ||
+                        mountPoint.startsWith(QLatin1String("/efi"))))
+            continue;
+
+        const DriveInfo drive = drives.value(b.drivePath);
+        const bool removable = drive.removable
+            || drive.connectionBus == QLatin1String("usb")
+            || drive.connectionBus == QLatin1String("sdio");
+
+        QString name;
+        if (!b.idLabel.isEmpty())
+            name = b.idLabel;
+        else if (mounted && mountPoint == QLatin1String("/"))
+            name = QStringLiteral("/");
+        else if (mounted)
+            name = mountPoint.section(QLatin1Char('/'), -1);
+        else
+            name = b.device.section(QLatin1Char('/'), -1);
+
+        qint64 total = 0;
+        qint64 free = 0;
+        int usage = 0;
+        if (mounted) {
+            // Inside a Flatpak the sandbox's `/` is a tmpfs runtime
+            // overlay, not the host root. With --filesystem=host the host
+            // file system is exposed under /run/host as individual bind
+            // mounts (/run/host/usr, /run/host/etc, /run/host/var, etc.).
+            // Note: /run/host itself is the tmpfs, so we cannot just stat
+            // it — we have to stat one of the sub-mounts that lives on
+            // the host root partition.
+            //
+            // Strategy: try the mount point directly first (works for
+            // /home, /tmp, /opt, /media, /mnt, /run/media which are bind
+            // mounted at the same path). If that fails or gives bogus
+            // numbers and we're in Flatpak, fall back to a host-side
+            // probe. For "/" specifically, /run/host/usr is the safest
+            // bet — every distro has /usr on the root partition.
+            const bool inFlatpak = QFile::exists(QStringLiteral("/.flatpak-info"));
+            QStorageInfo storage(mountPoint);
+            if (inFlatpak && (!storage.isValid() || storage.bytesTotal() == 0
+                              || storage.device() == QByteArrayLiteral("tmpfs"))) {
+                QStringList probes;
+                if (mountPoint == QLatin1String("/")) {
+                    probes << QStringLiteral("/run/host/usr")
+                           << QStringLiteral("/run/host/etc");
+                } else {
+                    probes << QStringLiteral("/run/host") + mountPoint;
+                }
+                for (const QString &probe : std::as_const(probes)) {
+                    if (!QFileInfo(probe).exists())
+                        continue;
+                    QStorageInfo s(probe);
+                    if (s.isValid() && s.bytesTotal() > 0
+                        && s.device() != QByteArrayLiteral("tmpfs")) {
+                        storage = s;
+                        break;
+                    }
+                }
+            }
+            if (storage.isValid()) {
+                total = storage.bytesTotal();
+                free = storage.bytesAvailable();
+                if (total > 0)
+                    usage = static_cast<int>((total - free) * 100 / total);
+            }
+        } else {
+            total = b.size;
+        }
+
+        m_devices.append({name, b.device, mountPoint,
+                          total, free, usage, removable, mounted});
+    }
 
     endResetModel();
+}
+
+// Map a /dev/<basename> path to its UDisks2 object path. This works for
+// regular partitions (sdXY, nvmeXnYpZ, mmcblkXpY). Device-mapper / LUKS
+// names use a different escaping scheme that we don't try to handle here;
+// for those cases the call simply errors out and we log it.
+static QString udisksObjectPathFor(const QString &devicePath)
+{
+    return QStringLiteral("/org/freedesktop/UDisks2/block_devices/")
+        + QFileInfo(devicePath).fileName();
 }
 
 void DeviceModel::unmount(int index)
@@ -148,18 +296,24 @@ void DeviceModel::unmount(int index)
     if (!dev.mounted)
         return;
 
-    auto *proc = new QProcess(this);
-    proc->setProgram("udisksctl");
-    proc->setArguments({"unmount", "--no-user-interaction", "-b", dev.devicePath});
-    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, proc](int exitCode, QProcess::ExitStatus) {
-        proc->deleteLater();
-        if (exitCode == 0)
-            refresh();
+    QDBusMessage msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.UDisks2"),
+        udisksObjectPathFor(dev.devicePath),
+        QStringLiteral("org.freedesktop.UDisks2.Filesystem"),
+        QStringLiteral("Unmount"));
+    msg << QVariant::fromValue(QVariantMap{});
+
+    QDBusPendingCall pending = QDBusConnection::systemBus().asyncCall(msg);
+    auto *watcher = new QDBusPendingCallWatcher(pending, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher]() {
+        QDBusPendingReply<> reply = *watcher;
+        if (reply.isError())
+            qWarning() << "UDisks2 Unmount failed:" << reply.error().message();
         else
-            qWarning() << "udisksctl unmount failed:" << proc->readAllStandardError();
+            refresh();
+        watcher->deleteLater();
     });
-    proc->start();
 }
 
 void DeviceModel::mount(int index)
@@ -169,25 +323,27 @@ void DeviceModel::mount(int index)
 
     const QString devicePath = m_devices.at(index).devicePath;
 
-    auto *proc = new QProcess(this);
-    proc->setProgram("udisksctl");
-    proc->setArguments({"mount", "-b", devicePath});
-    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, proc, devicePath](int exitCode, QProcess::ExitStatus) {
-        proc->deleteLater();
-        if (exitCode == 0) {
-            refresh();
-            for (const auto &dev : m_devices) {
-                if (dev.devicePath == devicePath && dev.mounted) {
-                    emit deviceMounted(dev.mountPoint);
-                    break;
-                }
-            }
+    QDBusMessage msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.UDisks2"),
+        udisksObjectPathFor(devicePath),
+        QStringLiteral("org.freedesktop.UDisks2.Filesystem"),
+        QStringLiteral("Mount"));
+    msg << QVariant::fromValue(QVariantMap{});
+
+    QDBusPendingCall pending = QDBusConnection::systemBus().asyncCall(msg);
+    auto *watcher = new QDBusPendingCallWatcher(pending, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher]() {
+        QDBusPendingReply<QString> reply = *watcher;
+        if (reply.isError()) {
+            qWarning() << "UDisks2 Mount failed:" << reply.error().message();
         } else {
-            qWarning() << "udisksctl mount failed:" << proc->readAllStandardError();
+            const QString mountPath = reply.value();
+            refresh();
+            emit deviceMounted(mountPath);
         }
+        watcher->deleteLater();
     });
-    proc->start();
 }
 
 int DeviceModel::rowCount(const QModelIndex &) const

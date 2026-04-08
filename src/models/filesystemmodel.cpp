@@ -12,6 +12,11 @@
 #include <QDirIterator>
 #include <QUrl>
 
+// Forward declarations for helpers defined further down (used by methods
+// that appear above their definition site).
+static QString runHostTool(const QString &program, const QStringList &arguments,
+                           int timeoutMs = 3000);
+
 namespace {
 
 bool isTrashUri(const QString &path)
@@ -150,53 +155,44 @@ QString formattedSize(qint64 size, bool verbose = false)
                    : QString("%1 GB").arg(size / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
 }
 
-QString iconNameForSuffix(const QString &suffix)
+// Resolve a MIME type name (e.g. "text/x-typescript", "video/mp2t") to a
+// freedesktop icon theme name. Falls back to the type's generic icon, then
+// to a plain text icon as last resort.
+QString iconNameForMimeName(const QString &mimeName)
 {
-    static const QHash<QString, QString> iconMap = {
-        {"png", "image-x-generic"}, {"jpg", "image-x-generic"},
-        {"jpeg", "image-x-generic"}, {"gif", "image-x-generic"},
-        {"svg", "image-x-generic"}, {"webp", "image-x-generic"},
-        {"bmp", "image-x-generic"},
-        {"mp3", "audio-x-generic"}, {"flac", "audio-x-generic"},
-        {"ogg", "audio-x-generic"}, {"wav", "audio-x-generic"},
-        {"mp4", "video-x-generic"}, {"mkv", "video-x-generic"},
-        {"avi", "video-x-generic"}, {"webm", "video-x-generic"},
-        {"pdf", "application-pdf"},
-        {"zip", "package-x-generic"}, {"tar", "package-x-generic"},
-        {"gz", "package-x-generic"}, {"xz", "package-x-generic"},
-        {"7z", "package-x-generic"}, {"rar", "package-x-generic"},
-        {"txt", "text-x-generic"}, {"md", "text-x-generic"},
-        {"cpp", "text-x-generic"}, {"h", "text-x-generic"},
-        {"py", "text-x-generic"}, {"js", "text-x-generic"},
-        {"rs", "text-x-generic"}, {"go", "text-x-generic"},
-        {"tex", "text-x-generic"},
-        {"sh", "text-x-script"}, {"bash", "text-x-script"},
-        {"html", "text-html"}, {"css", "text-css"},
-        {"json", "text-x-generic"}, {"xml", "text-xml"},
-        {"toml", "text-x-generic"}, {"yaml", "text-x-generic"},
-    };
-    return iconMap.value(suffix, QStringLiteral("text-x-generic"));
+    if (mimeName.isEmpty())
+        return QStringLiteral("text-x-generic");
+    static QMimeDatabase mimeDb;
+    const QMimeType mime = mimeDb.mimeTypeForName(mimeName);
+    if (!mime.isValid())
+        return QStringLiteral("text-x-generic");
+    QString icon = mime.iconName();
+    if (icon.isEmpty())
+        icon = mime.genericIconName();
+    return icon.isEmpty() ? QStringLiteral("text-x-generic") : icon;
 }
 
+// Resolve an icon for a file from its name (and optional precomputed
+// content type, e.g. from `gio list -a standard::content-type` for trash
+// entries). When no content type is given, ask QMimeDatabase based on the
+// name; for ambiguous extensions like .ts (TypeScript vs MPEG-TS) the
+// MIME database picks based on glob priority and content sniffing rather
+// than a hand-maintained suffix table.
 QString iconNameForEntry(const QString &name, bool isDir, const QString &contentType = QString())
 {
     if (isDir)
         return QStringLiteral("folder");
 
-    const QString suffix = QFileInfo(name).suffix().toLower();
-    if (!suffix.isEmpty())
-        return iconNameForSuffix(suffix);
+    if (!contentType.isEmpty())
+        return iconNameForMimeName(contentType);
 
-    if (contentType.startsWith("image/"))
-        return QStringLiteral("image-x-generic");
-    if (contentType.startsWith("audio/"))
-        return QStringLiteral("audio-x-generic");
-    if (contentType.startsWith("video/"))
-        return QStringLiteral("video-x-generic");
-    if (contentType == "application/pdf")
-        return QStringLiteral("application-pdf");
-
-    return QStringLiteral("text-x-generic");
+    static QMimeDatabase mimeDb;
+    // mimeTypeForFile with just a name uses extension/glob lookup. If the
+    // path is a real local file, MatchDefault will additionally sniff the
+    // content when the glob is ambiguous, which is what disambiguates
+    // .ts files between TypeScript and MPEG-TS video.
+    const QMimeType mime = mimeDb.mimeTypeForFile(name);
+    return iconNameForMimeName(mime.name());
 }
 
 QString fileTypeForEntry(const QString &name, bool isDir, const QString &contentType = QString())
@@ -204,11 +200,46 @@ QString fileTypeForEntry(const QString &name, bool isDir, const QString &content
     if (isDir)
         return QStringLiteral("folder");
 
-    const QString suffix = QFileInfo(name).suffix().toLower();
-    if (!suffix.isEmpty())
-        return suffix;
+    if (!contentType.isEmpty()) {
+        static QMimeDatabase mimeDb;
+        const QMimeType mime = mimeDb.mimeTypeForName(contentType);
+        if (mime.isValid())
+            return mime.comment();
+        return contentType;
+    }
 
-    return contentType;
+    static QMimeDatabase mimeDb;
+    const QMimeType mime = mimeDb.mimeTypeForFile(name);
+    return mime.isValid() ? mime.comment() : QFileInfo(name).suffix();
+}
+
+// Classify a file as image/video for thumbnail purposes. Prefers an
+// already-known content type (e.g. from `gio list -a standard::content-type`
+// for trash entries) and otherwise asks QMimeDatabase. For local files
+// QMimeDatabase content-sniffs ambiguous extensions like .ts.
+enum class PreviewKind { None, Image, Video };
+
+PreviewKind previewKindForEntry(const QString &localPath, bool isDir,
+                                const QString &contentType = QString())
+{
+    if (isDir)
+        return PreviewKind::None;
+
+    QString mimeName = contentType;
+    if (mimeName.isEmpty()) {
+        static QMimeDatabase mimeDb;
+        const QMimeType mime = mimeDb.mimeTypeForFile(localPath);
+        if (mime.isValid())
+            mimeName = mime.name();
+    }
+    if (mimeName.isEmpty())
+        return PreviewKind::None;
+
+    if (mimeName.startsWith(QLatin1String("image/")))
+        return PreviewKind::Image;
+    if (mimeName.startsWith(QLatin1String("video/")))
+        return PreviewKind::Video;
+    return PreviewKind::None;
 }
 
 QHash<QString, QString> parseGioAttributes(const QString &attributeText)
@@ -423,6 +454,25 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
             return entry.value("isSymlink");
         case FileIconNameRole:
             return entry.value("fileIconName");
+        case GitStatusRole:
+        case GitStatusIconRole:
+            // Trashed files aren't git-tracked, but the view delegates
+            // declare these as required properties.
+            return QString();
+        case HasImagePreviewRole: {
+            const PreviewKind kind = previewKindForEntry(
+                entry.value(QStringLiteral("fileName")).toString(),
+                entry.value(QStringLiteral("isDir")).toBool(),
+                entry.value(QStringLiteral("mimeType")).toString());
+            return kind == PreviewKind::Image;
+        }
+        case HasVideoPreviewRole: {
+            const PreviewKind kind = previewKindForEntry(
+                entry.value(QStringLiteral("fileName")).toString(),
+                entry.value(QStringLiteral("isDir")).toBool(),
+                entry.value(QStringLiteral("mimeType")).toString());
+            return kind == PreviewKind::Video;
+        }
         default:
             return {};
         }
@@ -454,6 +504,16 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
             return entry.value(QStringLiteral("isSymlink"));
         case FileIconNameRole:
             return entry.value(QStringLiteral("fileIconName"));
+        case GitStatusRole:
+        case GitStatusIconRole:
+            // Remote files (sftp/smb/dav) aren't git-tracked, but the view
+            // delegates declare these as required properties.
+            return QString();
+        case HasImagePreviewRole:
+        case HasVideoPreviewRole:
+            // No thumbnails for remote files (the thumbnailer needs local
+            // file access).
+            return false;
         default:
             return {};
         }
@@ -498,7 +558,13 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
     case IsSymlinkRole:
         return info.isSymLink();
     case FileIconNameRole:
-        return iconNameForEntry(info.fileName(), info.isDir());
+        return iconNameForEntry(info.absoluteFilePath(), info.isDir());
+    case HasImagePreviewRole:
+        return previewKindForEntry(info.absoluteFilePath(), info.isDir())
+            == PreviewKind::Image;
+    case HasVideoPreviewRole:
+        return previewKindForEntry(info.absoluteFilePath(), info.isDir())
+            == PreviewKind::Video;
     case GitStatusRole:
         return m_gitService ? m_gitService->statusForPath(info.absoluteFilePath()) : QString();
     case GitStatusIconRole: {
@@ -536,6 +602,8 @@ QHash<int, QByteArray> FileSystemModel::roleNames() const
         {FileIconNameRole,     "fileIconName"},
         {GitStatusRole,        "gitStatus"},
         {GitStatusIconRole,    "gitStatusIcon"},
+        {HasImagePreviewRole,  "hasImagePreview"},
+        {HasVideoPreviewRole,  "hasVideoPreview"},
     };
 }
 
@@ -881,22 +949,23 @@ void FileSystemModel::reloadTrash()
         return;
     }
 
-    QProcess proc;
-    proc.start("gio", {
-        "list",
-        "-l",
-        "-u",
-        "-a",
-        "standard::display-name,standard::name,standard::content-type,time::modified,trash::orig-path,trash::deletion-date",
+    // Inside a Flatpak this transparently runs `flatpak-spawn --host gio
+    // list ...`. Without the host hop, the sandbox's overridden
+    // XDG_DATA_HOME (~/.var/app/<app-id>/data) makes gio query an empty
+    // sandbox-local trash instead of the user's real ~/.local/share/Trash.
+    const QString output = runHostTool(QStringLiteral("gio"), {
+        QStringLiteral("list"),
+        QStringLiteral("-l"),
+        QStringLiteral("-u"),
+        QStringLiteral("-a"),
+        QStringLiteral("standard::display-name,standard::name,standard::content-type,time::modified,trash::orig-path,trash::deletion-date"),
         QUrl(m_rootPath).toString(QUrl::FullyEncoded)
-    });
-    if (proc.waitForFinished(5000) && proc.exitCode() == 0) {
-        const QStringList lines = QString::fromUtf8(proc.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
-        for (const QString &line : lines) {
-            const QVariantMap entry = buildTrashEntryFromLine(line);
-            if (!entry.isEmpty())
-                m_trashEntries.append(entry);
-        }
+    }, 5000);
+    const QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        const QVariantMap entry = buildTrashEntryFromLine(line);
+        if (!entry.isEmpty())
+            m_trashEntries.append(entry);
     }
 
     std::sort(m_trashEntries.begin(), m_trashEntries.end(), [this](const QVariantMap &lhs, const QVariantMap &rhs) {
@@ -1225,11 +1294,54 @@ QVariantMap FileSystemModel::trashFileProperties(const QString &path) const
     return props;
 }
 
+// True when this binary is running inside a Flatpak sandbox.
+static bool runningInFlatpak()
+{
+    static const bool inSandbox = QFile::exists(QStringLiteral("/.flatpak-info"));
+    return inSandbox;
+}
+
+// Directories to scan for installed application .desktop files. Inside a
+// Flatpak sandbox, QStandardPaths::ApplicationsLocation only sees the
+// runtime + bundled apps, so we point at the host paths exposed via
+// `--filesystem=host` (which mounts host /usr at /run/host/usr).
+static QStringList applicationDataDirs()
+{
+    if (!runningInFlatpak())
+        return QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation);
+
+    QStringList dirs;
+    const QString home = QDir::homePath();
+    dirs << home + QStringLiteral("/.local/share/applications")
+         << home + QStringLiteral("/.local/share/flatpak/exports/share/applications")
+         << QStringLiteral("/run/host/usr/local/share/applications")
+         << QStringLiteral("/run/host/usr/share/applications")
+         << QStringLiteral("/run/host/var/lib/flatpak/exports/share/applications");
+    return dirs;
+}
+
+// Run a host CLI tool, transparently wrapping it in `flatpak-spawn --host`
+// when we're inside a Flatpak sandbox. Returns trimmed stdout. (Default
+// for timeoutMs is on the forward declaration at the top of the file.)
+static QString runHostTool(const QString &program, const QStringList &arguments,
+                           int timeoutMs)
+{
+    QProcess proc;
+    if (runningInFlatpak()) {
+        QStringList args;
+        args << QStringLiteral("--host") << program << arguments;
+        proc.start(QStringLiteral("flatpak-spawn"), args);
+    } else {
+        proc.start(program, arguments);
+    }
+    proc.waitForFinished(timeoutMs);
+    return QString::fromUtf8(proc.readAllStandardOutput());
+}
+
 static QString desktopFileName(const QString &desktopId)
 {
     // Search standard application dirs for a .desktop file
-    auto dataDirs = QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation);
-    for (const auto &dir : dataDirs) {
+    for (const auto &dir : applicationDataDirs()) {
         QString path = dir + "/" + desktopId;
         if (QFile::exists(path))
             return path;
@@ -1252,10 +1364,10 @@ QVariantList FileSystemModel::availableApps(const QString &mimeType) const
     if (mimeType.isEmpty())
         return apps;
 
-    QProcess proc;
-    proc.start("gio", {"mime", mimeType});
-    proc.waitForFinished(3000);
-    QString output = QString::fromUtf8(proc.readAllStandardOutput());
+    // Inside a Flatpak this transparently runs `flatpak-spawn --host gio
+    // mime <type>` so we see the host's MIME associations and host apps.
+    QString output = runHostTool(QStringLiteral("gio"),
+                                 {QStringLiteral("mime"), mimeType});
 
     // Parse "gio mime" output — registered apps appear after "Registered applications:"
     bool inRegistered = false;
@@ -1318,17 +1430,15 @@ QVariantList FileSystemModel::availableApps(const QString &mimeType) const
 
 QString FileSystemModel::defaultApp(const QString &mimeType) const
 {
-    QProcess proc;
-    proc.start("xdg-mime", {"query", "default", mimeType});
-    proc.waitForFinished(2000);
-    return QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+    return runHostTool(QStringLiteral("xdg-mime"),
+                       {QStringLiteral("query"), QStringLiteral("default"), mimeType},
+                       2000).trimmed();
 }
 
 void FileSystemModel::setDefaultApp(const QString &mimeType, const QString &desktopFile)
 {
-    QProcess proc;
-    proc.start("xdg-mime", {"default", desktopFile, mimeType});
-    proc.waitForFinished(2000);
+    runHostTool(QStringLiteral("xdg-mime"),
+                {QStringLiteral("default"), desktopFile, mimeType}, 2000);
 }
 
 QVariantList FileSystemModel::allInstalledApps() const
@@ -1336,7 +1446,7 @@ QVariantList FileSystemModel::allInstalledApps() const
     QVariantList apps;
     QSet<QString> seen;
 
-    auto dataDirs = QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation);
+    const auto dataDirs = applicationDataDirs();
     for (const auto &dir : dataDirs) {
         QDirIterator it(dir, {"*.desktop"}, QDir::Files, QDirIterator::Subdirectories);
         while (it.hasNext()) {

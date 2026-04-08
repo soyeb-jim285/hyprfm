@@ -2,8 +2,6 @@
 
 #include <QAbstractListModel>
 #include <QList>
-#include <QJsonObject>
-#include <QProcess>
 
 struct DeviceEntry {
     QString deviceName;
@@ -47,7 +45,6 @@ signals:
 
 private:
     void setupUDisks2();
-    void processDevice(const QJsonObject &dev, bool parentRemovable = false);
     static bool isVirtual(const QString &fsType);
 
     QList<DeviceEntry> m_devices;

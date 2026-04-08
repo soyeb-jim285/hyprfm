@@ -493,6 +493,8 @@ FocusScope {
                 required property string fileIconName
                 required property string gitStatus
                 required property string gitStatusIcon
+                required property bool hasImagePreview
+                required property bool hasVideoPreview
 
                 readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
 
@@ -533,11 +535,8 @@ FocusScope {
                                 height: root.detailIconSize
                                 anchors.verticalCenter: parent.verticalCenter
 
-                                readonly property bool isImage: !detRow.isDir &&
-                                    /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(detRow.filePath)
-                                readonly property bool isVideo: !detRow.isDir &&
-                                    /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ts)$/i.test(detRow.filePath)
-                                readonly property bool hasThumbnail: !fileOps.isRemotePath(detRow.filePath) && (isImage || isVideo)
+                                readonly property bool hasThumbnail: !fileOps.isRemotePath(detRow.filePath)
+                                    && (detRow.hasImagePreview || detRow.hasVideoPreview)
 
                                 Image {
                                     anchors.fill: parent

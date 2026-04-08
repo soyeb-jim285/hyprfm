@@ -44,23 +44,28 @@ private slots:
     void testSearchClearsOldResults()
     {
         TestDir dir;
-        dir.createFile("a.txt");
-        dir.createFile("b.cpp");
+        // Use distinctive base names rather than single letters. The
+        // search backend (fd) matches against the full path including the
+        // random "tst_searchservice-XXXXXX" temp dir suffix, so a query
+        // like "b" can spuriously match every file when the random hex
+        // happens to contain a 'b'.
+        dir.createFile("zebra.txt");
+        dir.createFile("kangaroo.cpp");
 
         SearchResultsModel model;
         SearchService service;
         service.setResultsModel(&model);
 
         QSignalSpy spy1(&service, &SearchService::searchFinished);
-        service.startSearch(dir.path(), "a", false);
+        service.startSearch(dir.path(), "zebra", false);
         QVERIFY(spy1.wait(5000));
         QVERIFY(model.rowCount() >= 1);
 
         QSignalSpy spy2(&service, &SearchService::searchFinished);
-        service.startSearch(dir.path(), "b", false);
+        service.startSearch(dir.path(), "kangaroo", false);
         QVERIFY(spy2.wait(5000));
         for (int i = 0; i < model.rowCount(); i++) {
-            QVERIFY(model.fileName(i).contains("b", Qt::CaseInsensitive));
+            QVERIFY(model.fileName(i).contains("kangaroo", Qt::CaseInsensitive));
         }
     }
 

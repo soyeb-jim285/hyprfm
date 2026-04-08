@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=HyprFM
+GenericName=File Manager
+Comment=A lightweight Qt6/QML file manager for Hyprland
+Exec=hyprfm %F
+Icon=io.github.soyeb_jim285.HyprFM
+Terminal=false
+Type=Application
+Categories=System;FileManager;Qt;
+MimeType=inode/directory;
+StartupNotify=true
+StartupWMClass=hyprfm
+Keywords=files;explorer;manager;browser;filesystem;

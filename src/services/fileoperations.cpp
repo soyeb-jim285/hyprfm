@@ -1,6 +1,7 @@
 #include "services/fileoperations.h"
 #include "services/giotransferworker.h"
 #include <QClipboard>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDirIterator>
 #include <QThread>
@@ -24,6 +25,15 @@
 #define signals Q_SIGNALS
 
 namespace {
+
+// True when this binary is running inside a Flatpak sandbox. Defined here
+// (rather than further down) so it's visible to trash/restore/empty
+// helpers above their use site.
+bool runningInFlatpak()
+{
+    static const bool inSandbox = QFile::exists(QStringLiteral("/.flatpak-info"));
+    return inSandbox;
+}
 
 bool isTrashUriPath(const QString &path)
 {
@@ -848,9 +858,29 @@ void FileOperations::trashFiles(const QStringList &paths)
         [paths](ProgressReporter report) -> QString {
             QString lastError;
             const int total = paths.size();
+            // Inside a Flatpak, GLib's g_file_trash() puts files in the
+            // *sandbox's* trash (~/.var/app/<app-id>/data/Trash) because
+            // XDG_DATA_HOME is overridden. Shell out to host gio so files
+            // land in the user's real ~/.local/share/Trash.
+            const bool inFlatpak = runningInFlatpak();
             for (int i = 0; i < total; ++i) {
                 const QString normalized = normalizeLocation(paths[i]);
                 report(i, total, locationFileName(normalized));
+
+                if (inFlatpak) {
+                    QProcess proc;
+                    proc.start(QStringLiteral("flatpak-spawn"),
+                               {QStringLiteral("--host"), QStringLiteral("gio"),
+                                QStringLiteral("trash"), normalized});
+                    proc.waitForFinished(10000);
+                    if (proc.exitCode() != 0) {
+                        const QString err = QString::fromUtf8(proc.readAllStandardError()).trimmed();
+                        if (!err.isEmpty())
+                            lastError = err;
+                    }
+                    continue;
+                }
+
                 GFile *file = gFileForLocation(normalized);
                 GError *gErr = nullptr;
                 if (!g_file_trash(file, nullptr, &gErr)) {
@@ -872,12 +902,30 @@ void FileOperations::restoreFromTrash(const QStringList &paths)
         [paths](ProgressReporter report) -> QString {
             QString lastError;
             const int total = paths.size();
+            // Same XDG_DATA_HOME issue as trashFiles: under Flatpak the
+            // GLib trash:// URIs resolve to the sandbox trash, not the
+            // host's. Shell out to host gio for restore.
+            const bool inFlatpak = runningInFlatpak();
             for (int i = 0; i < total; ++i) {
                 const QString uri = trashUriForPath(paths[i]);
                 if (uri.isEmpty())
                     continue;
 
                 report(i, total, locationFileName(paths[i]));
+
+                if (inFlatpak) {
+                    QProcess proc;
+                    proc.start(QStringLiteral("flatpak-spawn"),
+                               {QStringLiteral("--host"), QStringLiteral("gio"),
+                                QStringLiteral("trash"), QStringLiteral("--restore"), uri});
+                    proc.waitForFinished(10000);
+                    if (proc.exitCode() != 0) {
+                        const QString err = QString::fromUtf8(proc.readAllStandardError()).trimmed();
+                        if (!err.isEmpty())
+                            lastError = err;
+                    }
+                    continue;
+                }
 
                 GFile *trashFile = g_file_new_for_uri(uri.toUtf8().constData());
                 GError *gErr = nullptr;
@@ -1249,14 +1297,42 @@ void FileOperations::createFile(const QString &parentPath, const QString &name)
 
 void FileOperations::openFile(const QString &path)
 {
-    auto *proc = new QProcess(this);
     const QString normalized = normalizeLocation(path);
-    if (isUriPath(normalized))
-        proc->start("gio", {"open", gioLocationArg(normalized)});
-    else
-        proc->start("xdg-open", {normalized});
+
+    auto *proc = new QProcess(this);
     connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             proc, &QProcess::deleteLater);
+
+    // gio:// / sftp:// / smb:// / trash:// → use `gio open` which talks
+    // to gvfs. On the host this is just `gio open <uri>`; inside a Flatpak
+    // we run it on the host so it sees the host's gvfsd mounts.
+    if (isUriPath(normalized)) {
+        const QStringList args = {QStringLiteral("open"), gioLocationArg(normalized)};
+        if (runningInFlatpak()) {
+            proc->start(QStringLiteral("flatpak-spawn"),
+                        QStringList{QStringLiteral("--host"), QStringLiteral("gio")} + args);
+        } else {
+            proc->start(QStringLiteral("gio"), args);
+        }
+        return;
+    }
+
+    // Local files. Outside a sandbox: hand off to Qt's QDesktopServices
+    // (which uses xdg-open / kde-open / gio-launch under the hood and
+    // honors the user's MIME associations). Inside a Flatpak: shell out
+    // to `flatpak-spawn --host xdg-open` so the host opens the file with
+    // the host's default app, completely bypassing the sandbox. This is
+    // the same pattern Nautilus and Dolphin use when running as Flatpaks.
+    if (runningInFlatpak()) {
+        proc->start(QStringLiteral("flatpak-spawn"),
+                    {QStringLiteral("--host"), QStringLiteral("xdg-open"), normalized});
+        return;
+    }
+
+    proc->deleteLater();
+    const QUrl url = QUrl::fromLocalFile(normalized);
+    if (!QDesktopServices::openUrl(url))
+        qWarning() << "FileOperations::openFile: failed to open" << normalized;
 }
 
 bool FileOperations::pathExists(const QString &path) const
@@ -1289,6 +1365,25 @@ void FileOperations::emptyTrash()
     startSimpleOperation(
         QStringLiteral("Emptying trash..."), {},
         [](ProgressReporter report) -> QString {
+            // Inside a Flatpak the GLib trash:// URI resolves to the
+            // sandbox's trash, not the host's. Shell out to host gio so we
+            // empty the user's real trash. We lose per-file progress in
+            // this branch (gio trash --empty is one shot) but the result
+            // matches what the user expects.
+            if (runningInFlatpak()) {
+                report(0, 1, QStringLiteral("Emptying trash..."));
+                QProcess proc;
+                proc.start(QStringLiteral("flatpak-spawn"),
+                           {QStringLiteral("--host"), QStringLiteral("gio"),
+                            QStringLiteral("trash"), QStringLiteral("--empty")});
+                proc.waitForFinished(60000);
+                if (proc.exitCode() != 0) {
+                    const QString err = QString::fromUtf8(proc.readAllStandardError()).trimmed();
+                    return err.isEmpty() ? QStringLiteral("gio trash --empty failed") : err;
+                }
+                return QString();
+            }
+
             // First pass: count items
             GFile *trash = g_file_new_for_uri("trash:///");
             GError *enumErr = nullptr;
@@ -1333,9 +1428,17 @@ void FileOperations::emptyTrash()
 void FileOperations::openFileWith(const QString &path, const QString &desktopFile)
 {
     auto *proc = new QProcess(this);
-    proc->start("gtk-launch", {desktopFile, normalizeLocation(path)});
     connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             proc, &QProcess::deleteLater);
+
+    const QString normalized = normalizeLocation(path);
+    if (runningInFlatpak()) {
+        proc->start(QStringLiteral("flatpak-spawn"),
+                    {QStringLiteral("--host"),
+                     QStringLiteral("gtk-launch"), desktopFile, normalized});
+    } else {
+        proc->start(QStringLiteral("gtk-launch"), {desktopFile, normalized});
+    }
 }
 
 bool FileOperations::hasClipboardImage() const

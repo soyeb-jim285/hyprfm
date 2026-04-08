@@ -1,5 +1,7 @@
 #include "services/runtimefeaturesservice.h"
 
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QStandardPaths>
 
 RuntimeFeaturesService::RuntimeFeaturesService(QObject *parent)
@@ -19,7 +21,14 @@ bool RuntimeFeaturesService::batAvailable() const
 
 bool RuntimeFeaturesService::udisksctlAvailable() const
 {
-    return hasExecutable(QStringLiteral("udisksctl"));
+    // Mount/unmount goes over DBus directly (DeviceModel calls
+    // org.freedesktop.UDisks2.Filesystem.Mount/Unmount), so what matters
+    // is whether the UDisks2 service is reachable on the system bus, not
+    // whether the udisksctl CLI is on PATH.
+    auto *iface = QDBusConnection::systemBus().interface();
+    if (!iface)
+        return false;
+    return iface->isServiceRegistered(QStringLiteral("org.freedesktop.UDisks2"));
 }
 
 bool RuntimeFeaturesService::wlClipboardAvailable() const

@@ -1,28 +1,43 @@
 #include "thumbnailprovider.h"
 
+#include <QFile>
 #include <QThreadPool>
 #include <QBuffer>
 #include <QImageReader>
 #include <QImage>
+#include <QMimeDatabase>
+#include <QMimeType>
 #include <QQuickTextureFactory>
 #include <QProcess>
 #include <QFileInfo>
 #include <QTemporaryFile>
 #include <QUrl>
 
-static const QStringList kVideoExtensions = {
-    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "3gp", "ts",
-};
-
 static bool isTrashUri(const QString &path)
 {
     return QUrl(path).scheme() == "trash";
 }
 
+static bool runningInFlatpak()
+{
+    static const bool inSandbox = QFile::exists(QStringLiteral("/.flatpak-info"));
+    return inSandbox;
+}
+
 static QByteArray readTrashUriData(const QString &uri)
 {
     QProcess proc;
-    proc.start("gio", {"cat", QUrl(uri).toString(QUrl::FullyEncoded)});
+    const QString uriArg = QUrl(uri).toString(QUrl::FullyEncoded);
+    // Inside Flatpak the sandboxed gio sees its own (empty) trash; route
+    // through `flatpak-spawn --host gio cat` so we read from the host's
+    // real trash where the file actually lives.
+    if (runningInFlatpak()) {
+        proc.start(QStringLiteral("flatpak-spawn"),
+                   {QStringLiteral("--host"), QStringLiteral("gio"),
+                    QStringLiteral("cat"), uriArg});
+    } else {
+        proc.start(QStringLiteral("gio"), {QStringLiteral("cat"), uriArg});
+    }
     if (!proc.waitForFinished(10000) || proc.exitCode() != 0)
         return {};
 
@@ -31,8 +46,18 @@ static QByteArray readTrashUriData(const QString &uri)
 
 static bool isVideoFile(const QString &path)
 {
-    QString ext = QFileInfo(QUrl(path).fileName()).suffix().toLower();
-    return kVideoExtensions.contains(ext);
+    // Use QMimeDatabase so we don't misclassify ambiguous extensions like
+    // .ts (which is both MPEG transport stream *and* TypeScript). For
+    // local files this content-sniffs when the glob is ambiguous; for
+    // trash:// URIs we just match by name.
+    static QMimeDatabase mimeDb;
+    const QUrl url(path);
+    QMimeType mime;
+    if (url.scheme() == QLatin1String("file") || url.scheme().isEmpty())
+        mime = mimeDb.mimeTypeForFile(url.scheme().isEmpty() ? path : url.toLocalFile());
+    else
+        mime = mimeDb.mimeTypeForFile(url.fileName(), QMimeDatabase::MatchExtension);
+    return mime.isValid() && mime.name().startsWith(QLatin1String("video/"));
 }
 
 // ---------------------------------------------------------------------------

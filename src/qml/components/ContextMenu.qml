@@ -99,22 +99,6 @@ Item {
                 checked: !!apps[i].isDefault
             })
         }
-        // "Set as Default" section
-        var nonDefaults = apps.filter(function(a) { return !a.isDefault })
-        if (nonDefaults.length > 0) {
-            items.push({ separator: true })
-            for (var j = 0; j < nonDefaults.length; ++j) {
-                items.push({
-                    text: "Default: " + nonDefaults[j].name,
-                    shortcut: "",
-                    action: "setdefault",
-                    desktopFile: nonDefaults[j].desktopFile || "",
-                    iconName: nonDefaults[j].iconName || "",
-                    icon: "Check",
-                    mimeType: mime
-                })
-            }
-        }
         // "Other Application..."
         items.push({ separator: true })
         items.push({

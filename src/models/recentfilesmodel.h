@@ -24,6 +24,12 @@ public:
         IsDirRole,
         IsSymlinkRole,
         FileIconNameRole,
+        // Recent files aren't git-tracked, but the view delegates declare
+        // these as required properties.
+        GitStatusRole,
+        GitStatusIconRole,
+        HasImagePreviewRole,
+        HasVideoPreviewRole,
     };
     Q_ENUM(Roles)
 

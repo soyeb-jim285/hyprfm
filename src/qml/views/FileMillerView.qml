@@ -612,6 +612,8 @@ FocusScope {
                 required property string fileIconName
                 required property string gitStatus
                 required property string gitStatusIcon
+                required property bool hasImagePreview
+                required property bool hasVideoPreview
 
                 readonly property bool isSelected: currentColumn.selectedIndices.indexOf(index) >= 0
 
@@ -644,11 +646,8 @@ FocusScope {
                             width: root.millerIconSize + 2; height: root.millerIconSize + 2
                             anchors.verticalCenter: parent.verticalCenter
 
-                            readonly property bool isImage: !currentDelegate.isDir &&
-                                /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(currentDelegate.filePath)
-                            readonly property bool isVideo: !currentDelegate.isDir &&
-                                /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ts)$/i.test(currentDelegate.filePath)
-                            readonly property bool hasThumbnail: !fileOps.isRemotePath(currentDelegate.filePath) && (isImage || isVideo)
+                            readonly property bool hasThumbnail: !fileOps.isRemotePath(currentDelegate.filePath)
+                                && (currentDelegate.hasImagePreview || currentDelegate.hasVideoPreview)
 
                             Image {
                                 anchors.fill: parent
@@ -1071,8 +1070,13 @@ FocusScope {
                     return
                 }
 
-                if (root.fileModel && root.fileModel.fileProperties)
-                    fileProps = root.fileModel.fileProperties(previewFilePath)
+                // Always go through the canonical fsModel for property
+                // lookup. Other models that can feed miller view
+                // (RecentFilesModel, SearchProxyModel) don't expose
+                // fileProperties(), and fsModel.fileProperties() already
+                // handles local / trash:// / remote URIs internally.
+                if (fsModel && fsModel.fileProperties)
+                    fileProps = fsModel.fileProperties(previewFilePath)
                 else
                     fileProps = ({})
 

@@ -33,13 +33,31 @@ private slots:
         if (entries.isEmpty())
             QSKIP("No mounted volumes found under /run/media/$USER");
 
-        const QString mountPath = mediaDir.filePath(entries.constFirst());
+        // Find the first writable mounted volume; skip if none. The first
+        // entry under /run/media is often a read-only / OS-managed mount
+        // (e.g. an internal partition automounted by udisks), so we can't
+        // assume it's writable.
+        QString mountPath;
+        for (const QString &entry : entries) {
+            const QString candidate = mediaDir.filePath(entry);
+            if (QFileInfo(candidate).isWritable()) {
+                mountPath = candidate;
+                break;
+            }
+        }
+        if (mountPath.isEmpty())
+            QSKIP("No writable mounted volume found under /run/media/$USER");
+
         const QString testDirPath = mountPath + "/hyprfm-undo-test-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
-        QDir().mkpath(testDirPath);
+        if (!QDir().mkpath(testDirPath))
+            QSKIP("Could not create test directory on mounted volume");
 
         const QString filePath = testDirPath + "/undo_me.txt";
         QFile file(filePath);
-        QVERIFY(file.open(QIODevice::WriteOnly));
+        if (!file.open(QIODevice::WriteOnly)) {
+            QDir(testDirPath).removeRecursively();
+            QSKIP("Could not write test file on mounted volume");
+        }
         file.write("undo mounted trash");
         file.close();
 

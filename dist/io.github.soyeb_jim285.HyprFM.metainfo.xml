@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.soyeb_jim285.HyprFM</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>HyprFM</name>
+  <summary>Lightweight Qt6/QML file manager for Hyprland</summary>
+
+  <description>
+    <p>
+      HyprFM is a fast, keyboard-driven file manager built with Qt6 and QML.
+      It is designed for tiling Wayland compositors like Hyprland but works on
+      any Wayland desktop session.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Grid, list, detailed and Miller column views</li>
+      <li>Tabs and split views with independent navigation</li>
+      <li>Bookmarks, breadcrumb navigation and quick search powered by fd</li>
+      <li>Built-in image, video, audio, PDF and text previews</li>
+      <li>Drag and drop, cut/copy/paste with full undo support</li>
+      <li>Removable device mounting via UDisks2</li>
+      <li>Themable via TOML files</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.soyeb_jim285.HyprFM.desktop</launchable>
+
+  <url type="homepage">https://github.com/soyeb-jim285/hyprfm</url>
+  <url type="bugtracker">https://github.com/soyeb-jim285/hyprfm/issues</url>
+  <url type="vcs-browser">https://github.com/soyeb-jim285/hyprfm</url>
+
+  <developer id="io.github.soyeb_jim285">
+    <name>Soyeb Pervez Jim</name>
+  </developer>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Grid view with file preview</caption>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/main/docs/screenshots/grid-view.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Miller column view</caption>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/main/docs/screenshots/miller-view.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Quick preview overlay</caption>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/main/docs/screenshots/quick-preview.png</image>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1" />
+
+  <categories>
+    <category>System</category>
+    <category>FileManager</category>
+  </categories>
+
+  <provides>
+    <binary>hyprfm</binary>
+  </provides>
+
+  <releases>
+    <release version="0.4.4" date="2026-04-07">
+      <description>
+        <p>Bundle the Qt Wayland platform plugin in the AppImage and add qt6-wayland as an explicit dependency in the .deb so the window renders correctly on Ubuntu's GNOME Wayland session.</p>
+      </description>
+    </release>
+    <release version="0.4.3" date="2026-04-07">
+      <description>
+        <p>Detect the fdfind binary on Debian/Ubuntu (where the fd-find package ships fd as fdfind to avoid a name clash).</p>
+      </description>
+    </release>
+    <release version="0.4.2" date="2026-04-06">
+      <description>
+        <p>Initial Flathub-targeted release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

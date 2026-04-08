@@ -82,11 +82,13 @@ package() {
     install -dm755 "${pkgdir}/usr/share/hyprfm/src"
     cp -r "${pkgname}/src/qml" "${pkgdir}/usr/share/hyprfm/src/qml"
 
-    # Install desktop entry and icon
-    install -Dm644 "${pkgname}/dist/hyprfm.desktop" \
-        "${pkgdir}/usr/share/applications/hyprfm.desktop"
-    install -Dm644 "${pkgname}/dist/hyprfm.svg" \
-        "${pkgdir}/usr/share/icons/hicolor/scalable/apps/hyprfm.svg"
+    # Install desktop entry, icon and AppStream metainfo
+    install -Dm644 "${pkgname}/dist/io.github.soyeb_jim285.HyprFM.desktop" \
+        "${pkgdir}/usr/share/applications/io.github.soyeb_jim285.HyprFM.desktop"
+    install -Dm644 "${pkgname}/dist/io.github.soyeb_jim285.HyprFM.svg" \
+        "${pkgdir}/usr/share/icons/hicolor/scalable/apps/io.github.soyeb_jim285.HyprFM.svg"
+    install -Dm644 "${pkgname}/dist/io.github.soyeb_jim285.HyprFM.metainfo.xml" \
+        "${pkgdir}/usr/share/metainfo/io.github.soyeb_jim285.HyprFM.metainfo.xml"
 
     # Install license
     install -Dm644 "${pkgname}/LICENSE" \

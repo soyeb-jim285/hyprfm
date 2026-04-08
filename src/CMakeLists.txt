@@ -216,5 +216,9 @@ if(LIBAVFORMAT_FOUND)
 endif()
 
 install(TARGETS hyprfm DESTINATION bin)
-install(FILES "${CMAKE_SOURCE_DIR}/dist/hyprfm.desktop" DESTINATION share/applications)
-install(FILES "${CMAKE_SOURCE_DIR}/dist/hyprfm.svg" DESTINATION share/icons/hicolor/scalable/apps)
+install(FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.desktop"
+    DESTINATION share/applications)
+install(FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.svg"
+    DESTINATION share/icons/hicolor/scalable/apps)
+install(FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.metainfo.xml"
+    DESTINATION share/metainfo)

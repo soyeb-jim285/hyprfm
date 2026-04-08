@@ -212,14 +212,17 @@ int main(int argc, char *argv[])
     DeviceModel *devices = new DeviceModel(&app);
 
     // Check for CLI tools and warn if missing
-    const QStringList requiredTools = {"rsync", "gio", "xdg-open"};
+    // Local-file opens go through QDesktopServices (which uses the OpenURI
+    // portal under Flatpak and xdg-open on a regular host), so xdg-open is
+    // no longer a hard requirement here.
+    const QStringList requiredTools = {"rsync", "gio"};
     // Each entry is a list of equivalent alternatives — only warn if none exist
     const QList<QStringList> optionalToolGroups = {
         {"fd", "fdfind"}, // fd on Arch, fdfind on Debian/Ubuntu (fd-find pkg)
         {"wl-copy"},
         {"wl-paste"},
         {"ffmpeg"},
-        {"udisksctl"},
+        // udisksctl no longer needed: DeviceModel talks to UDisks2 over DBus
         {"bat", "batcat"}, // bat on Arch, batcat on Debian/Ubuntu
     };
 

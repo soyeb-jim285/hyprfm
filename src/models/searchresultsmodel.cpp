@@ -51,6 +51,16 @@ QVariant SearchResultsModel::data(const QModelIndex &index, int role) const
         QMimeDatabase db;
         return db.mimeTypeForFile(info).iconName();
     }
+    case GitStatusRole:     return QString();
+    case GitStatusIconRole: return QString();
+    case HasImagePreviewRole: {
+        QMimeDatabase db;
+        return db.mimeTypeForFile(info).name().startsWith(QLatin1String("image/"));
+    }
+    case HasVideoPreviewRole: {
+        QMimeDatabase db;
+        return db.mimeTypeForFile(info).name().startsWith(QLatin1String("video/"));
+    }
     }
     return {};
 }
@@ -69,6 +79,10 @@ QHash<int, QByteArray> SearchResultsModel::roleNames() const
         {IsDirRole,           "isDir"},
         {IsSymlinkRole,       "isSymlink"},
         {FileIconNameRole,    "fileIconName"},
+        {GitStatusRole,       "gitStatus"},
+        {GitStatusIconRole,   "gitStatusIcon"},
+        {HasImagePreviewRole, "hasImagePreview"},
+        {HasVideoPreviewRole, "hasVideoPreview"},
     };
 }
 
