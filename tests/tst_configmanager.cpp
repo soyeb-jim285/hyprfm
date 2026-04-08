@@ -25,6 +25,7 @@ private slots:
         QCOMPARE(mgr.theme(), QString("catppuccin-mocha"));
         QCOMPARE(mgr.iconTheme(), QString("Adwaita"));
         QCOMPARE(mgr.builtinIcons(), true);
+        QCOMPARE(mgr.fontFamily(), QString());
         QCOMPARE(mgr.defaultView(), QString("grid"));
         QCOMPARE(mgr.showHidden(), false);
         QCOMPARE(mgr.sortBy(), QString("name"));
@@ -32,6 +33,28 @@ private slots:
         QCOMPARE(mgr.sidebarPosition(), QString("left"));
         QCOMPARE(mgr.sidebarWidth(), 200);
         QCOMPARE(mgr.sidebarVisible(), true);
+        QCOMPARE(mgr.transparencyEnabled(), true);
+        QCOMPARE(mgr.transparencyLevel(), 1.0);
+        QCOMPARE(mgr.animationsEnabled(), true);
+    }
+
+    void testAvailableThemes()
+    {
+        QTemporaryDir dir;
+        QDir().mkpath(dir.path() + "/themes");
+
+        QFile darkTheme(dir.path() + "/themes/dark.toml");
+        QVERIFY(darkTheme.open(QIODevice::WriteOnly));
+        darkTheme.write("[colors]\ntext = \"#ffffff\"\n");
+        darkTheme.close();
+
+        QFile lightTheme(dir.path() + "/themes/light.toml");
+        QVERIFY(lightTheme.open(QIODevice::WriteOnly));
+        lightTheme.write("[colors]\ntext = \"#111111\"\n");
+        lightTheme.close();
+
+        ConfigManager mgr(dir.path() + "/config.toml", nullptr, dir.path() + "/themes");
+        QCOMPARE(mgr.availableThemes(), QStringList({"dark", "light"}));
     }
 
     void testDefaultRadius()
@@ -70,6 +93,8 @@ private slots:
         QCOMPARE(mgr.shortcut("rename"), QString("F2"));
         QCOMPARE(mgr.shortcut("trash"), QString("Delete"));
         QCOMPARE(mgr.shortcut("toggle_hidden"), QString("Ctrl+H"));
+        QCOMPARE(mgr.shortcut("quick_preview"), QString("Space"));
+        QCOMPARE(mgr.shortcut("search"), QString("Ctrl+F"));
         QCOMPARE(mgr.shortcut("select_all"), QString("Ctrl+A"));
     }
 
@@ -92,6 +117,7 @@ private slots:
         f.open(QIODevice::WriteOnly);
         f.write("[general]\n"
                 "theme = \"custom\"\n"
+                "font_family = \"Inter\"\n"
                 "default_view = \"list\"\n"
                 "show_hidden = true\n"
                 "sort_by = \"size\"\n"
@@ -105,6 +131,7 @@ private slots:
 
         ConfigManager mgr(path);
         QCOMPARE(mgr.theme(), QString("custom"));
+        QCOMPARE(mgr.fontFamily(), QString("Inter"));
         QCOMPARE(mgr.defaultView(), QString("list"));
         QCOMPARE(mgr.showHidden(), true);
         QCOMPARE(mgr.sortBy(), QString("size"));
@@ -124,13 +151,19 @@ private slots:
         f.write("[appearance]\n"
                 "radius_small = 2\n"
                 "radius_medium = 6\n"
-                "radius_large = 16\n");
+                "radius_large = 16\n"
+                "transparency_enabled = false\n"
+                "transparency_level = 0.4\n"
+                "animations_enabled = false\n");
         f.close();
 
         ConfigManager mgr(path);
         QCOMPARE(mgr.radiusSmall(), 2);
         QCOMPARE(mgr.radiusMedium(), 6);
         QCOMPARE(mgr.radiusLarge(), 16);
+        QCOMPARE(mgr.transparencyEnabled(), false);
+        QCOMPARE(mgr.transparencyLevel(), 0.4);
+        QCOMPARE(mgr.animationsEnabled(), false);
     }
 
     void testParseIconTheme()
@@ -168,6 +201,75 @@ private slots:
         QCOMPARE(bookmarks.size(), 2);
         QCOMPARE(bookmarks.at(0), QString("~/Documents"));
         QCOMPARE(bookmarks.at(1), QString("~/Downloads"));
+    }
+
+    void testSaveSettings()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("[bookmarks]\n"
+                "paths = [\"~/Documents\"]\n");
+        f.close();
+
+        ConfigManager mgr(path);
+        QSignalSpy spy(&mgr, &ConfigManager::configChanged);
+
+        QVariantMap settings;
+        settings.insert("theme", "catppuccin-latte");
+        settings.insert("fontFamily", "Inter");
+        settings.insert("iconTheme", "Papirus");
+        settings.insert("showHidden", true);
+        settings.insert("sidebarVisible", false);
+        settings.insert("sidebarWidth", 420);
+        settings.insert("radiusSmall", 6);
+        settings.insert("radiusMedium", 12);
+        settings.insert("radiusLarge", 18);
+        settings.insert("transparencyEnabled", false);
+        settings.insert("transparencyLevel", 0.3);
+        settings.insert("animationsEnabled", false);
+        mgr.saveSettings(settings);
+
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(mgr.theme(), QString("catppuccin-latte"));
+        QCOMPARE(mgr.fontFamily(), QString("Inter"));
+        QCOMPARE(mgr.iconTheme(), QString("Papirus"));
+        QCOMPARE(mgr.showHidden(), true);
+        QCOMPARE(mgr.sidebarVisible(), false);
+        QCOMPARE(mgr.sidebarWidth(), 420);
+        QCOMPARE(mgr.radiusSmall(), 6);
+        QCOMPARE(mgr.radiusMedium(), 12);
+        QCOMPARE(mgr.radiusLarge(), 18);
+        QCOMPARE(mgr.transparencyEnabled(), false);
+        QCOMPARE(mgr.transparencyLevel(), 0.3);
+        QCOMPARE(mgr.animationsEnabled(), false);
+        QCOMPARE(mgr.bookmarks(), QStringList({"~/Documents"}));
+    }
+
+    void testSaveShortcuts()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        ConfigManager mgr(path);
+        QSignalSpy spy(&mgr, &ConfigManager::configChanged);
+
+        QVariantMap shortcuts;
+        shortcuts.insert("copy", "Ctrl+Shift+C");
+        shortcuts.insert("search", "Ctrl+K");
+        shortcuts.insert("new_tab", "");
+        mgr.saveShortcuts(shortcuts);
+
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(mgr.shortcut("copy"), QString("Ctrl+Shift+C"));
+        QCOMPARE(mgr.shortcut("search"), QString("Ctrl+K"));
+        QCOMPARE(mgr.shortcut("new_tab"), QString("Ctrl+T"));
+
+        const QVariantMap shortcutMap = mgr.shortcutMap();
+        QCOMPARE(shortcutMap.value("copy").toString(), QString("Ctrl+Shift+C"));
+        QCOMPARE(shortcutMap.value("search").toString(), QString("Ctrl+K"));
     }
 
     void testEmptyBookmarks()

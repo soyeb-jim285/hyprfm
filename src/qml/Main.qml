@@ -106,6 +106,15 @@ ApplicationWindow {
         }
     }
 
+    Connections {
+        target: config
+
+        function onConfigChanged() {
+            root.sidebarVisible = config.sidebarVisible
+            root.sidebarWidth = config.sidebarWidth
+        }
+    }
+
     // Force initial load after QML is fully set up
     Component.onCompleted: {
         if (tabModel.activeTab) {
@@ -133,10 +142,15 @@ ApplicationWindow {
         Q.Theme.radiusSm = Qt.binding(() => Theme.radiusSmall)
         Q.Theme.radius = Qt.binding(() => Theme.radiusMedium)
         Q.Theme.radiusLg = Qt.binding(() => Theme.radiusLarge)
-        Q.Theme.fontFamily = Qt.application.font.family
+        Q.Theme.fontFamily = Qt.binding(() => Qt.application.font.family)
         Q.Theme.fontSizeSmall = Qt.binding(() => Theme.fontSmall)
         Q.Theme.fontSize = Qt.binding(() => Theme.fontNormal)
         Q.Theme.fontSizeLarge = Qt.binding(() => Theme.fontLarge)
+        Q.Theme.animDurationFast = Qt.binding(() => Theme.animDurationFast)
+        Q.Theme.animDuration = Qt.binding(() => Theme.animDuration)
+        Q.Theme.animDurationSlow = Qt.binding(() => Theme.animDurationSlow)
+        Q.Theme.transparencyEnabled = Qt.binding(() => Theme.transparencyEnabled)
+        Q.Theme.transparencyLevel = Qt.binding(() => Theme.transparencyLevel)
 
         root.scheduleActivePaneFocus()
     }
@@ -200,6 +214,10 @@ ApplicationWindow {
     function openRemoteConnectDialog() {
         remoteConnectDialog.resetForm()
         remoteConnectDialog.open()
+    }
+
+    function openSettingsPanel() {
+        settingsPanel.openPanel()
     }
 
     function paneIsRecents(pane) {
@@ -329,6 +347,8 @@ ApplicationWindow {
         return root.active
             && !root.searchMode
             && !bulkRenameDialog.visible
+            && !remoteConnectDialog.visible
+            && !settingsPanel.visible
             && !renameDialog.visible
             && !newFolderDialog.visible
             && !newFileDialog.visible
@@ -916,6 +936,15 @@ ApplicationWindow {
         onConnected: (uri) => root.navigateActivePaneTo(uri)
     }
 
+    SettingsPanel {
+        id: settingsPanel
+        currentShowHidden: fsModel.showHidden
+        currentSidebarVisible: root.sidebarVisible
+        currentSidebarWidth: root.sidebarWidth
+        onRemoteConnectRequested: root.openRemoteConnectDialog()
+        onClosed: root.scheduleActivePaneFocus()
+    }
+
     // ── Rename dialog ───────────────────────────────────────────────────────
     property string renameTargetPath: ""
 
@@ -969,18 +998,18 @@ ApplicationWindow {
             id: renameOpenAnim
             NumberAnimation {
                 target: renameBox; property: "opacity"
-                from: 0; to: 1; duration: 180
+                from: 0; to: 1; duration: Theme.animDurationFast
                 easing.type: Easing.OutCubic
             }
             NumberAnimation {
                 target: renameBox; property: "scale"
-                from: 0.88; to: 1; duration: 250
+                from: 0.88; to: 1; duration: Theme.animDurationSlow
                 easing.type: Easing.OutBack
                 easing.overshoot: 0.8
             }
             NumberAnimation {
                 target: renameBox; property: "yOffset"
-                from: -8; to: 0; duration: 220
+                from: -8; to: 0; duration: Theme.animDuration
                 easing.type: Easing.OutCubic
             }
         }
@@ -989,17 +1018,17 @@ ApplicationWindow {
             ParallelAnimation {
                 NumberAnimation {
                     target: renameBox; property: "opacity"
-                    to: 0; duration: 120
+                    to: 0; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
                 NumberAnimation {
                     target: renameBox; property: "scale"
-                    to: 0.92; duration: 120
+                    to: 0.92; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
                 NumberAnimation {
                     target: renameBox; property: "yOffset"
-                    to: -4; duration: 120
+                    to: -4; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
             }
@@ -1136,18 +1165,18 @@ ApplicationWindow {
             id: folderOpenAnim
             NumberAnimation {
                 target: folderBox; property: "opacity"
-                from: 0; to: 1; duration: 180
+                from: 0; to: 1; duration: Theme.animDurationFast
                 easing.type: Easing.OutCubic
             }
             NumberAnimation {
                 target: folderBox; property: "scale"
-                from: 0.88; to: 1; duration: 250
+                from: 0.88; to: 1; duration: Theme.animDurationSlow
                 easing.type: Easing.OutBack
                 easing.overshoot: 0.8
             }
             NumberAnimation {
                 target: folderBox; property: "yOffset"
-                from: -8; to: 0; duration: 220
+                from: -8; to: 0; duration: Theme.animDuration
                 easing.type: Easing.OutCubic
             }
         }
@@ -1156,17 +1185,17 @@ ApplicationWindow {
             ParallelAnimation {
                 NumberAnimation {
                     target: folderBox; property: "opacity"
-                    to: 0; duration: 120
+                    to: 0; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
                 NumberAnimation {
                     target: folderBox; property: "scale"
-                    to: 0.92; duration: 120
+                    to: 0.92; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
                 NumberAnimation {
                     target: folderBox; property: "yOffset"
-                    to: -4; duration: 120
+                    to: -4; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
             }
@@ -1301,18 +1330,18 @@ ApplicationWindow {
             id: fileOpenAnim
             NumberAnimation {
                 target: fileBox; property: "opacity"
-                from: 0; to: 1; duration: 180
+                from: 0; to: 1; duration: Theme.animDurationFast
                 easing.type: Easing.OutCubic
             }
             NumberAnimation {
                 target: fileBox; property: "scale"
-                from: 0.88; to: 1; duration: 250
+                from: 0.88; to: 1; duration: Theme.animDurationSlow
                 easing.type: Easing.OutBack
                 easing.overshoot: 0.8
             }
             NumberAnimation {
                 target: fileBox; property: "yOffset"
-                from: -8; to: 0; duration: 220
+                from: -8; to: 0; duration: Theme.animDuration
                 easing.type: Easing.OutCubic
             }
         }
@@ -1321,17 +1350,17 @@ ApplicationWindow {
             ParallelAnimation {
                 NumberAnimation {
                     target: fileBox; property: "opacity"
-                    to: 0; duration: 120
+                    to: 0; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
                 NumberAnimation {
                     target: fileBox; property: "scale"
-                    to: 0.92; duration: 120
+                    to: 0.92; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
                 NumberAnimation {
                     target: fileBox; property: "yOffset"
-                    to: -4; duration: 120
+                    to: -4; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
             }
@@ -1497,7 +1526,9 @@ ApplicationWindow {
 
                         Image {
                             id: appChooserIcon
-                            source: modelData.iconName ? ("image://icon/" + modelData.iconName) : ""
+                            source: modelData.iconName
+                                ? ("image://icon/" + modelData.iconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0"))
+                                : ""
                             sourceSize: Qt.size(22, 22)
                             Layout.preferredWidth: 22
                             Layout.preferredHeight: 22
@@ -1645,18 +1676,18 @@ ApplicationWindow {
             id: propsOpenAnim
             NumberAnimation {
                 target: propsBox; property: "opacity"
-                from: 0; to: 1; duration: 180
+                from: 0; to: 1; duration: Theme.animDurationFast
                 easing.type: Easing.OutCubic
             }
             NumberAnimation {
                 target: propsBox; property: "scale"
-                from: 0.88; to: 1; duration: 250
+                from: 0.88; to: 1; duration: Theme.animDurationSlow
                 easing.type: Easing.OutBack
                 easing.overshoot: 0.8
             }
             NumberAnimation {
                 target: propsBox; property: "yOffset"
-                from: -8; to: 0; duration: 220
+                from: -8; to: 0; duration: Theme.animDuration
                 easing.type: Easing.OutCubic
             }
         }
@@ -1665,17 +1696,17 @@ ApplicationWindow {
             ParallelAnimation {
                 NumberAnimation {
                     target: propsBox; property: "opacity"
-                    to: 0; duration: 120
+                    to: 0; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
                 NumberAnimation {
                     target: propsBox; property: "scale"
-                    to: 0.92; duration: 120
+                    to: 0.92; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
                 NumberAnimation {
                     target: propsBox; property: "yOffset"
-                    to: -4; duration: 120
+                    to: -4; duration: Theme.animDurationFast
                     easing.type: Easing.InCubic
                 }
             }
@@ -1721,7 +1752,9 @@ ApplicationWindow {
                         anchors.left: parent.left; anchors.leftMargin: 24; anchors.verticalCenter: parent.verticalCenter
                         Image {
                             anchors.centerIn: parent; width: 32; height: 32
-                            source: propertiesDialog.props.iconName ? ("image://icon/" + propertiesDialog.props.iconName) : ""
+                            source: propertiesDialog.props.iconName
+                                ? ("image://icon/" + propertiesDialog.props.iconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0"))
+                                : ""
                             sourceSize: Qt.size(32, 32); smooth: true
                         }
                     }
@@ -1756,12 +1789,12 @@ ApplicationWindow {
                     width: parent.width
                     height: propertiesDialog.currentTab === 0 ? generalTab.height : permissionsTab.height
                     clip: true
-                    Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    Behavior on height { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Easing.OutCubic } }
 
                     Row {
                         id: tabSliderRow
                         x: -propertiesDialog.currentTab * tabSlider.width
-                        Behavior on x { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+                        Behavior on x { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Easing.OutCubic } }
 
                 // ══════════════════════════════════════════════
                 // TAB 0: General
@@ -1918,7 +1951,9 @@ ApplicationWindow {
 
                                 Image {
                                     id: owAppIcon
-                                    source: modelData.iconName ? ("image://icon/" + modelData.iconName) : ""
+                                    source: modelData.iconName
+                                        ? ("image://icon/" + modelData.iconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0"))
+                                        : ""
                                     sourceSize: Qt.size(18, 18)
                                     width: 18; height: 18
                                     anchors.left: parent.left; anchors.leftMargin: 10
@@ -2481,25 +2516,25 @@ ApplicationWindow {
 
     // Tab management
     Shortcut {
-        sequence: config.shortcut("new_tab")
+        sequence: config.shortcutMap["new_tab"]
         onActivated: tabModel.addTab()
     }
 
     Shortcut {
-        sequence: config.shortcut("close_tab")
+        sequence: config.shortcutMap["close_tab"]
         onActivated: {
             if (tabModel.count > 1) tabModel.closeTab(tabModel.activeIndex)
         }
     }
 
     Shortcut {
-        sequence: config.shortcut("reopen_tab")
+        sequence: config.shortcutMap["reopen_tab"]
         onActivated: tabModel.reopenClosedTab()
     }
 
     // Navigation
     Shortcut {
-        sequence: config.shortcut("back")
+        sequence: config.shortcutMap["back"]
         onActivated: root.goActivePaneBack()
     }
 
@@ -2509,57 +2544,57 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: config.shortcut("forward")
+        sequence: config.shortcutMap["forward"]
         onActivated: root.goActivePaneForward()
     }
 
     Shortcut {
-        sequence: config.shortcut("parent")
+        sequence: config.shortcutMap["parent"]
         onActivated: root.goActivePaneUp()
     }
 
     // Toggle hidden files
     Shortcut {
-        sequence: config.shortcut("toggle_hidden")
+        sequence: config.shortcutMap["toggle_hidden"]
         onActivated: fsModel.showHidden = !fsModel.showHidden
     }
 
     // Toggle path bar focus (Ctrl+L-like)
     Shortcut {
-        sequence: config.shortcut("path_bar")
+        sequence: config.shortcutMap["path_bar"]
         onActivated: toolbar.startEditing()
     }
 
     // Toggle sidebar
     Shortcut {
-        sequence: config.shortcut("toggle_sidebar")
+        sequence: config.shortcutMap["toggle_sidebar"]
         onActivated: root.sidebarVisible = !root.sidebarVisible
     }
 
     Shortcut {
-        sequence: config.shortcut("split_view")
+        sequence: config.shortcutMap["split_view"]
         onActivated: root.toggleSplitView()
     }
 
     // View mode switching
     Shortcut {
-        sequence: config.shortcut("grid_view")
+        sequence: config.shortcutMap["grid_view"]
         onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "grid" }
     }
 
     Shortcut {
-        sequence: config.shortcut("miller_view")
+        sequence: config.shortcutMap["miller_view"]
         onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "miller" }
     }
 
     Shortcut {
-        sequence: config.shortcut("detailed_view")
+        sequence: config.shortcutMap["detailed_view"]
         onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "detailed" }
     }
 
     // File operations
     Shortcut {
-        sequence: config.shortcut("copy")
+        sequence: config.shortcutMap["copy"]
         onActivated: {
             var paths = getSelectedPaths()
             if (paths.length > 0) clipboard.copy(paths)
@@ -2567,7 +2602,7 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: config.shortcut("cut")
+        sequence: config.shortcutMap["cut"]
         onActivated: {
             var paths = getSelectedPaths()
             if (paths.length > 0) clipboard.cut(paths)
@@ -2575,7 +2610,7 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: config.shortcut("paste")
+        sequence: config.shortcutMap["paste"]
         onActivated: {
             if (!clipboard.hasContent && !fileOps.hasClipboardImage()) return
             if (root.paneIsRecents(activePane)) return
@@ -2586,7 +2621,7 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: config.shortcut("trash")
+        sequence: config.shortcutMap["trash"]
         onActivated: {
             var paths = getSelectedPaths()
             if (paths.length === 0) return
@@ -2611,7 +2646,7 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: config.shortcut("permanent_delete")
+        sequence: config.shortcutMap["permanent_delete"]
         onActivated: {
             var paths = getSelectedPaths()
             if (paths.length > 0) {
@@ -2622,17 +2657,17 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: config.shortcut("undo")
+        sequence: config.shortcutMap["undo"]
         onActivated: { if (undoManager.canUndo) undoManager.undo() }
     }
 
     Shortcut {
-        sequence: config.shortcut("redo")
+        sequence: config.shortcutMap["redo"]
         onActivated: { if (undoManager.canRedo) undoManager.redo() }
     }
 
     Shortcut {
-        sequence: config.shortcut("select_all")
+        sequence: config.shortcutMap["select_all"]
         onActivated: {
             var view = root.activeFileView()
             if (view) view.selectAll()
@@ -2640,7 +2675,7 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: config.shortcut("rename")
+        sequence: config.shortcutMap["rename"]
         onActivated: {
             var paths = getSelectedPaths()
             root.openRenameWorkflow(paths)
@@ -2648,7 +2683,7 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: config.shortcut("new_folder")
+        sequence: config.shortcutMap["new_folder"]
         onActivated: {
             var dest = root.isRecentsView ? "" : panePath(activePane)
             if (dest !== "") {
@@ -2660,7 +2695,7 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: config.shortcut("new_file")
+        sequence: config.shortcutMap["new_file"]
         onActivated: {
             var dest = root.isRecentsView ? "" : panePath(activePane)
             if (dest !== "") {
@@ -2673,7 +2708,7 @@ ApplicationWindow {
 
     // Quick preview (spacebar)
     Shortcut {
-        sequence: "Space"
+        sequence: config.shortcutMap["quick_preview"]
         onActivated: {
             if (quickPreview.active) {
                 quickPreview.active = false
@@ -2691,7 +2726,7 @@ ApplicationWindow {
 
     // Search
     Shortcut {
-        sequence: "Ctrl+F"
+        sequence: config.shortcutMap["search"]
         onActivated: {
             if (root.searchMode) root.closeSearch()
             else root.openSearch()
@@ -2703,6 +2738,7 @@ ApplicationWindow {
         enabled: root.searchMode
                  && !quickPreview.active
                  && !bulkRenameDialog.visible
+                 && !settingsPanel.visible
                  && !renameDialog.visible
                  && !newFolderDialog.visible
                  && !newFileDialog.visible
@@ -2855,7 +2891,7 @@ ApplicationWindow {
 
             Behavior on Layout.preferredWidth {
                 enabled: !root.sidebarResizeActive
-                NumberAnimation { duration: 200; easing.type: Easing.InOutCubic }
+                NumberAnimation { duration: Theme.animDuration; easing.type: Easing.InOutCubic }
             }
 
             Sidebar {
@@ -2956,6 +2992,7 @@ ApplicationWindow {
                 onUpRequested: root.goActivePaneUp()
                 onNavigateRequested: (targetPath) => root.navigateActivePaneTo(targetPath)
                 onConnectRemoteRequested: root.openRemoteConnectDialog()
+                onSettingsRequested: root.openSettingsPanel()
                 onRestoreTrashRequested: {
                     var paths = getSelectedPaths()
                     if (paths.length > 0)
@@ -2991,7 +3028,7 @@ ApplicationWindow {
                 id: contentArea
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                color: Qt.rgba(Theme.base.r, Theme.base.g, Theme.base.b, 0.65)
+                color: Theme.containerColor(Theme.base, 0.65)
 
                 // Curved mantle fills for inverse rounded corners
                 Shape {
@@ -3036,7 +3073,7 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         radius: Theme.radiusMedium
                         clip: true
-                        color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.14)
+                        color: Theme.containerColor(Theme.crust, 0.14)
                         border.width: 1
                         border.color: root.splitViewEnabled() && root.activePane === "primary"
                             ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
@@ -3090,7 +3127,7 @@ ApplicationWindow {
                             property alias fileView: secondaryFileViewContainer
                             radius: Theme.radiusMedium
                             clip: true
-                            color: Qt.rgba(Theme.crust.r, Theme.crust.g, Theme.crust.b, 0.14)
+                            color: Theme.containerColor(Theme.crust, 0.14)
                             border.width: 1
                             border.color: root.activePane === "secondary"
                                 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)

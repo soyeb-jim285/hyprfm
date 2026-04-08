@@ -282,18 +282,18 @@ Item {
         id: openAnim
         NumberAnimation {
             target: menuContainer; property: "opacity"
-            from: 0; to: 1; duration: 180
+            from: 0; to: 1; duration: Theme.animDurationFast
             easing.type: Easing.OutCubic
         }
         NumberAnimation {
             target: menuContainer; property: "scale"
-            from: 0.88; to: 1; duration: 250
+            from: 0.88; to: 1; duration: Theme.animDurationSlow
             easing.type: Easing.OutBack
             easing.overshoot: 0.8
         }
         NumberAnimation {
             target: menuContainer; property: "yOffset"
-            from: -8; to: 0; duration: 220
+            from: -8; to: 0; duration: Theme.animDuration
             easing.type: Easing.OutCubic
         }
     }
@@ -304,17 +304,17 @@ Item {
         ParallelAnimation {
             NumberAnimation {
                 target: menuContainer; property: "opacity"
-                to: 0; duration: 120
+                to: 0; duration: Theme.animDurationFast
                 easing.type: Easing.InCubic
             }
             NumberAnimation {
                 target: menuContainer; property: "scale"
-                to: 0.92; duration: 120
+                to: 0.92; duration: Theme.animDurationFast
                 easing.type: Easing.InCubic
             }
             NumberAnimation {
                 target: menuContainer; property: "yOffset"
-                to: -4; duration: 120
+                to: -4; duration: Theme.animDurationFast
                 easing.type: Easing.InCubic
             }
         }
@@ -325,17 +325,17 @@ Item {
         id: submenuOpenAnim
         NumberAnimation {
             target: submenuContainer; property: "opacity"
-            from: 0; to: 1; duration: 150
+            from: 0; to: 1; duration: Theme.animDurationFast
             easing.type: Easing.OutCubic
         }
         NumberAnimation {
             target: submenuContainer; property: "scale"
-            from: 0.98; to: 1; duration: 170
+            from: 0.98; to: 1; duration: Theme.animDuration
             easing.type: Easing.OutCubic
         }
         NumberAnimation {
             target: submenuContainer; property: "xOffset"
-            from: root._submenuStartOffset; to: 0; duration: 170
+            from: root._submenuStartOffset; to: 0; duration: Theme.animDuration
             easing.type: Easing.OutCubic
         }
     }
@@ -348,17 +348,17 @@ Item {
         }
         NumberAnimation {
             target: submenuContainer; property: "opacity"
-            to: 0; duration: 110
+            to: 0; duration: Theme.animDurationFast
             easing.type: Easing.InCubic
         }
         NumberAnimation {
             target: submenuContainer; property: "scale"
-            to: 0.98; duration: 110
+            to: 0.98; duration: Theme.animDurationFast
             easing.type: Easing.InCubic
         }
         NumberAnimation {
             target: submenuContainer; property: "xOffset"
-            to: root._submenuStartOffset; duration: 110
+            to: root._submenuStartOffset; duration: Theme.animDurationFast
             easing.type: Easing.InCubic
         }
     }
@@ -873,7 +873,9 @@ Item {
                 anchors.rightMargin: 12
                 spacing: 8
                 Image {
-                    source: subItemData && subItemData.iconName ? ("image://icon/" + subItemData.iconName) : ""
+                    source: subItemData && subItemData.iconName
+                        ? ("image://icon/" + subItemData.iconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0"))
+                        : ""
                     sourceSize: Qt.size(18, 18)
                     Layout.preferredWidth: visible ? 18 : 0
                     Layout.preferredHeight: 18

@@ -97,7 +97,7 @@ Q.Dialog {
 
         Behavior on contentHeight {
             NumberAnimation {
-                duration: 220
+                duration: Theme.animDurationSlow
                 easing.type: Easing.OutCubic
             }
         }

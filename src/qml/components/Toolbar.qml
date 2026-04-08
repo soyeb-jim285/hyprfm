@@ -66,6 +66,7 @@ Rectangle {
     signal clearAllFilters()
     signal restoreTrashRequested()
     signal emptyTrashRequested()
+    signal settingsRequested()
     signal transferRequested(var paths, string destinationPath, bool moveOperation)
 
     implicitHeight: toolbarColumn.implicitHeight
@@ -211,19 +212,18 @@ Rectangle {
                     }
                 }
 
-                // Search button (hidden in search mode)
-                HoverRect {
-                    width: 32; height: 32
-                    visible: !root.searchMode && !root.isTrashView
-                    onClicked: root.connectRemoteRequested()
-                    IconExternalLink { anchors.centerIn: parent; size: 18; color: Theme.text }
-                }
-
                 HoverRect {
                     width: 32; height: 32
                     visible: !root.searchMode && !root.isTrashView && !root.isRemoteView
                     onClicked: root.searchClicked()
                     IconSearch { anchors.centerIn: parent; size: 18; color: Theme.text }
+                }
+
+                HoverRect {
+                    width: 32; height: 32
+                    visible: !root.searchMode
+                    onClicked: root.settingsRequested()
+                    IconSettings { anchors.centerIn: parent; size: 18; color: Theme.text }
                 }
             }
         }
@@ -236,7 +236,7 @@ Rectangle {
             clip: true
 
             Behavior on Layout.preferredHeight {
-                NumberAnimation { duration: 200; easing.type: Easing.InOutCubic }
+                NumberAnimation { duration: Theme.animDuration; easing.type: Easing.InOutCubic }
             }
 
             Loader {
@@ -265,7 +265,7 @@ Rectangle {
             Behavior on Layout.preferredHeight {
                 NumberAnimation {
                     id: tabBarHeightAnim
-                    duration: 250; easing.type: Easing.InOutCubic
+                    duration: Theme.animDurationSlow; easing.type: Easing.InOutCubic
                 }
             }
 
@@ -306,7 +306,7 @@ Rectangle {
                             property bool closing: false
 
                             Behavior on Layout.preferredWidth {
-                                NumberAnimation { duration: 220; easing.type: Easing.InOutCubic }
+                                NumberAnimation { duration: Theme.animDuration; easing.type: Easing.InOutCubic }
                             }
 
                             opacity: 0
@@ -328,12 +328,12 @@ Rectangle {
                                 id: enterAnim
                                 NumberAnimation {
                                     target: tabDelegate; property: "opacity"
-                                    from: 0; to: 1; duration: 220
+                                    from: 0; to: 1; duration: Theme.animDuration
                                     easing.type: Easing.InOutCubic
                                 }
                                 NumberAnimation {
                                     target: tabDelegate; property: "scale"
-                                    from: 0.88; to: 1; duration: 280
+                                    from: 0.88; to: 1; duration: Theme.animDurationSlow
                                     easing.type: Easing.OutBack; easing.overshoot: 0.5
                                 }
                             }
@@ -372,11 +372,11 @@ Rectangle {
                                 ParallelAnimation {
                                     NumberAnimation {
                                         target: tabDelegate; property: "opacity"
-                                        to: 0; duration: 200; easing.type: Easing.InOutCubic
+                                        to: 0; duration: Theme.animDuration; easing.type: Easing.InOutCubic
                                     }
                                     NumberAnimation {
                                         target: tabDelegate; property: "scale"
-                                        to: 0.88; duration: 200; easing.type: Easing.InOutCubic
+                                        to: 0.88; duration: Theme.animDuration; easing.type: Easing.InOutCubic
                                     }
                                 }
                                 ScriptAction {

@@ -22,8 +22,17 @@ QtObject {
     readonly property int fontSmall: 9
     readonly property int fontNormal: 10
     readonly property int fontLarge: 12
+    readonly property bool transparencyEnabled: config.transparencyEnabled
+    readonly property real transparencyLevel: Math.max(0, Math.min(1, config.transparencyLevel))
+    readonly property bool animationsEnabled: config.animationsEnabled
 
-    readonly property int animDurationFast: 100
-    readonly property int animDuration: 200
-    readonly property int animDurationSlow: 350
+    readonly property int animDurationFast: animationsEnabled ? 100 : 0
+    readonly property int animDuration: animationsEnabled ? 200 : 0
+    readonly property int animDurationSlow: animationsEnabled ? 350 : 0
+
+    function containerColor(color, defaultAlpha) {
+        var strength = transparencyEnabled ? transparencyLevel : 0
+        var alpha = 1 - strength * (1 - defaultAlpha)
+        return Qt.rgba(color.r, color.g, color.b, alpha)
+    }
 }

@@ -336,11 +336,11 @@ Q.Dialog {
         implicitHeight: contentHeight
 
         Behavior on contentHeight {
-            NumberAnimation {
-                duration: 220
-                easing.type: Easing.OutCubic
+                NumberAnimation {
+                    duration: Theme.animDurationSlow
+                    easing.type: Easing.OutCubic
+                }
             }
-        }
 
         ColumnLayout {
             id: replaceControls

@@ -11,9 +11,13 @@
 class ConfigManager : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(QStringList availableFonts READ availableFonts CONSTANT)
+    Q_PROPERTY(QStringList availableIconThemes READ availableIconThemes CONSTANT)
+    Q_PROPERTY(QStringList availableThemes READ availableThemes CONSTANT)
     Q_PROPERTY(QString theme READ theme NOTIFY configChanged)
     Q_PROPERTY(QString iconTheme READ iconTheme NOTIFY configChanged)
     Q_PROPERTY(bool builtinIcons READ builtinIcons NOTIFY configChanged)
+    Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY configChanged)
     Q_PROPERTY(QString defaultView READ defaultView NOTIFY configChanged)
     Q_PROPERTY(bool showHidden READ showHidden NOTIFY configChanged)
     Q_PROPERTY(QString sortBy READ sortBy NOTIFY configChanged)
@@ -25,13 +29,23 @@ class ConfigManager : public QObject
     Q_PROPERTY(int radiusSmall READ radiusSmall NOTIFY configChanged)
     Q_PROPERTY(int radiusMedium READ radiusMedium NOTIFY configChanged)
     Q_PROPERTY(int radiusLarge READ radiusLarge NOTIFY configChanged)
+    Q_PROPERTY(bool transparencyEnabled READ transparencyEnabled NOTIFY configChanged)
+    Q_PROPERTY(double transparencyLevel READ transparencyLevel NOTIFY configChanged)
+    Q_PROPERTY(bool animationsEnabled READ animationsEnabled NOTIFY configChanged)
+    Q_PROPERTY(QVariantMap shortcutMap READ shortcutMap NOTIFY configChanged)
+    Q_PROPERTY(QVariantList shortcutDefinitions READ shortcutDefinitions NOTIFY configChanged)
 
 public:
-    explicit ConfigManager(const QString &configPath, QObject *parent = nullptr);
+    explicit ConfigManager(const QString &configPath, QObject *parent = nullptr,
+                           const QString &themesDir = QString());
 
+    QStringList availableFonts() const;
+    QStringList availableIconThemes() const;
+    QStringList availableThemes() const;
     QString theme() const;
     QString iconTheme() const;
     bool builtinIcons() const;
+    QString fontFamily() const;
     QString defaultView() const;
     bool showHidden() const;
     QString sortBy() const;
@@ -43,8 +57,15 @@ public:
     int radiusSmall() const;
     int radiusMedium() const;
     int radiusLarge() const;
+    bool transparencyEnabled() const;
+    double transparencyLevel() const;
+    bool animationsEnabled() const;
+    QVariantMap shortcutMap() const;
+    QVariantList shortcutDefinitions() const;
     QVariantList customContextActions() const;
     Q_INVOKABLE QString shortcut(const QString &action) const;
+    Q_INVOKABLE void saveSettings(const QVariantMap &settings);
+    Q_INVOKABLE void saveShortcuts(const QVariantMap &shortcuts);
     Q_INVOKABLE void saveBookmarks(const QStringList &paths);
     Q_INVOKABLE void saveSidebarWidth(int width);
 
@@ -56,11 +77,13 @@ private:
     void setDefaults();
 
     QString m_configPath;
+    QString m_themesDir;
     QFileSystemWatcher m_watcher;
 
     QString m_theme;
     QString m_iconTheme;
     bool m_builtinIcons;
+    QString m_fontFamily;
     QString m_defaultView;
     bool m_showHidden;
     QString m_sortBy;
@@ -72,6 +95,9 @@ private:
     int m_radiusSmall;
     int m_radiusMedium;
     int m_radiusLarge;
+    bool m_transparencyEnabled;
+    double m_transparencyLevel;
+    bool m_animationsEnabled;
     QVariantList m_customContextActions;
     QMap<QString, QString> m_shortcuts;
     static QMap<QString, QString> s_defaultShortcuts;

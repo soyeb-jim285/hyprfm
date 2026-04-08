@@ -17,6 +17,7 @@
 #include <QQuickWindow>
 #include <QSaveFile>
 #include <QTimer>
+#include <QFontDatabase>
 
 #include "services/configmanager.h"
 #include "services/themeloader.h"
@@ -65,10 +66,19 @@ int main(int argc, char *argv[])
     // Use native text rendering (FreeType/fontconfig) for crisp fonts matching GTK apps
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
 
-    // Use system default font with proper hinting for crisp text
-    QFont defaultFont = app.font();
-    defaultFont.setHintingPreference(QFont::PreferFullHinting);
-    app.setFont(defaultFont);
+    auto resolveUiFont = [&](const QString &preferredFamily) {
+        // Resolve the platform UI font first so the app does not depend on
+        // theme-local font defaults that may not exist inside a sandbox.
+        QFont font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+        if (font.family().isEmpty())
+            font = app.font();
+
+        if (!preferredFamily.trimmed().isEmpty())
+            font.setFamily(preferredFamily.trimmed());
+
+        font.setHintingPreference(QFont::PreferFullHinting);
+        return font;
+    };
 
     // Ensure config directory exists
     const QString configDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation)
@@ -109,7 +119,8 @@ int main(int argc, char *argv[])
         qWarning() << "HyprFM: unable to locate themes directory";
 
     // Create backend instances
-    ConfigManager *config = new ConfigManager(configPath, &app);
+    ConfigManager *config = new ConfigManager(configPath, &app, themesDir);
+    app.setFont(resolveUiFont(config->fontFamily()));
     ThemeLoader *theme = new ThemeLoader(&app);
     theme->loadTheme(config->theme(), themesDir);
 
@@ -192,14 +203,15 @@ int main(int argc, char *argv[])
     fsModel->setGitStatusService(primaryGitService);
     splitFsModel->setGitStatusService(secondaryGitService);
 
-    // Connect config changes to reload theme, bookmarks, and showHidden
-    QObject::connect(config, &ConfigManager::configChanged, [=]() {
+    // Keep the live UI in sync with persisted config values.
+    QObject::connect(config, &ConfigManager::configChanged, [=, &app, &resolveUiFont]() {
         theme->loadTheme(config->theme(), themesDir);
         bookmarks->setBookmarks(config->bookmarks());
         fsModel->setShowHidden(config->showHidden());
         splitFsModel->setShowHidden(config->showHidden());
         millerParentModel->setShowHidden(config->showHidden());
         millerPreviewModel->setShowHidden(config->showHidden());
+        app.setFont(resolveUiFont(config->fontFamily()));
     });
 
     // Connect lastWindowClosed to quit
@@ -276,6 +288,11 @@ int main(int argc, char *argv[])
 #endif
 
     DragHelper *dragHelper = new DragHelper(iconProvider, &app);
+
+    QObject::connect(config, &ConfigManager::configChanged, [=]() {
+        QIcon::setThemeName(config->iconTheme());
+        iconProvider->setPrimaryTheme(config->iconTheme());
+    });
 
     // Register context properties
     engine.rootContext()->setContextProperty("config", config);

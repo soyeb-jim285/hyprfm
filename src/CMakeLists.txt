@@ -156,6 +156,7 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconGitDirty.qml
         qml/components/SearchBar.qml
         qml/components/FilterPanel.qml
+        qml/components/SettingsPanel.qml
 )
 
 qt_add_qml_module(hyprfm ${hyprfm_qml_module_args})

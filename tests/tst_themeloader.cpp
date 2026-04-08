@@ -19,6 +19,16 @@ private slots:
         QCOMPARE(loader.color("error"), QColor("#f38ba8"));
     }
 
+    void testLoadBuiltinLightTheme()
+    {
+        ThemeLoader loader;
+        loader.loadTheme("catppuccin-latte", THEMES_DIR);
+        QCOMPARE(loader.color("base"), QColor("#eff1f5"));
+        QCOMPARE(loader.color("accent"), QColor("#1e66f5"));
+        QCOMPARE(loader.color("text"), QColor("#4c4f69"));
+        QCOMPARE(loader.color("error"), QColor("#d20f39"));
+    }
+
     void testAllBuiltinColors()
     {
         ThemeLoader loader;

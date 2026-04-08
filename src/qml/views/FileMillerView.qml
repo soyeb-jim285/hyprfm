@@ -249,7 +249,7 @@ FocusScope {
                         Image {
                             width: root.millerIconSize; height: root.millerIconSize
                             anchors.verticalCenter: parent.verticalCenter
-                            source: "image://icon/" + parentDelegate.fileIconName
+                            source: "image://icon/" + parentDelegate.fileIconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
                             sourceSize: Qt.size(root.millerIconSize, root.millerIconSize)
                             asynchronous: false
                             opacity: parentDelegate.isCurrentDir ? 0.95 : 0.8
@@ -652,7 +652,7 @@ FocusScope {
                             Image {
                                 anchors.fill: parent
                                 visible: !parent.hasThumbnail
-                                source: "image://icon/" + currentDelegate.fileIconName
+                                source: "image://icon/" + currentDelegate.fileIconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
                                 sourceSize: Qt.size(root.millerIconSize + 2, root.millerIconSize + 2)
                                 asynchronous: false
                             }
@@ -1150,7 +1150,7 @@ FocusScope {
                                 Image {
                                     width: 14; height: 14
                                     anchors.verticalCenter: parent.verticalCenter
-                                    source: "image://icon/" + fileIconName
+                                    source: "image://icon/" + fileIconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
                                     sourceSize: Qt.size(14, 14)
                                     asynchronous: false
                                 }
@@ -1352,7 +1352,7 @@ FocusScope {
                         Image {
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: 64; height: 64
-                            source: "image://icon/" + (previewColumn.fileProps.iconName || (previewColumn.isPdf ? "application-pdf" : "image-x-generic"))
+                            source: "image://icon/" + (previewColumn.fileProps.iconName || (previewColumn.isPdf ? "application-pdf" : "image-x-generic")) + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
                             sourceSize: Qt.size(64, 64)
                             asynchronous: false
                         }
@@ -1429,7 +1429,7 @@ FocusScope {
                         Image {
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: 72; height: 72
-                            source: "image://icon/" + (previewColumn.fileProps.iconName || "application-pdf")
+                            source: "image://icon/" + (previewColumn.fileProps.iconName || "application-pdf") + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
                             sourceSize: Qt.size(72, 72)
                             asynchronous: false
                         }
@@ -1471,8 +1471,8 @@ FocusScope {
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: 64; height: 64
                             source: previewColumn.fileProps.iconName
-                                ? ("image://icon/" + previewColumn.fileProps.iconName)
-                                : "image://icon/text-x-generic"
+                                ? ("image://icon/" + previewColumn.fileProps.iconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0"))
+                                : ("image://icon/text-x-generic?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0"))
                             sourceSize: Qt.size(64, 64)
                             asynchronous: false
                         }

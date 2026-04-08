@@ -18,43 +18,43 @@ public:
     explicit IconProvider(const QString &primaryTheme = "Adwaita")
         : QQuickImageProvider(QQuickImageProvider::Image)
     {
-        // Build search directories
-        QStringList searchDirs;
-        QString home = QDir::homePath();
-        searchDirs.append(home + "/.icons");
-        searchDirs.append(home + "/.local/share/icons");
-        searchDirs.append("/usr/share/icons");
-        searchDirs.append("/usr/local/share/icons");
-
-        QString xdgDirs = qEnvironmentVariable("XDG_DATA_DIRS", "/usr/share:/usr/local/share");
-        for (const auto &dir : xdgDirs.split(':')) {
-            QString iconDir = dir + "/icons";
-            if (!searchDirs.contains(iconDir))
-                searchDirs.append(iconDir);
-        }
-
-        // Primary theme (configured by user)
-        for (const auto &dir : searchDirs) {
-            QString path = dir + "/" + primaryTheme;
-            if (QDir(path).exists() && !m_primaryDirs.contains(path))
-                m_primaryDirs.append(path);
-        }
-
-        // Fallback themes (other installed themes)
-        QStringList fallbacks = {"breeze", "Papirus", "Adwaita", "hicolor"};
-        for (const auto &theme : fallbacks) {
-            if (theme == primaryTheme) continue;
-            for (const auto &dir : searchDirs) {
-                QString path = dir + "/" + theme;
-                if (QDir(path).exists() && !m_fallbackDirs.contains(path))
-                    m_fallbackDirs.append(path);
-            }
-        }
+        rebuildSearchDirs();
+        setPrimaryTheme(primaryTheme);
 
         // Check if rsvg-convert is available
         QProcess check;
         check.start("rsvg-convert", {"--version"});
         m_hasRsvg = check.waitForFinished(1000) && check.exitCode() == 0;
+    }
+
+    void setPrimaryTheme(const QString &primaryTheme)
+    {
+        const QString themeName = primaryTheme.trimmed().isEmpty() ? QStringLiteral("Adwaita")
+                                                                   : primaryTheme.trimmed();
+        if (m_primaryTheme == themeName && !m_primaryDirs.isEmpty())
+            return;
+
+        m_primaryTheme = themeName;
+        m_primaryDirs.clear();
+        m_fallbackDirs.clear();
+
+        for (const auto &dir : m_searchDirs) {
+            const QString path = dir + "/" + themeName;
+            if (QDir(path).exists() && !m_primaryDirs.contains(path))
+                m_primaryDirs.append(path);
+        }
+
+        const QStringList fallbacks = {"breeze", "Papirus", "Adwaita", "hicolor"};
+        for (const auto &theme : fallbacks) {
+            if (theme == themeName)
+                continue;
+
+            for (const auto &dir : m_searchDirs) {
+                const QString path = dir + "/" + theme;
+                if (QDir(path).exists() && !m_fallbackDirs.contains(path))
+                    m_fallbackDirs.append(path);
+            }
+        }
     }
 
     QImage requestImage(const QString &id, QSize *size, const QSize &requestedSize) override
@@ -142,6 +142,24 @@ public:
     }
 
 private:
+    void rebuildSearchDirs()
+    {
+        m_searchDirs.clear();
+
+        const QString home = QDir::homePath();
+        m_searchDirs.append(home + "/.icons");
+        m_searchDirs.append(home + "/.local/share/icons");
+        m_searchDirs.append("/usr/share/icons");
+        m_searchDirs.append("/usr/local/share/icons");
+
+        const QString xdgDirs = qEnvironmentVariable("XDG_DATA_DIRS", "/usr/share:/usr/local/share");
+        for (const auto &dir : xdgDirs.split(':')) {
+            const QString iconDir = dir + "/icons";
+            if (!m_searchDirs.contains(iconDir))
+                m_searchDirs.append(iconDir);
+        }
+    }
+
     QImage renderWithRsvg(const QString &svgPath, const QSize &iconSize) const
     {
         QProcess proc;
@@ -224,6 +242,8 @@ private:
         return {};
     }
 
+    QString m_primaryTheme;
+    QStringList m_searchDirs;
     QStringList m_primaryDirs;
     QStringList m_fallbackDirs;
     bool m_hasRsvg = false;
