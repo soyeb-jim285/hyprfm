@@ -62,7 +62,9 @@ jobs:
         run: |
           QT_PREFIX=$(qmake6 -query QT_INSTALL_PREFIX 2>/dev/null || qmake -query QT_INSTALL_PREFIX)
           echo "Qt prefix: $QT_PREFIX"
-          git clone --depth 1 --branch v6.7.3 https://code.qt.io/qt/qtwayland.git qtwayland-src
+          # Use the GitHub mirror — code.qt.io has intermittent network
+          # issues from GitHub Actions runners.
+          git clone --depth 1 --branch v6.7.3 https://github.com/qt/qtwayland.git qtwayland-src
           cmake -S qtwayland-src -B qtwayland-src/build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
