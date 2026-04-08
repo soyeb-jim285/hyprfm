@@ -24,7 +24,12 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.3'
-          modules: 'qtshadertools qtwayland'
+          # Note: 'qtwayland' is NOT a separate module for linux desktop in
+          # aqtinstall — on Linux the Wayland platform plugin (libqwayland-
+          # generic.so / libqwayland-egl.so) ships with the base Qt install.
+          # We force linuxdeploy-plugin-qt to bundle it via EXTRA_PLATFORM_PLUGINS
+          # further below.
+          modules: 'qtshadertools'
 
       - name: Install system dependencies
         run: |

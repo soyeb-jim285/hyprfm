@@ -756,7 +756,7 @@ Item {
                     Layout.preferredWidth: 16
                     Layout.preferredHeight: 16
                     Layout.alignment: Qt.AlignVCenter
-                    active: itemData && itemData.icon
+                    active: !!(itemData && itemData.icon)
                     source: (itemData && itemData.icon) ? "../icons/Icon" + itemData.icon + ".qml" : ""
                     onLoaded: {
                         item.size = 16
@@ -816,7 +816,7 @@ Item {
                     Layout.preferredWidth: 16
                     Layout.preferredHeight: 16
                     Layout.alignment: Qt.AlignVCenter
-                    active: itemData && itemData.icon
+                    active: !!(itemData && itemData.icon)
                     source: (itemData && itemData.icon) ? "../icons/Icon" + itemData.icon + ".qml" : ""
                     onLoaded: {
                         item.size = 16
