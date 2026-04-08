@@ -66,6 +66,11 @@
   </provides>
 
   <releases>
+    <release version="0.4.8" date="2026-04-08">
+      <description>
+        <p>Fix the AppImage on Wayland sessions: build QtWayland from source in CI so the wayland-graphics-integration-client plugins (which aqtinstall's base Qt omits) are present for linuxdeploy to bundle. Without this, Qt aborted on startup with "Available client buffer integrations: QList()".</p>
+      </description>
+    </release>
     <release version="0.4.7" date="2026-04-08">
       <description>
         <p>Flathub submission polish: install the license file at the Flatpak-standard location, pin bundled git sources to immutable commit SHAs, drop unused DBus name claims and redundant filesystem permissions, and reference screenshots by tag instead of branch.</p>

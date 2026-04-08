@@ -40,10 +40,37 @@ jobs:
             libgl-dev \
             libxkbcommon-dev \
             libdbus-1-dev \
+            libwayland-dev \
+            libegl-dev \
+            libgles-dev \
+            wayland-protocols \
             rsync \
             xdg-utils \
             file \
             libfuse2
+
+      - name: Build QtWayland from source
+        if: startsWith(github.ref, 'refs/tags/v')
+        # aqtinstall's Linux desktop Qt 6.7.3 ships the QtWayland libs
+        # but omits the wayland-graphics-integration-client plugins
+        # (libqt-plugin-wayland-egl.so etc.), so Qt can't find a client
+        # buffer integration at runtime and the bundled AppImage aborts
+        # on any Wayland session with "Available client buffer
+        # integrations: QList()". Build qtwayland from the matching
+        # source tag against the aqt Qt and install into its prefix so
+        # linuxdeploy-plugin-qt picks up the plugins naturally.
+        run: |
+          QT_PREFIX=$(qmake6 -query QT_INSTALL_PREFIX 2>/dev/null || qmake -query QT_INSTALL_PREFIX)
+          echo "Qt prefix: $QT_PREFIX"
+          git clone --depth 1 --branch v6.7.3 https://code.qt.io/qt/qtwayland.git qtwayland-src
+          cmake -S qtwayland-src -B qtwayland-src/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DCMAKE_INSTALL_PREFIX="$QT_PREFIX"
+          cmake --build qtwayland-src/build --parallel
+          cmake --install qtwayland-src/build
+          echo "=== wayland-graphics-integration-client after install ==="
+          ls "$QT_PREFIX/plugins/wayland-graphics-integration-client/" || true
 
       - name: Build
         run: |
