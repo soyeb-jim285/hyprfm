@@ -105,7 +105,7 @@ HyprFM publishes a signed Flatpak repository at `hyprfm.soyebjim.me`. Add it onc
 
 ```bash
 flatpak remote-add --user --if-not-exists \
-    hyprfm https://hyprfm.soyebjim.me/hyprfm.flatpakrepo
+    hyprfm https://flatpak.hyprfm.soyebjim.me/hyprfm.flatpakrepo
 flatpak install --user hyprfm io.github.soyeb_jim285.HyprFM
 ```
 
