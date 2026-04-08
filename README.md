@@ -99,6 +99,20 @@ yay -S hyprfm-git
 
 The PKGBUILD pulls latest `main`, builds with Ninja + parallel jobs + tests disabled, and installs to `/usr/bin/hyprfm`.
 
+### Flatpak (self-hosted)
+
+HyprFM publishes a signed Flatpak repository at `hyprfm.soyebjim.me`. Add it once and install:
+
+```bash
+flatpak remote-add --user --if-not-exists \
+    hyprfm https://hyprfm.soyebjim.me/hyprfm.flatpakrepo
+flatpak install --user hyprfm io.github.soyeb_jim285.HyprFM
+```
+
+Updates arrive via the usual `flatpak update`. The repo is signed with a GPG key committed at [`public-key.asc`](https://github.com/soyeb-jim285/hyprfm-flatpak-repo/blob/main/public-key.asc); Flatpak verifies every download against it automatically.
+
+Each tagged release also attaches an `HyprFM-vX.Y.Z-x86_64.flatpak` bundle to the GitHub release for users who want a single-file install without adding a remote.
+
 ### Debian / Ubuntu (.deb)
 
 Grab `hyprfm_*_amd64.deb` from the latest [release](https://github.com/soyeb-jim285/hyprfm/releases) and install:

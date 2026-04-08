@@ -119,12 +119,95 @@ jobs:
             --icon-file dist/io.github.soyeb_jim285.HyprFM.svg \
             --output appimage
 
+      # ─────────────────────────────────────────────────────────────────
+      # Flatpak publishing: build, sign with GPG, upload the ostree repo
+      # to soyeb-jim285/hyprfm-flatpak-repo (served at hyprfm.soyebjim.me
+      # via GitHub Pages) and export a single-file bundle as a release
+      # asset. Gated on tag pushes only so main-branch CI stays fast.
+
+      - name: Install Flatpak tooling
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub \
+              https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install -y --user flathub \
+              org.kde.Platform//6.9 org.kde.Sdk//6.9
+
+      - name: Import GPG signing key
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GPG_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+        run: |
+          mkdir -p "$HOME/.gnupg"
+          chmod 700 "$HOME/.gnupg"
+          printf '%s' "$GPG_KEY" | gpg --batch --import
+          gpg --list-secret-keys --keyid-format=long
+
+      - name: Build and sign Flatpak repo
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GPG_FINGERPRINT: ${{ secrets.FLATPAK_GPG_FINGERPRINT }}
+        run: |
+          flatpak-builder --force-clean --user \
+            --repo=flatpak-repo \
+            --gpg-sign="$GPG_FINGERPRINT" \
+            --default-branch=stable \
+            flatpak-build \
+            io.github.soyeb_jim285.HyprFM.yml
+          # Generate static deltas for efficient incremental updates
+          # and re-sign the summary file.
+          flatpak build-update-repo \
+            --generate-static-deltas \
+            --gpg-sign="$GPG_FINGERPRINT" \
+            flatpak-repo
+
+      - name: Build Flatpak bundle (release asset)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          GPG_FINGERPRINT: ${{ secrets.FLATPAK_GPG_FINGERPRINT }}
+        run: |
+          flatpak build-bundle flatpak-repo \
+            "HyprFM-${TAG_NAME}-x86_64.flatpak" \
+            io.github.soyeb_jim285.HyprFM stable \
+            --gpg-sign="$GPG_FINGERPRINT"
+
+      - name: Publish ostree repo to hyprfm-flatpak-repo
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          DEPLOY_KEY: ${{ secrets.FLATPAK_REPO_DEPLOY_KEY }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519,rsa,ecdsa github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+          git clone git@github.com:soyeb-jim285/hyprfm-flatpak-repo.git pages
+          cd pages
+          git config user.name "hyprfm release bot"
+          git config user.email "release-bot@hyprfm.local"
+
+          rm -rf repo
+          cp -a ../flatpak-repo repo
+
+          git add -A repo/
+          if git diff --cached --quiet; then
+            echo "No changes to publish"
+          else
+            git commit -m "Publish io.github.soyeb_jim285.HyprFM ${TAG_NAME}"
+            git push origin main
+          fi
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
             HyprFM-${{ github.ref_name }}-x86_64.AppImage
+            HyprFM-${{ github.ref_name }}-x86_64.flatpak
             build/hyprfm_*.deb
             build/hyprfm-*.deb
           generate_release_notes: true
