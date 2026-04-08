@@ -212,9 +212,20 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          # printf '%s\n' guarantees a terminating newline; OpenSSH's
+          # PEM parser rejects keys without one with a cryptic
+          # "error in libcrypto" message.
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -t ed25519,rsa,ecdsa github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Sanity check the key parses cleanly before SSH does.
+          if ! ssh-keygen -l -f ~/.ssh/id_ed25519 > /dev/null; then
+            echo "Deploy key failed to parse. First and last lines:"
+            head -1 ~/.ssh/id_ed25519
+            tail -1 ~/.ssh/id_ed25519
+            exit 1
+          fi
 
           git clone git@github.com:soyeb-jim285/hyprfm-flatpak-repo.git pages
           cd pages
