@@ -37,7 +37,8 @@ class ConfigManager : public QObject
 
 public:
     explicit ConfigManager(const QString &configPath, QObject *parent = nullptr,
-                           const QString &themesDir = QString());
+                           const QString &themesDir = QString(),
+                           const QString &defaultTheme = QStringLiteral("catppuccin-mocha"));
 
     QStringList availableFonts() const;
     QStringList availableIconThemes() const;
@@ -78,6 +79,7 @@ private:
 
     QString m_configPath;
     QString m_themesDir;
+    QString m_defaultThemeName;
     QFileSystemWatcher m_watcher;
 
     QString m_theme;

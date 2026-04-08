@@ -16,6 +16,9 @@ Rectangle {
     property bool isTrashView: false
     property bool isRemoteView: false
     property bool searchMode: false
+    property bool showWindowControls: false
+    property bool windowMaximized: false
+    property var window: null
     property string currentSearchQuery: ""
     property string searchTypeFilter: ""
     property string searchDateFilter: ""
@@ -67,10 +70,23 @@ Rectangle {
     signal restoreTrashRequested()
     signal emptyTrashRequested()
     signal settingsRequested()
+    signal minimizeRequested()
+    signal toggleMaximizeRequested()
+    signal closeRequested()
     signal transferRequested(var paths, string destinationPath, bool moveOperation)
 
     implicitHeight: toolbarColumn.implicitHeight
     color: Theme.mantle
+
+    DragHandler {
+        enabled: root.showWindowControls && root.window
+        target: null
+        acceptedButtons: Qt.LeftButton
+        onActiveChanged: {
+            if (active && root.window && root.window.startSystemMove)
+                root.window.startSystemMove()
+        }
+    }
 
     ColumnLayout {
         id: toolbarColumn
@@ -81,7 +97,7 @@ Rectangle {
         // ── Row 1: Navigation + Breadcrumb + Search ──
         Item {
             Layout.fillWidth: true
-            Layout.preferredHeight: 44
+            Layout.preferredHeight: Theme.toolbarRowHeight
 
             RowLayout {
                 anchors.fill: parent
@@ -91,7 +107,7 @@ Rectangle {
 
                 // Back button
                 HoverRect {
-                    width: 32; height: 32
+                    width: Theme.controlSize; height: Theme.controlSize
                     hoverEnabled: root.canGoBack
                     opacity: hoverEnabled ? 1.0 : 0.4
                     onClicked: root.backRequested()
@@ -100,7 +116,7 @@ Rectangle {
 
                 // Forward button
                 HoverRect {
-                    width: 32; height: 32
+                    width: Theme.controlSize; height: Theme.controlSize
                     hoverEnabled: root.canGoForward
                     opacity: hoverEnabled ? 1.0 : 0.4
                     onClicked: root.forwardRequested()
@@ -109,7 +125,7 @@ Rectangle {
 
                 // Up button
                 HoverRect {
-                    width: 32; height: 32
+                    width: Theme.controlSize; height: Theme.controlSize
                     hoverEnabled: !root.isRecentsView
                     opacity: hoverEnabled ? 1.0 : 0.4
                     onClicked: root.upRequested()
@@ -132,7 +148,7 @@ Rectangle {
                 Loader {
                     id: searchBarLoader
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 28
+                    Layout.preferredHeight: Theme.compactControlSize
                     Layout.alignment: Qt.AlignVCenter
                     visible: root.searchMode
                     active: root.searchMode
@@ -152,7 +168,7 @@ Rectangle {
                 }
 
                 HoverRect {
-                    width: 32; height: 32
+                    width: Theme.controlSize; height: Theme.controlSize
                     visible: !root.searchMode
                     border.width: root.splitViewEnabled ? 1 : 0
                     border.color: root.splitViewEnabled
@@ -174,7 +190,7 @@ Rectangle {
 
                 // Restore button (only in trash view)
                 HoverRect {
-                    width: restoreTrashRow.implicitWidth + 16; height: 32
+                    width: restoreTrashRow.implicitWidth + 16; height: Theme.controlSize
                     visible: root.isTrashView && !root.searchMode
                     onClicked: root.restoreTrashRequested()
                     Row {
@@ -194,7 +210,7 @@ Rectangle {
 
                 // Empty Trash button (only in trash view)
                 HoverRect {
-                    width: emptyTrashRow.implicitWidth + 16; height: 32
+                    width: emptyTrashRow.implicitWidth + 16; height: Theme.controlSize
                     visible: root.isTrashView && !root.searchMode
                     onClicked: root.emptyTrashRequested()
                     Row {
@@ -213,17 +229,87 @@ Rectangle {
                 }
 
                 HoverRect {
-                    width: 32; height: 32
+                    width: Theme.controlSize; height: Theme.controlSize
                     visible: !root.searchMode && !root.isTrashView && !root.isRemoteView
                     onClicked: root.searchClicked()
                     IconSearch { anchors.centerIn: parent; size: 18; color: Theme.text }
                 }
 
                 HoverRect {
-                    width: 32; height: 32
+                    width: Theme.controlSize; height: Theme.controlSize
                     visible: !root.searchMode
                     onClicked: root.settingsRequested()
                     IconSettings { anchors.centerIn: parent; size: 18; color: Theme.text }
+                }
+
+                Item {
+                    visible: root.showWindowControls
+                    width: visible ? 4 : 0
+                    height: 1
+                }
+
+                HoverRect {
+                    width: Theme.controlSize; height: Theme.controlSize
+                    visible: root.showWindowControls
+                    onClicked: root.minimizeRequested()
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 10
+                        height: 2
+                        radius: 1
+                        color: Theme.text
+                    }
+                }
+
+                HoverRect {
+                    width: Theme.controlSize; height: Theme.controlSize
+                    visible: root.showWindowControls
+                    onClicked: root.toggleMaximizeRequested()
+
+                    Item {
+                        anchors.centerIn: parent
+                        width: 12
+                        height: 12
+
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.leftMargin: root.windowMaximized ? 0 : 1
+                            anchors.topMargin: root.windowMaximized ? 3 : 1
+                            anchors.rightMargin: root.windowMaximized ? 3 : 1
+                            anchors.bottomMargin: root.windowMaximized ? 0 : 1
+                            color: "transparent"
+                            border.width: 1
+                            border.color: Theme.text
+                        }
+
+                        Rectangle {
+                            visible: root.windowMaximized
+                            x: 3
+                            y: 0
+                            width: 9
+                            height: 9
+                            color: "transparent"
+                            border.width: 1
+                            border.color: Theme.text
+                        }
+                    }
+                }
+
+                HoverRect {
+                    id: closeButton
+                    width: Theme.controlSize; height: Theme.controlSize
+                    visible: root.showWindowControls
+                    color: closeButton.hovered
+                        ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.9)
+                        : "transparent"
+                    onClicked: root.closeRequested()
+
+                    IconX {
+                        anchors.centerIn: parent
+                        size: 14
+                        color: closeButton.hovered ? Theme.base : Theme.text
+                    }
                 }
             }
         }
@@ -258,7 +344,7 @@ Rectangle {
         Item {
             id: tabBarRow
             Layout.fillWidth: true
-            Layout.preferredHeight: tabModel.count > 1 ? 36 : 0
+            Layout.preferredHeight: tabModel.count > 1 ? Math.round(36 * Theme.uiScale) : 0
             visible: Layout.preferredHeight > 0 || tabBarHeightAnim.running
             clip: true
 

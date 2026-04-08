@@ -2,7 +2,43 @@
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
+#include <QFile>
+#include <QProcess>
 #include <QStandardPaths>
+
+namespace {
+
+bool runtimeFeaturesRunningInFlatpak()
+{
+    static const bool inSandbox = QFile::exists(QStringLiteral("/.flatpak-info"));
+    return inSandbox;
+}
+
+bool runtimeFeaturesHostToolAvailable(const QString &program)
+{
+    if (QStandardPaths::findExecutable(QStringLiteral("flatpak-spawn")).isEmpty())
+        return false;
+
+    QProcess proc;
+    proc.start(QStringLiteral("flatpak-spawn"),
+               {QStringLiteral("--host"), program, QStringLiteral("--version")});
+    return proc.waitForFinished(2000) && proc.exitCode() == 0;
+}
+
+bool isIntegratedWindowControlsDesktop()
+{
+    const QString desktopId = (qEnvironmentVariable("XDG_CURRENT_DESKTOP")
+        + QLatin1Char(';')
+        + qEnvironmentVariable("DESKTOP_SESSION")).toLower();
+
+    return desktopId.contains(QStringLiteral("gnome"))
+        || desktopId.contains(QStringLiteral("ubuntu"))
+        || desktopId.contains(QStringLiteral("unity"))
+        || desktopId.contains(QStringLiteral("plasma"))
+        || desktopId.contains(QStringLiteral("kde"));
+}
+
+} // namespace
 
 RuntimeFeaturesService::RuntimeFeaturesService(QObject *parent)
     : QObject(parent)
@@ -38,7 +74,14 @@ bool RuntimeFeaturesService::wlClipboardAvailable() const
 
 bool RuntimeFeaturesService::gitAvailable() const
 {
-    return hasExecutable(QStringLiteral("git"));
+    return hasExecutable(QStringLiteral("git"))
+        || (runtimeFeaturesRunningInFlatpak()
+            && runtimeFeaturesHostToolAvailable(QStringLiteral("git")));
+}
+
+bool RuntimeFeaturesService::useIntegratedWindowControls() const
+{
+    return isIntegratedWindowControlsDesktop();
 }
 
 QString RuntimeFeaturesService::installHint(const QString &feature) const

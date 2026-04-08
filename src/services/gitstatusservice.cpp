@@ -1,13 +1,50 @@
 #include "services/gitstatusservice.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
+
+namespace {
+
+bool gitStatusRunningInFlatpak()
+{
+    static const bool inSandbox = QFile::exists(QStringLiteral("/.flatpak-info"));
+    return inSandbox;
+}
+
+bool gitStatusHostToolAvailable(const QString &program)
+{
+    if (!gitStatusRunningInFlatpak())
+        return !QStandardPaths::findExecutable(program).isEmpty();
+
+    if (QStandardPaths::findExecutable(QStringLiteral("flatpak-spawn")).isEmpty())
+        return false;
+
+    QProcess proc;
+    proc.start(QStringLiteral("flatpak-spawn"),
+               {QStringLiteral("--host"), program, QStringLiteral("--version")});
+    return proc.waitForFinished(2000) && proc.exitCode() == 0;
+}
+
+void startGitTool(QProcess *process, const QStringList &arguments)
+{
+    if (gitStatusRunningInFlatpak()) {
+        QStringList hostArgs;
+        hostArgs << QStringLiteral("--host") << QStringLiteral("git") << arguments;
+        process->start(QStringLiteral("flatpak-spawn"), hostArgs);
+        return;
+    }
+
+    process->start(QStringLiteral("git"), arguments);
+}
+
+} // namespace
 
 GitStatusService::GitStatusService(QObject *parent)
     : QObject(parent)
 {
-    m_gitAvailable = !QStandardPaths::findExecutable(QStringLiteral("git")).isEmpty();
+    m_gitAvailable = gitStatusHostToolAvailable(QStringLiteral("git"));
 
     m_indexWatcher = new QFileSystemWatcher(this);
     connect(m_indexWatcher, &QFileSystemWatcher::fileChanged,
@@ -87,9 +124,7 @@ void GitStatusService::findRepoRoot(const QString &path)
 
     QProcess revParse;
     revParse.setWorkingDirectory(path);
-    revParse.setProgram(QStringLiteral("git"));
-    revParse.setArguments({QStringLiteral("rev-parse"), QStringLiteral("--show-toplevel")});
-    revParse.start();
+    startGitTool(&revParse, {QStringLiteral("rev-parse"), QStringLiteral("--show-toplevel")});
     revParse.waitForFinished(2000);
     if (revParse.exitCode() != 0) {
         m_repoRoot.clear();
@@ -120,11 +155,11 @@ void GitStatusService::queryGitStatus()
     connect(m_gitProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &GitStatusService::onGitStatusFinished);
 
-    m_gitProcess->start(QStringLiteral("git"),
-                        {QStringLiteral("status"),
-                         QStringLiteral("--porcelain=v1"),
-                         QStringLiteral("-z"),
-                         QStringLiteral("--ignored=matching")});
+    startGitTool(m_gitProcess,
+                 {QStringLiteral("status"),
+                  QStringLiteral("--porcelain=v1"),
+                  QStringLiteral("-z"),
+                  QStringLiteral("--ignored=matching")});
 }
 
 void GitStatusService::onGitStatusFinished(int exitCode, QProcess::ExitStatus exitStatus)

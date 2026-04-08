@@ -38,6 +38,14 @@ private slots:
         QCOMPARE(mgr.animationsEnabled(), true);
     }
 
+    void testCustomDefaultTheme()
+    {
+        QTemporaryDir dir;
+        ConfigManager mgr(dir.path() + "/config.toml", nullptr, QString(), "catppuccin-latte");
+
+        QCOMPARE(mgr.theme(), QString("catppuccin-latte"));
+    }
+
     void testAvailableThemes()
     {
         QTemporaryDir dir;

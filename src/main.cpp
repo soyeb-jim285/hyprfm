@@ -18,6 +18,7 @@
 #include <QSaveFile>
 #include <QTimer>
 #include <QFontDatabase>
+#include <QStyleHints>
 
 #include "services/configmanager.h"
 #include "services/themeloader.h"
@@ -118,8 +119,12 @@ int main(int argc, char *argv[])
     if (themesDir.isEmpty())
         qWarning() << "HyprFM: unable to locate themes directory";
 
+    const QString systemDefaultTheme = app.styleHints()->colorScheme() == Qt::ColorScheme::Light
+        ? QStringLiteral("catppuccin-latte")
+        : QStringLiteral("catppuccin-mocha");
+
     // Create backend instances
-    ConfigManager *config = new ConfigManager(configPath, &app, themesDir);
+    ConfigManager *config = new ConfigManager(configPath, &app, themesDir, systemDefaultTheme);
     app.setFont(resolveUiFont(config->fontFamily()));
     ThemeLoader *theme = new ThemeLoader(&app);
     theme->loadTheme(config->theme(), themesDir);
@@ -335,12 +340,21 @@ int main(int argc, char *argv[])
         session["tabs"] = tabModel->saveSession();
         session["activeTab"] = tabModel->activeIndex();
 
-        if (!engine.rootObjects().isEmpty()) {
-            QObject *win = engine.rootObjects().first();
-            session["windowX"] = win->property("x").toInt();
-            session["windowY"] = win->property("y").toInt();
-            session["windowWidth"] = win->property("width").toInt();
-            session["windowHeight"] = win->property("height").toInt();
+        if (auto *win = !engine.rootObjects().isEmpty()
+                ? qobject_cast<QQuickWindow *>(engine.rootObjects().first())
+                : nullptr) {
+            session["windowX"] = win->x();
+            session["windowY"] = win->y();
+            session["windowWidth"] = win->width();
+            session["windowHeight"] = win->height();
+
+            QWindow::Visibility savedVisibility = win->visibility();
+            if (savedVisibility == QWindow::Hidden
+                    || savedVisibility == QWindow::AutomaticVisibility
+                    || savedVisibility == QWindow::Minimized) {
+                savedVisibility = QWindow::Windowed;
+            }
+            session["windowVisibility"] = static_cast<int>(savedVisibility);
         }
 
         QSaveFile sf(sessionPath);
@@ -362,6 +376,7 @@ int main(int argc, char *argv[])
         QObject::connect(win, &QQuickWindow::yChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::widthChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::heightChanged, &app, scheduleSessionSave);
+        QObject::connect(win, &QQuickWindow::visibilityChanged, &app, scheduleSessionSave);
     }
 
     // Save session on quit
@@ -372,11 +387,26 @@ int main(int argc, char *argv[])
 
     // Restore window geometry
     if (sessionData.contains("windowWidth") && !engine.rootObjects().isEmpty()) {
-        QObject *win = engine.rootObjects().first();
-        win->setProperty("x", sessionData.value("windowX").toInt());
-        win->setProperty("y", sessionData.value("windowY").toInt());
-        win->setProperty("width", sessionData.value("windowWidth").toInt());
-        win->setProperty("height", sessionData.value("windowHeight").toInt());
+        if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+            win->setX(sessionData.value("windowX").toInt());
+            win->setY(sessionData.value("windowY").toInt());
+            win->setWidth(sessionData.value("windowWidth").toInt());
+            win->setHeight(sessionData.value("windowHeight").toInt());
+
+            QWindow::Visibility restoredVisibility = QWindow::Windowed;
+            if (sessionData.contains("windowVisibility")) {
+                restoredVisibility = static_cast<QWindow::Visibility>(
+                    sessionData.value("windowVisibility").toInt());
+            }
+
+            if (restoredVisibility == QWindow::Maximized
+                    || restoredVisibility == QWindow::FullScreen
+                    || restoredVisibility == QWindow::Windowed) {
+                win->setVisibility(restoredVisibility);
+            } else {
+                win->showNormal();
+            }
+        }
     }
 
     return app.exec();

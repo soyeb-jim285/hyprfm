@@ -99,10 +99,12 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"redo", "Ctrl+Shift+Z"},
 };
 
-ConfigManager::ConfigManager(const QString &configPath, QObject *parent, const QString &themesDir)
+ConfigManager::ConfigManager(const QString &configPath, QObject *parent, const QString &themesDir,
+                             const QString &defaultTheme)
     : QObject(parent)
     , m_configPath(configPath)
     , m_themesDir(themesDir)
+    , m_defaultThemeName(defaultTheme)
 {
     setDefaults();
     loadConfig();
@@ -163,7 +165,9 @@ QStringList ConfigManager::availableIconThemes() const
 
 void ConfigManager::setDefaults()
 {
-    m_theme = "catppuccin-mocha";
+    m_theme = m_defaultThemeName.trimmed().isEmpty()
+        ? QStringLiteral("catppuccin-mocha")
+        : m_defaultThemeName.trimmed();
     m_iconTheme = "Adwaita";
     m_builtinIcons = true;
     m_fontFamily.clear();

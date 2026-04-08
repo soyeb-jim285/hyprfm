@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Shapes
+import QtQuick.Window
 import HyprFM
 import Quill as Q
 
@@ -9,10 +10,16 @@ ApplicationWindow {
     id: root
     width: 1024
     height: 768
-    visible: true
+    minimumWidth: 760
+    minimumHeight: 520
+    visibility: Window.Windowed
     title: "HyprFM"
     color: "transparent"
+    flags: useIntegratedWindowControls ? (Qt.Window | Qt.FramelessWindowHint) : Qt.Window
 
+    readonly property bool useIntegratedWindowControls: Qt.platform.os === "linux"
+        && runtimeFeatures.useIntegratedWindowControls
+    readonly property bool windowIsMaximized: root.visibility === Window.Maximized
     property bool primaryPaneIsRecents: false
     property bool secondaryPaneIsRecents: false
     property bool primaryPaneSearchMode: false
@@ -2884,95 +2891,96 @@ ApplicationWindow {
 
         // Sidebar (full height, animated)
         Item {
-            id: sidebarHost
-            Layout.preferredWidth: root.sidebarVisible ? root.sidebarWidth : 0
-            Layout.fillHeight: true
-            clip: true
+                id: sidebarHost
+                Layout.preferredWidth: root.sidebarVisible ? root.sidebarWidth : 0
+                Layout.fillHeight: true
+                clip: true
 
-            Behavior on Layout.preferredWidth {
-                enabled: !root.sidebarResizeActive
-                NumberAnimation { duration: Theme.animDuration; easing.type: Easing.InOutCubic }
-            }
-
-            Sidebar {
-                width: root.sidebarWidth
-                height: parent.height
-                currentPath: panePath(activePane)
-                trashPath: root.unifiedTrashPath
-                isRecentsView: root.isRecentsView
-                onBookmarkClicked: (path) => {
-                    root.navigateActivePaneTo(path)
-                }
-                onSidebarContextMenuRequested: (item, position) => {
-                    sidebarContextMenu.sidebarItem = item
-                    sidebarContextMenu.contextData = item
-                    sidebarContextMenu.customItems = root.sidebarMenuItems(item)
-                    sidebarContextMenu.targetPath = item.path || ""
-                    sidebarContextMenu.targetIsDir = !!item.path
-                    sidebarContextMenu.isEmptySpace = false
-                    sidebarContextMenu.selectedPaths = item.path ? [item.path] : []
-                    sidebarContextMenu.popup(position.x, position.y)
-                }
-                onRecentsClicked: {
-                    root.setPaneRecents(root.activePane, true)
-                }
-                onCollapseClicked: root.sidebarVisible = !root.sidebarVisible
-                onFeatureHintRequested: (message) => toast.show(message, "info")
-            }
-
-            MouseArea {
-                id: sidebarResizeHandle
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                anchors.right: parent.right
-                width: 10
-                hoverEnabled: true
-                enabled: root.sidebarVisible
-                cursorShape: Qt.SizeHorCursor
-                z: 10
-
-                onPressed: (mouse) => {
-                    root.sidebarResizeActive = true
-                    root.sidebarResizeStartGlobalX = sidebarResizeHandle.mapToItem(mainContent, mouse.x, mouse.y).x
-                    root.sidebarResizeStartWidth = root.sidebarWidth
-                    mouse.accepted = true
+                Behavior on Layout.preferredWidth {
+                    enabled: !root.sidebarResizeActive
+                    NumberAnimation { duration: Theme.animDuration; easing.type: Easing.InOutCubic }
                 }
 
-                onPositionChanged: (mouse) => {
-                    if (!pressed)
-                        return
-                    var globalX = sidebarResizeHandle.mapToItem(mainContent, mouse.x, mouse.y).x
-                    root.sidebarWidth = root.clampedSidebarWidth(root.sidebarResizeStartWidth + (globalX - root.sidebarResizeStartGlobalX))
-                    mouse.accepted = true
+                Sidebar {
+                    width: root.sidebarWidth
+                    height: parent.height
+                    currentPath: panePath(activePane)
+                    trashPath: root.unifiedTrashPath
+                    isRecentsView: root.isRecentsView
+                    onBookmarkClicked: (path) => {
+                        root.navigateActivePaneTo(path)
+                    }
+                    onSidebarContextMenuRequested: (item, position) => {
+                        sidebarContextMenu.sidebarItem = item
+                        sidebarContextMenu.contextData = item
+                        sidebarContextMenu.customItems = root.sidebarMenuItems(item)
+                        sidebarContextMenu.targetPath = item.path || ""
+                        sidebarContextMenu.targetIsDir = !!item.path
+                        sidebarContextMenu.isEmptySpace = false
+                        sidebarContextMenu.selectedPaths = item.path ? [item.path] : []
+                        sidebarContextMenu.popup(position.x, position.y)
+                    }
+                    onRecentsClicked: {
+                        root.setPaneRecents(root.activePane, true)
+                    }
+                    onCollapseClicked: root.sidebarVisible = !root.sidebarVisible
+                    onFeatureHintRequested: (message) => toast.show(message, "info")
                 }
 
-                onReleased: {
-                    root.sidebarResizeActive = false
-                    config.saveSidebarWidth(root.sidebarWidth)
-                }
+                MouseArea {
+                    id: sidebarResizeHandle
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.right: parent.right
+                    width: 10
+                    hoverEnabled: true
+                    enabled: root.sidebarVisible
+                    cursorShape: Qt.SizeHorCursor
+                    z: 10
 
-                onCanceled: {
-                    root.sidebarResizeActive = false
-                    config.saveSidebarWidth(root.sidebarWidth)
-                }
+                    onPressed: (mouse) => {
+                        root.sidebarResizeActive = true
+                        root.sidebarResizeStartGlobalX = sidebarResizeHandle.mapToItem(mainContent, mouse.x, mouse.y).x
+                        root.sidebarResizeStartWidth = root.sidebarWidth
+                        mouse.accepted = true
+                    }
 
-                preventStealing: true
-            }
+                    onPositionChanged: (mouse) => {
+                        if (!pressed)
+                            return
+                        var globalX = sidebarResizeHandle.mapToItem(mainContent, mouse.x, mouse.y).x
+                        root.sidebarWidth = root.clampedSidebarWidth(root.sidebarResizeStartWidth + (globalX - root.sidebarResizeStartGlobalX))
+                        mouse.accepted = true
+                    }
+
+                    onReleased: {
+                        root.sidebarResizeActive = false
+                        config.saveSidebarWidth(root.sidebarWidth)
+                    }
+
+                    onCanceled: {
+                        root.sidebarResizeActive = false
+                        config.saveSidebarWidth(root.sidebarWidth)
+                    }
+
+                    preventStealing: true
+                }
         }
 
         // Right panel: toolbar + content
         Item {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+                Layout.fillWidth: true
+                Layout.fillHeight: true
 
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 0
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 0
 
             // Toolbar with integrated tabs
             Toolbar {
                 id: toolbar
                 Layout.fillWidth: true
+                window: root
                 activeTab: tabModel.activeTab
                 navigationPath: panePath(activePane)
                 canGoBack: activePaneCanGoBack()
@@ -2982,6 +2990,8 @@ ApplicationWindow {
                 isTrashView: root.isTrashView
                 isRemoteView: root.isRemoteView
                 searchMode: root.searchMode
+                showWindowControls: root.useIntegratedWindowControls
+                windowMaximized: root.windowIsMaximized
                 currentSearchQuery: root.searchProxyForPane(activePane).searchQuery
                 searchTypeFilter: root.searchProxyForPane(activePane).fileTypeFilter
                 searchDateFilter: root.searchProxyForPane(activePane).dateFilter
@@ -2993,6 +3003,14 @@ ApplicationWindow {
                 onNavigateRequested: (targetPath) => root.navigateActivePaneTo(targetPath)
                 onConnectRemoteRequested: root.openRemoteConnectDialog()
                 onSettingsRequested: root.openSettingsPanel()
+                onMinimizeRequested: root.showMinimized()
+                onToggleMaximizeRequested: {
+                    if (root.windowIsMaximized)
+                        root.showNormal()
+                    else
+                        root.showMaximized()
+                }
+                onCloseRequested: root.close()
                 onRestoreTrashRequested: {
                     var paths = getSelectedPaths()
                     if (paths.length > 0)
@@ -3157,21 +3175,21 @@ ApplicationWindow {
                         }
                     }
                 }
-            }
+                }
 
-            StatusBar {
-                Layout.fillWidth: true
-                itemCount: root.activeItemCount()
-                folderCount: root.activeFolderCount()
-                searchStatus: root.searchMode && root.searchServiceForPane(activePane).isSearching
-                    ? "Searching... " + root.searchServiceForPane(activePane).resultCount + " results"
-                    : (root.searchMode && root.searchProxyForPane(activePane).searchActive
-                        ? root.searchProxyForPane(activePane).rowCount() + " results"
-                        : "")
-                selectedCount: root.currentSelectedCount
-                selectedSize: root.currentSelectedSize
-                selectedSizePending: root.currentSelectedSizePending
-            }
+                StatusBar {
+                    Layout.fillWidth: true
+                    itemCount: root.activeItemCount()
+                    folderCount: root.activeFolderCount()
+                    searchStatus: root.searchMode && root.searchServiceForPane(activePane).isSearching
+                        ? "Searching... " + root.searchServiceForPane(activePane).resultCount + " results"
+                        : (root.searchMode && root.searchProxyForPane(activePane).searchActive
+                            ? root.searchProxyForPane(activePane).rowCount() + " results"
+                            : "")
+                    selectedCount: root.currentSelectedCount
+                    selectedSize: root.currentSelectedSize
+                    selectedSizePending: root.currentSelectedSizePending
+                }
             }
         }
     }
