@@ -42,15 +42,15 @@
   <screenshots>
     <screenshot type="default">
       <caption>Grid view with file preview</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.12/docs/screenshots/grid-view.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.13/docs/screenshots/grid-view.png</image>
     </screenshot>
     <screenshot>
       <caption>Miller column view</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.12/docs/screenshots/miller-view.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.13/docs/screenshots/miller-view.png</image>
     </screenshot>
     <screenshot>
       <caption>Quick preview overlay</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.12/docs/screenshots/quick-preview.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.13/docs/screenshots/quick-preview.png</image>
     </screenshot>
   </screenshots>
 
@@ -66,6 +66,11 @@
   </provides>
 
   <releases>
+    <release version="0.4.13" date="2026-04-08">
+      <description>
+        <p>CI fix: configure gpg-agent for loopback pinentry so the release workflow can sign the Flatpak ostree repo inside GitHub Actions, which has no TTY. Re-release of v0.4.12 with the same code changes.</p>
+      </description>
+    </release>
     <release version="0.4.12" date="2026-04-08">
       <description>
         <p>Flatpak sandbox compatibility and UI polish:</p>

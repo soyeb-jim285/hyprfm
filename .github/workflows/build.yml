@@ -138,11 +138,42 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GPG_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.FLATPAK_GPG_PASSPHRASE }}
+          GPG_FINGERPRINT: ${{ secrets.FLATPAK_GPG_FINGERPRINT }}
         run: |
           mkdir -p "$HOME/.gnupg"
           chmod 700 "$HOME/.gnupg"
+
+          # Configure gpg-agent to accept passphrases via --passphrase
+          # rather than prompting through pinentry. GitHub Actions runners
+          # have no TTY, so interactive pinentry fails with "Inappropriate
+          # ioctl for device" the moment ostree tries to sign a commit.
+          cat > "$HOME/.gnupg/gpg-agent.conf" <<'EOF'
+          allow-loopback-pinentry
+          allow-preset-passphrase
+          default-cache-ttl 7200
+          max-cache-ttl 7200
+          EOF
+          cat > "$HOME/.gnupg/gpg.conf" <<'EOF'
+          use-agent
+          pinentry-mode loopback
+          EOF
+          gpg-connect-agent reloadagent /bye
+
+          # Import the private key
           printf '%s' "$GPG_KEY" | gpg --batch --import
           gpg --list-secret-keys --keyid-format=long
+
+          # Prime the gpg-agent cache with the passphrase by doing one
+          # dummy signing operation. Subsequent sign calls from
+          # flatpak-builder / ostree will hit the cache instead of
+          # triggering pinentry. If the key has no passphrase,
+          # --passphrase "" is a valid empty input.
+          echo test | gpg --batch --yes \
+              --pinentry-mode loopback \
+              --passphrase "${GPG_PASSPHRASE:-}" \
+              --local-user "$GPG_FINGERPRINT" \
+              --clearsign > /dev/null
 
       - name: Build and sign Flatpak repo
         if: startsWith(github.ref, 'refs/tags/v')
