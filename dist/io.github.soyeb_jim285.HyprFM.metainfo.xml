@@ -62,6 +62,19 @@
   </provides>
 
   <releases>
+    <release version="0.4.5" date="2026-04-08">
+      <description>
+        <p>Major release adding Flatpak support and reworking several backend pieces for sandbox compatibility.</p>
+        <ul>
+          <li>New Flathub-ready Flatpak build targeting the KDE 6.9 runtime.</li>
+          <li>Mount and unmount now talk to UDisks2 directly over DBus (no udisksctl dependency), which also makes the feature work inside sandboxes.</li>
+          <li>File icons and thumbnail classification now use the system MIME database, so ambiguous extensions like .ts (TypeScript vs MPEG-TS) and modern image formats like AVIF/HEIC are recognized correctly.</li>
+          <li>Open With, trash operations, and opening files in host apps all work correctly inside a Flatpak by routing through flatpak-spawn --host.</li>
+          <li>Sidebar fill bar for the root partition now reports the real host usage inside a Flatpak.</li>
+          <li>Recents, Search and Trash views no longer fail to render delegates when the model lacks git status roles.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.4" date="2026-04-07">
       <description>
         <p>Bundle the Qt Wayland platform plugin in the AppImage and add qt6-wayland as an explicit dependency in the .deb so the window renders correctly on Ubuntu's GNOME Wayland session.</p>
