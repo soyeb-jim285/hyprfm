@@ -15,13 +15,17 @@
     </p>
     <p>Features:</p>
     <ul>
-      <li>Grid, list, detailed and Miller column views</li>
-      <li>Tabs and split views with independent navigation</li>
-      <li>Bookmarks, breadcrumb navigation and quick search powered by fd</li>
-      <li>Built-in image, video, audio, PDF and text previews</li>
-      <li>Drag and drop, cut/copy/paste with full undo support</li>
-      <li>Removable device mounting via UDisks2</li>
-      <li>Themable via TOML files</li>
+      <li>Grid, detailed and Miller column views with image and video thumbnails</li>
+      <li>Full-screen quick preview overlay for images, video, PDFs, audio and text</li>
+      <li>Tabs with per-tab history and a split pane view for working in two locations at once</li>
+      <li>Keyboard-first navigation with vim-friendly bindings, type-ahead jump and customizable shortcuts</li>
+      <li>fd-powered search with glob and full-path matching</li>
+      <li>Async copy and move via rsync with live progress, speed, ETA and pause/resume</li>
+      <li>Bulk rename with regular expressions, drag and drop, undo and redo</li>
+      <li>XDG-compliant trash with restore, archive compress and extract, Open With dialog</li>
+      <li>Removable device mounting via UDisks2 and remote filesystem browsing (sftp, smb, dav) via gvfs</li>
+      <li>Git status overlays for modified, staged, untracked and conflicted files</li>
+      <li>TOML themes with live reload, configurable corner radius, fonts and animations</li>
     </ul>
   </description>
 
@@ -62,6 +66,11 @@
   </provides>
 
   <releases>
+    <release version="0.4.6" date="2026-04-08">
+      <description>
+        <p>Documentation polish: correct the feature list in the AppStream metadata to match the three views HyprFM actually ships (grid, detailed and Miller columns) and expand it to mention git status overlays, remote access, quick preview and archive support.</p>
+      </description>
+    </release>
     <release version="0.4.5" date="2026-04-08">
       <description>
         <p>Major release adding Flatpak support and reworking several backend pieces for sandbox compatibility.</p>

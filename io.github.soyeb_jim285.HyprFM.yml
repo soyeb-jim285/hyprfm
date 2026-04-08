@@ -159,7 +159,7 @@ modules:
       # ── FLATHUB SUBMISSION ──
       - type: git
         url: https://github.com/soyeb-jim285/hyprfm.git
-        tag: v0.4.5
+        tag: v0.4.6
         # disable-submodules defaults to false, so quill + quill-icons
         # are pulled in automatically.
 
