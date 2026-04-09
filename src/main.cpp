@@ -46,6 +46,7 @@
 #include "providers/pdfpreviewprovider.h"
 #endif
 #include <QIcon>
+#include <QUrl>
 
 int main(int argc, char *argv[])
 {
@@ -326,7 +327,17 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("remoteAccessService", remoteAccessService);
     engine.rootContext()->setContextProperty("runtimeFeatures", runtimeFeatures);
 
-    engine.loadFromModule("HyprFM", "Main");
+    const QString installedMainQml = dataDir.isEmpty()
+        ? QString()
+        : QDir(dataDir).filePath(QStringLiteral("HyprFM/qml/Main.qml"));
+
+    // Prefer the installed on-disk module when it exists so deployed bundles
+    // keep working even if Qt's embedded qrc payload is incomplete.
+    if (!installedMainQml.isEmpty() && QFile::exists(installedMainQml)) {
+        engine.load(QUrl::fromLocalFile(installedMainQml));
+    } else {
+        engine.loadFromModule("HyprFM", "Main");
+    }
 
     if (engine.rootObjects().isEmpty())
         return -1;
