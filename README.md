@@ -101,13 +101,20 @@ The PKGBUILD pulls latest `main`, builds with Ninja + parallel jobs + tests disa
 
 ### Flatpak (self-hosted)
 
-HyprFM publishes a signed Flatpak repository at `hyprfm.soyebjim.me`. Add it once and install:
+HyprFM publishes a signed Flatpak repository at `hyprfm.soyebjim.me`. Because HyprFM depends on the KDE Platform runtime from Flathub, the Flathub remote must exist at the **same scope** you install into — for `--user` installs, that means a `--user` Flathub remote. Add both remotes once and install:
 
 ```bash
+# Flathub at user scope (provides org.kde.Platform)
+flatpak remote-add --user --if-not-exists \
+    flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+# HyprFM repo
 flatpak remote-add --user --if-not-exists \
     hyprfm https://flatpak.hyprfm.soyebjim.me/hyprfm.flatpakrepo
 flatpak install --user hyprfm io.github.soyeb_jim285.HyprFM
 ```
+
+If you'd rather install system-wide, drop every `--user` flag and prefix with `sudo`; system Flathub is already configured on most distros.
 
 Updates arrive via the usual `flatpak update`. The repo is signed with a GPG key committed at [`public-key.asc`](https://github.com/soyeb-jim285/hyprfm-flatpak-repo/blob/main/public-key.asc); Flatpak verifies every download against it automatically.
 
