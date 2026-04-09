@@ -37,6 +37,20 @@ install(DIRECTORY ${CMAKE_BINARY_DIR}/src/HyprFM/
         PATTERN "qmldir"
         PATTERN "*.qmltypes")
 
+# Qt generates `prefer :/HyprFM/` in the module qmldir. That makes deployed
+# bundles keep resolving HyprFM types from the embedded qrc even when the
+# installed on-disk module has the full file set, which is exactly how a
+# missing qrc SettingsPanel.qml turns into "SettingsPanel is not a type".
+install(CODE [[
+    set(_hyprfm_qmldir "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/share/hyprfm/HyprFM/qmldir")
+    if(EXISTS "${_hyprfm_qmldir}")
+        file(READ "${_hyprfm_qmldir}" _hyprfm_qmldir_contents)
+        string(REPLACE "prefer :/HyprFM/\n" "" _hyprfm_qmldir_contents "${_hyprfm_qmldir_contents}")
+        string(REPLACE "prefer :/HyprFM/\r\n" "" _hyprfm_qmldir_contents "${_hyprfm_qmldir_contents}")
+        file(WRITE "${_hyprfm_qmldir}" "${_hyprfm_qmldir_contents}")
+    endif()
+]])
+
 option(BUILD_TESTS "Build tests" ON)
 if(BUILD_TESTS)
     enable_testing()
