@@ -42,15 +42,15 @@
   <screenshots>
     <screenshot type="default">
       <caption>Grid view with file preview</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.14/docs/screenshots/grid-view.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.19/docs/screenshots/grid-view.png</image>
     </screenshot>
     <screenshot>
       <caption>Miller column view</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.14/docs/screenshots/miller-view.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.19/docs/screenshots/miller-view.png</image>
     </screenshot>
     <screenshot>
       <caption>Quick preview overlay</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.14/docs/screenshots/quick-preview.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.19/docs/screenshots/quick-preview.png</image>
     </screenshot>
   </screenshots>
 
@@ -66,6 +66,31 @@
   </provides>
 
   <releases>
+    <release version="0.4.19" date="2026-04-09">
+      <description>
+        <p>Add a keyboard shortcuts dialog, path bar autocomplete, and paste-pending visual indicators.</p>
+      </description>
+    </release>
+    <release version="0.4.18" date="2026-04-09">
+      <description>
+        <p>Add animations, drag state tracking, and cut-pending indicators.</p>
+      </description>
+    </release>
+    <release version="0.4.17" date="2026-04-09">
+      <description>
+        <p>Smooth theme transitions in settings panel.</p>
+      </description>
+    </release>
+    <release version="0.4.16" date="2026-04-09">
+      <description>
+        <p>Add native KWin blur support, remove minimize/maximize buttons from CSD toolbar, and fix AppImage QML loading.</p>
+      </description>
+    </release>
+    <release version="0.4.15" date="2026-04-09">
+      <description>
+        <p>Install QML module on disk, enable cachegen for faster startup, and gate releases on a QML smoke test to catch broken bundles before they ship.</p>
+      </description>
+    </release>
     <release version="0.4.14" date="2026-04-08">
       <description>
         <p>CI fix: add a terminating newline when writing the Flatpak deploy SSH key to disk so OpenSSH can parse it. Re-release of v0.4.12 / v0.4.13 with the same code changes.</p>
