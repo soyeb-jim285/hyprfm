@@ -20,7 +20,7 @@ ApplicationWindow {
 
     readonly property bool useIntegratedWindowControls: Qt.platform.os === "linux"
         && runtimeFeatures.useIntegratedWindowControls
-    readonly property bool windowIsMaximized: root.visibility === Window.Maximized
+
     property bool primaryPaneIsRecents: false
     property bool secondaryPaneIsRecents: false
     property bool primaryPaneSearchMode: false
@@ -2992,7 +2992,6 @@ ApplicationWindow {
                 isRemoteView: root.isRemoteView
                 searchMode: root.searchMode
                 showWindowControls: root.useIntegratedWindowControls
-                windowMaximized: root.windowIsMaximized
                 currentSearchQuery: root.searchProxyForPane(activePane).searchQuery
                 searchTypeFilter: root.searchProxyForPane(activePane).fileTypeFilter
                 searchDateFilter: root.searchProxyForPane(activePane).dateFilter
@@ -3004,13 +3003,6 @@ ApplicationWindow {
                 onNavigateRequested: (targetPath) => root.navigateActivePaneTo(targetPath)
                 onConnectRemoteRequested: root.openRemoteConnectDialog()
                 onSettingsRequested: root.openSettingsPanel()
-                onMinimizeRequested: root.showMinimized()
-                onToggleMaximizeRequested: {
-                    if (root.windowIsMaximized)
-                        root.showNormal()
-                    else
-                        root.showMaximized()
-                }
                 onCloseRequested: root.close()
                 onRestoreTrashRequested: {
                     var paths = getSelectedPaths()

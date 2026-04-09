@@ -17,7 +17,6 @@ Rectangle {
     property bool isRemoteView: false
     property bool searchMode: false
     property bool showWindowControls: false
-    property bool windowMaximized: false
     property var window: null
     property string currentSearchQuery: ""
     property string searchTypeFilter: ""
@@ -70,8 +69,6 @@ Rectangle {
     signal restoreTrashRequested()
     signal emptyTrashRequested()
     signal settingsRequested()
-    signal minimizeRequested()
-    signal toggleMaximizeRequested()
     signal closeRequested()
     signal transferRequested(var paths, string destinationPath, bool moveOperation)
 
@@ -246,54 +243,6 @@ Rectangle {
                     visible: root.showWindowControls
                     width: visible ? 4 : 0
                     height: 1
-                }
-
-                HoverRect {
-                    width: Theme.controlSize; height: Theme.controlSize
-                    visible: root.showWindowControls
-                    onClicked: root.minimizeRequested()
-
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: 10
-                        height: 2
-                        radius: 1
-                        color: Theme.text
-                    }
-                }
-
-                HoverRect {
-                    width: Theme.controlSize; height: Theme.controlSize
-                    visible: root.showWindowControls
-                    onClicked: root.toggleMaximizeRequested()
-
-                    Item {
-                        anchors.centerIn: parent
-                        width: 12
-                        height: 12
-
-                        Rectangle {
-                            anchors.fill: parent
-                            anchors.leftMargin: root.windowMaximized ? 0 : 1
-                            anchors.topMargin: root.windowMaximized ? 3 : 1
-                            anchors.rightMargin: root.windowMaximized ? 3 : 1
-                            anchors.bottomMargin: root.windowMaximized ? 0 : 1
-                            color: "transparent"
-                            border.width: 1
-                            border.color: Theme.text
-                        }
-
-                        Rectangle {
-                            visible: root.windowMaximized
-                            x: 3
-                            y: 0
-                            width: 9
-                            height: 9
-                            color: "transparent"
-                            border.width: 1
-                            border.color: Theme.text
-                        }
-                    }
                 }
 
                 HoverRect {
