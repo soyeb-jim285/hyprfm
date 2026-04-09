@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Shapes
 import QtQuick.Window
 import HyprFM
+import "components" as Components
 import Quill as Q
 
 ApplicationWindow {
@@ -943,7 +944,7 @@ ApplicationWindow {
         onConnected: (uri) => root.navigateActivePaneTo(uri)
     }
 
-    SettingsPanel {
+    Components.SettingsPanel {
         id: settingsPanel
         currentShowHidden: fsModel.showHidden
         currentSidebarVisible: root.sidebarVisible
