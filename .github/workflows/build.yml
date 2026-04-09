@@ -88,12 +88,6 @@ jobs:
             -DHYPRFM_ENABLE_QML_CACHEGEN=ON
           cmake --build build --parallel
 
-      - name: Build .deb package
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          cd build
-          cpack -G DEB
-
       - name: Install into AppDir
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -324,6 +318,4 @@ jobs:
           files: |
             HyprFM-${{ github.ref_name }}-x86_64.AppImage
             HyprFM-${{ github.ref_name }}-x86_64.flatpak
-            build/hyprfm_*.deb
-            build/hyprfm-*.deb
           generate_release_notes: true
