@@ -237,6 +237,10 @@ ApplicationWindow {
         settingsPanel.openPanel()
     }
 
+    function openKeyboardShortcutsDialog() {
+        shortcutsDialog.openDialog()
+    }
+
     function paneIsRecents(pane) {
         return pane === "secondary" ? secondaryPaneIsRecents : primaryPaneIsRecents
     }
@@ -366,6 +370,7 @@ ApplicationWindow {
             && !bulkRenameDialog.visible
             && !remoteConnectDialog.visible
             && !settingsPanel.visible
+            && !shortcutsDialog.visible
             && !renameDialog.visible
             && !newFolderDialog.visible
             && !newFileDialog.visible
@@ -959,6 +964,12 @@ ApplicationWindow {
         currentSidebarVisible: root.sidebarVisible
         currentSidebarWidth: root.sidebarWidth
         onRemoteConnectRequested: root.openRemoteConnectDialog()
+        onKeyboardShortcutsRequested: root.openKeyboardShortcutsDialog()
+        onClosed: root.scheduleActivePaneFocus()
+    }
+
+    Components.KeyboardShortcutsDialog {
+        id: shortcutsDialog
         onClosed: root.scheduleActivePaneFocus()
     }
 
@@ -2756,6 +2767,7 @@ ApplicationWindow {
                  && !quickPreview.active
                  && !bulkRenameDialog.visible
                  && !settingsPanel.visible
+                 && !shortcutsDialog.visible
                  && !renameDialog.visible
                  && !newFolderDialog.visible
                  && !newFileDialog.visible
@@ -2999,6 +3011,7 @@ ApplicationWindow {
             // Toolbar with integrated tabs
             Toolbar {
                 id: toolbar
+                z: 5
                 Layout.fillWidth: true
                 window: root
                 activeTab: tabModel.activeTab

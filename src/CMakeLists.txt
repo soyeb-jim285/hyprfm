@@ -156,6 +156,7 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconGitDirty.qml
         qml/components/SearchBar.qml
         qml/components/FilterPanel.qml
+        qml/components/KeyboardShortcutsDialog.qml
         qml/components/SettingsPanel.qml
 )
 

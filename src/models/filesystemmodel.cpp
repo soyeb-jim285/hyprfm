@@ -101,6 +101,26 @@ QString parentLocation(const QString &path)
     return QFileInfo(normalized).absolutePath();
 }
 
+QString expandUserPath(const QString &path)
+{
+    if (path == QStringLiteral("~"))
+        return QDir::homePath();
+    if (path.startsWith(QStringLiteral("~/")))
+        return QDir::cleanPath(QDir::homePath() + path.mid(1));
+    return path;
+}
+
+QString displayPathForSuggestion(const QString &path)
+{
+    const QString cleanPath = QDir::cleanPath(path);
+    const QString homePath = QDir::homePath();
+    if (cleanPath == homePath)
+        return QStringLiteral("~");
+    if (cleanPath.startsWith(homePath + QLatin1Char('/')))
+        return QStringLiteral("~") + cleanPath.mid(homePath.size());
+    return cleanPath;
+}
+
 QDateTime dateTimeFromSeconds(const QString &value)
 {
     return value.isEmpty() ? QDateTime() : QDateTime::fromSecsSinceEpoch(value.toLongLong());
@@ -1510,4 +1530,63 @@ bool FileSystemModel::setFilePermissions(const QString &path, int ownerAccess, i
 QString FileSystemModel::homePath() const
 {
     return QDir::homePath();
+}
+
+QVariantList FileSystemModel::pathSuggestions(const QString &input, int limit) const
+{
+    QVariantList suggestions;
+
+    const QString trimmed = input.trimmed();
+    if (trimmed.isEmpty() || limit <= 0)
+        return suggestions;
+
+    const bool preferTildeDisplay = trimmed == QStringLiteral("~")
+        || trimmed.startsWith(QStringLiteral("~/"));
+
+    const QString expanded = expandUserPath(trimmed);
+    if (isRemoteUri(expanded) || isTrashUri(expanded))
+        return suggestions;
+
+    QString parentPath;
+    QString fragment;
+
+    if (expanded == QStringLiteral("/")) {
+        parentPath = QStringLiteral("/");
+    } else if (expanded.endsWith(QLatin1Char('/'))) {
+        parentPath = QDir::cleanPath(expanded);
+    } else {
+        const int slashIndex = expanded.lastIndexOf(QLatin1Char('/'));
+        if (slashIndex < 0)
+            return suggestions;
+
+        parentPath = slashIndex == 0 ? QStringLiteral("/") : expanded.left(slashIndex);
+        fragment = expanded.mid(slashIndex + 1);
+    }
+
+    const QDir dir(parentPath);
+    if (!dir.exists())
+        return suggestions;
+
+    QDir::Filters filters = QDir::Dirs | QDir::NoDotAndDotDot;
+    if (m_showHidden || fragment.startsWith(QLatin1Char('.')))
+        filters |= QDir::Hidden;
+
+    const QFileInfoList entries = dir.entryInfoList(filters, QDir::Name | QDir::IgnoreCase);
+    for (const QFileInfo &entry : entries) {
+        const QString name = entry.fileName();
+        if (!fragment.isEmpty() && !name.startsWith(fragment, Qt::CaseInsensitive))
+            continue;
+
+        QVariantMap suggestion;
+        const QString absolutePath = QDir::cleanPath(entry.absoluteFilePath());
+        suggestion.insert(QStringLiteral("path"), absolutePath);
+        suggestion.insert(QStringLiteral("displayPath"), preferTildeDisplay ? displayPathForSuggestion(absolutePath) : absolutePath);
+        suggestion.insert(QStringLiteral("name"), name);
+        suggestions.append(suggestion);
+
+        if (suggestions.size() >= limit)
+            break;
+    }
+
+    return suggestions;
 }

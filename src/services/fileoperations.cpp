@@ -771,6 +771,18 @@ QVariantList FileOperations::activeTransfers() const
     return list;
 }
 
+QStringList FileOperations::pendingTargetPaths() const
+{
+    QStringList paths;
+    for (const auto &transfer : m_activeTransfers) {
+        for (const QString &path : transfer.targetPaths) {
+            if (!path.isEmpty() && !paths.contains(path))
+                paths.append(path);
+        }
+    }
+    return paths;
+}
+
 FileOperations::ActiveTransfer *FileOperations::findTransfer(int id)
 {
     for (auto &t : m_activeTransfers) {
@@ -1835,6 +1847,7 @@ void FileOperations::startGioTransfer(const QVariantList &operations, bool moveO
     QList<GioTransferWorker::TransferItem> items;
     int itemCount = 0;
     QStringList changedPaths;
+    QStringList targetPaths;
 
     for (const QVariant &variant : operations) {
         const QVariantMap item = variant.toMap();
@@ -1850,6 +1863,7 @@ void FileOperations::startGioTransfer(const QVariantList &operations, bool moveO
             appendUniqueLocation(&changedPaths, sourcePath);
         appendUniqueLocation(&changedPaths, targetPath);
         appendUniqueLocation(&changedPaths, backupPath);
+        appendUniqueLocation(&targetPaths, targetPath);
     }
 
     const int id = m_nextTransferId++;
@@ -1858,6 +1872,7 @@ void FileOperations::startGioTransfer(const QVariantList &operations, bool moveO
     transfer.statusText = QString(moveOperation ? "Moving %1 item(s)..." : "Copying %1 item(s)...").arg(itemCount);
     transfer.progress = -1.0;
     transfer.changedPaths = changedPaths;
+    transfer.targetPaths = targetPaths;
 
     auto *thread = new QThread;
     auto *worker = new GioTransferWorker;

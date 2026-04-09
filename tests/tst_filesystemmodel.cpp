@@ -939,6 +939,49 @@ private slots:
         QCOMPARE(model.fileCount(), 2);
     }
 
+    void testPathSuggestionsReturnMatchingDirectories()
+    {
+        TestDir dir;
+        const QString alphaDir = dir.createDir("Alpha");
+        const QString alpineDir = dir.createDir("Alpine");
+        dir.createDir("Beta");
+        dir.createFile("Alpha.txt");
+
+        FileSystemModel model;
+        const QVariantList suggestions = model.pathSuggestions(dir.path() + "/Al", 8);
+
+        QCOMPARE(suggestions.size(), 2);
+        QCOMPARE(suggestions.at(0).toMap().value("path").toString(), alphaDir);
+        QCOMPARE(suggestions.at(1).toMap().value("path").toString(), alpineDir);
+        QCOMPARE(suggestions.at(0).toMap().value("displayPath").toString(), alphaDir);
+    }
+
+    void testPathSuggestionsIncludeHiddenWhenRequested()
+    {
+        TestDir dir;
+        const QString hiddenDir = dir.createDir(".cache");
+        dir.createDir("config");
+
+        FileSystemModel model;
+        const QVariantList suggestions = model.pathSuggestions(dir.path() + "/.", 8);
+
+        QCOMPARE(suggestions.size(), 1);
+        QCOMPARE(suggestions.at(0).toMap().value("path").toString(), hiddenDir);
+    }
+
+    void testPathSuggestionsRespectLimit()
+    {
+        TestDir dir;
+        dir.createDir("Alpha");
+        dir.createDir("Alpine");
+        dir.createDir("Alps");
+
+        FileSystemModel model;
+        const QVariantList suggestions = model.pathSuggestions(dir.path() + "/Al", 2);
+
+        QCOMPARE(suggestions.size(), 2);
+    }
+
 private:
     // Helper to set permissions without a FileSystemModel instance
     void model_setPermissionsHelper(const QString &path, int ownerAccess, int groupAccess, int otherAccess)

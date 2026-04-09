@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import HyprFM
+import Quill as Q
 
 GridView {
     id: root
@@ -491,6 +492,7 @@ GridView {
 
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
         readonly property bool isCutPending: clipboard.isCut && clipboard.contains(delegateItem.filePath)
+        readonly property bool isPastePending: fileOps.pendingTargetPaths.indexOf(delegateItem.filePath) >= 0
 
         // Per-folder drop target
         DropArea {
@@ -568,6 +570,30 @@ GridView {
                 anchors.centerIn: parent
                 size: 13
                 color: Theme.warning
+            }
+        }
+
+        Rectangle {
+            anchors.centerIn: (iconImg.visible ? iconImg : thumbImg)
+            width: 28
+            height: 28
+            radius: 14
+            z: 3
+            color: Qt.rgba(Theme.mantle.r, Theme.mantle.g, Theme.mantle.b, 0.92)
+            border.width: 1
+            border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35)
+            opacity: delegateItem.isPastePending ? 1 : 0
+            scale: delegateItem.isPastePending ? 1 : 0.9
+            visible: opacity > 0
+
+            Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+
+            Q.Spinner {
+                anchors.centerIn: parent
+                size: "small"
+                color: Theme.accent
+                running: delegateItem.isPastePending
             }
         }
 

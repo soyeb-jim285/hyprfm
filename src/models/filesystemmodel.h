@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QList>
 #include <QString>
+#include <QVariantList>
 #include <QVariantMap>
 
 class GitStatusService;
@@ -67,6 +68,7 @@ public:
     Q_INVOKABLE QVariantList allInstalledApps() const;
     Q_INVOKABLE bool setFilePermissions(const QString &path, int ownerAccess, int groupAccess, int otherAccess);
     Q_INVOKABLE QString homePath() const;
+    Q_INVOKABLE QVariantList pathSuggestions(const QString &input, int limit = 8) const;
 
     void setGitStatusService(GitStatusService *service);
 

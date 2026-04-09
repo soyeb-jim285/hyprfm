@@ -3,17 +3,14 @@ import QtQuick.Layouts
 import HyprFM
 import Quill as Q
 
-Item {
+Q.Dialog {
     id: root
     anchors.fill: parent
     z: 1000
-    visible: panelOpen || closeTimer.running
-    focus: panelOpen
+    dialogWidth: Math.min(840, width - 40)
+    title: "Settings"
+    subtitle: "Appearance and behavior update live while you adjust them."
 
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Settings"
-
-    property bool panelOpen: false
     property bool currentShowHidden: false
     property bool currentSidebarVisible: true
     property int currentSidebarWidth: 200
@@ -21,11 +18,8 @@ Item {
     property var themeOptions: []
     property var fontOptions: []
     property var iconThemeOptions: []
-    property var shortcutEntries: []
-    property var draftShortcuts: ({})
     property bool syncingFromConfig: false
     property bool pendingSettingsDirty: false
-    property bool pendingShortcutsDirty: false
 
     property string draftTheme: config.theme
     property string draftFontFamily: config.fontFamily
@@ -41,10 +35,9 @@ Item {
     property real draftTransparencyLevel: config.transparencyLevel
     property bool draftAnimationsEnabled: config.animationsEnabled
 
-    signal closed()
     signal remoteConnectRequested()
+    signal keyboardShortcutsRequested()
 
-    readonly property int panelWidth: Math.min(520, Math.max(360, width - 24))
     readonly property string systemFontLabel: "System Default"
 
     function buildOptions(values, currentValue, fallbackValue) {
@@ -87,45 +80,6 @@ Item {
         draftDarkMode = isDarkTheme(themeName)
     }
 
-    function syncShortcutDrafts() {
-        shortcutEntries = config.shortcutDefinitions
-
-        var nextShortcuts = ({})
-        for (var i = 0; i < shortcutEntries.length; ++i) {
-            var entry = shortcutEntries[i]
-            nextShortcuts[entry.action] = entry.sequence
-        }
-        draftShortcuts = nextShortcuts
-    }
-
-    function shortcutValue(action) {
-        var value = draftShortcuts[action]
-        return value === undefined ? "" : value
-    }
-
-    function setShortcutValue(action, value) {
-        var nextShortcuts = ({})
-        for (var key in draftShortcuts)
-            nextShortcuts[key] = draftShortcuts[key]
-        nextShortcuts[action] = value
-        draftShortcuts = nextShortcuts
-
-        var nextEntries = []
-        for (var i = 0; i < shortcutEntries.length; ++i) {
-            var entry = shortcutEntries[i]
-            if (entry.action === action) {
-                var updatedEntry = ({})
-                for (var field in entry)
-                    updatedEntry[field] = entry[field]
-                updatedEntry.sequence = value
-                nextEntries.push(updatedEntry)
-            } else {
-                nextEntries.push(entry)
-            }
-        }
-        shortcutEntries = nextEntries
-    }
-
     function syncFromCurrentState() {
         syncingFromConfig = true
         try {
@@ -148,33 +102,29 @@ Item {
             draftTransparencyEnabled = config.transparencyEnabled
             draftTransparencyLevel = config.transparencyLevel
             draftAnimationsEnabled = config.animationsEnabled
-            syncShortcutDrafts()
         } finally {
             syncingFromConfig = false
         }
     }
 
     function openPanel() {
-        closeTimer.stop()
         syncFromCurrentState()
-        panelOpen = true
-        Qt.callLater(function() {
-            panelCard.forceActiveFocus()
-        })
+        open()
     }
 
     function closePanel() {
-        if (!panelOpen)
-            return
-
         flushPendingChanges()
-        panelOpen = false
-        closeTimer.restart()
+        close()
     }
 
     function openRemoteConnect() {
         closePanel()
         remoteConnectRequested()
+    }
+
+    function openKeyboardShortcuts() {
+        closePanel()
+        keyboardShortcutsRequested()
     }
 
     function currentSettings() {
@@ -202,14 +152,6 @@ Item {
         settingsApplyTimer.restart()
     }
 
-    function queueShortcutApply() {
-        if (syncingFromConfig)
-            return
-
-        pendingShortcutsDirty = true
-        shortcutApplyTimer.restart()
-    }
-
     function applyPendingSettings() {
         if (!pendingSettingsDirty)
             return
@@ -217,15 +159,6 @@ Item {
         pendingSettingsDirty = false
         settingsApplyTimer.stop()
         config.saveSettings(currentSettings())
-    }
-
-    function applyPendingShortcuts() {
-        if (!pendingShortcutsDirty)
-            return
-
-        pendingShortcutsDirty = false
-        shortcutApplyTimer.stop()
-        config.saveShortcuts(draftShortcuts)
     }
 
     function applySettingsNow() {
@@ -238,22 +171,10 @@ Item {
 
     function flushPendingChanges() {
         applyPendingSettings()
-        applyPendingShortcuts()
     }
 
-    Keys.onEscapePressed: (event) => {
-        if (!panelOpen)
-            return
-
-        event.accepted = true
-        closePanel()
-    }
-
-    Timer {
-        id: closeTimer
-        interval: 220
-        onTriggered: root.closed()
-    }
+    onRejected: root.flushPendingChanges()
+    onClosed: root.flushPendingChanges()
 
     Timer {
         id: settingsApplyTimer
@@ -261,489 +182,333 @@ Item {
         onTriggered: root.applyPendingSettings()
     }
 
-    Timer {
-        id: shortcutApplyTimer
-        interval: 320
-        onTriggered: root.applyPendingShortcuts()
-    }
+    Item {
+        Layout.fillWidth: true
+        implicitHeight: Math.min(560, contentFlick.contentHeight)
 
-    Rectangle {
-        anchors.fill: parent
-        color: Qt.rgba(Theme.base.r, Theme.base.g, Theme.base.b, 0.58)
-        opacity: root.panelOpen ? 1 : 0
-
-        Behavior on opacity {
-            NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic }
-        }
-
-        MouseArea {
+        Flickable {
+            id: contentFlick
             anchors.fill: parent
-            enabled: root.panelOpen
-            onClicked: root.closePanel()
-        }
-    }
+            clip: true
+            contentWidth: width
+            contentHeight: contentGrid.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
 
-    Rectangle {
-        id: panelCard
-        x: root.width - width + (root.panelOpen ? 0 : width + 18)
-        y: 0
-        width: root.panelWidth
-        height: root.height
-        radius: Theme.radiusLarge
-        color: Theme.containerColor(Theme.mantle, 0.96)
-        border.width: 1
-        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-        clip: true
-
-        Behavior on x {
-            NumberAnimation { duration: Theme.animDurationSlow; easing.type: Easing.OutCubic }
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 18
-            spacing: 14
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 12
+            GridLayout {
+                id: contentGrid
+                width: contentFlick.width
+                columns: width >= 720 ? 2 : 1
+                rowSpacing: 12
+                columnSpacing: 12
 
                 Rectangle {
-                    Layout.preferredWidth: 38
-                    Layout.preferredHeight: 38
-                    radius: 12
-                    color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
-
-                    IconSettings {
-                        anchors.centerIn: parent
-                        size: 18
-                        color: Theme.accent
-                    }
-                }
-
-                ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 2
-
-                    Text {
-                        text: "Settings"
-                        color: Theme.text
-                        font.pointSize: Theme.fontLarge + 2
-                        font.bold: true
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: "Appearance, behavior, shortcuts, and remote access all live here now."
-                        color: Theme.subtext
-                        font.pointSize: Theme.fontSmall
-                        wrapMode: Text.WordWrap
-                    }
-                }
-
-                HoverRect {
                     Layout.alignment: Qt.AlignTop
-                    width: 32
-                    height: 32
-                    onClicked: root.closePanel()
+                    radius: Theme.radiusLarge
+                    color: Theme.containerColor(Theme.crust, 0.32)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                    implicitHeight: generalSection.implicitHeight + 32
 
-                    IconX {
-                        anchors.centerIn: parent
-                        size: 16
-                        color: Theme.text
-                    }
-                }
-            }
+                    ColumnLayout {
+                        id: generalSection
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 12
 
-            Flickable {
-                id: contentFlick
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                contentWidth: width
-                contentHeight: contentColumn.implicitHeight
-                boundsBehavior: Flickable.StopAtBounds
+                        Text {
+                            text: "General"
+                            color: Theme.text
+                            font.pointSize: Theme.fontNormal + 1
+                            font.bold: true
+                        }
 
-                Column {
-                    id: contentColumn
-                    width: contentFlick.width
-                    spacing: 12
-
-                    Rectangle {
-                        width: parent.width
-                        radius: Theme.radiusLarge
-                        color: Theme.containerColor(Theme.crust, 0.32)
-                        border.width: 1
-                        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                        implicitHeight: generalSection.implicitHeight + 32
-
-                        ColumnLayout {
-                            id: generalSection
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            spacing: 12
-
-                            Text {
-                                text: "General"
-                                color: Theme.text
-                                font.pointSize: Theme.fontNormal + 1
-                                font.bold: true
-                            }
-
-                            Q.Toggle {
-                                Layout.fillWidth: true
-                                label: "Dark mode"
-                                checked: root.draftDarkMode
-                                onToggled: (value) => {
-                                    root.setDraftTheme(value ? "catppuccin-mocha" : "catppuccin-latte")
-                                    root.applySettingsNow()
-                                }
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: "The toggle switches between Catppuccin Mocha and Catppuccin Latte."
-                                color: Theme.subtext
-                                font.pointSize: Theme.fontSmall
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Q.Dropdown {
-                                Layout.fillWidth: true
-                                label: "Theme"
-                                model: root.themeOptions
-                                currentIndex: root.optionIndex(root.themeOptions, root.draftTheme, 0)
-                                onSelected: (_, value) => {
-                                    root.setDraftTheme(value)
-                                    root.applySettingsNow()
-                                }
-                            }
-
-                            Q.Dropdown {
-                                Layout.fillWidth: true
-                                label: "Font"
-                                model: root.fontOptions
-                                currentIndex: root.optionIndex(root.fontOptions, root.draftFontFamily === "" ? root.systemFontLabel : root.draftFontFamily, 0)
-                                onSelected: (_, value) => {
-                                    root.draftFontFamily = value === root.systemFontLabel ? "" : value
-                                    root.applySettingsNow()
-                                }
-                            }
-
-                            Q.Dropdown {
-                                Layout.fillWidth: true
-                                label: "Icon pack"
-                                model: root.iconThemeOptions
-                                currentIndex: root.optionIndex(root.iconThemeOptions, root.draftIconTheme, 0)
-                                onSelected: (_, value) => {
-                                    root.draftIconTheme = value
-                                    root.applySettingsNow()
-                                }
-                            }
-
-                            Q.Checkbox {
-                                label: "Show hidden files"
-                                checked: root.draftShowHidden
-                                onToggled: (value) => {
-                                    root.draftShowHidden = value
-                                    root.applySettingsNow()
-                                }
+                        Q.Toggle {
+                            Layout.fillWidth: true
+                            label: "Dark mode"
+                            checked: root.draftDarkMode
+                            onToggled: (value) => {
+                                root.setDraftTheme(value ? "catppuccin-mocha" : "catppuccin-latte")
+                                root.applySettingsNow()
                             }
                         }
-                    }
 
-                    Rectangle {
-                        width: parent.width
-                        radius: Theme.radiusLarge
-                        color: Theme.containerColor(Theme.crust, 0.32)
-                        border.width: 1
-                        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                        implicitHeight: windowSection.implicitHeight + 32
+                        Text {
+                            Layout.fillWidth: true
+                            text: "The toggle switches between Catppuccin Mocha and Catppuccin Latte."
+                            color: Theme.subtext
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
 
-                        ColumnLayout {
-                            id: windowSection
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            spacing: 12
-
-                            Text {
-                                text: "Window"
-                                color: Theme.text
-                                font.pointSize: Theme.fontNormal + 1
-                                font.bold: true
-                            }
-
-                            Q.Checkbox {
-                                label: "Show sidebar"
-                                checked: root.draftSidebarVisible
-                                onToggled: (value) => {
-                                    root.draftSidebarVisible = value
-                                    root.applySettingsNow()
-                                }
-                            }
-
-                            Q.Slider {
-                                Layout.fillWidth: true
-                                label: "Sidebar width"
-                                from: 160
-                                to: 480
-                                stepSize: 10
-                                showValue: true
-                                enabled: root.draftSidebarVisible
-                                value: root.draftSidebarWidth
-                                onMoved: (value) => {
-                                    root.draftSidebarWidth = Math.round(value)
-                                    root.queueSettingsApply()
-                                }
-                            }
-
-                            Q.Toggle {
-                                Layout.fillWidth: true
-                                label: "Transparent containers"
-                                checked: root.draftTransparencyEnabled
-                                onToggled: (value) => {
-                                    root.draftTransparencyEnabled = value
-                                    root.applySettingsNow()
-                                }
-                            }
-
-                            Q.Slider {
-                                Layout.fillWidth: true
-                                label: "Transparency"
-                                from: 0
-                                to: 100
-                                stepSize: 1
-                                showValue: true
-                                enabled: root.draftTransparencyEnabled
-                                value: root.draftTransparencyLevel * 100
-                                onMoved: (value) => {
-                                    root.draftTransparencyLevel = value / 100
-                                    root.queueSettingsApply()
-                                }
-                            }
-
-                            Q.Toggle {
-                                Layout.fillWidth: true
-                                label: "Animations"
-                                checked: root.draftAnimationsEnabled
-                                onToggled: (value) => {
-                                    root.draftAnimationsEnabled = value
-                                    root.applySettingsNow()
-                                }
+                        Q.Dropdown {
+                            Layout.fillWidth: true
+                            label: "Theme"
+                            model: root.themeOptions
+                            currentIndex: root.optionIndex(root.themeOptions, root.draftTheme, 0)
+                            onSelected: (_, value) => {
+                                root.setDraftTheme(value)
+                                root.applySettingsNow()
                             }
                         }
-                    }
 
-                    Rectangle {
-                        width: parent.width
-                        radius: Theme.radiusLarge
-                        color: Theme.containerColor(Theme.crust, 0.32)
-                        border.width: 1
-                        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                        implicitHeight: appearanceSection.implicitHeight + 32
-
-                        ColumnLayout {
-                            id: appearanceSection
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            spacing: 12
-
-                            Text {
-                                text: "Appearance"
-                                color: Theme.text
-                                font.pointSize: Theme.fontNormal + 1
-                                font.bold: true
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Corner radius and transparency update live while you adjust them."
-                                color: Theme.subtext
-                                font.pointSize: Theme.fontSmall
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Q.Slider {
-                                Layout.fillWidth: true
-                                label: "Small radius"
-                                from: 0
-                                to: 24
-                                stepSize: 1
-                                showValue: true
-                                value: root.draftRadiusSmall
-                                onMoved: (value) => {
-                                    root.draftRadiusSmall = Math.round(value)
-                                    if (root.draftRadiusMedium < root.draftRadiusSmall)
-                                        root.draftRadiusMedium = root.draftRadiusSmall
-                                    if (root.draftRadiusLarge < root.draftRadiusMedium)
-                                        root.draftRadiusLarge = root.draftRadiusMedium
-                                    root.queueSettingsApply()
-                                }
-                            }
-
-                            Q.Slider {
-                                Layout.fillWidth: true
-                                label: "Medium radius"
-                                from: root.draftRadiusSmall
-                                to: 28
-                                stepSize: 1
-                                showValue: true
-                                value: root.draftRadiusMedium
-                                onMoved: (value) => {
-                                    root.draftRadiusMedium = Math.round(value)
-                                    if (root.draftRadiusLarge < root.draftRadiusMedium)
-                                        root.draftRadiusLarge = root.draftRadiusMedium
-                                    root.queueSettingsApply()
-                                }
-                            }
-
-                            Q.Slider {
-                                Layout.fillWidth: true
-                                label: "Large radius"
-                                from: root.draftRadiusMedium
-                                to: 32
-                                stepSize: 1
-                                showValue: true
-                                value: root.draftRadiusLarge
-                                onMoved: (value) => {
-                                    root.draftRadiusLarge = Math.round(value)
-                                    root.queueSettingsApply()
-                                }
+                        Q.Dropdown {
+                            Layout.fillWidth: true
+                            label: "Font"
+                            model: root.fontOptions
+                            currentIndex: root.optionIndex(root.fontOptions, root.draftFontFamily === "" ? root.systemFontLabel : root.draftFontFamily, 0)
+                            onSelected: (_, value) => {
+                                root.draftFontFamily = value === root.systemFontLabel ? "" : value
+                                root.applySettingsNow()
                             }
                         }
-                    }
 
-                    Rectangle {
-                        width: parent.width
-                        radius: Theme.radiusLarge
-                        color: Theme.containerColor(Theme.crust, 0.32)
-                        border.width: 1
-                        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                        implicitHeight: networkSection.implicitHeight + 32
-
-                        ColumnLayout {
-                            id: networkSection
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            spacing: 12
-
-                            Text {
-                                text: "Remote Access"
-                                color: Theme.text
-                                font.pointSize: Theme.fontNormal + 1
-                                font.bold: true
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Connect to SFTP, SMB, FTP, or a direct URI from here instead of the toolbar."
-                                color: Theme.subtext
-                                font.pointSize: Theme.fontSmall
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Q.Button {
-                                text: "Connect to Network Location"
-                                onClicked: root.openRemoteConnect()
+                        Q.Dropdown {
+                            Layout.fillWidth: true
+                            label: "Icon pack"
+                            model: root.iconThemeOptions
+                            currentIndex: root.optionIndex(root.iconThemeOptions, root.draftIconTheme, 0)
+                            onSelected: (_, value) => {
+                                root.draftIconTheme = value
+                                root.applySettingsNow()
                             }
                         }
-                    }
 
-                    Rectangle {
-                        width: parent.width
-                        radius: Theme.radiusLarge
-                        color: Theme.containerColor(Theme.crust, 0.32)
-                        border.width: 1
-                        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                        implicitHeight: shortcutsSection.implicitHeight + 32
-
-                        ColumnLayout {
-                            id: shortcutsSection
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            spacing: 12
-
-                            Text {
-                                text: "Keyboard Shortcuts"
-                                color: Theme.text
-                                font.pointSize: Theme.fontNormal + 1
-                                font.bold: true
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Edit the shortcut text directly. Clear a field to fall back to the built-in default."
-                                color: Theme.subtext
-                                font.pointSize: Theme.fontSmall
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Repeater {
-                                model: root.shortcutEntries
-
-                                delegate: Rectangle {
-                                    required property var modelData
-
-                                    Layout.fillWidth: true
-                                    implicitHeight: shortcutColumn.implicitHeight + 16
-                                    radius: Theme.radiusMedium
-                                    color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05)
-                                    border.width: 1
-                                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
-
-                                    ColumnLayout {
-                                        id: shortcutColumn
-                                        anchors.fill: parent
-                                        anchors.margins: 8
-                                        spacing: 6
-
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: 10
-
-                                            Text {
-                                                Layout.fillWidth: true
-                                                text: modelData.label
-                                                color: Theme.text
-                                                font.pointSize: Theme.fontNormal
-                                                font.bold: true
-                                            }
-
-                                            Q.TextField {
-                                                Layout.preferredWidth: 170
-                                                Layout.maximumWidth: 200
-                                                variant: "filled"
-                                                placeholder: modelData.defaultSequence
-                                                text: modelData.sequence
-                                                onTextEdited: {
-                                                    root.setShortcutValue(modelData.action, text)
-                                                    root.queueShortcutApply()
-                                                }
-                                            }
-                                        }
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: "Default: " + modelData.defaultSequence
-                                            color: Theme.subtext
-                                            font.pointSize: Theme.fontSmall
-                                            wrapMode: Text.WordWrap
-                                        }
-                                    }
-                                }
+                        Q.Checkbox {
+                            label: "Show hidden files"
+                            checked: root.draftShowHidden
+                            onToggled: (value) => {
+                                root.draftShowHidden = value
+                                root.applySettingsNow()
                             }
                         }
                     }
                 }
-            }
 
-            Text {
-                Layout.fillWidth: true
-                text: "Changes apply automatically and are still written back to the config file, so manual edits remain compatible."
-                color: Theme.subtext
-                font.pointSize: Theme.fontSmall
-                wrapMode: Text.WordWrap
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    radius: Theme.radiusLarge
+                    color: Theme.containerColor(Theme.crust, 0.32)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                    implicitHeight: windowSection.implicitHeight + 32
+
+                    ColumnLayout {
+                        id: windowSection
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 12
+
+                        Text {
+                            text: "Window"
+                            color: Theme.text
+                            font.pointSize: Theme.fontNormal + 1
+                            font.bold: true
+                        }
+
+                        Q.Checkbox {
+                            label: "Show sidebar"
+                            checked: root.draftSidebarVisible
+                            onToggled: (value) => {
+                                root.draftSidebarVisible = value
+                                root.applySettingsNow()
+                            }
+                        }
+
+                        Q.Slider {
+                            Layout.fillWidth: true
+                            label: "Sidebar width"
+                            from: 160
+                            to: 480
+                            stepSize: 10
+                            showValue: true
+                            enabled: root.draftSidebarVisible
+                            value: root.draftSidebarWidth
+                            onMoved: (value) => {
+                                root.draftSidebarWidth = Math.round(value)
+                                root.queueSettingsApply()
+                            }
+                        }
+
+                        Q.Toggle {
+                            Layout.fillWidth: true
+                            label: "Transparent containers"
+                            checked: root.draftTransparencyEnabled
+                            onToggled: (value) => {
+                                root.draftTransparencyEnabled = value
+                                root.applySettingsNow()
+                            }
+                        }
+
+                        Q.Slider {
+                            Layout.fillWidth: true
+                            label: "Transparency"
+                            from: 0
+                            to: 100
+                            stepSize: 1
+                            showValue: true
+                            enabled: root.draftTransparencyEnabled
+                            value: root.draftTransparencyLevel * 100
+                            onMoved: (value) => {
+                                root.draftTransparencyLevel = value / 100
+                                root.queueSettingsApply()
+                            }
+                        }
+
+                        Q.Toggle {
+                            Layout.fillWidth: true
+                            label: "Animations"
+                            checked: root.draftAnimationsEnabled
+                            onToggled: (value) => {
+                                root.draftAnimationsEnabled = value
+                                root.applySettingsNow()
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    radius: Theme.radiusLarge
+                    color: Theme.containerColor(Theme.crust, 0.32)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                    implicitHeight: appearanceSection.implicitHeight + 32
+
+                    ColumnLayout {
+                        id: appearanceSection
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 12
+
+                        Text {
+                            text: "Appearance"
+                            color: Theme.text
+                            font.pointSize: Theme.fontNormal + 1
+                            font.bold: true
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Corner radius and transparency update live while you adjust them."
+                            color: Theme.subtext
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Q.Slider {
+                            Layout.fillWidth: true
+                            label: "Small radius"
+                            from: 0
+                            to: 24
+                            stepSize: 1
+                            showValue: true
+                            value: root.draftRadiusSmall
+                            onMoved: (value) => {
+                                root.draftRadiusSmall = Math.round(value)
+                                if (root.draftRadiusMedium < root.draftRadiusSmall)
+                                    root.draftRadiusMedium = root.draftRadiusSmall
+                                if (root.draftRadiusLarge < root.draftRadiusMedium)
+                                    root.draftRadiusLarge = root.draftRadiusMedium
+                                root.queueSettingsApply()
+                            }
+                        }
+
+                        Q.Slider {
+                            Layout.fillWidth: true
+                            label: "Medium radius"
+                            from: root.draftRadiusSmall
+                            to: 28
+                            stepSize: 1
+                            showValue: true
+                            value: root.draftRadiusMedium
+                            onMoved: (value) => {
+                                root.draftRadiusMedium = Math.round(value)
+                                if (root.draftRadiusLarge < root.draftRadiusMedium)
+                                    root.draftRadiusLarge = root.draftRadiusMedium
+                                root.queueSettingsApply()
+                            }
+                        }
+
+                        Q.Slider {
+                            Layout.fillWidth: true
+                            label: "Large radius"
+                            from: root.draftRadiusMedium
+                            to: 32
+                            stepSize: 1
+                            showValue: true
+                            value: root.draftRadiusLarge
+                            onMoved: (value) => {
+                                root.draftRadiusLarge = Math.round(value)
+                                root.queueSettingsApply()
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    radius: Theme.radiusLarge
+                    color: Theme.containerColor(Theme.crust, 0.32)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                    implicitHeight: toolsSection.implicitHeight + 32
+
+                    ColumnLayout {
+                        id: toolsSection
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 12
+
+                        Text {
+                            text: "Tools"
+                            color: Theme.text
+                            font.pointSize: Theme.fontNormal + 1
+                            font.bold: true
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Open dedicated dialogs for keyboard shortcuts and remote locations."
+                            color: Theme.subtext
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Q.Button {
+                            text: "Keyboard Shortcuts"
+                            onClicked: root.openKeyboardShortcuts()
+                        }
+
+                        Q.Button {
+                            text: "Connect to Network Location"
+                            variant: "ghost"
+                            onClicked: root.openRemoteConnect()
+                        }
+                    }
+                }
             }
+        }
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 12
+
+        Text {
+            Layout.fillWidth: true
+            text: "Changes apply automatically and are still written back to the config file, so manual edits remain compatible."
+            color: Theme.subtext
+            font.pointSize: Theme.fontSmall
+            wrapMode: Text.WordWrap
+        }
+
+        Q.Button {
+            text: "Done"
+            onClicked: root.closePanel()
         }
     }
 }

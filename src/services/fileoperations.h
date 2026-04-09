@@ -22,6 +22,7 @@ class FileOperations : public QObject
     Q_PROPERTY(bool paused READ paused NOTIFY pausedChanged)
     Q_PROPERTY(QString currentFile READ currentFile NOTIFY currentFileChanged)
     Q_PROPERTY(QVariantList activeTransfers READ activeTransfers NOTIFY activeTransfersChanged)
+    Q_PROPERTY(QStringList pendingTargetPaths READ pendingTargetPaths NOTIFY activeTransfersChanged)
 
 public:
     explicit FileOperations(QObject *parent = nullptr);
@@ -34,6 +35,7 @@ public:
     bool paused() const;
     QString currentFile() const;
     QVariantList activeTransfers() const;
+    QStringList pendingTargetPaths() const;
 
     Q_INVOKABLE void pauseTransfer(int transferId = -1);
     Q_INVOKABLE void resumeTransfer(int transferId = -1);
@@ -97,6 +99,7 @@ private:
         QString currentFile;
         bool paused = false;
         QStringList changedPaths;
+        QStringList targetPaths;
     };
 
     void transferResolvedItems(const QVariantList &operations, bool moveOperation);

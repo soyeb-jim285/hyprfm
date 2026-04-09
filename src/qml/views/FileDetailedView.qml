@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import HyprFM
+import Quill as Q
 
 FocusScope {
     id: root
@@ -570,6 +571,7 @@ FocusScope {
 
                 readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
                 readonly property bool isCutPending: clipboard.isCut && clipboard.contains(detRow.filePath)
+                readonly property bool isPastePending: fileOps.pendingTargetPaths.indexOf(detRow.filePath) >= 0
 
                 property bool dragStarted: false
 
@@ -671,6 +673,31 @@ FocusScope {
                                         anchors.centerIn: parent
                                         size: 7
                                         color: Theme.warning
+                                    }
+                                }
+
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: 16
+                                    height: 16
+                                    radius: 8
+                                    z: 3
+                                    color: Qt.rgba(Theme.mantle.r, Theme.mantle.g, Theme.mantle.b, 0.92)
+                                    border.width: 1
+                                    border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35)
+                                    opacity: detRow.isPastePending ? 1 : 0
+                                    scale: detRow.isPastePending ? 1 : 0.9
+                                    visible: opacity > 0
+
+                                    Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+                                    Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+
+                                    Q.Spinner {
+                                        anchors.centerIn: parent
+                                        size: "small"
+                                        color: Theme.accent
+                                        running: detRow.isPastePending
+                                        scale: 0.6
                                     }
                                 }
 
