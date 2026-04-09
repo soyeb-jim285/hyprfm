@@ -2973,6 +2973,16 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
+                Rectangle {
+                    visible: root.sidebarVisible
+                    x: -1
+                    y: 0
+                    width: 2
+                    height: toolbar.height
+                    color: Theme.mantle
+                    z: 2
+                }
+
                 ColumnLayout {
                     anchors.fill: parent
                     spacing: 0
@@ -3075,17 +3085,19 @@ ApplicationWindow {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 8
-                    spacing: 8
+                    anchors.margins: root.splitViewEnabled() ? 8 : 0
+                    spacing: root.splitViewEnabled() ? 8 : 0
 
                     Rectangle {
                         id: primaryPaneFrame
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        radius: Theme.radiusMedium
+                        radius: root.splitViewEnabled() ? Theme.radiusMedium : 0
                         clip: true
-                        color: Theme.containerColor(Theme.crust, 0.14)
-                        border.width: 1
+                        color: root.splitViewEnabled()
+                            ? Theme.containerColor(Theme.crust, 0.14)
+                            : "transparent"
+                        border.width: root.splitViewEnabled() ? 1 : 0
                         border.color: root.splitViewEnabled() && root.activePane === "primary"
                             ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
                             : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)

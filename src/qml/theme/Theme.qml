@@ -2,22 +2,24 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-    readonly property color base: theme.base
-    readonly property color mantle: theme.mantle
-    readonly property color crust: theme.crust
-    readonly property color surface: theme.surface
-    readonly property color overlay: theme.overlay
-    readonly property color text: theme.text
-    readonly property color subtext: theme.subtext
-    readonly property color muted: theme.muted
-    readonly property color accent: theme.accent
-    readonly property color success: theme.success
-    readonly property color warning: theme.warning
-    readonly property color error: theme.error
+    id: root
 
-    readonly property int radiusSmall: config.radiusSmall
-    readonly property int radiusMedium: config.radiusMedium
-    readonly property int radiusLarge: config.radiusLarge
+    property color base: theme.base
+    property color mantle: theme.mantle
+    property color crust: theme.crust
+    property color surface: theme.surface
+    property color overlay: theme.overlay
+    property color text: theme.text
+    property color subtext: theme.subtext
+    property color muted: theme.muted
+    property color accent: theme.accent
+    property color success: theme.success
+    property color warning: theme.warning
+    property color error: theme.error
+
+    property int radiusSmall: config.radiusSmall
+    property int radiusMedium: config.radiusMedium
+    property int radiusLarge: config.radiusLarge
     readonly property real baseFontSize: {
         var pointSize = Qt.application.font.pointSize
         return pointSize > 0 ? pointSize : 10
@@ -31,13 +33,77 @@ QtObject {
     readonly property int compactControlSize: Math.round(28 * uiScale)
     readonly property int titleBarHeight: Math.round(34 * uiScale)
     readonly property int toolbarRowHeight: Math.round(44 * uiScale)
-    readonly property bool transparencyEnabled: config.transparencyEnabled
-    readonly property real transparencyLevel: Math.max(0, Math.min(1, config.transparencyLevel))
-    readonly property bool animationsEnabled: config.animationsEnabled
+    property bool transparencyEnabled: config.transparencyEnabled
+    property real transparencyLevel: Math.max(0, Math.min(1, config.transparencyLevel))
+    property bool animationsEnabled: config.animationsEnabled
 
     readonly property int animDurationFast: animationsEnabled ? 100 : 0
     readonly property int animDuration: animationsEnabled ? 200 : 0
     readonly property int animDurationSlow: animationsEnabled ? 350 : 0
+
+    Behavior on base {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on mantle {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on crust {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on surface {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on overlay {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on text {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on subtext {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on muted {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on accent {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on success {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on warning {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on error {
+        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+    }
+
+    Behavior on radiusSmall {
+        NumberAnimation { duration: root.animDurationFast; easing.type: Easing.OutCubic }
+    }
+
+    Behavior on radiusMedium {
+        NumberAnimation { duration: root.animDurationFast; easing.type: Easing.OutCubic }
+    }
+
+    Behavior on radiusLarge {
+        NumberAnimation { duration: root.animDurationFast; easing.type: Easing.OutCubic }
+    }
+
+    Behavior on transparencyLevel {
+        NumberAnimation { duration: root.animDuration; easing.type: Easing.OutCubic }
+    }
 
     function containerColor(color, defaultAlpha) {
         var strength = transparencyEnabled ? transparencyLevel : 0

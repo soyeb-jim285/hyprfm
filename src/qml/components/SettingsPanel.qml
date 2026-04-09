@@ -23,6 +23,9 @@ Item {
     property var iconThemeOptions: []
     property var shortcutEntries: []
     property var draftShortcuts: ({})
+    property bool syncingFromConfig: false
+    property bool pendingSettingsDirty: false
+    property bool pendingShortcutsDirty: false
 
     property string draftTheme: config.theme
     property string draftFontFamily: config.fontFamily
@@ -106,29 +109,49 @@ Item {
             nextShortcuts[key] = draftShortcuts[key]
         nextShortcuts[action] = value
         draftShortcuts = nextShortcuts
+
+        var nextEntries = []
+        for (var i = 0; i < shortcutEntries.length; ++i) {
+            var entry = shortcutEntries[i]
+            if (entry.action === action) {
+                var updatedEntry = ({})
+                for (var field in entry)
+                    updatedEntry[field] = entry[field]
+                updatedEntry.sequence = value
+                nextEntries.push(updatedEntry)
+            } else {
+                nextEntries.push(entry)
+            }
+        }
+        shortcutEntries = nextEntries
     }
 
     function syncFromCurrentState() {
-        draftTheme = config.theme
-        draftDarkMode = isDarkTheme(draftTheme)
-        themeOptions = buildOptions(config.availableThemes, draftTheme, "catppuccin-mocha")
+        syncingFromConfig = true
+        try {
+            draftTheme = config.theme
+            draftDarkMode = isDarkTheme(draftTheme)
+            themeOptions = buildOptions(config.availableThemes, draftTheme, "catppuccin-mocha")
 
-        draftFontFamily = config.fontFamily
-        fontOptions = buildFontOptions()
+            draftFontFamily = config.fontFamily
+            fontOptions = buildFontOptions()
 
-        draftIconTheme = config.iconTheme
-        iconThemeOptions = buildOptions(config.availableIconThemes, draftIconTheme, "Adwaita")
+            draftIconTheme = config.iconTheme
+            iconThemeOptions = buildOptions(config.availableIconThemes, draftIconTheme, "Adwaita")
 
-        draftShowHidden = currentShowHidden
-        draftSidebarVisible = currentSidebarVisible
-        draftSidebarWidth = currentSidebarWidth
-        draftRadiusSmall = config.radiusSmall
-        draftRadiusMedium = Math.max(config.radiusMedium, draftRadiusSmall)
-        draftRadiusLarge = Math.max(config.radiusLarge, draftRadiusMedium)
-        draftTransparencyEnabled = config.transparencyEnabled
-        draftTransparencyLevel = config.transparencyLevel
-        draftAnimationsEnabled = config.animationsEnabled
-        syncShortcutDrafts()
+            draftShowHidden = currentShowHidden
+            draftSidebarVisible = currentSidebarVisible
+            draftSidebarWidth = currentSidebarWidth
+            draftRadiusSmall = config.radiusSmall
+            draftRadiusMedium = Math.max(config.radiusMedium, draftRadiusSmall)
+            draftRadiusLarge = Math.max(config.radiusLarge, draftRadiusMedium)
+            draftTransparencyEnabled = config.transparencyEnabled
+            draftTransparencyLevel = config.transparencyLevel
+            draftAnimationsEnabled = config.animationsEnabled
+            syncShortcutDrafts()
+        } finally {
+            syncingFromConfig = false
+        }
     }
 
     function openPanel() {
@@ -144,6 +167,7 @@ Item {
         if (!panelOpen)
             return
 
+        flushPendingChanges()
         panelOpen = false
         closeTimer.restart()
     }
@@ -153,8 +177,8 @@ Item {
         remoteConnectRequested()
     }
 
-    function applySettings() {
-        config.saveSettings({
+    function currentSettings() {
+        return {
             theme: draftTheme,
             fontFamily: draftFontFamily,
             iconTheme: draftIconTheme,
@@ -167,9 +191,54 @@ Item {
             transparencyEnabled: draftTransparencyEnabled,
             transparencyLevel: draftTransparencyLevel,
             animationsEnabled: draftAnimationsEnabled
-        })
+        }
+    }
+
+    function queueSettingsApply() {
+        if (syncingFromConfig)
+            return
+
+        pendingSettingsDirty = true
+        settingsApplyTimer.restart()
+    }
+
+    function queueShortcutApply() {
+        if (syncingFromConfig)
+            return
+
+        pendingShortcutsDirty = true
+        shortcutApplyTimer.restart()
+    }
+
+    function applyPendingSettings() {
+        if (!pendingSettingsDirty)
+            return
+
+        pendingSettingsDirty = false
+        settingsApplyTimer.stop()
+        config.saveSettings(currentSettings())
+    }
+
+    function applyPendingShortcuts() {
+        if (!pendingShortcutsDirty)
+            return
+
+        pendingShortcutsDirty = false
+        shortcutApplyTimer.stop()
         config.saveShortcuts(draftShortcuts)
-        closePanel()
+    }
+
+    function applySettingsNow() {
+        if (syncingFromConfig)
+            return
+
+        pendingSettingsDirty = true
+        applyPendingSettings()
+    }
+
+    function flushPendingChanges() {
+        applyPendingSettings()
+        applyPendingShortcuts()
     }
 
     Keys.onEscapePressed: (event) => {
@@ -184,6 +253,18 @@ Item {
         id: closeTimer
         interval: 220
         onTriggered: root.closed()
+    }
+
+    Timer {
+        id: settingsApplyTimer
+        interval: 140
+        onTriggered: root.applyPendingSettings()
+    }
+
+    Timer {
+        id: shortcutApplyTimer
+        interval: 320
+        onTriggered: root.applyPendingShortcuts()
     }
 
     Rectangle {
@@ -313,7 +394,10 @@ Item {
                                 Layout.fillWidth: true
                                 label: "Dark mode"
                                 checked: root.draftDarkMode
-                                onToggled: (value) => root.setDraftTheme(value ? "catppuccin-mocha" : "catppuccin-latte")
+                                onToggled: (value) => {
+                                    root.setDraftTheme(value ? "catppuccin-mocha" : "catppuccin-latte")
+                                    root.applySettingsNow()
+                                }
                             }
 
                             Text {
@@ -329,7 +413,10 @@ Item {
                                 label: "Theme"
                                 model: root.themeOptions
                                 currentIndex: root.optionIndex(root.themeOptions, root.draftTheme, 0)
-                                onSelected: (_, value) => root.setDraftTheme(value)
+                                onSelected: (_, value) => {
+                                    root.setDraftTheme(value)
+                                    root.applySettingsNow()
+                                }
                             }
 
                             Q.Dropdown {
@@ -337,7 +424,10 @@ Item {
                                 label: "Font"
                                 model: root.fontOptions
                                 currentIndex: root.optionIndex(root.fontOptions, root.draftFontFamily === "" ? root.systemFontLabel : root.draftFontFamily, 0)
-                                onSelected: (_, value) => root.draftFontFamily = value === root.systemFontLabel ? "" : value
+                                onSelected: (_, value) => {
+                                    root.draftFontFamily = value === root.systemFontLabel ? "" : value
+                                    root.applySettingsNow()
+                                }
                             }
 
                             Q.Dropdown {
@@ -345,13 +435,19 @@ Item {
                                 label: "Icon pack"
                                 model: root.iconThemeOptions
                                 currentIndex: root.optionIndex(root.iconThemeOptions, root.draftIconTheme, 0)
-                                onSelected: (_, value) => root.draftIconTheme = value
+                                onSelected: (_, value) => {
+                                    root.draftIconTheme = value
+                                    root.applySettingsNow()
+                                }
                             }
 
                             Q.Checkbox {
                                 label: "Show hidden files"
                                 checked: root.draftShowHidden
-                                onToggled: (value) => root.draftShowHidden = value
+                                onToggled: (value) => {
+                                    root.draftShowHidden = value
+                                    root.applySettingsNow()
+                                }
                             }
                         }
                     }
@@ -380,7 +476,10 @@ Item {
                             Q.Checkbox {
                                 label: "Show sidebar"
                                 checked: root.draftSidebarVisible
-                                onToggled: (value) => root.draftSidebarVisible = value
+                                onToggled: (value) => {
+                                    root.draftSidebarVisible = value
+                                    root.applySettingsNow()
+                                }
                             }
 
                             Q.Slider {
@@ -392,14 +491,20 @@ Item {
                                 showValue: true
                                 enabled: root.draftSidebarVisible
                                 value: root.draftSidebarWidth
-                                onMoved: (value) => root.draftSidebarWidth = Math.round(value)
+                                onMoved: (value) => {
+                                    root.draftSidebarWidth = Math.round(value)
+                                    root.queueSettingsApply()
+                                }
                             }
 
                             Q.Toggle {
                                 Layout.fillWidth: true
                                 label: "Transparent containers"
                                 checked: root.draftTransparencyEnabled
-                                onToggled: (value) => root.draftTransparencyEnabled = value
+                                onToggled: (value) => {
+                                    root.draftTransparencyEnabled = value
+                                    root.applySettingsNow()
+                                }
                             }
 
                             Q.Slider {
@@ -411,14 +516,20 @@ Item {
                                 showValue: true
                                 enabled: root.draftTransparencyEnabled
                                 value: root.draftTransparencyLevel * 100
-                                onMoved: (value) => root.draftTransparencyLevel = value / 100
+                                onMoved: (value) => {
+                                    root.draftTransparencyLevel = value / 100
+                                    root.queueSettingsApply()
+                                }
                             }
 
                             Q.Toggle {
                                 Layout.fillWidth: true
                                 label: "Animations"
                                 checked: root.draftAnimationsEnabled
-                                onToggled: (value) => root.draftAnimationsEnabled = value
+                                onToggled: (value) => {
+                                    root.draftAnimationsEnabled = value
+                                    root.applySettingsNow()
+                                }
                             }
                         }
                     }
@@ -446,7 +557,7 @@ Item {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: "Corner radius updates the shell and most controls after saving."
+                                text: "Corner radius and transparency update live while you adjust them."
                                 color: Theme.subtext
                                 font.pointSize: Theme.fontSmall
                                 wrapMode: Text.WordWrap
@@ -466,6 +577,7 @@ Item {
                                         root.draftRadiusMedium = root.draftRadiusSmall
                                     if (root.draftRadiusLarge < root.draftRadiusMedium)
                                         root.draftRadiusLarge = root.draftRadiusMedium
+                                    root.queueSettingsApply()
                                 }
                             }
 
@@ -481,6 +593,7 @@ Item {
                                     root.draftRadiusMedium = Math.round(value)
                                     if (root.draftRadiusLarge < root.draftRadiusMedium)
                                         root.draftRadiusLarge = root.draftRadiusMedium
+                                    root.queueSettingsApply()
                                 }
                             }
 
@@ -492,7 +605,10 @@ Item {
                                 stepSize: 1
                                 showValue: true
                                 value: root.draftRadiusLarge
-                                onMoved: (value) => root.draftRadiusLarge = Math.round(value)
+                                onMoved: (value) => {
+                                    root.draftRadiusLarge = Math.round(value)
+                                    root.queueSettingsApply()
+                                }
                             }
                         }
                     }
@@ -599,7 +715,10 @@ Item {
                                                 variant: "filled"
                                                 placeholder: modelData.defaultSequence
                                                 text: modelData.sequence
-                                                onTextEdited: root.setShortcutValue(modelData.action, text)
+                                                onTextEdited: {
+                                                    root.setShortcutValue(modelData.action, text)
+                                                    root.queueShortcutApply()
+                                                }
                                             }
                                         }
 
@@ -618,28 +737,12 @@ Item {
                 }
             }
 
-            RowLayout {
+            Text {
                 Layout.fillWidth: true
-                spacing: 10
-
-                Text {
-                    Layout.fillWidth: true
-                    text: "The config file stays the source of truth, so manual edits still work."
-                    color: Theme.subtext
-                    font.pointSize: Theme.fontSmall
-                    wrapMode: Text.WordWrap
-                }
-
-                Q.Button {
-                    text: "Cancel"
-                    variant: "ghost"
-                    onClicked: root.closePanel()
-                }
-
-                Q.Button {
-                    text: "Save"
-                    onClicked: root.applySettings()
-                }
+                text: "Changes apply automatically and are still written back to the config file, so manual edits remain compatible."
+                color: Theme.subtext
+                font.pointSize: Theme.fontSmall
+                wrapMode: Text.WordWrap
             }
         }
     }
