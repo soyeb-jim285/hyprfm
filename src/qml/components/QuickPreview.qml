@@ -21,6 +21,7 @@ Item {
     property string metadataHint: ""
     property int pdfPageIndex: 0
     property real pdfWheelAccumulator: 0
+    property bool closing: false
 
     signal closed()
     signal openRequested(string path, bool isDirectory)
@@ -120,8 +121,8 @@ Item {
     }
     readonly property string sidebarPathLabel: fileProps.originalPath || fileProps.parentDir || ""
 
-    visible: active
-    focus: active
+    visible: active || closing
+    focus: visible
 
     component InfoBlock: Column {
         property string label: ""
@@ -149,8 +150,10 @@ Item {
     }
 
     function closePreview() {
+        if (!active)
+            return
+
         active = false
-        root.closed()
     }
 
     function currentIndex() {
@@ -206,8 +209,19 @@ Item {
 
     onActiveChanged: {
         if (active) {
+            closeAnim.stop()
+            closing = false
+            overlay.opacity = 0
+            card.opacity = 0
+            card.scale = 0.88
+            card.yOffset = -8
             refreshPreviewData()
+            openAnim.start()
             Qt.callLater(function() { root.forceActiveFocus() })
+        } else if (visible) {
+            openAnim.stop()
+            closing = true
+            closeAnim.start()
         }
     }
     onFilePathChanged: {
@@ -297,19 +311,97 @@ Item {
         closePreview()
     }
 
-    Rectangle {
-        anchors.fill: parent
-        color: Qt.rgba(0.03, 0.04, 0.05, 0.78)
-        opacity: overlayOpacity.running ? 0 : 1
+    ParallelAnimation {
+        id: openAnim
 
-        NumberAnimation on opacity {
-            id: overlayOpacity
+        NumberAnimation {
+            target: overlay
+            property: "opacity"
             from: 0
             to: 1
-            duration: 160
+            duration: Theme.animDurationFast
             easing.type: Easing.OutCubic
-            running: root.active
         }
+
+        NumberAnimation {
+            target: card
+            property: "opacity"
+            from: 0
+            to: 1
+            duration: Theme.animDurationFast
+            easing.type: Easing.OutCubic
+        }
+
+        NumberAnimation {
+            target: card
+            property: "scale"
+            from: 0.88
+            to: 1
+            duration: Theme.animDurationSlow
+            easing.type: Easing.OutBack
+            easing.overshoot: 0.8
+        }
+
+        NumberAnimation {
+            target: card
+            property: "yOffset"
+            from: -8
+            to: 0
+            duration: Theme.animDuration
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    SequentialAnimation {
+        id: closeAnim
+
+        ParallelAnimation {
+            NumberAnimation {
+                target: overlay
+                property: "opacity"
+                to: 0
+                duration: Theme.animDurationFast
+                easing.type: Easing.InCubic
+            }
+
+            NumberAnimation {
+                target: card
+                property: "opacity"
+                to: 0
+                duration: Theme.animDurationFast
+                easing.type: Easing.InCubic
+            }
+
+            NumberAnimation {
+                target: card
+                property: "scale"
+                to: 0.92
+                duration: Theme.animDurationFast
+                easing.type: Easing.InCubic
+            }
+
+            NumberAnimation {
+                target: card
+                property: "yOffset"
+                to: -4
+                duration: Theme.animDurationFast
+                easing.type: Easing.InCubic
+            }
+        }
+
+        ScriptAction {
+            script: {
+                root.closing = false
+                root.closed()
+            }
+        }
+    }
+
+    Rectangle {
+        id: overlay
+        anchors.fill: parent
+        color: Qt.rgba(0.03, 0.04, 0.05, 0.78)
+        opacity: 0
 
         MouseArea {
             anchors.fill: parent
@@ -322,10 +414,18 @@ Item {
         anchors.centerIn: parent
         width: Math.min(parent.width * 0.9, 1080)
         height: Math.min(parent.height * 0.88, 760)
+        opacity: 0
+        scale: 0.88
+        transformOrigin: Item.Center
         radius: Theme.radiusLarge
         color: Qt.rgba(Theme.mantle.r, Theme.mantle.g, Theme.mantle.b, 0.98)
         border.width: 1
         border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
+
+        property real yOffset: 0
+        transform: Translate {
+            y: card.yOffset
+        }
 
         MouseArea {
             anchors.fill: parent

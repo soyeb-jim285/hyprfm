@@ -182,6 +182,15 @@ ApplicationWindow {
     property string debouncePane: "primary"
     property string activePane: "primary"
     readonly property bool searchMode: paneSearchMode(activePane)
+    property real splitTransitionProgress: splitViewEnabled() ? 1 : 0
+    readonly property bool splitViewPresented: splitViewEnabled() || splitTransitionProgress > 0.001
+
+    Behavior on splitTransitionProgress {
+        NumberAnimation {
+            duration: Theme.animDurationSlow
+            easing.type: Easing.InOutCubic
+        }
+    }
 
     // ── Selection state for StatusBar ────────────────────────────────────────
     property int currentSelectedCount: 0
@@ -3084,23 +3093,28 @@ ApplicationWindow {
                 }
 
                 RowLayout {
+                    id: paneRow
                     anchors.fill: parent
-                    anchors.margins: root.splitViewEnabled() ? 8 : 0
-                    spacing: root.splitViewEnabled() ? 8 : 0
+                    anchors.margins: 8 * root.splitTransitionProgress
+                    spacing: 8 * root.splitTransitionProgress
+
+                    readonly property real dividerWidth: root.splitTransitionProgress
+                    readonly property real secondaryPreferredWidth: Math.max(
+                        0,
+                        (width - spacing - dividerWidth) * 0.5 * root.splitTransitionProgress
+                    )
 
                     Rectangle {
                         id: primaryPaneFrame
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        radius: root.splitViewEnabled() ? Theme.radiusMedium : 0
+                        radius: Theme.radiusMedium * root.splitTransitionProgress
                         clip: true
-                        color: root.splitViewEnabled()
-                            ? Theme.containerColor(Theme.crust, 0.14)
-                            : "transparent"
-                        border.width: root.splitViewEnabled() ? 1 : 0
-                        border.color: root.splitViewEnabled() && root.activePane === "primary"
-                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
-                            : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                        color: Theme.containerColor(Theme.crust, 0.14 * root.splitTransitionProgress)
+                        border.width: root.splitTransitionProgress
+                        border.color: root.activePane === "primary"
+                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45 * root.splitTransitionProgress)
+                            : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08 * root.splitTransitionProgress)
                         Behavior on border.color { ColorAnimation { duration: Theme.animDuration } }
 
                         FileViewContainer {
@@ -3127,10 +3141,11 @@ ApplicationWindow {
 
                     Loader {
                         id: dividerLoader
-                        active: root.splitViewEnabled()
+                        active: root.splitViewPresented
                         visible: active
-                        Layout.preferredWidth: active ? 1 : 0
+                        Layout.preferredWidth: paneRow.dividerWidth
                         Layout.fillHeight: true
+                        opacity: root.splitTransitionProgress
 
                         sourceComponent: Rectangle {
                             width: 1
@@ -3140,14 +3155,19 @@ ApplicationWindow {
 
                     Loader {
                         id: secondaryPaneLoader
-                        active: root.splitViewEnabled()
+                        active: root.splitViewPresented
                         visible: active
-                        Layout.fillWidth: active
+                        enabled: root.splitViewEnabled()
+                        opacity: root.splitTransitionProgress
+                        Layout.preferredWidth: paneRow.secondaryPreferredWidth
                         Layout.fillHeight: true
 
                         sourceComponent: Rectangle {
                             id: secondaryPaneFrame
                             property alias fileView: secondaryFileViewContainer
+                            opacity: root.splitTransitionProgress
+                            scale: 0.96 + (0.04 * root.splitTransitionProgress)
+                            transformOrigin: Item.Right
                             radius: Theme.radiusMedium
                             clip: true
                             color: Theme.containerColor(Theme.crust, 0.14)

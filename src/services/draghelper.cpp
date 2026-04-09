@@ -15,6 +15,16 @@ DragHelper::DragHelper(IconProvider *iconProvider, QObject *parent)
 {
 }
 
+bool DragHelper::active() const
+{
+    return m_active;
+}
+
+QStringList DragHelper::activePaths() const
+{
+    return m_activePaths;
+}
+
 void DragHelper::startDrag(const QStringList &filePaths,
                            const QString &iconName,
                            int fileCount)
@@ -29,6 +39,12 @@ void DragHelper::startDrag(const QStringList &filePaths,
     // Defer to next event loop iteration to avoid nested event loop
     // issues when called from QML mouse handlers
     QTimer::singleShot(0, this, [this, paths, icon, count]() {
+        if (m_active)
+            return;
+
+        m_activePaths = paths;
+        m_active = true;
+        emit dragStateChanged();
         emit dragStarted();
 
         auto *drag = new QDrag(this);
@@ -94,6 +110,9 @@ void DragHelper::startDrag(const QStringList &filePaths,
 
         drag->exec(Qt::CopyAction | Qt::MoveAction, Qt::MoveAction);
 
+        m_activePaths.clear();
+        m_active = false;
+        emit dragStateChanged();
         emit dragFinished();
     });
 }

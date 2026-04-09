@@ -59,6 +59,54 @@ GridView {
             easing.type: Easing.OutCubic
         }
     }
+    add: Transition {
+        ParallelAnimation {
+            NumberAnimation {
+                properties: "opacity"
+                from: 0
+                to: 1
+                duration: Theme.animDurationFast
+                easing.type: Easing.OutCubic
+            }
+            NumberAnimation {
+                properties: "scale"
+                from: 0.94
+                to: 1
+                duration: Theme.animDuration
+                easing.type: Easing.OutCubic
+            }
+        }
+    }
+    addDisplaced: Transition {
+        NumberAnimation {
+            properties: "x,y"
+            duration: Theme.animDurationSlow
+            easing.type: Easing.OutCubic
+        }
+    }
+    remove: Transition {
+        ParallelAnimation {
+            NumberAnimation {
+                properties: "opacity"
+                to: 0
+                duration: Theme.animDurationFast
+                easing.type: Easing.InCubic
+            }
+            NumberAnimation {
+                properties: "scale"
+                to: 0.94
+                duration: Theme.animDurationFast
+                easing.type: Easing.InCubic
+            }
+        }
+    }
+    removeDisplaced: Transition {
+        NumberAnimation {
+            properties: "x,y"
+            duration: Theme.animDurationSlow
+            easing.type: Easing.OutCubic
+        }
+    }
 
     function moveSelection(delta, extend) {
         wheelScroller.stopAndSettle()
@@ -332,6 +380,9 @@ GridView {
 
     // Parse file paths from a drop event
     function parseDragPaths(drop) {
+        if (dragHelper.active && dragHelper.activePaths.length > 0)
+            return dragHelper.activePaths.slice()
+
         var paths = []
 
         function decodePath(value) {
@@ -439,13 +490,14 @@ GridView {
         required property bool hasVideoPreview
 
         readonly property bool isSelected: root.selectedIndices.indexOf(index) >= 0
+        readonly property bool isCutPending: clipboard.isCut && clipboard.contains(delegateItem.filePath)
 
         // Per-folder drop target
         DropArea {
             id: folderDropArea
             anchors.fill: parent
             keys: ["text/uri-list"]
-            enabled: delegateItem.isDir && !delegateItem.isSelected && !root.isDragging
+            enabled: delegateItem.isDir && !delegateItem.isSelected
 
             onDropped: (drop) => {
                 var paths = root.parseDragPaths(drop)
@@ -491,6 +543,32 @@ GridView {
             source: "image://icon/" + delegateItem.fileIconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
             sourceSize: Qt.size(root.iconRequestSize, root.iconRequestSize)
             asynchronous: false
+        }
+
+        Rectangle {
+            anchors.top: (iconImg.visible ? iconImg : thumbImg).top
+            anchors.right: (iconImg.visible ? iconImg : thumbImg).right
+            anchors.topMargin: -4
+            anchors.rightMargin: -4
+            width: 22
+            height: 22
+            radius: 11
+            z: 2
+            color: Qt.rgba(Theme.mantle.r, Theme.mantle.g, Theme.mantle.b, 0.96)
+            border.width: 1
+            border.color: Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.9)
+            opacity: delegateItem.isCutPending ? 1 : 0
+            scale: delegateItem.isCutPending ? 1 : 0.88
+            visible: opacity > 0
+
+            Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+
+            IconScissors {
+                anchors.centerIn: parent
+                size: 13
+                color: Theme.warning
+            }
         }
 
         // Git status overlay badge
@@ -672,7 +750,6 @@ GridView {
         anchors.fill: parent
         keys: ["text/uri-list"]
         z: -2
-        enabled: !root.isDragging
 
         // Subtle background hint — only when not hovering a specific folder
         Rectangle {

@@ -20,6 +20,30 @@ FocusScope {
     signal interactionStarted()
     signal transferRequested(var paths, string destinationPath, bool moveOperation)
 
+    function dropPaths(drop) {
+        if (dragHelper.active && dragHelper.activePaths.length > 0)
+            return dragHelper.activePaths.slice()
+
+        var paths = []
+        var urls = drop.urls || []
+
+        for (var i = 0; i < urls.length; i++) {
+            var s = urls[i].toString()
+            paths.push(s.startsWith("file://") ? decodeURIComponent(s.substring(7)) : s)
+        }
+
+        if (paths.length === 0 && drop.hasText) {
+            var lines = drop.text.split("\n")
+            for (var j = 0; j < lines.length; j++) {
+                var line = lines[j].trim()
+                if (line !== "")
+                    paths.push(line.startsWith("file://") ? decodeURIComponent(line.substring(7)) : line)
+            }
+        }
+
+        return paths
+    }
+
     // Track which folder in parent column leads to currentPath
     readonly property string parentPath: {
         if (!currentPath || currentPath === "/") return ""
@@ -308,6 +332,54 @@ FocusScope {
             boundsBehavior: Flickable.StopAtBounds
             boundsMovement: Flickable.StopAtBounds
             keyNavigationEnabled: false
+            add: Transition {
+                ParallelAnimation {
+                    NumberAnimation {
+                        properties: "opacity"
+                        from: 0
+                        to: 1
+                        duration: Theme.animDurationFast
+                        easing.type: Easing.OutCubic
+                    }
+                    NumberAnimation {
+                        properties: "scale"
+                        from: 0.98
+                        to: 1
+                        duration: Theme.animDuration
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
+            addDisplaced: Transition {
+                NumberAnimation {
+                    properties: "x,y"
+                    duration: Theme.animDurationSlow
+                    easing.type: Easing.OutCubic
+                }
+            }
+            remove: Transition {
+                ParallelAnimation {
+                    NumberAnimation {
+                        properties: "opacity"
+                        to: 0
+                        duration: Theme.animDurationFast
+                        easing.type: Easing.InCubic
+                    }
+                    NumberAnimation {
+                        properties: "scale"
+                        to: 0.98
+                        duration: Theme.animDurationFast
+                        easing.type: Easing.InCubic
+                    }
+                }
+            }
+            removeDisplaced: Transition {
+                NumberAnimation {
+                    properties: "x,y"
+                    duration: Theme.animDurationSlow
+                    easing.type: Easing.OutCubic
+                }
+            }
 
             property var selectedIndices: []
             property int lastSelectedIndex: -1
@@ -616,8 +688,27 @@ FocusScope {
                 required property bool hasVideoPreview
 
                 readonly property bool isSelected: currentColumn.selectedIndices.indexOf(index) >= 0
+                readonly property bool isCutPending: clipboard.isCut && clipboard.contains(currentDelegate.filePath)
 
                 property bool dragStarted: false
+
+                DropArea {
+                    id: folderDropArea
+                    anchors.fill: parent
+                    keys: ["text/uri-list"]
+                    enabled: currentDelegate.isDir && !currentDelegate.isSelected
+
+                    onDropped: (drop) => {
+                        var paths = root.dropPaths(drop)
+                        if (paths.length === 0) return
+                        var dominated = paths.some(function(p) {
+                            return currentDelegate.filePath === p || currentDelegate.filePath.startsWith(p + "/")
+                        })
+                        if (dominated) return
+                        root.transferRequested(paths, currentDelegate.filePath, drop.proposedAction !== Qt.CopyAction)
+                        drop.acceptProposedAction()
+                    }
+                }
 
                 Rectangle {
                     anchors.fill: parent
@@ -625,6 +716,8 @@ FocusScope {
                     radius: Theme.radiusSmall
                     opacity: currentDelegate.dragStarted ? 0.5 : 1.0
                     color: {
+                        if (folderDropArea.containsDrag)
+                            return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.3)
                         if (currentDelegate.isSelected)
                             return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
                         if (currentDelegateMa.containsMouse)
@@ -633,8 +726,8 @@ FocusScope {
                             return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.025)
                         return "transparent"
                     }
-                    border.color: currentDelegate.isSelected ? Theme.accent : "transparent"
-                    border.width: currentDelegate.isSelected ? 1 : 0
+                    border.color: folderDropArea.containsDrag ? Theme.accent : (currentDelegate.isSelected ? Theme.accent : "transparent")
+                    border.width: folderDropArea.containsDrag ? 2 : (currentDelegate.isSelected ? 1 : 0)
 
                     Row {
                         anchors.fill: parent
@@ -664,6 +757,32 @@ FocusScope {
                                 source: parent.hasThumbnail ? ("image://thumbnail/" + currentDelegate.filePath) : ""
                                 sourceSize: Qt.size(64 * Screen.devicePixelRatio, 64 * Screen.devicePixelRatio)
                                 asynchronous: true
+                            }
+
+                            Rectangle {
+                                anchors.top: parent.top
+                                anchors.right: parent.right
+                                anchors.topMargin: -3
+                                anchors.rightMargin: -3
+                                width: 12
+                                height: 12
+                                radius: 6
+                                z: 2
+                                color: Qt.rgba(Theme.mantle.r, Theme.mantle.g, Theme.mantle.b, 0.96)
+                                border.width: 1
+                                border.color: Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.9)
+                                opacity: currentDelegate.isCutPending ? 1 : 0
+                                scale: currentDelegate.isCutPending ? 1 : 0.88
+                                visible: opacity > 0
+
+                                Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+                                Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+
+                                IconScissors {
+                                    anchors.centerIn: parent
+                                    size: 7
+                                    color: Theme.warning
+                                }
                             }
 
                             Loader {
@@ -783,12 +902,7 @@ FocusScope {
 
                 onDropped: (drop) => {
                     if (!root.currentPath) return
-                    var urls = drop.urls
-                    var paths = []
-                    for (var i = 0; i < urls.length; i++) {
-                        var s = urls[i].toString()
-                        paths.push(s.startsWith("file://") ? decodeURIComponent(s.substring(7)) : s)
-                    }
+                    var paths = root.dropPaths(drop)
                     if (paths.length === 0) return
                     var allSameDir = paths.every(function(p) {
                         var parentDir = p.substring(0, p.lastIndexOf("/"))
