@@ -319,3 +319,11 @@ jobs:
             HyprFM-${{ github.ref_name }}-x86_64.AppImage
             HyprFM-${{ github.ref_name }}-x86_64.flatpak
           generate_release_notes: true
+
+      - name: Trigger website rebuild
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/soyeb-jim285/hyprfm-site/dispatches \
+            -f event_type=new-release
