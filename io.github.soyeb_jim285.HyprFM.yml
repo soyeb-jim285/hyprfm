@@ -161,11 +161,7 @@ modules:
       # ── FLATHUB SUBMISSION ──
       - type: git
         url: https://github.com/soyeb-jim285/hyprfm.git
-        tag: v0.4.17
-        # commit: filled in after v0.4.17 is tagged and pushed; see
-        # Flathub's linter rule module-*-source-git-no-commit-with-tag.
-        # disable-submodules defaults to false, so quill + quill-icons
-        # are pulled in automatically.
+        tag: v0.4.19
 
       # ── LOCAL ITERATION ──
       # For testing uncommitted changes locally, comment out the git
