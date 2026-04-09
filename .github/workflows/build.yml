@@ -77,10 +77,15 @@ jobs:
 
       - name: Build
         run: |
+          # HYPRFM_ENABLE_QML_CACHEGEN=ON forces qmlcachegen to compile QML
+          # files into the binary. The NO_CACHEGEN code path in Qt 6.7.3 was
+          # silently dropping qml/components/SettingsPanel.qml from the qrc;
+          # cachegen uses a different rcc path that's more reliable.
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -DHYPRFM_DATA_DIR=/usr/share/hyprfm
+            -DHYPRFM_DATA_DIR=/usr/share/hyprfm \
+            -DHYPRFM_ENABLE_QML_CACHEGEN=ON
           cmake --build build --parallel
 
       - name: Build .deb package
@@ -118,6 +123,42 @@ jobs:
             --desktop-file dist/io.github.soyeb_jim285.HyprFM.desktop \
             --icon-file dist/io.github.soyeb_jim285.HyprFM.svg \
             --output appimage
+
+      - name: Smoke-test AppImage
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        # Boot the freshly-built AppImage on the offscreen QPA platform and
+        # capture its stderr. We're not trying to render anything — we just
+        # want Qt to load every QML type referenced from Main.qml so that
+        # any "is not a type" / "qrc:... not found" / "QQmlApplicationEngine
+        # failed to load component" failure aborts the release before it
+        # ships. v0.4.14 shipped a broken AppImage exactly because we had no
+        # such gate; never again.
+        run: |
+          chmod +x "HyprFM-${TAG_NAME}-x86_64.AppImage"
+          set +e
+          # offscreen platform needs no display; software RHI dodges Mesa.
+          QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software \
+            timeout 10 "./HyprFM-${TAG_NAME}-x86_64.AppImage" \
+            > smoke.stdout 2> smoke.stderr &
+          SMOKE_PID=$!
+          # Give the QML engine ~5s to parse Main.qml and instantiate every
+          # component, then SIGTERM it. Any QML load failure will already be
+          # on stderr by then.
+          sleep 5
+          kill -TERM $SMOKE_PID 2>/dev/null || true
+          wait $SMOKE_PID 2>/dev/null || true
+          set -e
+          echo "=== smoke stdout ==="
+          cat smoke.stdout || true
+          echo "=== smoke stderr ==="
+          cat smoke.stderr || true
+          if grep -E "is not a type|failed to load component|QQmlApplicationEngine failed|Aborted \(core dumped\)|Segmentation fault" smoke.stderr; then
+            echo "Smoke test FAILED: AppImage cannot load its QML."
+            exit 1
+          fi
+          echo "Smoke test passed."
 
       # ─────────────────────────────────────────────────────────────────
       # Flatpak publishing: build, sign with GPG, upload the ostree repo

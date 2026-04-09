@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(hyprfm VERSION 0.4.14 LANGUAGES CXX)
+project(hyprfm VERSION 0.4.15 LANGUAGES CXX)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -25,8 +25,17 @@ install(DIRECTORY themes/ DESTINATION share/hyprfm/themes FILES_MATCHING PATTERN
 # Install QML sources (Quill module + icons needed at runtime)
 install(DIRECTORY src/qml/ DESTINATION share/hyprfm/src/qml)
 
-# Install QML module metadata (generated at build time)
-install(FILES ${CMAKE_BINARY_DIR}/src/HyprFM/qmldir DESTINATION share/hyprfm/HyprFM OPTIONAL)
+# Install the generated HyprFM QML module: qmldir + qml/ tree + qmltypes.
+# Without the qml/ subtree on disk, Qt has nothing to fall back on if the
+# embedded qrc bundle is missing a file (we hit exactly that with Qt 6.7.3
+# in v0.4.14, where SettingsPanel.qml made it into the qmldir but not into
+# qrc_hyprfm_raw_qml_0, leaving "SettingsPanel is not a type" at runtime).
+install(DIRECTORY ${CMAKE_BINARY_DIR}/src/HyprFM/
+    DESTINATION share/hyprfm/HyprFM
+    FILES_MATCHING
+        PATTERN "*.qml"
+        PATTERN "qmldir"
+        PATTERN "*.qmltypes")
 
 option(BUILD_TESTS "Build tests" ON)
 if(BUILD_TESTS)
