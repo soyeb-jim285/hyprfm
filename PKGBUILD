@@ -8,6 +8,7 @@ url="https://github.com/soyeb-jim285/hyprfm"
 license=('MIT')
 depends=(
     'glib2'
+    'kwindowsystem'
     'qt6-base'
     'qt6-declarative'
     'qt6-svg'
@@ -20,6 +21,7 @@ makedepends=(
     'cmake'
     'ninja'
     'git'
+    'kwindowsystem'
     'qt6-base'
     'qt6-declarative'
     'qt6-svg'

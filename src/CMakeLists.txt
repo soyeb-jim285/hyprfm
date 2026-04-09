@@ -178,6 +178,10 @@ target_link_libraries(hyprfm PRIVATE
     PkgConfig::GIO
 )
 
+if(KF6WindowSystem_FOUND)
+    target_link_libraries(hyprfm PRIVATE KF6::WindowSystem)
+endif()
+
 if(POPPLER_QT6_FOUND)
     target_link_libraries(hyprfm PRIVATE PkgConfig::POPPLER_QT6)
 endif()
@@ -214,6 +218,9 @@ if(TAGLIB_FOUND)
 endif()
 if(LIBAVFORMAT_FOUND)
     target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_LIBAVFORMAT=1)
+endif()
+if(KF6WindowSystem_FOUND)
+    target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_KWINDOWSYSTEM=1)
 endif()
 
 install(TARGETS hyprfm DESTINATION bin)

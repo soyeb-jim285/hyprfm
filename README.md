@@ -68,7 +68,7 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 - **TOML themes** with live reload (Catppuccin Mocha by default)
 - **Built-in SVG icon set** (60+ Lucide-style icons rendered via Qt Shapes)
 - **Configurable corner radius**, fonts, animation duration
-- **Wayland compositor blur** (Hyprland) supported via transparency
+- **Wayland compositor blur** on Hyprland plus native KWin blur on KDE Plasma
 
 ### Integrations
 
@@ -160,7 +160,7 @@ cmake --build build --parallel
 |---|---|
 | **Required (build)** | `cmake`, `ninja`, `qt6-base`, `qt6-declarative`, `qt6-svg` |
 | **Required (runtime)** | `qt6-base`, `qt6-declarative`, `qt6-svg`, `qt6-wayland`, `glib2`, `fd`, `rsync`, `xdg-utils` |
-| **Optional** | `wl-clipboard` (clipboard), `bat` (syntax highlighting), `gvfs` (remote filesystems), `gvfs-smb` (SMB), `ffmpeg` (video thumbnails), `udisks2` (device mounting), `poppler-qt6` (PDF previews) |
+| **Optional** | `kwindowsystem` / `KF6WindowSystem` (native KDE blur), `wl-clipboard` (clipboard), `bat` (syntax highlighting), `gvfs` (remote filesystems), `gvfs-smb` (SMB), `ffmpeg` (video thumbnails), `udisks2` (device mounting), `poppler-qt6` (PDF previews) |
 
 ---
 

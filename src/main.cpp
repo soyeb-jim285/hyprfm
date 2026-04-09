@@ -19,6 +19,9 @@
 #include <QTimer>
 #include <QFontDatabase>
 #include <QStyleHints>
+#ifdef HYPRFM_HAS_KWINDOWSYSTEM
+#include <KWindowEffects>
+#endif
 
 #include "services/configmanager.h"
 #include "services/themeloader.h"
@@ -342,6 +345,24 @@ int main(int argc, char *argv[])
     if (engine.rootObjects().isEmpty())
         return -1;
 
+    auto applyWindowEffects = [config](QQuickWindow *window) {
+        if (!window)
+            return;
+
+#ifdef HYPRFM_HAS_KWINDOWSYSTEM
+        // KWin blur only shows through translucent content; Hyprland keeps
+        // using compositor rules against the same transparent window surface.
+        const bool blurRequested = config->transparencyEnabled();
+        const bool blurAvailable = KWindowEffects::isEffectAvailable(KWindowEffects::BlurBehind);
+        KWindowEffects::enableBlurBehind(window, blurRequested && blurAvailable);
+
+        const bool contrastAvailable = KWindowEffects::isEffectAvailable(KWindowEffects::BackgroundContrast);
+        KWindowEffects::enableBackgroundContrast(window, blurRequested && contrastAvailable);
+#else
+        Q_UNUSED(window)
+#endif
+    };
+
     QTimer sessionSaveTimer;
     sessionSaveTimer.setSingleShot(true);
     sessionSaveTimer.setInterval(250);
@@ -383,6 +404,10 @@ int main(int argc, char *argv[])
     QObject::connect(tabModel, &TabListModel::sessionChanged, &app, scheduleSessionSave);
 
     if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+        applyWindowEffects(win);
+        QObject::connect(config, &ConfigManager::configChanged, win, [=]() {
+            applyWindowEffects(win);
+        });
         QObject::connect(win, &QQuickWindow::xChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::yChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::widthChanged, &app, scheduleSessionSave);
