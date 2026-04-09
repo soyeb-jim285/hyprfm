@@ -116,13 +116,46 @@ jobs:
           EXTRA_PLATFORM_PLUGINS: libqwayland-generic.so;libqwayland-egl.so
           QML_SOURCES_PATHS: src/qml
         run: |
-          OUTPUT="HyprFM-${TAG_NAME}-x86_64.AppImage" \
+          set -euo pipefail
+          QT_PLUGIN_DIR=$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null || qmake -query QT_INSTALL_PLUGINS)
+
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             --plugin qt \
             --desktop-file dist/io.github.soyeb_jim285.HyprFM.desktop \
-            --icon-file dist/io.github.soyeb_jim285.HyprFM.svg \
+            --icon-file dist/io.github.soyeb_jim285.HyprFM.svg
+
+          deploy_deps_args=()
+          for plugin_dir in \
+            wayland-graphics-integration-client \
+            wayland-shell-integration \
+            wayland-decoration-client
+          do
+            if [ -d "$QT_PLUGIN_DIR/$plugin_dir" ]; then
+              mkdir -p AppDir/usr/plugins
+              rm -rf "AppDir/usr/plugins/$plugin_dir"
+              cp -a "$QT_PLUGIN_DIR/$plugin_dir" "AppDir/usr/plugins/"
+              deploy_deps_args+=(--deploy-deps-only "AppDir/usr/plugins/$plugin_dir")
+              echo "Bundled extra Qt plugin dir: $plugin_dir"
+            fi
+          done
+
+          echo "=== AppDir/usr/plugins ==="
+          ls AppDir/usr/plugins || true
+          echo "=== wayland-graphics-integration-client ==="
+          ls AppDir/usr/plugins/wayland-graphics-integration-client/ || true
+
+          OUTPUT="HyprFM-${TAG_NAME}-x86_64.AppImage" \
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            "${deploy_deps_args[@]}" \
             --output appimage
+
+      - name: Verify bundled Wayland client integrations
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          test -d AppDir/usr/plugins/wayland-graphics-integration-client
+          test -n "$(ls -A AppDir/usr/plugins/wayland-graphics-integration-client)"
 
       - name: Smoke-test AppImage
         if: startsWith(github.ref, 'refs/tags/v')
@@ -154,7 +187,7 @@ jobs:
           cat smoke.stdout || true
           echo "=== smoke stderr ==="
           cat smoke.stderr || true
-          if grep -E "is not a type|failed to load component|QQmlApplicationEngine failed|Aborted \(core dumped\)|Segmentation fault" smoke.stderr; then
+          if grep -E "is not a type|failed to load component|QQmlApplicationEngine failed|TypeError:|Unable to assign|Aborted \(core dumped\)|Segmentation fault|Failed to initialize graphics backend|Failed to create RHI" smoke.stderr; then
             echo "Smoke test FAILED: AppImage cannot load its QML."
             exit 1
           fi
