@@ -630,7 +630,7 @@ Item {
                 items.push({ separator: true })
                 items.push({
                     text: effectivePaths.length > 1 ? "Bulk Rename..." : "Rename...",
-                    shortcut: "F2",
+                    shortcut: config.shortcutMap["rename"] || "",
                     action: effectivePaths.length > 1 ? "bulkrename" : "rename",
                     icon: "FolderPen"
                 })
@@ -661,8 +661,8 @@ Item {
             })
             if (!isTrashView) {
                 items.push({ separator: true })
-                items.push({ text: "New Folder...", shortcut: "Shift+Ctrl+N", action: "newfolder", icon: "Folder" })
-                items.push({ text: "New File...", shortcut: "", action: "newfile", icon: "FileText" })
+                items.push({ text: "New Folder...", shortcut: config.shortcutMap["new_folder"] || "", action: "newfolder", icon: "Folder" })
+                items.push({ text: "New File...", shortcut: config.shortcutMap["new_file"] || "", action: "newfile", icon: "FileText" })
                 items.push({ separator: true })
                 if (clipboard.hasContent || (!remoteContext && fileOps.hasClipboardImage())) {
                     items.push({

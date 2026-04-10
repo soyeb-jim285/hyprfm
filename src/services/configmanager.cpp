@@ -82,7 +82,7 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"paste", "Ctrl+V"},
     {"rename", "F2"},
     {"new_folder", "Ctrl+Shift+N"},
-    {"new_file", "Ctrl+Alt+N"},
+    {"new_file", "Ctrl+N"},
     {"trash", "Delete"},
     {"permanent_delete", "Shift+Delete"},
     {"toggle_hidden", "Ctrl+H"},
@@ -277,6 +277,11 @@ void ConfigManager::loadConfig()
                         QString::fromStdString(*v);
                 }
             }
+
+            // Migrate the old default new-file shortcut so existing configs
+            // pick up Ctrl+N unless the user chose a different custom binding.
+            if (m_shortcuts.value(QStringLiteral("new_file")) == QStringLiteral("Ctrl+Alt+N"))
+                m_shortcuts[QStringLiteral("new_file")] = s_defaultShortcuts.value(QStringLiteral("new_file"));
         }
 
     } catch (const toml::parse_error &err) {

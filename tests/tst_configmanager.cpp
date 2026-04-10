@@ -99,6 +99,8 @@ private slots:
         QCOMPARE(mgr.shortcut("cut"), QString("Ctrl+X"));
         QCOMPARE(mgr.shortcut("paste"), QString("Ctrl+V"));
         QCOMPARE(mgr.shortcut("rename"), QString("F2"));
+        QCOMPARE(mgr.shortcut("new_folder"), QString("Ctrl+Shift+N"));
+        QCOMPARE(mgr.shortcut("new_file"), QString("Ctrl+N"));
         QCOMPARE(mgr.shortcut("trash"), QString("Delete"));
         QCOMPARE(mgr.shortcut("toggle_hidden"), QString("Ctrl+H"));
         QCOMPARE(mgr.shortcut("quick_preview"), QString("Space"));
@@ -112,6 +114,21 @@ private slots:
         ConfigManager mgr(dir.path() + "/config.toml");
 
         QCOMPARE(mgr.shortcut("nonexistent_action"), QString());
+    }
+
+    void testLegacyNewFileShortcutMigrates()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("[shortcuts]\n"
+                "new_file = \"Ctrl+Alt+N\"\n");
+        f.close();
+
+        ConfigManager mgr(path);
+        QCOMPARE(mgr.shortcut("new_file"), QString("Ctrl+N"));
     }
 
     // --- TOML parsing ---

@@ -210,7 +210,7 @@ cmake --build build --parallel
 | `Delete` | Move to trash |
 | `Shift+Delete` | Permanent delete |
 | `Ctrl+Shift+N` | New folder |
-| `Ctrl+Alt+N` | New file |
+| `Ctrl+N` | New file |
 
 All shortcuts can be remapped in `~/.config/hyprfm/config.toml` under the `[shortcuts]` section.
 

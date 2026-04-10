@@ -805,6 +805,65 @@ ApplicationWindow {
         bulkRenameDialog.openForPaths(paths)
     }
 
+    function toggleRenameWorkflow(paths) {
+        if (renameDialog.visible) {
+            renameDialog.reject()
+            return
+        }
+
+        if (bulkRenameDialog.visible) {
+            bulkRenameDialog.reject()
+            return
+        }
+
+        if (newFolderDialog.visible || newFileDialog.visible)
+            return
+
+        openRenameWorkflow(paths)
+    }
+
+    function showNewFolderDialog(parentPath) {
+        if (!parentPath)
+            return
+
+        root.newItemParentPath = parentPath
+        newFolderField.text = ""
+        newFolderDialog.open()
+    }
+
+    function toggleNewFolderDialog(parentPath) {
+        if (newFolderDialog.visible) {
+            newFolderDialog.reject()
+            return
+        }
+
+        if (renameDialog.visible || bulkRenameDialog.visible || newFileDialog.visible)
+            return
+
+        showNewFolderDialog(parentPath)
+    }
+
+    function showNewFileDialog(parentPath) {
+        if (!parentPath)
+            return
+
+        root.newItemParentPath = parentPath
+        newFileField.text = ""
+        newFileDialog.open()
+    }
+
+    function toggleNewFileDialog(parentPath) {
+        if (newFileDialog.visible) {
+            newFileDialog.reject()
+            return
+        }
+
+        if (renameDialog.visible || bulkRenameDialog.visible || newFolderDialog.visible)
+            return
+
+        showNewFileDialog(parentPath)
+    }
+
     function openRenameWorkflow(paths) {
         if (!paths || paths.length === 0)
             return
@@ -2443,15 +2502,11 @@ ApplicationWindow {
         }
 
         onNewFolderRequested: (parentPath) => {
-            root.newItemParentPath = parentPath
-            newFolderField.text = ""
-            newFolderDialog.open()
+            root.showNewFolderDialog(parentPath)
         }
 
         onNewFileRequested: (parentPath) => {
-            root.newItemParentPath = parentPath
-            newFileField.text = ""
-            newFileDialog.open()
+            root.showNewFileDialog(parentPath)
         }
 
         onSelectAllRequested: {
@@ -2706,7 +2761,7 @@ ApplicationWindow {
         sequence: config.shortcutMap["rename"]
         onActivated: {
             var paths = getSelectedPaths()
-            root.openRenameWorkflow(paths)
+            root.toggleRenameWorkflow(paths)
         }
     }
 
@@ -2714,11 +2769,7 @@ ApplicationWindow {
         sequence: config.shortcutMap["new_folder"]
         onActivated: {
             var dest = root.isRecentsView ? "" : panePath(activePane)
-            if (dest !== "") {
-                root.newItemParentPath = dest
-                newFolderField.text = ""
-                newFolderDialog.open()
-            }
+            root.toggleNewFolderDialog(dest)
         }
     }
 
@@ -2726,11 +2777,7 @@ ApplicationWindow {
         sequence: config.shortcutMap["new_file"]
         onActivated: {
             var dest = root.isRecentsView ? "" : panePath(activePane)
-            if (dest !== "") {
-                root.newItemParentPath = dest
-                newFileField.text = ""
-                newFileDialog.open()
-            }
+            root.toggleNewFileDialog(dest)
         }
     }
 

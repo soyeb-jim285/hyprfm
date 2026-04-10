@@ -18,6 +18,10 @@ Q.Dialog {
     property var themeOptions: []
     property var fontOptions: []
     property var iconThemeOptions: []
+    property var availableThemeValues: []
+    property var availableFontValues: []
+    property var availableIconThemeValues: []
+    property bool optionSourcesPrimed: false
     property bool syncingFromConfig: false
     property bool pendingSettingsDirty: false
 
@@ -40,6 +44,16 @@ Q.Dialog {
 
     readonly property string systemFontLabel: "System Default"
 
+    function primeOptionSources() {
+        if (optionSourcesPrimed)
+            return
+
+        availableThemeValues = config.availableThemes
+        availableFontValues = config.availableFonts
+        availableIconThemeValues = config.availableIconThemes
+        optionSourcesPrimed = true
+    }
+
     function buildOptions(values, currentValue, fallbackValue) {
         var options = []
         for (var i = 0; i < values.length; ++i)
@@ -57,8 +71,8 @@ Q.Dialog {
 
     function buildFontOptions() {
         var options = [systemFontLabel]
-        for (var i = 0; i < config.availableFonts.length; ++i)
-            options.push(config.availableFonts[i])
+        for (var i = 0; i < availableFontValues.length; ++i)
+            options.push(availableFontValues[i])
 
         if (draftFontFamily !== "" && options.indexOf(draftFontFamily) === -1)
             options.push(draftFontFamily)
@@ -81,17 +95,18 @@ Q.Dialog {
     }
 
     function syncFromCurrentState() {
+        primeOptionSources()
         syncingFromConfig = true
         try {
             draftTheme = config.theme
             draftDarkMode = isDarkTheme(draftTheme)
-            themeOptions = buildOptions(config.availableThemes, draftTheme, "catppuccin-mocha")
+            themeOptions = buildOptions(availableThemeValues, draftTheme, "catppuccin-mocha")
 
             draftFontFamily = config.fontFamily
             fontOptions = buildFontOptions()
 
             draftIconTheme = config.iconTheme
-            iconThemeOptions = buildOptions(config.availableIconThemes, draftIconTheme, "Adwaita")
+            iconThemeOptions = buildOptions(availableIconThemeValues, draftIconTheme, "Adwaita")
 
             draftShowHidden = currentShowHidden
             draftSidebarVisible = currentSidebarVisible
@@ -175,6 +190,7 @@ Q.Dialog {
 
     onRejected: root.flushPendingChanges()
     onClosed: root.flushPendingChanges()
+    Component.onCompleted: root.primeOptionSources()
 
     Timer {
         id: settingsApplyTimer
