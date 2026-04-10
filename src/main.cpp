@@ -236,7 +236,7 @@ int main(int argc, char *argv[])
     // Local-file opens go through QDesktopServices (which uses the OpenURI
     // portal under Flatpak and xdg-open on a regular host), so xdg-open is
     // no longer a hard requirement here.
-    const QStringList requiredTools = {"rsync", "gio"};
+    const QStringList requiredTools = {"gio"};
     // Each entry is a list of equivalent alternatives — only warn if none exist
     const QList<QStringList> optionalToolGroups = {
         {"fd", "fdfind"}, // fd on Arch, fdfind on Debian/Ubuntu (fd-find pkg)

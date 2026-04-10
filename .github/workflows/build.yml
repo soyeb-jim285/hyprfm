@@ -45,7 +45,6 @@ jobs:
             libgles-dev \
             libvulkan-dev \
             wayland-protocols \
-            rsync \
             xdg-utils \
             file \
             libfuse2

@@ -14,7 +14,6 @@ depends=(
     'qt6-svg'
     'qt6-wayland'
     'fd'
-    'rsync'
     'xdg-utils'
 )
 makedepends=(

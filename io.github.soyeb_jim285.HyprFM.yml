@@ -61,22 +61,6 @@ cleanup:
   - '*.la'
 
 modules:
-  # ── rsync ──────────────────────────────────────────────────────────────
-  # Used by FileOperations for copy/move with progress reporting.
-  # The KDE runtime does not ship rsync, so we bundle it.
-  - name: rsync
-    buildsystem: autotools
-    config-opts:
-      - --disable-md2man
-      - --disable-zstd
-      - --disable-lz4
-      - --disable-xxhash
-    sources:
-      - type: git
-        url: https://github.com/RsyncProject/rsync.git
-        tag: v3.3.0
-        commit: 6c8ca91c731b7bf2b081694bda85b7dadc2b7aff
-
   # ── wl-clipboard ───────────────────────────────────────────────────────
   # ClipboardManager spawns wl-copy / wl-paste. Bundle them so the
   # clipboard works without depending on host tools.

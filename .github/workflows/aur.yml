@@ -36,8 +36,9 @@ jobs:
       - name: Clone AUR repo
         run: git clone ssh://aur@aur.archlinux.org/hyprfm-git.git aur-repo
 
-      - name: Update PKGBUILD and .SRCINFO
+      - name: Sync PKGBUILD from repo and update pkgver
         run: |
+          cp PKGBUILD aur-repo/PKGBUILD
           cd aur-repo
           sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
           sed -i "s/pkgver = .*/pkgver = $PKGVER/" .SRCINFO
