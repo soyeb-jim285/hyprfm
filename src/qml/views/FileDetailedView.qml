@@ -559,6 +559,7 @@ FocusScope {
                 required property int index
                 required property string fileName
                 required property string filePath
+                required property var fileModified
                 required property string fileSizeText
                 required property string fileModifiedText
                 required property string fileType
@@ -645,7 +646,10 @@ FocusScope {
                                     anchors.fill: parent
                                     visible: parent.hasThumbnail
                                     fillMode: Image.PreserveAspectFit
-                                    source: parent.hasThumbnail ? ("image://thumbnail/" + detRow.filePath) : ""
+                                    source: parent.hasThumbnail
+                                        ? ("image://thumbnail/" + detRow.filePath
+                                           + "?mtime=" + new Date(detRow.fileModified).getTime())
+                                        : ""
                                     sourceSize: Qt.size(64 * Screen.devicePixelRatio, 64 * Screen.devicePixelRatio)
                                     asynchronous: true
                                 }

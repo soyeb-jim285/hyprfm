@@ -1,5 +1,6 @@
 #include "services/fileoperations.h"
 #include "services/giotransferworker.h"
+#include <QBuffer>
 #include <QClipboard>
 #include <QDesktopServices>
 #include <QDir>
@@ -75,6 +76,27 @@ QString normalizeLocation(const QString &path)
     }
 
     return QDir::cleanPath(path);
+}
+
+QImage clipboardImage(const QClipboard *clipboard)
+{
+    if (!clipboard)
+        return {};
+
+    const QMimeData *mime = clipboard->mimeData();
+    if (!mime || !mime->hasImage())
+        return {};
+
+    QImage image = clipboard->image();
+    if (!image.isNull())
+        return image;
+
+    const QVariant imageData = mime->imageData();
+    if (imageData.canConvert<QImage>())
+        return qvariant_cast<QImage>(imageData);
+    if (imageData.canConvert<QPixmap>())
+        return qvariant_cast<QPixmap>(imageData).toImage();
+    return {};
 }
 
 QString gioLocationArg(const QString &path)
@@ -1455,15 +1477,11 @@ void FileOperations::openFileWith(const QString &path, const QString &desktopFil
 
 bool FileOperations::hasClipboardImage() const
 {
-    if (!clipboardImageData().isEmpty())
+    const QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboardImage(clipboard).isNull())
         return true;
 
-    const QClipboard *clipboard = QGuiApplication::clipboard();
-    if (!clipboard)
-        return false;
-
-    const QMimeData *mime = clipboard->mimeData();
-    return mime && mime->hasImage();
+    return !clipboardImageData().isEmpty();
 }
 
 QString FileOperations::pasteClipboardImage(const QString &destinationDir)
@@ -1474,46 +1492,33 @@ QString FileOperations::pasteClipboardImage(const QString &destinationDir)
         return {};
     }
 
-    // Prefer writing raw wl-paste bytes directly to preserve the original image exactly
-    const QByteArray rawImage = clipboardImageData();
-    if (!rawImage.isEmpty()) {
-        QFile file(outputPath);
-        if (!file.open(QIODevice::WriteOnly)) {
-            emit operationFinished(false, "Failed to write clipboard image");
+    // Prefer the live Qt clipboard image so we paste the current selection
+    // instead of stale external clipboard-manager data.
+    const QClipboard *clipboard = QGuiApplication::clipboard();
+    const QImage image = clipboardImage(clipboard);
+    if (!image.isNull()) {
+        if (!image.save(outputPath, "PNG")) {
+            emit operationFinished(false, "Failed to save clipboard image");
             return {};
         }
-        file.write(rawImage);
-        file.close();
         emitChangedPaths({outputPath});
         emit operationFinished(true, QString());
         return outputPath;
     }
 
-    // Fallback: Qt clipboard (e.g. X11 or non-Wayland)
-    const QClipboard *clipboard = QGuiApplication::clipboard();
-    if (!clipboard || !clipboard->mimeData() || !clipboard->mimeData()->hasImage()) {
+    const QByteArray rawImage = clipboardImageData();
+    if (rawImage.isEmpty()) {
         emit operationFinished(false, "Clipboard does not contain an image");
         return {};
     }
 
-    QImage image = clipboard->image();
-    if (image.isNull()) {
-        const QVariant imageData = clipboard->mimeData()->imageData();
-        if (imageData.canConvert<QImage>())
-            image = qvariant_cast<QImage>(imageData);
-        else if (imageData.canConvert<QPixmap>())
-            image = qvariant_cast<QPixmap>(imageData).toImage();
-    }
-
-    if (image.isNull()) {
-        emit operationFinished(false, "Clipboard image could not be read");
+    QFile file(outputPath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        emit operationFinished(false, "Failed to write clipboard image");
         return {};
     }
-
-    if (!image.save(outputPath, "PNG")) {
-        emit operationFinished(false, "Failed to save clipboard image");
-        return {};
-    }
+    file.write(rawImage);
+    file.close();
 
     emitChangedPaths({outputPath});
     emit operationFinished(true, QString());

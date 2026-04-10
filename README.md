@@ -133,7 +133,7 @@ Tested on Ubuntu 24.04. May work on other recent Debian-based distributions.
 ### AppImage (any distro)
 
 ```bash
-wget https://github.com/soyeb-jim285/hyprfm/releases/latest/download/HyprFM-v0.4.11-x86_64.AppImage
+wget https://github.com/soyeb-jim285/hyprfm/releases/latest/download/HyprFM-v0.4.20-x86_64.AppImage
 chmod +x HyprFM-*.AppImage
 ./HyprFM-*.AppImage
 ```

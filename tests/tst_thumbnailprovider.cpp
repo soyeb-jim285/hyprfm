@@ -88,6 +88,27 @@ private slots:
         delete factory;
     }
 
+    void testLoadImageWithCacheBustingQuery()
+    {
+        TestDir dir;
+        QString path = createTestImage(dir, "queried.png", 120, 120);
+
+        ThumbnailResponse response(path + "?mtime=123", QSize(80, 80));
+        QSignalSpy spy(&response, &QQuickImageResponse::finished);
+        if (spy.isEmpty())
+            spy.wait(5000);
+
+        QQuickTextureFactory *factory = response.textureFactory();
+        QVERIFY(factory != nullptr);
+
+        QImage result = factory->image();
+        QVERIFY(!result.isNull());
+        QVERIFY(result.width() <= 80);
+        QVERIFY(result.height() <= 80);
+
+        delete factory;
+    }
+
     void testDefaultSize()
     {
         TestDir dir;

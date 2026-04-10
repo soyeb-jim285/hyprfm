@@ -18,6 +18,14 @@ static bool isTrashUri(const QString &path)
     return QUrl(path).scheme() == "trash";
 }
 
+static QString sourcePathFromId(QString id)
+{
+    const int queryIndex = id.indexOf(QLatin1Char('?'));
+    if (queryIndex >= 0)
+        id.truncate(queryIndex);
+    return id;
+}
+
 static bool runningInFlatpak()
 {
     static const bool inSandbox = QFile::exists(QStringLiteral("/.flatpak-info"));
@@ -65,7 +73,7 @@ static bool isVideoFile(const QString &path)
 // ---------------------------------------------------------------------------
 
 ThumbnailResponse::ThumbnailResponse(const QString &id, const QSize &requestedSize)
-    : m_id(id)
+    : m_id(sourcePathFromId(id))
     , m_requestedSize(requestedSize)
 {
     setAutoDelete(false);

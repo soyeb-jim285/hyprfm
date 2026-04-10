@@ -483,6 +483,7 @@ GridView {
         required property int index
         required property string fileName
         required property string filePath
+        required property var fileModified
         required property bool isDir
         required property string fileIconName
         required property string gitStatus
@@ -527,7 +528,8 @@ GridView {
             height: root.iconSize
             fillMode: Image.PreserveAspectFit
             source: delegateItem.hasThumbnail
-                ? ("image://thumbnail/" + delegateItem.filePath)
+                ? ("image://thumbnail/" + delegateItem.filePath
+                   + "?mtime=" + new Date(delegateItem.fileModified).getTime())
                 : ""
             sourceSize: Qt.size(root.thumbnailRequestSize,
                                 root.thumbnailRequestSize)

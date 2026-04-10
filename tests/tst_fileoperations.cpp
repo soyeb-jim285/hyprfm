@@ -542,6 +542,72 @@ private slots:
         clipboard->setMimeData(savedMime);
     }
 
+    void testPasteClipboardImagePrefersCurrentClipboardOverWlPaste()
+    {
+        TestDir dir;
+        TestDir binDir;
+
+        QClipboard *clipboard = QGuiApplication::clipboard();
+        QVERIFY(clipboard != nullptr);
+
+        QMimeData *savedMime = new QMimeData;
+        if (const QMimeData *original = clipboard->mimeData()) {
+            for (const QString &format : original->formats())
+                savedMime->setData(format, original->data(format));
+            if (original->hasImage())
+                savedMime->setImageData(original->imageData());
+            if (original->hasText())
+                savedMime->setText(original->text());
+        }
+
+        QImage currentImage(8, 8, QImage::Format_ARGB32_Premultiplied);
+        currentImage.fill(Qt::red);
+        clipboard->setImage(currentImage);
+
+        QImage staleImage(8, 8, QImage::Format_ARGB32_Premultiplied);
+        staleImage.fill(Qt::blue);
+        const QString staleImagePath = dir.path() + "/stale.png";
+        QVERIFY(staleImage.save(staleImagePath, "PNG"));
+
+        QFile wlPaste(binDir.path() + "/wl-paste");
+        QVERIFY(wlPaste.open(QIODevice::WriteOnly | QIODevice::Text));
+        wlPaste.write("#!/bin/sh\n");
+        wlPaste.write("if [ \"$1\" = \"--list-types\" ]; then\n");
+        wlPaste.write("  printf 'image/png\\n'\n");
+        wlPaste.write("  exit 0\n");
+        wlPaste.write("fi\n");
+        wlPaste.write("if [ \"$1\" = \"--no-newline\" ] && [ \"$2\" = \"--type\" ] && [ \"$3\" = \"image/png\" ]; then\n");
+        wlPaste.write(QString("  cat '%1'\n").arg(staleImagePath).toUtf8());
+        wlPaste.write("  exit 0\n");
+        wlPaste.write("fi\n");
+        wlPaste.write("exit 1\n");
+        wlPaste.close();
+        QVERIFY(QFile::setPermissions(wlPaste.fileName(), QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner
+                                                           | QFileDevice::ReadGroup | QFileDevice::ExeGroup
+                                                           | QFileDevice::ReadOther | QFileDevice::ExeOther));
+
+        const QByteArray originalPath = qgetenv("PATH");
+        qputenv("PATH", (binDir.path().toUtf8() + ":" + originalPath));
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+
+        const QString outputPath = ops.pasteClipboardImage(dir.path());
+
+        qputenv("PATH", originalPath);
+
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.at(0).at(0).toBool(), true);
+        QVERIFY(!outputPath.isEmpty());
+        QVERIFY(QFile::exists(outputPath));
+
+        QImage saved(outputPath);
+        QVERIFY(!saved.isNull());
+        QCOMPARE(saved.pixelColor(0, 0), QColor(Qt::red));
+
+        clipboard->setMimeData(savedMime);
+    }
+
     // --- Trash (requires gio) ---
 
     void testTrashFile()
