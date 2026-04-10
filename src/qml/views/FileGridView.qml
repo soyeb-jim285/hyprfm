@@ -57,7 +57,7 @@ GridView {
         NumberAnimation {
             properties: "x,y"
             duration: Theme.animDurationSlow + 60
-            easing.type: Easing.OutCubic
+            easing.type: Theme.animEasingEnter
         }
     }
     add: Transition {
@@ -67,14 +67,14 @@ GridView {
                 from: 0
                 to: 1
                 duration: Theme.animDurationFast
-                easing.type: Easing.OutCubic
+                easing.type: Theme.animEasingEnter
             }
             NumberAnimation {
                 properties: "scale"
                 from: 0.94
                 to: 1
                 duration: Theme.animDuration
-                easing.type: Easing.OutCubic
+                easing.type: Theme.animEasingEnter
             }
         }
     }
@@ -82,7 +82,7 @@ GridView {
         NumberAnimation {
             properties: "x,y"
             duration: Theme.animDurationSlow
-            easing.type: Easing.OutCubic
+            easing.type: Theme.animEasingEnter
         }
     }
     remove: Transition {
@@ -91,13 +91,13 @@ GridView {
                 properties: "opacity"
                 to: 0
                 duration: Theme.animDurationFast
-                easing.type: Easing.InCubic
+                easing.type: Theme.animEasingExit
             }
             NumberAnimation {
                 properties: "scale"
                 to: 0.94
                 duration: Theme.animDurationFast
-                easing.type: Easing.InCubic
+                easing.type: Theme.animEasingExit
             }
         }
     }
@@ -105,7 +105,7 @@ GridView {
         NumberAnimation {
             properties: "x,y"
             duration: Theme.animDurationSlow
-            easing.type: Easing.OutCubic
+            easing.type: Theme.animEasingEnter
         }
     }
 
@@ -565,8 +565,8 @@ GridView {
             scale: delegateItem.isCutPending ? 1 : 0.88
             visible: opacity > 0
 
-            Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
-            Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
+            Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
 
             IconScissors {
                 anchors.centerIn: parent
@@ -588,8 +588,8 @@ GridView {
             scale: delegateItem.isPastePending ? 1 : 0.9
             visible: opacity > 0
 
-            Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
-            Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
+            Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
 
             Q.Spinner {
                 anchors.centerIn: parent

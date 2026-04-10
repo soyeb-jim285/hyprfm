@@ -32,6 +32,14 @@ class ConfigManager : public QObject
     Q_PROPERTY(bool transparencyEnabled READ transparencyEnabled NOTIFY configChanged)
     Q_PROPERTY(double transparencyLevel READ transparencyLevel NOTIFY configChanged)
     Q_PROPERTY(bool animationsEnabled READ animationsEnabled NOTIFY configChanged)
+    Q_PROPERTY(int animDurationFast READ animDurationFast NOTIFY configChanged)
+    Q_PROPERTY(int animDuration READ animDuration NOTIFY configChanged)
+    Q_PROPERTY(int animDurationSlow READ animDurationSlow NOTIFY configChanged)
+    Q_PROPERTY(QString animCurveEnter READ animCurveEnter NOTIFY configChanged)
+    Q_PROPERTY(QString animCurveExit READ animCurveExit NOTIFY configChanged)
+    Q_PROPERTY(QString animCurveTransition READ animCurveTransition NOTIFY configChanged)
+    Q_PROPERTY(bool showWindowControls READ showWindowControls NOTIFY configChanged)
+    Q_PROPERTY(QString windowButtonLayout READ windowButtonLayout NOTIFY configChanged)
     Q_PROPERTY(QVariantMap shortcutMap READ shortcutMap NOTIFY configChanged)
     Q_PROPERTY(QVariantList shortcutDefinitions READ shortcutDefinitions NOTIFY configChanged)
 
@@ -61,6 +69,15 @@ public:
     bool transparencyEnabled() const;
     double transparencyLevel() const;
     bool animationsEnabled() const;
+    int animDurationFast() const;
+    int animDuration() const;
+    int animDurationSlow() const;
+    QString animCurveEnter() const;
+    QString animCurveExit() const;
+    QString animCurveTransition() const;
+    bool showWindowControls() const;
+    void setShowWindowControlsDefault(bool value);
+    QString windowButtonLayout() const;
     QVariantMap shortcutMap() const;
     QVariantList shortcutDefinitions() const;
     QVariantList customContextActions() const;
@@ -100,6 +117,15 @@ private:
     bool m_transparencyEnabled;
     double m_transparencyLevel;
     bool m_animationsEnabled;
+    int m_animDurationFast;
+    int m_animDuration;
+    int m_animDurationSlow;
+    QString m_animCurveEnter;
+    QString m_animCurveExit;
+    QString m_animCurveTransition;
+    bool m_showWindowControls;
+    bool m_showWindowControlsExplicit;  // true when user set it in config
+    QString m_windowButtonLayout;
     QVariantList m_customContextActions;
     QMap<QString, QString> m_shortcuts;
     static QMap<QString, QString> s_defaultShortcuts;

@@ -105,6 +105,8 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconChevronLeft.qml
         qml/icons/IconChevronUp.qml
         qml/icons/IconX.qml
+        qml/icons/IconMinus.qml
+        qml/icons/IconSquare.qml
         qml/icons/IconPause.qml
         qml/icons/IconPlay.qml
         qml/icons/IconGrid.qml

@@ -131,6 +131,139 @@ private slots:
         QCOMPARE(mgr.shortcut("new_file"), QString("Ctrl+N"));
     }
 
+    // --- Window controls ---
+
+    void testWindowControlsDefaults()
+    {
+        QTemporaryDir dir;
+        ConfigManager mgr(dir.path() + "/config.toml");
+
+        QCOMPARE(mgr.showWindowControls(), false);
+        QCOMPARE(mgr.windowButtonLayout(), QString(":minimize,maximize,close"));
+    }
+
+    void testWindowControlsRuntimeDefault()
+    {
+        QTemporaryDir dir;
+        ConfigManager mgr(dir.path() + "/config.toml");
+
+        mgr.setShowWindowControlsDefault(true);
+        QCOMPARE(mgr.showWindowControls(), true);
+    }
+
+    void testWindowControlsExplicitOverridesRuntime()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("[window]\n"
+                "show_controls = false\n");
+        f.close();
+
+        ConfigManager mgr(path);
+        mgr.setShowWindowControlsDefault(true);
+        QCOMPARE(mgr.showWindowControls(), false);
+    }
+
+    void testWindowButtonLayoutFromConfig()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("[window]\n"
+                "show_controls = true\n"
+                "button_layout = \"close,minimize,maximize:\"\n");
+        f.close();
+
+        ConfigManager mgr(path);
+        QCOMPARE(mgr.showWindowControls(), true);
+        QCOMPARE(mgr.windowButtonLayout(), QString("close,minimize,maximize:"));
+    }
+
+    void testSaveWindowControls()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        ConfigManager mgr(path);
+        mgr.saveSettings(QVariantMap{
+            {"showWindowControls", true},
+            {"windowButtonLayout", "close:minimize"}
+        });
+
+        ConfigManager mgr2(path);
+        QCOMPARE(mgr2.showWindowControls(), true);
+        QCOMPARE(mgr2.windowButtonLayout(), QString("close:minimize"));
+    }
+
+    // --- Animation config ---
+
+    void testAnimationDefaults()
+    {
+        QTemporaryDir dir;
+        ConfigManager mgr(dir.path() + "/config.toml");
+
+        QCOMPARE(mgr.animDurationFast(), 100);
+        QCOMPARE(mgr.animDuration(), 200);
+        QCOMPARE(mgr.animDurationSlow(), 700);
+        QCOMPARE(mgr.animCurveEnter(), QString("OutCubic"));
+        QCOMPARE(mgr.animCurveExit(), QString("InCubic"));
+        QCOMPARE(mgr.animCurveTransition(), QString("Bezier"));
+    }
+
+    void testAnimationFromConfig()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("[appearance]\n"
+                "anim_duration_fast = 50\n"
+                "anim_duration = 150\n"
+                "anim_duration_slow = 300\n"
+                "anim_curve_enter = \"Bezier\"\n"
+                "anim_curve_exit = \"OutQuad\"\n"
+                "anim_curve_transition = \"InOutExpo\"\n");
+        f.close();
+
+        ConfigManager mgr(path);
+        QCOMPARE(mgr.animDurationFast(), 50);
+        QCOMPARE(mgr.animDuration(), 150);
+        QCOMPARE(mgr.animDurationSlow(), 300);
+        QCOMPARE(mgr.animCurveEnter(), QString("Bezier"));
+        QCOMPARE(mgr.animCurveExit(), QString("OutQuad"));
+        QCOMPARE(mgr.animCurveTransition(), QString("InOutExpo"));
+    }
+
+    void testSaveAnimationSettings()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        ConfigManager mgr(path);
+        mgr.saveSettings(QVariantMap{
+            {"animDurationFast", 80},
+            {"animDuration", 180},
+            {"animDurationSlow", 400},
+            {"animCurveEnter", "OutBack"},
+            {"animCurveExit", "InCubic"},
+            {"animCurveTransition", "InOutQuad"}
+        });
+
+        ConfigManager mgr2(path);
+        QCOMPARE(mgr2.animDurationFast(), 80);
+        QCOMPARE(mgr2.animDuration(), 180);
+        QCOMPARE(mgr2.animDurationSlow(), 400);
+        QCOMPARE(mgr2.animCurveEnter(), QString("OutBack"));
+        QCOMPARE(mgr2.animCurveExit(), QString("InCubic"));
+        QCOMPARE(mgr2.animCurveTransition(), QString("InOutQuad"));
+    }
+
     // --- TOML parsing ---
 
     void testParseConfig()

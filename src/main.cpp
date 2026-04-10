@@ -207,6 +207,7 @@ int main(int argc, char *argv[])
     DiskUsageService *diskUsageService = new DiskUsageService(&app);
     RemoteAccessService *remoteAccessService = new RemoteAccessService(&app);
     RuntimeFeaturesService *runtimeFeatures = new RuntimeFeaturesService(&app);
+    config->setShowWindowControlsDefault(runtimeFeatures->useIntegratedWindowControls());
     GitStatusService *primaryGitService = new GitStatusService(&app);
     GitStatusService *secondaryGitService = new GitStatusService(&app);
     fsModel->setGitStatusService(primaryGitService);

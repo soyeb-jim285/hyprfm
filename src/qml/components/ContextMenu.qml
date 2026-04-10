@@ -283,7 +283,7 @@ Item {
         NumberAnimation {
             target: menuContainer; property: "opacity"
             from: 0; to: 1; duration: Theme.animDurationFast
-            easing.type: Easing.OutCubic
+            easing.type: Theme.animEasingEnter
         }
         NumberAnimation {
             target: menuContainer; property: "scale"
@@ -294,7 +294,7 @@ Item {
         NumberAnimation {
             target: menuContainer; property: "yOffset"
             from: -8; to: 0; duration: Theme.animDuration
-            easing.type: Easing.OutCubic
+            easing.type: Theme.animEasingEnter
         }
     }
 
@@ -305,17 +305,17 @@ Item {
             NumberAnimation {
                 target: menuContainer; property: "opacity"
                 to: 0; duration: Theme.animDurationFast
-                easing.type: Easing.InCubic
+                easing.type: Theme.animEasingExit
             }
             NumberAnimation {
                 target: menuContainer; property: "scale"
                 to: 0.92; duration: Theme.animDurationFast
-                easing.type: Easing.InCubic
+                easing.type: Theme.animEasingExit
             }
             NumberAnimation {
                 target: menuContainer; property: "yOffset"
                 to: -4; duration: Theme.animDurationFast
-                easing.type: Easing.InCubic
+                easing.type: Theme.animEasingExit
             }
         }
         ScriptAction { script: root.visible = false }
@@ -326,17 +326,17 @@ Item {
         NumberAnimation {
             target: submenuContainer; property: "opacity"
             from: 0; to: 1; duration: Theme.animDurationFast
-            easing.type: Easing.OutCubic
+            easing.type: Theme.animEasingEnter
         }
         NumberAnimation {
             target: submenuContainer; property: "scale"
             from: 0.98; to: 1; duration: Theme.animDuration
-            easing.type: Easing.OutCubic
+            easing.type: Theme.animEasingEnter
         }
         NumberAnimation {
             target: submenuContainer; property: "xOffset"
             from: root._submenuStartOffset; to: 0; duration: Theme.animDuration
-            easing.type: Easing.OutCubic
+            easing.type: Theme.animEasingEnter
         }
     }
 
@@ -349,17 +349,17 @@ Item {
         NumberAnimation {
             target: submenuContainer; property: "opacity"
             to: 0; duration: Theme.animDurationFast
-            easing.type: Easing.InCubic
+            easing.type: Theme.animEasingExit
         }
         NumberAnimation {
             target: submenuContainer; property: "scale"
             to: 0.98; duration: Theme.animDurationFast
-            easing.type: Easing.InCubic
+            easing.type: Theme.animEasingExit
         }
         NumberAnimation {
             target: submenuContainer; property: "xOffset"
             to: root._submenuStartOffset; duration: Theme.animDurationFast
-            easing.type: Easing.InCubic
+            easing.type: Theme.animEasingExit
         }
     }
 
@@ -439,10 +439,10 @@ Item {
         transform: Translate { x: submenuContainer.xOffset }
 
         Behavior on x {
-            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: 140; easing.type: Theme.animEasingEnter }
         }
         Behavior on y {
-            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: 140; easing.type: Theme.animEasingEnter }
         }
 
         Shape {
@@ -745,7 +745,7 @@ Item {
                 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
                 : "transparent"
             Behavior on color {
-                ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
+                ColorAnimation { duration: 100; easing.type: Theme.animEasingEnter }
             }
             RowLayout {
                 anchors.fill: parent
@@ -805,7 +805,7 @@ Item {
                 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
                 : "transparent"
             Behavior on color {
-                ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
+                ColorAnimation { duration: 100; easing.type: Theme.animEasingEnter }
             }
             RowLayout {
                 anchors.fill: parent
@@ -865,7 +865,7 @@ Item {
                 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
                 : "transparent"
             Behavior on color {
-                ColorAnimation { duration: 100; easing.type: Easing.OutCubic }
+                ColorAnimation { duration: 100; easing.type: Theme.animEasingEnter }
             }
             RowLayout {
                 anchors.fill: parent

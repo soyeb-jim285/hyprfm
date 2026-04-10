@@ -38,6 +38,44 @@ Q.Dialog {
     property bool draftTransparencyEnabled: config.transparencyEnabled
     property real draftTransparencyLevel: config.transparencyLevel
     property bool draftAnimationsEnabled: config.animationsEnabled
+    property int draftAnimDurationFast: config.animDurationFast
+    property int draftAnimDuration: config.animDuration
+    property int draftAnimDurationSlow: config.animDurationSlow
+    property string draftAnimCurveEnter: config.animCurveEnter
+    property string draftAnimCurveExit: config.animCurveExit
+    property string draftAnimCurveTransition: config.animCurveTransition
+
+    readonly property var curveOptions: ["OutCubic", "InOutCubic", "InCubic", "OutQuad", "InOutQuad", "OutExpo", "InOutExpo", "OutBack", "Linear", "Bezier"]
+
+    property bool draftShowWindowControls: config.showWindowControls
+    property string draftWindowButtonLayout: config.windowButtonLayout
+
+    // Helpers to decompose the layout string for the UI
+    readonly property var _layoutParts: {
+        var layout = draftWindowButtonLayout || ":minimize,maximize,close"
+        var parts = layout.split(":")
+        var leftStr = parts[0] || ""
+        var rightStr = parts.length > 1 ? parts[1] : ""
+        var allButtons = []
+        if (leftStr) allButtons = allButtons.concat(leftStr.split(",").filter(function(s) { return s.trim() !== "" }))
+        if (rightStr) allButtons = allButtons.concat(rightStr.split(",").filter(function(s) { return s.trim() !== "" }))
+        return {
+            side: leftStr && !rightStr ? "left" : "right",
+            hasClose: allButtons.indexOf("close") >= 0,
+            hasMinimize: allButtons.indexOf("minimize") >= 0,
+            hasMaximize: allButtons.indexOf("maximize") >= 0
+        }
+    }
+
+    function rebuildButtonLayout(side, hasClose, hasMinimize, hasMaximize) {
+        var buttons = []
+        if (hasMinimize) buttons.push("minimize")
+        if (hasMaximize) buttons.push("maximize")
+        if (hasClose) buttons.push("close")
+        var str = buttons.join(",")
+        draftWindowButtonLayout = side === "left" ? (str + ":") : (":" + str)
+        applySettingsNow()
+    }
 
     signal remoteConnectRequested()
     signal keyboardShortcutsRequested()
@@ -117,6 +155,14 @@ Q.Dialog {
             draftTransparencyEnabled = config.transparencyEnabled
             draftTransparencyLevel = config.transparencyLevel
             draftAnimationsEnabled = config.animationsEnabled
+            draftAnimDurationFast = config.animDurationFast
+            draftAnimDuration = config.animDuration
+            draftAnimDurationSlow = config.animDurationSlow
+            draftAnimCurveEnter = config.animCurveEnter
+            draftAnimCurveExit = config.animCurveExit
+            draftAnimCurveTransition = config.animCurveTransition
+            draftShowWindowControls = config.showWindowControls
+            draftWindowButtonLayout = config.windowButtonLayout
         } finally {
             syncingFromConfig = false
         }
@@ -155,7 +201,15 @@ Q.Dialog {
             radiusLarge: draftRadiusLarge,
             transparencyEnabled: draftTransparencyEnabled,
             transparencyLevel: draftTransparencyLevel,
-            animationsEnabled: draftAnimationsEnabled
+            animationsEnabled: draftAnimationsEnabled,
+            animDurationFast: draftAnimDurationFast,
+            animDuration: draftAnimDuration,
+            animDurationSlow: draftAnimDurationSlow,
+            animCurveEnter: draftAnimCurveEnter,
+            animCurveExit: draftAnimCurveExit,
+            animCurveTransition: draftAnimCurveTransition,
+            showWindowControls: draftShowWindowControls,
+            windowButtonLayout: draftWindowButtonLayout
         }
     }
 
@@ -210,12 +264,15 @@ Q.Dialog {
             contentHeight: contentGrid.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
 
-            GridLayout {
+            RowLayout {
                 id: contentGrid
                 width: contentFlick.width
-                columns: width >= 720 ? 2 : 1
-                rowSpacing: 12
-                columnSpacing: 12
+                spacing: 12
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    spacing: 12
 
                 Rectangle {
                     Layout.fillWidth: true
@@ -308,6 +365,98 @@ Q.Dialog {
                     color: Theme.containerColor(Theme.crust, 0.32)
                     border.width: 1
                     border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                    implicitHeight: windowControlsSection.implicitHeight + 32
+
+                    ColumnLayout {
+                        id: windowControlsSection
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 12
+
+                        Text {
+                            text: "Window Controls"
+                            color: Theme.text
+                            font.pointSize: Theme.fontNormal + 1
+                            font.bold: true
+                        }
+
+                        Q.Toggle {
+                            Layout.fillWidth: true
+                            label: "Show window controls"
+                            checked: root.draftShowWindowControls
+                            onToggled: (value) => {
+                                root.draftShowWindowControls = value
+                                root.applySettingsNow()
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Integrated close, minimize, and maximize buttons in the toolbar."
+                            color: Theme.subtext
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Q.Dropdown {
+                            Layout.fillWidth: true
+                            label: "Button side"
+                            enabled: root.draftShowWindowControls
+                            model: ["Right", "Left"]
+                            currentIndex: root._layoutParts.side === "left" ? 1 : 0
+                            onSelected: (_, value) => {
+                                root.rebuildButtonLayout(
+                                    value === "Left" ? "left" : "right",
+                                    root._layoutParts.hasClose,
+                                    root._layoutParts.hasMinimize,
+                                    root._layoutParts.hasMaximize
+                                )
+                            }
+                        }
+
+                        Q.Checkbox {
+                            label: "Close button"
+                            enabled: root.draftShowWindowControls
+                            checked: root._layoutParts.hasClose
+                            onToggled: (value) => {
+                                root.rebuildButtonLayout(root._layoutParts.side, value, root._layoutParts.hasMinimize, root._layoutParts.hasMaximize)
+                            }
+                        }
+
+                        Q.Checkbox {
+                            label: "Minimize button"
+                            enabled: root.draftShowWindowControls
+                            checked: root._layoutParts.hasMinimize
+                            onToggled: (value) => {
+                                root.rebuildButtonLayout(root._layoutParts.side, root._layoutParts.hasClose, value, root._layoutParts.hasMaximize)
+                            }
+                        }
+
+                        Q.Checkbox {
+                            label: "Maximize button"
+                            enabled: root.draftShowWindowControls
+                            checked: root._layoutParts.hasMaximize
+                            onToggled: (value) => {
+                                root.rebuildButtonLayout(root._layoutParts.side, root._layoutParts.hasClose, root._layoutParts.hasMinimize, value)
+                            }
+                        }
+                    }
+                }
+
+                } // end left column
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    spacing: 12
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    radius: Theme.radiusLarge
+                    color: Theme.containerColor(Theme.crust, 0.32)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
                     implicitHeight: windowSection.implicitHeight + 32
 
                     ColumnLayout {
@@ -380,6 +529,50 @@ Q.Dialog {
                                 root.draftAnimationsEnabled = value
                                 root.applySettingsNow()
                             }
+                        }
+
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    radius: Theme.radiusLarge
+                    color: Theme.containerColor(Theme.crust, 0.32)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                    implicitHeight: toolsSection.implicitHeight + 32
+
+                    ColumnLayout {
+                        id: toolsSection
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 12
+
+                        Text {
+                            text: "Tools"
+                            color: Theme.text
+                            font.pointSize: Theme.fontNormal + 1
+                            font.bold: true
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Open dedicated dialogs for keyboard shortcuts and remote locations."
+                            color: Theme.subtext
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Q.Button {
+                            text: "Keyboard Shortcuts"
+                            onClicked: root.openKeyboardShortcuts()
+                        }
+
+                        Q.Button {
+                            text: "Connect to Network Location"
+                            variant: "ghost"
+                            onClicked: root.openRemoteConnect()
                         }
                     }
                 }
@@ -461,51 +654,127 @@ Q.Dialog {
                                 root.queueSettingsApply()
                             }
                         }
-                    }
-                }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignTop
-                    radius: Theme.radiusLarge
-                    color: Theme.containerColor(Theme.crust, 0.32)
-                    border.width: 1
-                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                    implicitHeight: toolsSection.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: toolsSection
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 1
+                            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
+                        }
 
                         Text {
-                            text: "Tools"
+                            text: "Animation Timing"
                             color: Theme.text
-                            font.pointSize: Theme.fontNormal + 1
-                            font.bold: true
+                            font.pointSize: Theme.fontNormal
+                            font.weight: Font.DemiBold
                         }
 
                         Text {
                             Layout.fillWidth: true
-                            text: "Open dedicated dialogs for keyboard shortcuts and remote locations."
+                            text: "Duration in milliseconds for each animation speed tier."
                             color: Theme.subtext
                             font.pointSize: Theme.fontSmall
                             wrapMode: Text.WordWrap
                         }
 
-                        Q.Button {
-                            text: "Keyboard Shortcuts"
-                            onClicked: root.openKeyboardShortcuts()
+                        Q.Slider {
+                            Layout.fillWidth: true
+                            label: "Fast"
+                            from: 0
+                            to: 500
+                            stepSize: 10
+                            showValue: true
+                            enabled: root.draftAnimationsEnabled
+                            value: root.draftAnimDurationFast
+                            onMoved: (value) => {
+                                root.draftAnimDurationFast = Math.round(value)
+                                root.queueSettingsApply()
+                            }
                         }
 
-                        Q.Button {
-                            text: "Connect to Network Location"
-                            variant: "ghost"
-                            onClicked: root.openRemoteConnect()
+                        Q.Slider {
+                            Layout.fillWidth: true
+                            label: "Normal"
+                            from: 0
+                            to: 1000
+                            stepSize: 10
+                            showValue: true
+                            enabled: root.draftAnimationsEnabled
+                            value: root.draftAnimDuration
+                            onMoved: (value) => {
+                                root.draftAnimDuration = Math.round(value)
+                                root.queueSettingsApply()
+                            }
+                        }
+
+                        Q.Slider {
+                            Layout.fillWidth: true
+                            label: "Slow"
+                            from: 0
+                            to: 1500
+                            stepSize: 10
+                            showValue: true
+                            enabled: root.draftAnimationsEnabled
+                            value: root.draftAnimDurationSlow
+                            onMoved: (value) => {
+                                root.draftAnimDurationSlow = Math.round(value)
+                                root.queueSettingsApply()
+                            }
+                        }
+
+                        Text {
+                            text: "Easing Curves"
+                            color: Theme.text
+                            font.pointSize: Theme.fontNormal
+                            font.weight: Font.DemiBold
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Enter for appearances, Exit for dismissals, Transition for state changes."
+                            color: Theme.subtext
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Q.Dropdown {
+                            Layout.fillWidth: true
+                            label: "Enter"
+                            enabled: root.draftAnimationsEnabled
+                            model: root.curveOptions
+                            currentIndex: Math.max(0, root.curveOptions.indexOf(root.draftAnimCurveEnter))
+                            onSelected: (_, value) => {
+                                root.draftAnimCurveEnter = value
+                                root.applySettingsNow()
+                            }
+                        }
+
+                        Q.Dropdown {
+                            Layout.fillWidth: true
+                            label: "Exit"
+                            enabled: root.draftAnimationsEnabled
+                            model: root.curveOptions
+                            currentIndex: Math.max(0, root.curveOptions.indexOf(root.draftAnimCurveExit))
+                            onSelected: (_, value) => {
+                                root.draftAnimCurveExit = value
+                                root.applySettingsNow()
+                            }
+                        }
+
+                        Q.Dropdown {
+                            Layout.fillWidth: true
+                            label: "Transition"
+                            enabled: root.draftAnimationsEnabled
+                            model: root.curveOptions
+                            currentIndex: Math.max(0, root.curveOptions.indexOf(root.draftAnimCurveTransition))
+                            onSelected: (_, value) => {
+                                root.draftAnimCurveTransition = value
+                                root.applySettingsNow()
+                            }
                         }
                     }
                 }
+
+                } // end right column
             }
         }
     }

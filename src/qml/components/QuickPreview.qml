@@ -320,7 +320,7 @@ Item {
             from: 0
             to: 1
             duration: Theme.animDurationFast
-            easing.type: Easing.OutCubic
+            easing.type: Theme.animEasingEnter
         }
 
         NumberAnimation {
@@ -329,7 +329,7 @@ Item {
             from: 0
             to: 1
             duration: Theme.animDurationFast
-            easing.type: Easing.OutCubic
+            easing.type: Theme.animEasingEnter
         }
 
         NumberAnimation {
@@ -348,7 +348,7 @@ Item {
             from: -8
             to: 0
             duration: Theme.animDuration
-            easing.type: Easing.OutCubic
+            easing.type: Theme.animEasingEnter
         }
     }
 
@@ -361,7 +361,7 @@ Item {
                 property: "opacity"
                 to: 0
                 duration: Theme.animDurationFast
-                easing.type: Easing.InCubic
+                easing.type: Theme.animEasingExit
             }
 
             NumberAnimation {
@@ -369,7 +369,7 @@ Item {
                 property: "opacity"
                 to: 0
                 duration: Theme.animDurationFast
-                easing.type: Easing.InCubic
+                easing.type: Theme.animEasingExit
             }
 
             NumberAnimation {
@@ -377,7 +377,7 @@ Item {
                 property: "scale"
                 to: 0.92
                 duration: Theme.animDurationFast
-                easing.type: Easing.InCubic
+                easing.type: Theme.animEasingExit
             }
 
             NumberAnimation {
@@ -385,7 +385,7 @@ Item {
                 property: "yOffset"
                 to: -4
                 duration: Theme.animDurationFast
-                easing.type: Easing.InCubic
+                easing.type: Theme.animEasingExit
             }
         }
 

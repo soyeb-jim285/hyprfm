@@ -326,7 +326,7 @@ MouseArea {
             target: root
             property: "overshootInput"
             duration: 90
-            easing.type: Easing.OutQuad
+            easing.type: Easing.OutCubic
         }
 
         NumberAnimation {

@@ -75,7 +75,7 @@ Item {
                         property: "opacity"
                         to: 0
                         duration: 300
-                        easing.type: Easing.InQuad
+                        easing.type: Theme.animEasingExit
                     }
                     ScriptAction {
                         script: {

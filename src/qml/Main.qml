@@ -16,10 +16,11 @@ ApplicationWindow {
     visibility: Window.Windowed
     title: "HyprFM"
     color: "transparent"
-    flags: useIntegratedWindowControls ? (Qt.Window | Qt.FramelessWindowHint) : Qt.Window
+    flags: Qt.platform.os === "linux" && runtimeFeatures.useIntegratedWindowControls
+        ? (Qt.Window | Qt.FramelessWindowHint) : Qt.Window
 
     readonly property bool useIntegratedWindowControls: Qt.platform.os === "linux"
-        && runtimeFeatures.useIntegratedWindowControls
+        && config.showWindowControls
 
     property bool primaryPaneIsRecents: false
     property bool secondaryPaneIsRecents: false
@@ -188,7 +189,7 @@ ApplicationWindow {
     Behavior on splitTransitionProgress {
         NumberAnimation {
             duration: Theme.animDurationSlow
-            easing.type: Easing.InOutCubic
+            easing.type: Theme.animEasingTransition
         }
     }
 
@@ -1086,7 +1087,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: renameBox; property: "opacity"
                 from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Easing.OutCubic
+                easing.type: Theme.animEasingEnter
             }
             NumberAnimation {
                 target: renameBox; property: "scale"
@@ -1097,7 +1098,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: renameBox; property: "yOffset"
                 from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Easing.OutCubic
+                easing.type: Theme.animEasingEnter
             }
         }
         SequentialAnimation {
@@ -1106,17 +1107,17 @@ ApplicationWindow {
                 NumberAnimation {
                     target: renameBox; property: "opacity"
                     to: 0; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
                 NumberAnimation {
                     target: renameBox; property: "scale"
                     to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
                 NumberAnimation {
                     target: renameBox; property: "yOffset"
                     to: -4; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
             }
             ScriptAction { script: renameDialog.visible = false }
@@ -1253,7 +1254,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: folderBox; property: "opacity"
                 from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Easing.OutCubic
+                easing.type: Theme.animEasingEnter
             }
             NumberAnimation {
                 target: folderBox; property: "scale"
@@ -1264,7 +1265,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: folderBox; property: "yOffset"
                 from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Easing.OutCubic
+                easing.type: Theme.animEasingEnter
             }
         }
         SequentialAnimation {
@@ -1273,17 +1274,17 @@ ApplicationWindow {
                 NumberAnimation {
                     target: folderBox; property: "opacity"
                     to: 0; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
                 NumberAnimation {
                     target: folderBox; property: "scale"
                     to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
                 NumberAnimation {
                     target: folderBox; property: "yOffset"
                     to: -4; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
             }
             ScriptAction { script: newFolderDialog.visible = false }
@@ -1418,7 +1419,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: fileBox; property: "opacity"
                 from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Easing.OutCubic
+                easing.type: Theme.animEasingEnter
             }
             NumberAnimation {
                 target: fileBox; property: "scale"
@@ -1429,7 +1430,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: fileBox; property: "yOffset"
                 from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Easing.OutCubic
+                easing.type: Theme.animEasingEnter
             }
         }
         SequentialAnimation {
@@ -1438,17 +1439,17 @@ ApplicationWindow {
                 NumberAnimation {
                     target: fileBox; property: "opacity"
                     to: 0; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
                 NumberAnimation {
                     target: fileBox; property: "scale"
                     to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
                 NumberAnimation {
                     target: fileBox; property: "yOffset"
                     to: -4; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
             }
             ScriptAction { script: newFileDialog.visible = false }
@@ -1764,7 +1765,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: propsBox; property: "opacity"
                 from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Easing.OutCubic
+                easing.type: Theme.animEasingEnter
             }
             NumberAnimation {
                 target: propsBox; property: "scale"
@@ -1775,7 +1776,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: propsBox; property: "yOffset"
                 from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Easing.OutCubic
+                easing.type: Theme.animEasingEnter
             }
         }
         SequentialAnimation {
@@ -1784,17 +1785,17 @@ ApplicationWindow {
                 NumberAnimation {
                     target: propsBox; property: "opacity"
                     to: 0; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
                 NumberAnimation {
                     target: propsBox; property: "scale"
                     to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
                 NumberAnimation {
                     target: propsBox; property: "yOffset"
                     to: -4; duration: Theme.animDurationFast
-                    easing.type: Easing.InCubic
+                    easing.type: Theme.animEasingExit
                 }
             }
             ScriptAction { script: propertiesDialog.visible = false }
@@ -1876,12 +1877,12 @@ ApplicationWindow {
                     width: parent.width
                     height: propertiesDialog.currentTab === 0 ? generalTab.height : permissionsTab.height
                     clip: true
-                    Behavior on height { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Easing.OutCubic } }
+                    Behavior on height { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Theme.animEasingEnter } }
 
                     Row {
                         id: tabSliderRow
                         x: -propertiesDialog.currentTab * tabSlider.width
-                        Behavior on x { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Easing.OutCubic } }
+                        Behavior on x { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Theme.animEasingEnter } }
 
                 // ══════════════════════════════════════════════
                 // TAB 0: General
@@ -2967,7 +2968,7 @@ ApplicationWindow {
 
                 Behavior on Layout.preferredWidth {
                     enabled: !root.sidebarResizeActive
-                    NumberAnimation { duration: Theme.animDuration; easing.type: Easing.InOutCubic }
+                    NumberAnimation { duration: Theme.animDuration; easing.type: Theme.animEasingTransition }
                 }
 
                 Sidebar {
@@ -3071,6 +3072,7 @@ ApplicationWindow {
                 isRemoteView: root.isRemoteView
                 searchMode: root.searchMode
                 showWindowControls: root.useIntegratedWindowControls
+                windowButtonLayout: config.windowButtonLayout
                 currentSearchQuery: root.searchProxyForPane(activePane).searchQuery
                 searchTypeFilter: root.searchProxyForPane(activePane).fileTypeFilter
                 searchDateFilter: root.searchProxyForPane(activePane).dateFilter
@@ -3083,6 +3085,8 @@ ApplicationWindow {
                 onConnectRemoteRequested: root.openRemoteConnectDialog()
                 onSettingsRequested: root.openSettingsPanel()
                 onCloseRequested: root.close()
+                onMinimizeRequested: root.showMinimized()
+                onMaximizeRequested: root.visibility === Window.Maximized ? root.showNormal() : root.showMaximized()
                 onRestoreTrashRequested: {
                     var paths = getSelectedPaths()
                     if (paths.length > 0)

@@ -37,72 +37,92 @@ QtObject {
     property real transparencyLevel: Math.max(0, Math.min(1, config.transparencyLevel))
     property bool animationsEnabled: config.animationsEnabled
 
-    readonly property int animDurationFast: animationsEnabled ? 100 : 0
-    readonly property int animDuration: animationsEnabled ? 200 : 0
-    readonly property int animDurationSlow: animationsEnabled ? 350 : 0
+    readonly property int animDurationFast: animationsEnabled ? config.animDurationFast : 0
+    readonly property int animDuration: animationsEnabled ? config.animDuration : 0
+    readonly property int animDurationSlow: animationsEnabled ? config.animDurationSlow : 0
+    function _curveToEasing(name) {
+        switch (name) {
+        case "Linear":       return Easing.Linear
+        case "InCubic":      return Easing.InCubic
+        case "OutCubic":     return Easing.OutCubic
+        case "InOutCubic":   return Easing.InOutCubic
+        case "OutBack":      return Easing.OutBack
+        case "InOutQuad":    return Easing.InOutQuad
+        case "OutQuad":      return Easing.OutQuad
+        case "OutExpo":      return Easing.OutExpo
+        case "InOutExpo":    return Easing.InOutExpo
+        case "Bezier":       return Easing.BezierSpline
+        default:             return Easing.OutCubic
+        }
+    }
+
+    readonly property int animEasingEnter: _curveToEasing(config.animCurveEnter)
+    readonly property int animEasingExit: _curveToEasing(config.animCurveExit)
+    readonly property int animEasingTransition: _curveToEasing(config.animCurveTransition)
+    readonly property var animBezierCurve: [0.54, 0, 0.34, 0.99, 1, 1]
 
     Behavior on base {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on mantle {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on crust {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on surface {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on overlay {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on text {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on subtext {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on muted {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on accent {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on success {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on warning {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on error {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: Easing.InOutCubic }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
     }
 
     Behavior on radiusSmall {
-        NumberAnimation { duration: root.animDurationFast; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: root.animDurationFast; easing.type: root.animEasingEnter }
     }
 
     Behavior on radiusMedium {
-        NumberAnimation { duration: root.animDurationFast; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: root.animDurationFast; easing.type: root.animEasingEnter }
     }
 
     Behavior on radiusLarge {
-        NumberAnimation { duration: root.animDurationFast; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: root.animDurationFast; easing.type: root.animEasingEnter }
     }
 
     Behavior on transparencyLevel {
-        NumberAnimation { duration: root.animDuration; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: root.animDuration; easing.type: root.animEasingEnter }
     }
 
     function containerColor(color, defaultAlpha) {

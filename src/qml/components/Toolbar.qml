@@ -17,6 +17,7 @@ Rectangle {
     property bool isRemoteView: false
     property bool searchMode: false
     property bool showWindowControls: false
+    property string windowButtonLayout: ":minimize,maximize,close"
     property var window: null
     property string currentSearchQuery: ""
     property string searchTypeFilter: ""
@@ -70,7 +71,21 @@ Rectangle {
     signal emptyTrashRequested()
     signal settingsRequested()
     signal closeRequested()
+    signal minimizeRequested()
+    signal maximizeRequested()
     signal transferRequested(var paths, string destinationPath, bool moveOperation)
+
+    // Parse "buttons_left:buttons_right" layout string
+    readonly property var _parsedLayout: {
+        var layout = windowButtonLayout || ":minimize,maximize,close"
+        var parts = layout.split(":")
+        var leftStr = parts[0] || ""
+        var rightStr = parts.length > 1 ? parts[1] : ""
+        return {
+            left: leftStr ? leftStr.split(",").filter(function(s) { return s.trim() !== "" }) : [],
+            right: rightStr ? rightStr.split(",").filter(function(s) { return s.trim() !== "" }) : []
+        }
+    }
 
     implicitHeight: toolbarColumn.implicitHeight
     color: Theme.mantle
@@ -101,6 +116,32 @@ Rectangle {
                 anchors.leftMargin: Theme.spacing
                 anchors.rightMargin: Theme.spacing
                 spacing: 4
+
+                // Left-side window controls
+                Repeater {
+                    model: root.showWindowControls ? root._parsedLayout.left : []
+                    delegate: HoverRect {
+                        required property string modelData
+                        width: Theme.controlSize; height: Theme.controlSize
+                        color: modelData === "close" && hovered
+                            ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.9)
+                            : (hovered ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent")
+                        onClicked: {
+                            if (modelData === "close") root.closeRequested()
+                            else if (modelData === "minimize") root.minimizeRequested()
+                            else if (modelData === "maximize") root.maximizeRequested()
+                        }
+                        IconX { anchors.centerIn: parent; size: 14; color: parent.modelData === "close" && parent.hovered ? Theme.base : Theme.text; visible: parent.modelData === "close" }
+                        IconMinus { anchors.centerIn: parent; size: 14; color: Theme.text; visible: parent.modelData === "minimize" }
+                        IconSquare { anchors.centerIn: parent; size: 12; color: Theme.text; visible: parent.modelData === "maximize" }
+                    }
+                }
+
+                Item {
+                    visible: root.showWindowControls && root._parsedLayout.left.length > 0
+                    width: visible ? 4 : 0
+                    height: 1
+                }
 
                 // Back button
                 HoverRect {
@@ -240,24 +281,28 @@ Rectangle {
                 }
 
                 Item {
-                    visible: root.showWindowControls
+                    visible: root.showWindowControls && root._parsedLayout.right.length > 0
                     width: visible ? 4 : 0
                     height: 1
                 }
 
-                HoverRect {
-                    id: closeButton
-                    width: Theme.controlSize; height: Theme.controlSize
-                    visible: root.showWindowControls
-                    color: closeButton.hovered
-                        ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.9)
-                        : "transparent"
-                    onClicked: root.closeRequested()
-
-                    IconX {
-                        anchors.centerIn: parent
-                        size: 14
-                        color: closeButton.hovered ? Theme.base : Theme.text
+                // Right-side window controls
+                Repeater {
+                    model: root.showWindowControls ? root._parsedLayout.right : []
+                    delegate: HoverRect {
+                        required property string modelData
+                        width: Theme.controlSize; height: Theme.controlSize
+                        color: modelData === "close" && hovered
+                            ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.9)
+                            : (hovered ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent")
+                        onClicked: {
+                            if (modelData === "close") root.closeRequested()
+                            else if (modelData === "minimize") root.minimizeRequested()
+                            else if (modelData === "maximize") root.maximizeRequested()
+                        }
+                        IconX { anchors.centerIn: parent; size: 14; color: parent.modelData === "close" && parent.hovered ? Theme.base : Theme.text; visible: parent.modelData === "close" }
+                        IconMinus { anchors.centerIn: parent; size: 14; color: Theme.text; visible: parent.modelData === "minimize" }
+                        IconSquare { anchors.centerIn: parent; size: 12; color: Theme.text; visible: parent.modelData === "maximize" }
                     }
                 }
             }
@@ -271,7 +316,7 @@ Rectangle {
             clip: true
 
             Behavior on Layout.preferredHeight {
-                NumberAnimation { duration: Theme.animDuration; easing.type: Easing.InOutCubic }
+                NumberAnimation { duration: Theme.animDuration; easing.type: Theme.animEasingTransition }
             }
 
             Loader {
@@ -300,7 +345,7 @@ Rectangle {
             Behavior on Layout.preferredHeight {
                 NumberAnimation {
                     id: tabBarHeightAnim
-                    duration: Theme.animDurationSlow; easing.type: Easing.InOutCubic
+                    duration: Theme.animDurationSlow; easing.type: Theme.animEasingTransition
                 }
             }
 
@@ -341,7 +386,7 @@ Rectangle {
                             property bool closing: false
 
                             Behavior on Layout.preferredWidth {
-                                NumberAnimation { duration: Theme.animDuration; easing.type: Easing.InOutCubic }
+                                NumberAnimation { duration: Theme.animDuration; easing.type: Theme.animEasingTransition }
                             }
 
                             opacity: 0
@@ -364,7 +409,7 @@ Rectangle {
                                 NumberAnimation {
                                     target: tabDelegate; property: "opacity"
                                     from: 0; to: 1; duration: Theme.animDuration
-                                    easing.type: Easing.InOutCubic
+                                    easing.type: Theme.animEasingTransition
                                 }
                                 NumberAnimation {
                                     target: tabDelegate; property: "scale"
@@ -407,11 +452,11 @@ Rectangle {
                                 ParallelAnimation {
                                     NumberAnimation {
                                         target: tabDelegate; property: "opacity"
-                                        to: 0; duration: Theme.animDuration; easing.type: Easing.InOutCubic
+                                        to: 0; duration: Theme.animDuration; easing.type: Theme.animEasingTransition
                                     }
                                     NumberAnimation {
                                         target: tabDelegate; property: "scale"
-                                        to: 0.88; duration: Theme.animDuration; easing.type: Easing.InOutCubic
+                                        to: 0.88; duration: Theme.animDuration; easing.type: Theme.animEasingTransition
                                     }
                                 }
                                 ScriptAction {

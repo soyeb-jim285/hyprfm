@@ -380,7 +380,7 @@ FocusScope {
                                 color: Theme.accent
                                 rotation: root.sortAscending ? 180 : 0
                                 Behavior on rotation {
-                                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                                    NumberAnimation { duration: 200; easing.type: Theme.animEasingEnter }
                                 }
                                 anchors.verticalCenter: parent.verticalCenter
                             }
@@ -438,7 +438,7 @@ FocusScope {
                 NumberAnimation {
                     properties: "x,y"
                     duration: Theme.animDurationSlow + 60
-                    easing.type: Easing.OutCubic
+                    easing.type: Theme.animEasingEnter
                 }
             }
             add: Transition {
@@ -448,14 +448,14 @@ FocusScope {
                         from: 0
                         to: 1
                         duration: Theme.animDurationFast
-                        easing.type: Easing.OutCubic
+                        easing.type: Theme.animEasingEnter
                     }
                     NumberAnimation {
                         properties: "scale"
                         from: 0.98
                         to: 1
                         duration: Theme.animDuration
-                        easing.type: Easing.OutCubic
+                        easing.type: Theme.animEasingEnter
                     }
                 }
             }
@@ -463,7 +463,7 @@ FocusScope {
                 NumberAnimation {
                     properties: "x,y"
                     duration: Theme.animDurationSlow
-                    easing.type: Easing.OutCubic
+                    easing.type: Theme.animEasingEnter
                 }
             }
             remove: Transition {
@@ -472,13 +472,13 @@ FocusScope {
                         properties: "opacity"
                         to: 0
                         duration: Theme.animDurationFast
-                        easing.type: Easing.InCubic
+                        easing.type: Theme.animEasingExit
                     }
                     NumberAnimation {
                         properties: "scale"
                         to: 0.98
                         duration: Theme.animDurationFast
-                        easing.type: Easing.InCubic
+                        easing.type: Theme.animEasingExit
                     }
                 }
             }
@@ -486,7 +486,7 @@ FocusScope {
                 NumberAnimation {
                     properties: "x,y"
                     duration: Theme.animDurationSlow
-                    easing.type: Easing.OutCubic
+                    easing.type: Theme.animEasingEnter
                 }
             }
 
@@ -670,8 +670,8 @@ FocusScope {
                                     scale: detRow.isCutPending ? 1 : 0.88
                                     visible: opacity > 0
 
-                                    Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
-                                    Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+                                    Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
+                                    Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
 
                                     IconScissors {
                                         anchors.centerIn: parent
@@ -693,8 +693,8 @@ FocusScope {
                                     scale: detRow.isPastePending ? 1 : 0.9
                                     visible: opacity > 0
 
-                                    Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
-                                    Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic } }
+                                    Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
+                                    Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
 
                                     Q.Spinner {
                                         anchors.centerIn: parent

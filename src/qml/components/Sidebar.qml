@@ -308,15 +308,15 @@ Rectangle {
                 add: Transition {
                     enabled: bookmarksSection.dragCurrentIndex < 0
                     ParallelAnimation {
-                        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutCubic }
+                        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Theme.animEasingEnter }
                         NumberAnimation { property: "scale"; from: 0.9; to: 1; duration: 250; easing.type: Easing.OutBack; easing.overshoot: 0.6 }
                     }
                 }
                 move: Transition {
-                    NumberAnimation { properties: "x,y"; duration: 150; easing.type: Easing.OutCubic }
+                    NumberAnimation { properties: "x,y"; duration: 150; easing.type: Theme.animEasingEnter }
                 }
                 displaced: Transition {
-                    NumberAnimation { properties: "x,y"; duration: 150; easing.type: Easing.OutCubic }
+                    NumberAnimation { properties: "x,y"; duration: 150; easing.type: Theme.animEasingEnter }
                 }
 
                 delegate: Item {
@@ -330,7 +330,7 @@ Rectangle {
                         height: bookmarksSection.rowHeight
                         y: bookmarksSection.externalDragActive && index >= bookmarksSection.externalDropIndex
                             ? bookmarksSection.rowHeight : 0
-                        Behavior on y { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                        Behavior on y { NumberAnimation { duration: 150; easing.type: Theme.animEasingEnter } }
                         opacity: bookmarksSection.dragCurrentIndex === index ? 0.35 : 1.0
                         Behavior on opacity { NumberAnimation { duration: 120 } }
 
@@ -387,7 +387,7 @@ Rectangle {
                             Math.min(bookmarksSection.externalDragMouseY - height / 2,
                                      bookmarksList.height - height))
                 opacity: 0.95
-                Behavior on y { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                Behavior on y { NumberAnimation { duration: 150; easing.type: Theme.animEasingEnter } }
                 Behavior on opacity { NumberAnimation { duration: 120 } }
 
                 Row {

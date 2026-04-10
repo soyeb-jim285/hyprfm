@@ -185,6 +185,15 @@ void ConfigManager::setDefaults()
     m_transparencyEnabled = true;
     m_transparencyLevel = 1.0;
     m_animationsEnabled = true;
+    m_animDurationFast = 100;
+    m_animDuration = 200;
+    m_animDurationSlow = 700;
+    m_animCurveEnter = QStringLiteral("OutCubic");
+    m_animCurveExit = QStringLiteral("InCubic");
+    m_animCurveTransition = QStringLiteral("Bezier");
+    m_showWindowControls = false;  // overridden by runtime detection
+    m_showWindowControlsExplicit = false;
+    m_windowButtonLayout = QStringLiteral(":minimize,maximize,close");
     m_shortcuts = s_defaultShortcuts;
 }
 
@@ -198,6 +207,13 @@ void ConfigManager::loadConfig()
         m_transparencyEnabled = true;
         m_transparencyLevel = 1.0;
         m_animationsEnabled = true;
+        m_animDurationFast = 100;
+        m_animDuration = 200;
+        m_animDurationSlow = 700;
+        m_animCurveEnter = QStringLiteral("OutCubic");
+        m_animCurveExit = QStringLiteral("InCubic");
+        m_animCurveTransition = QStringLiteral("Bezier");
+        m_showWindowControlsExplicit = false;
         m_shortcuts = s_defaultShortcuts;
 
         auto config = toml::parse_file(m_configPath.toStdString());
@@ -239,6 +255,26 @@ void ConfigManager::loadConfig()
             m_transparencyLevel = qBound(0.0, *v, 1.0);
         if (auto v = config["appearance"]["animations_enabled"].value<bool>())
             m_animationsEnabled = *v;
+        if (auto v = config["appearance"]["anim_duration_fast"].value<int64_t>())
+            m_animDurationFast = qBound(0, static_cast<int>(*v), 1000);
+        if (auto v = config["appearance"]["anim_duration"].value<int64_t>())
+            m_animDuration = qBound(0, static_cast<int>(*v), 2000);
+        if (auto v = config["appearance"]["anim_duration_slow"].value<int64_t>())
+            m_animDurationSlow = qBound(0, static_cast<int>(*v), 3000);
+        if (auto v = config["appearance"]["anim_curve_enter"].value<std::string>())
+            m_animCurveEnter = QString::fromStdString(*v);
+        if (auto v = config["appearance"]["anim_curve_exit"].value<std::string>())
+            m_animCurveExit = QString::fromStdString(*v);
+        if (auto v = config["appearance"]["anim_curve_transition"].value<std::string>())
+            m_animCurveTransition = QString::fromStdString(*v);
+
+        // Window controls
+        if (auto v = config["window"]["show_controls"].value<bool>()) {
+            m_showWindowControls = *v;
+            m_showWindowControlsExplicit = true;
+        }
+        if (auto v = config["window"]["button_layout"].value<std::string>())
+            m_windowButtonLayout = QString::fromStdString(*v);
 
         if (auto arr = config["bookmarks"]["paths"].as_array()) {
             m_bookmarks.clear();
@@ -307,6 +343,21 @@ int ConfigManager::radiusLarge() const { return m_radiusLarge; }
 bool ConfigManager::transparencyEnabled() const { return m_transparencyEnabled; }
 double ConfigManager::transparencyLevel() const { return m_transparencyLevel; }
 bool ConfigManager::animationsEnabled() const { return m_animationsEnabled; }
+int ConfigManager::animDurationFast() const { return m_animDurationFast; }
+int ConfigManager::animDuration() const { return m_animDuration; }
+int ConfigManager::animDurationSlow() const { return m_animDurationSlow; }
+QString ConfigManager::animCurveEnter() const { return m_animCurveEnter; }
+QString ConfigManager::animCurveExit() const { return m_animCurveExit; }
+QString ConfigManager::animCurveTransition() const { return m_animCurveTransition; }
+bool ConfigManager::showWindowControls() const { return m_showWindowControls; }
+
+void ConfigManager::setShowWindowControlsDefault(bool value)
+{
+    if (!m_showWindowControlsExplicit)
+        m_showWindowControls = value;
+}
+
+QString ConfigManager::windowButtonLayout() const { return m_windowButtonLayout; }
 
 QVariantMap ConfigManager::shortcutMap() const
 {
@@ -419,7 +470,13 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
         || settings.contains("radiusLarge")
         || settings.contains("transparencyEnabled")
         || settings.contains("transparencyLevel")
-        || settings.contains("animationsEnabled");
+        || settings.contains("animationsEnabled")
+        || settings.contains("animDurationFast")
+        || settings.contains("animDuration")
+        || settings.contains("animDurationSlow")
+        || settings.contains("animCurveEnter")
+        || settings.contains("animCurveExit")
+        || settings.contains("animCurveTransition");
     if (updatesAppearance) {
         int radiusSmall = settings.contains("radiusSmall")
             ? qMax(0, settings.value("radiusSmall").toInt())
@@ -457,7 +514,50 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
         appearance.insert_or_assign("transparency_enabled", m_transparencyEnabled);
         appearance.insert_or_assign("transparency_level", m_transparencyLevel);
         appearance.insert_or_assign("animations_enabled", m_animationsEnabled);
+
+        if (settings.contains("animDurationFast"))
+            m_animDurationFast = qBound(0, settings.value("animDurationFast").toInt(), 1000);
+        if (settings.contains("animDuration"))
+            m_animDuration = qBound(0, settings.value("animDuration").toInt(), 2000);
+        if (settings.contains("animDurationSlow"))
+            m_animDurationSlow = qBound(0, settings.value("animDurationSlow").toInt(), 3000);
+        if (settings.contains("animCurveEnter"))
+            m_animCurveEnter = settings.value("animCurveEnter").toString().trimmed();
+        if (settings.contains("animCurveExit"))
+            m_animCurveExit = settings.value("animCurveExit").toString().trimmed();
+        if (settings.contains("animCurveTransition"))
+            m_animCurveTransition = settings.value("animCurveTransition").toString().trimmed();
+
+        appearance.insert_or_assign("anim_duration_fast", m_animDurationFast);
+        appearance.insert_or_assign("anim_duration", m_animDuration);
+        appearance.insert_or_assign("anim_duration_slow", m_animDurationSlow);
+        appearance.insert_or_assign("anim_curve_enter", m_animCurveEnter.toStdString());
+        appearance.insert_or_assign("anim_curve_exit", m_animCurveExit.toStdString());
+        appearance.insert_or_assign("anim_curve_transition", m_animCurveTransition.toStdString());
         config.insert_or_assign("appearance", std::move(appearance));
+    }
+
+    // Window controls
+    const bool updatesWindow = settings.contains("showWindowControls")
+        || settings.contains("windowButtonLayout");
+    if (updatesWindow) {
+        toml::table windowTbl;
+        if (auto existingWindow = config["window"].as_table())
+            windowTbl = *existingWindow;
+
+        if (settings.contains("showWindowControls")) {
+            m_showWindowControls = settings.value("showWindowControls").toBool();
+            m_showWindowControlsExplicit = true;
+            windowTbl.insert_or_assign("show_controls", m_showWindowControls);
+        }
+
+        if (settings.contains("windowButtonLayout")) {
+            m_windowButtonLayout = settings.value("windowButtonLayout").toString().trimmed();
+            windowTbl.insert_or_assign("button_layout", m_windowButtonLayout.toStdString());
+        }
+
+        if (!windowTbl.empty())
+            config.insert_or_assign("window", std::move(windowTbl));
     }
 
     std::ofstream ofs(m_configPath.toStdString());

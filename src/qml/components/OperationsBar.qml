@@ -78,7 +78,7 @@ Rectangle {
     }
 
     Behavior on implicitHeight {
-        NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+        NumberAnimation { duration: 150; easing.type: Theme.animEasingEnter }
     }
 
     Timer {
