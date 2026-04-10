@@ -283,7 +283,7 @@ Item {
         NumberAnimation {
             target: menuContainer; property: "opacity"
             from: 0; to: 1; duration: Theme.animDurationFast
-            easing.type: Theme.animEasingEnter
+            easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
         }
         NumberAnimation {
             target: menuContainer; property: "scale"
@@ -294,7 +294,7 @@ Item {
         NumberAnimation {
             target: menuContainer; property: "yOffset"
             from: -8; to: 0; duration: Theme.animDuration
-            easing.type: Theme.animEasingEnter
+            easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
         }
     }
 
@@ -305,17 +305,17 @@ Item {
             NumberAnimation {
                 target: menuContainer; property: "opacity"
                 to: 0; duration: Theme.animDurationFast
-                easing.type: Theme.animEasingExit
+                easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
             }
             NumberAnimation {
                 target: menuContainer; property: "scale"
                 to: 0.92; duration: Theme.animDurationFast
-                easing.type: Theme.animEasingExit
+                easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
             }
             NumberAnimation {
                 target: menuContainer; property: "yOffset"
                 to: -4; duration: Theme.animDurationFast
-                easing.type: Theme.animEasingExit
+                easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
             }
         }
         ScriptAction { script: root.visible = false }
@@ -326,17 +326,17 @@ Item {
         NumberAnimation {
             target: submenuContainer; property: "opacity"
             from: 0; to: 1; duration: Theme.animDurationFast
-            easing.type: Theme.animEasingEnter
+            easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
         }
         NumberAnimation {
             target: submenuContainer; property: "scale"
             from: 0.98; to: 1; duration: Theme.animDuration
-            easing.type: Theme.animEasingEnter
+            easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
         }
         NumberAnimation {
             target: submenuContainer; property: "xOffset"
             from: root._submenuStartOffset; to: 0; duration: Theme.animDuration
-            easing.type: Theme.animEasingEnter
+            easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
         }
     }
 
@@ -349,17 +349,17 @@ Item {
         NumberAnimation {
             target: submenuContainer; property: "opacity"
             to: 0; duration: Theme.animDurationFast
-            easing.type: Theme.animEasingExit
+            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
         }
         NumberAnimation {
             target: submenuContainer; property: "scale"
             to: 0.98; duration: Theme.animDurationFast
-            easing.type: Theme.animEasingExit
+            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
         }
         NumberAnimation {
             target: submenuContainer; property: "xOffset"
             to: root._submenuStartOffset; duration: Theme.animDurationFast
-            easing.type: Theme.animEasingExit
+            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
         }
     }
 
@@ -439,10 +439,10 @@ Item {
         transform: Translate { x: submenuContainer.xOffset }
 
         Behavior on x {
-            NumberAnimation { duration: 140; easing.type: Theme.animEasingEnter }
+            NumberAnimation { duration: 140; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve }
         }
         Behavior on y {
-            NumberAnimation { duration: 140; easing.type: Theme.animEasingEnter }
+            NumberAnimation { duration: 140; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve }
         }
 
         Shape {
@@ -745,7 +745,7 @@ Item {
                 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
                 : "transparent"
             Behavior on color {
-                ColorAnimation { duration: 100; easing.type: Theme.animEasingEnter }
+                ColorAnimation { duration: 100; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve }
             }
             RowLayout {
                 anchors.fill: parent
@@ -805,7 +805,7 @@ Item {
                 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
                 : "transparent"
             Behavior on color {
-                ColorAnimation { duration: 100; easing.type: Theme.animEasingEnter }
+                ColorAnimation { duration: 100; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve }
             }
             RowLayout {
                 anchors.fill: parent
@@ -865,7 +865,7 @@ Item {
                 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
                 : "transparent"
             Behavior on color {
-                ColorAnimation { duration: 100; easing.type: Theme.animEasingEnter }
+                ColorAnimation { duration: 100; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve }
             }
             RowLayout {
                 anchors.fill: parent

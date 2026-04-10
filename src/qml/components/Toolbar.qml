@@ -316,7 +316,7 @@ Rectangle {
             clip: true
 
             Behavior on Layout.preferredHeight {
-                NumberAnimation { duration: Theme.animDuration; easing.type: Theme.animEasingTransition }
+                NumberAnimation { duration: Theme.animDuration; easing.type: Theme.animEasingTransition; easing.bezierCurve: Theme.animBezierCurve }
             }
 
             Loader {
@@ -345,7 +345,7 @@ Rectangle {
             Behavior on Layout.preferredHeight {
                 NumberAnimation {
                     id: tabBarHeightAnim
-                    duration: Theme.animDurationSlow; easing.type: Theme.animEasingTransition
+                    duration: Theme.animDurationSlow; easing.type: Theme.animEasingTransition; easing.bezierCurve: Theme.animBezierCurve
                 }
             }
 
@@ -386,7 +386,7 @@ Rectangle {
                             property bool closing: false
 
                             Behavior on Layout.preferredWidth {
-                                NumberAnimation { duration: Theme.animDuration; easing.type: Theme.animEasingTransition }
+                                NumberAnimation { duration: Theme.animDuration; easing.type: Theme.animEasingTransition; easing.bezierCurve: Theme.animBezierCurve }
                             }
 
                             opacity: 0
@@ -409,7 +409,7 @@ Rectangle {
                                 NumberAnimation {
                                     target: tabDelegate; property: "opacity"
                                     from: 0; to: 1; duration: Theme.animDuration
-                                    easing.type: Theme.animEasingTransition
+                                    easing.type: Theme.animEasingTransition; easing.bezierCurve: Theme.animBezierCurve
                                 }
                                 NumberAnimation {
                                     target: tabDelegate; property: "scale"
@@ -452,11 +452,11 @@ Rectangle {
                                 ParallelAnimation {
                                     NumberAnimation {
                                         target: tabDelegate; property: "opacity"
-                                        to: 0; duration: Theme.animDuration; easing.type: Theme.animEasingTransition
+                                        to: 0; duration: Theme.animDuration; easing.type: Theme.animEasingTransition; easing.bezierCurve: Theme.animBezierCurve
                                     }
                                     NumberAnimation {
                                         target: tabDelegate; property: "scale"
-                                        to: 0.88; duration: Theme.animDuration; easing.type: Theme.animEasingTransition
+                                        to: 0.88; duration: Theme.animDuration; easing.type: Theme.animEasingTransition; easing.bezierCurve: Theme.animBezierCurve
                                     }
                                 }
                                 ScriptAction {

@@ -59,70 +59,73 @@ QtObject {
     readonly property int animEasingEnter: _curveToEasing(config.animCurveEnter)
     readonly property int animEasingExit: _curveToEasing(config.animCurveExit)
     readonly property int animEasingTransition: _curveToEasing(config.animCurveTransition)
-    readonly property var animBezierCurve: [0.54, 0, 0.34, 0.99, 1, 1]
+    // Material-design standard easing curve. Used when any of the above
+    // resolves to Easing.BezierSpline — every Behavior that consumes one
+    // of the animEasing* properties also sets easing.bezierCurve to this.
+    readonly property var animBezierCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0]
 
     Behavior on base {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on mantle {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on crust {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on surface {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on overlay {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on text {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on subtext {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on muted {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on accent {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on success {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on warning {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on error {
-        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition }
+        ColorAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on radiusSmall {
-        NumberAnimation { duration: root.animDurationFast; easing.type: root.animEasingEnter }
+        NumberAnimation { duration: root.animDurationFast; easing.type: root.animEasingEnter; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on radiusMedium {
-        NumberAnimation { duration: root.animDurationFast; easing.type: root.animEasingEnter }
+        NumberAnimation { duration: root.animDurationFast; easing.type: root.animEasingEnter; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on radiusLarge {
-        NumberAnimation { duration: root.animDurationFast; easing.type: root.animEasingEnter }
+        NumberAnimation { duration: root.animDurationFast; easing.type: root.animEasingEnter; easing.bezierCurve: root.animBezierCurve }
     }
 
     Behavior on transparencyLevel {
-        NumberAnimation { duration: root.animDuration; easing.type: root.animEasingEnter }
+        NumberAnimation { duration: root.animDuration; easing.type: root.animEasingEnter; easing.bezierCurve: root.animBezierCurve }
     }
 
     function containerColor(color, defaultAlpha) {

@@ -189,7 +189,7 @@ ApplicationWindow {
     Behavior on splitTransitionProgress {
         NumberAnimation {
             duration: Theme.animDurationSlow
-            easing.type: Theme.animEasingTransition
+            easing.type: Theme.animEasingTransition; easing.bezierCurve: Theme.animBezierCurve
         }
     }
 
@@ -1087,7 +1087,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: renameBox; property: "opacity"
                 from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Theme.animEasingEnter
+                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
             }
             NumberAnimation {
                 target: renameBox; property: "scale"
@@ -1098,7 +1098,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: renameBox; property: "yOffset"
                 from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Theme.animEasingEnter
+                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
             }
         }
         SequentialAnimation {
@@ -1107,17 +1107,17 @@ ApplicationWindow {
                 NumberAnimation {
                     target: renameBox; property: "opacity"
                     to: 0; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
                 NumberAnimation {
                     target: renameBox; property: "scale"
                     to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
                 NumberAnimation {
                     target: renameBox; property: "yOffset"
                     to: -4; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
             }
             ScriptAction { script: renameDialog.visible = false }
@@ -1254,7 +1254,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: folderBox; property: "opacity"
                 from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Theme.animEasingEnter
+                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
             }
             NumberAnimation {
                 target: folderBox; property: "scale"
@@ -1265,7 +1265,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: folderBox; property: "yOffset"
                 from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Theme.animEasingEnter
+                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
             }
         }
         SequentialAnimation {
@@ -1274,17 +1274,17 @@ ApplicationWindow {
                 NumberAnimation {
                     target: folderBox; property: "opacity"
                     to: 0; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
                 NumberAnimation {
                     target: folderBox; property: "scale"
                     to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
                 NumberAnimation {
                     target: folderBox; property: "yOffset"
                     to: -4; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
             }
             ScriptAction { script: newFolderDialog.visible = false }
@@ -1419,7 +1419,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: fileBox; property: "opacity"
                 from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Theme.animEasingEnter
+                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
             }
             NumberAnimation {
                 target: fileBox; property: "scale"
@@ -1430,7 +1430,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: fileBox; property: "yOffset"
                 from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Theme.animEasingEnter
+                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
             }
         }
         SequentialAnimation {
@@ -1439,17 +1439,17 @@ ApplicationWindow {
                 NumberAnimation {
                     target: fileBox; property: "opacity"
                     to: 0; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
                 NumberAnimation {
                     target: fileBox; property: "scale"
                     to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
                 NumberAnimation {
                     target: fileBox; property: "yOffset"
                     to: -4; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
             }
             ScriptAction { script: newFileDialog.visible = false }
@@ -1765,7 +1765,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: propsBox; property: "opacity"
                 from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Theme.animEasingEnter
+                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
             }
             NumberAnimation {
                 target: propsBox; property: "scale"
@@ -1776,7 +1776,7 @@ ApplicationWindow {
             NumberAnimation {
                 target: propsBox; property: "yOffset"
                 from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Theme.animEasingEnter
+                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
             }
         }
         SequentialAnimation {
@@ -1785,17 +1785,17 @@ ApplicationWindow {
                 NumberAnimation {
                     target: propsBox; property: "opacity"
                     to: 0; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
                 NumberAnimation {
                     target: propsBox; property: "scale"
                     to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
                 NumberAnimation {
                     target: propsBox; property: "yOffset"
                     to: -4; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit
+                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                 }
             }
             ScriptAction { script: propertiesDialog.visible = false }
@@ -1835,7 +1835,7 @@ ApplicationWindow {
                 Item {
                     width: parent.width; height: 88
                     Rectangle {
-                        id: propsIconBg; width: 52; height: 52; radius: 12
+                        id: propsIconBg; width: 52; height: 52; radius: Theme.radiusMedium
                         color: Theme.surface
                         anchors.left: parent.left; anchors.leftMargin: 24; anchors.verticalCenter: parent.verticalCenter
                         Image {
@@ -1877,12 +1877,12 @@ ApplicationWindow {
                     width: parent.width
                     height: propertiesDialog.currentTab === 0 ? generalTab.height : permissionsTab.height
                     clip: true
-                    Behavior on height { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Theme.animEasingEnter } }
+                    Behavior on height { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
 
                     Row {
                         id: tabSliderRow
                         x: -propertiesDialog.currentTab * tabSlider.width
-                        Behavior on x { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Theme.animEasingEnter } }
+                        Behavior on x { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
 
                 // ══════════════════════════════════════════════
                 // TAB 0: General
@@ -2031,7 +2031,7 @@ ApplicationWindow {
                         Repeater {
                             model: propertiesDialog.apps
                             delegate: Rectangle {
-                                width: parent ? parent.width : 0; height: 30; radius: 4
+                                width: parent ? parent.width : 0; height: 30; radius: Theme.radiusSmall
                                 color: owItemMa.containsMouse
                                     ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
                                     : "transparent"
@@ -2084,7 +2084,7 @@ ApplicationWindow {
 
                         // "Other Application..." button
                         Rectangle {
-                            width: parent ? parent.width : 0; height: 30; radius: 4
+                            width: parent ? parent.width : 0; height: 30; radius: Theme.radiusSmall
                             color: otherAppMa.containsMouse
                                 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
                                 : "transparent"
@@ -2810,6 +2810,16 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: config.shortcutMap["settings"]
+        onActivated: root.openSettingsPanel()
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["keyboard_shortcuts"]
+        onActivated: root.openKeyboardShortcutsDialog()
+    }
+
+    Shortcut {
         sequence: "Escape"
         enabled: root.searchMode
                  && !quickPreview.active
@@ -2958,6 +2968,8 @@ ApplicationWindow {
         id: mainContent
         anchors.fill: parent
         spacing: 0
+        LayoutMirroring.enabled: config.sidebarPosition === "right"
+        LayoutMirroring.childrenInherit: false
 
         // Sidebar (full height, animated)
         Item {
@@ -2968,7 +2980,7 @@ ApplicationWindow {
 
                 Behavior on Layout.preferredWidth {
                     enabled: !root.sidebarResizeActive
-                    NumberAnimation { duration: Theme.animDuration; easing.type: Theme.animEasingTransition }
+                    NumberAnimation { duration: Theme.animDuration; easing.type: Theme.animEasingTransition; easing.bezierCurve: Theme.animBezierCurve }
                 }
 
                 Sidebar {
@@ -3001,7 +3013,8 @@ ApplicationWindow {
                     id: sidebarResizeHandle
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    anchors.right: parent.right
+                    anchors.right: config.sidebarPosition === "right" ? undefined : parent.right
+                    anchors.left: config.sidebarPosition === "right" ? parent.left : undefined
                     width: 10
                     hoverEnabled: true
                     enabled: root.sidebarVisible
@@ -3019,7 +3032,9 @@ ApplicationWindow {
                         if (!pressed)
                             return
                         var globalX = sidebarResizeHandle.mapToItem(mainContent, mouse.x, mouse.y).x
-                        root.sidebarWidth = root.clampedSidebarWidth(root.sidebarResizeStartWidth + (globalX - root.sidebarResizeStartGlobalX))
+                        var delta = globalX - root.sidebarResizeStartGlobalX
+                        if (config.sidebarPosition === "right") delta = -delta
+                        root.sidebarWidth = root.clampedSidebarWidth(root.sidebarResizeStartWidth + delta)
                         mouse.accepted = true
                     }
 
@@ -3044,7 +3059,7 @@ ApplicationWindow {
 
                 Rectangle {
                     visible: root.sidebarVisible
-                    x: -1
+                    x: config.sidebarPosition === "right" ? parent.width - 1 : -1
                     y: 0
                     width: 2
                     height: toolbar.height
@@ -3174,7 +3189,10 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         radius: Theme.radiusMedium * root.splitTransitionProgress
                         clip: true
-                        color: Theme.containerColor(Theme.crust, 0.14 * root.splitTransitionProgress)
+                        // Fill stays opaque the entire time so the pane never
+                        // flashes transparent at progress ≈ 0 during close.
+                        // Only the split-specific border tint fades.
+                        color: Theme.containerColor(Theme.crust, 0.14)
                         border.width: root.splitTransitionProgress
                         border.color: root.activePane === "primary"
                             ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45 * root.splitTransitionProgress)

@@ -5,8 +5,12 @@
 #include <QFileInfo>
 #include <QColor>
 #include <QCryptographicHash>
+#include <QFont>
+#include <QFontDatabase>
+#include <QFontInfo>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QRawFont>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -452,6 +456,70 @@ QString PreviewService::localPreviewPath(const QString &path) const
     cacheFile.close();
 
     return cachedPath;
+}
+
+QVariantMap PreviewService::loadFontPreview(const QString &path)
+{
+    QVariantMap result;
+    result["family"] = QString();
+    result["styleName"] = QString();
+    result["weight"] = static_cast<int>(QFont::Normal);
+    result["italic"] = false;
+    result["valid"] = false;
+    result["error"] = QString();
+
+    if (path.isEmpty() || !QFileInfo::exists(path)) {
+        result["error"] = QStringLiteral("Font file not found");
+        return result;
+    }
+
+    // Short-circuit when the same path is already loaded so repeated reads
+    // (e.g. preview refresh on selection change) don't thrash the database.
+    const bool alreadyLoaded = m_activeFontPreviewId >= 0 && m_activeFontPreviewPath == path;
+
+    if (!alreadyLoaded) {
+        if (m_activeFontPreviewId >= 0) {
+            QFontDatabase::removeApplicationFont(m_activeFontPreviewId);
+            m_activeFontPreviewId = -1;
+            m_activeFontPreviewPath.clear();
+        }
+
+        const int id = QFontDatabase::addApplicationFont(path);
+        if (id < 0) {
+            result["error"] = QStringLiteral("Unable to load font file");
+            return result;
+        }
+        m_activeFontPreviewId = id;
+        m_activeFontPreviewPath = path;
+    }
+
+    const QStringList families = QFontDatabase::applicationFontFamilies(m_activeFontPreviewId);
+    if (families.isEmpty()) {
+        result["error"] = QStringLiteral("Font contains no usable families");
+        return result;
+    }
+
+    const QString family = families.first();
+
+    // Pull exact face metadata straight from the file so variants of the
+    // same family (e.g. MapleMono-Bold vs MapleMono-Italic) don't alias.
+    QRawFont raw(path, 16.0);
+    QString styleName = raw.isValid() ? raw.styleName() : QString();
+    int weight = raw.isValid() ? raw.weight() : static_cast<int>(QFont::Normal);
+    const bool italic = raw.isValid() ? (raw.style() != QFont::StyleNormal) : false;
+
+    if (styleName.isEmpty()) {
+        const QStringList styles = QFontDatabase::styles(family);
+        if (!styles.isEmpty())
+            styleName = styles.first();
+    }
+
+    result["family"] = family;
+    result["styleName"] = styleName;
+    result["weight"] = weight;
+    result["italic"] = italic;
+    result["valid"] = true;
+    return result;
 }
 
 QVariantMap PreviewService::loadPdfPreview(const QString &path) const

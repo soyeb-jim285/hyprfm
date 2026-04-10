@@ -74,8 +74,7 @@ Rectangle {
             height: 44
 
             Text {
-                anchors.left: parent.left
-                anchors.leftMargin: Theme.spacing + 4
+                anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Hyprfm"
                 color: Theme.text
@@ -308,15 +307,15 @@ Rectangle {
                 add: Transition {
                     enabled: bookmarksSection.dragCurrentIndex < 0
                     ParallelAnimation {
-                        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Theme.animEasingEnter }
+                        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve }
                         NumberAnimation { property: "scale"; from: 0.9; to: 1; duration: 250; easing.type: Easing.OutBack; easing.overshoot: 0.6 }
                     }
                 }
                 move: Transition {
-                    NumberAnimation { properties: "x,y"; duration: 150; easing.type: Theme.animEasingEnter }
+                    NumberAnimation { properties: "x,y"; duration: 150; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve }
                 }
                 displaced: Transition {
-                    NumberAnimation { properties: "x,y"; duration: 150; easing.type: Theme.animEasingEnter }
+                    NumberAnimation { properties: "x,y"; duration: 150; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve }
                 }
 
                 delegate: Item {
@@ -330,7 +329,7 @@ Rectangle {
                         height: bookmarksSection.rowHeight
                         y: bookmarksSection.externalDragActive && index >= bookmarksSection.externalDropIndex
                             ? bookmarksSection.rowHeight : 0
-                        Behavior on y { NumberAnimation { duration: 150; easing.type: Theme.animEasingEnter } }
+                        Behavior on y { NumberAnimation { duration: 150; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
                         opacity: bookmarksSection.dragCurrentIndex === index ? 0.35 : 1.0
                         Behavior on opacity { NumberAnimation { duration: 120 } }
 
@@ -387,7 +386,7 @@ Rectangle {
                             Math.min(bookmarksSection.externalDragMouseY - height / 2,
                                      bookmarksList.height - height))
                 opacity: 0.95
-                Behavior on y { NumberAnimation { duration: 150; easing.type: Theme.animEasingEnter } }
+                Behavior on y { NumberAnimation { duration: 150; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
                 Behavior on opacity { NumberAnimation { duration: 120 } }
 
                 Row {

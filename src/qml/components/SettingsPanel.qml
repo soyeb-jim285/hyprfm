@@ -7,9 +7,33 @@ Q.Dialog {
     id: root
     anchors.fill: parent
     z: 1000
-    dialogWidth: Math.min(840, width - 40)
-    title: "Settings"
-    subtitle: "Appearance and behavior update live while you adjust them."
+    dialogWidth: Math.min(920, width - 32)
+    title: ""
+    subtitle: ""
+    dialogPadding: 0
+    dialogColor: "transparent"
+    dialogBorderColor: "transparent"
+    dialogRadius: root.draftRadiusLarge + 6
+
+    readonly property color sectionBorderColor: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+    readonly property string defaultThemeName: "catppuccin-mocha"
+    readonly property string defaultIconThemeName: "Adwaita"
+    readonly property string defaultSidebarPosition: "left"
+    readonly property int defaultSidebarWidth: 200
+    readonly property int defaultRadiusSmall: 4
+    readonly property int defaultRadiusMedium: 8
+    readonly property int defaultRadiusLarge: 12
+    readonly property bool defaultTransparencyEnabled: true
+    readonly property real defaultTransparencyLevel: 1.0
+    readonly property bool defaultAnimationsEnabled: true
+    readonly property int defaultAnimDurationFast: 100
+    readonly property int defaultAnimDuration: 200
+    readonly property int defaultAnimDurationSlow: 350
+    readonly property string defaultAnimCurveEnter: "OutCubic"
+    readonly property string defaultAnimCurveExit: "InCubic"
+    readonly property string defaultAnimCurveTransition: "Bezier"
+    readonly property bool defaultShowWindowControls: false
+    readonly property string defaultWindowButtonLayout: ":minimize,maximize,close"
 
     property bool currentShowHidden: false
     property bool currentSidebarVisible: true
@@ -31,6 +55,7 @@ Q.Dialog {
     property bool draftDarkMode: true
     property bool draftShowHidden: currentShowHidden
     property bool draftSidebarVisible: currentSidebarVisible
+    property string draftSidebarPosition: config.sidebarPosition
     property int draftSidebarWidth: currentSidebarWidth
     property int draftRadiusSmall: config.radiusSmall
     property int draftRadiusMedium: config.radiusMedium
@@ -82,6 +107,36 @@ Q.Dialog {
 
     readonly property string systemFontLabel: "System Default"
 
+    Component { id: paletteSectionIcon; IconSettings {} }
+    Component { id: layoutSectionIcon; IconPanelLeft {} }
+    Component { id: motionSectionIcon; IconClock {} }
+    Component { id: toolsSectionIcon; IconFolder {} }
+
+    property int currentSectionIndex: 0
+    readonly property bool compactNavigation: dialogWidth < 860
+    readonly property var sectionNavItems: [
+        { title: "Look & Feel", iconComponent: paletteSectionIcon },
+        { title: "Layout", iconComponent: layoutSectionIcon },
+        { title: "Motion", iconComponent: motionSectionIcon },
+        { title: "Tools", iconComponent: toolsSectionIcon }
+    ]
+    readonly property var sectionItems: [
+        { title: "Look & Feel", subtitle: "Theme, typography, icons, and surface styling.", iconComponent: paletteSectionIcon },
+        { title: "Layout", subtitle: "Sidebar behavior, file visibility, and toolbar controls.", iconComponent: layoutSectionIcon },
+        { title: "Motion", subtitle: "Animation timing and easing across the interface.", iconComponent: motionSectionIcon },
+        { title: "Tools", subtitle: "Shortcuts, remote locations, and config behavior.", iconComponent: toolsSectionIcon }
+    ]
+
+    function showSection(index) {
+        currentSectionIndex = index
+        if (sideTabs)
+            sideTabs.currentIndex = index
+        if (compactSectionNav)
+            compactSectionNav.currentIndex = index
+        if (contentFlick)
+            contentFlick.contentY = 0
+    }
+
     function primeOptionSources() {
         if (optionSourcesPrimed)
             return
@@ -132,6 +187,52 @@ Q.Dialog {
         draftDarkMode = isDarkTheme(themeName)
     }
 
+    function bindAppearancePreview() {
+        Theme.radiusSmall = Qt.binding(function() {
+            return root.visible ? root.draftRadiusSmall : config.radiusSmall
+        })
+        Theme.radiusMedium = Qt.binding(function() {
+            return root.visible ? root.draftRadiusMedium : config.radiusMedium
+        })
+        Theme.radiusLarge = Qt.binding(function() {
+            return root.visible ? root.draftRadiusLarge : config.radiusLarge
+        })
+        Theme.transparencyEnabled = Qt.binding(function() {
+            return root.visible ? root.draftTransparencyEnabled : config.transparencyEnabled
+        })
+        Theme.transparencyLevel = Qt.binding(function() {
+            return root.visible ? root.draftTransparencyLevel : Math.max(0, Math.min(1, config.transparencyLevel))
+        })
+        Theme.animationsEnabled = Qt.binding(function() {
+            return root.visible ? root.draftAnimationsEnabled : config.animationsEnabled
+        })
+    }
+
+    function resetToDefaults() {
+        setDraftTheme(defaultThemeName)
+        draftFontFamily = ""
+        draftIconTheme = defaultIconThemeName
+        draftShowHidden = false
+        draftSidebarVisible = true
+        draftSidebarPosition = defaultSidebarPosition
+        draftSidebarWidth = defaultSidebarWidth
+        draftRadiusSmall = defaultRadiusSmall
+        draftRadiusMedium = defaultRadiusMedium
+        draftRadiusLarge = defaultRadiusLarge
+        draftTransparencyEnabled = defaultTransparencyEnabled
+        draftTransparencyLevel = defaultTransparencyLevel
+        draftAnimationsEnabled = defaultAnimationsEnabled
+        draftAnimDurationFast = defaultAnimDurationFast
+        draftAnimDuration = defaultAnimDuration
+        draftAnimDurationSlow = defaultAnimDurationSlow
+        draftAnimCurveEnter = defaultAnimCurveEnter
+        draftAnimCurveExit = defaultAnimCurveExit
+        draftAnimCurveTransition = defaultAnimCurveTransition
+        draftShowWindowControls = defaultShowWindowControls
+        draftWindowButtonLayout = defaultWindowButtonLayout
+        applySettingsNow()
+    }
+
     function syncFromCurrentState() {
         primeOptionSources()
         syncingFromConfig = true
@@ -148,6 +249,7 @@ Q.Dialog {
 
             draftShowHidden = currentShowHidden
             draftSidebarVisible = currentSidebarVisible
+            draftSidebarPosition = config.sidebarPosition
             draftSidebarWidth = currentSidebarWidth
             draftRadiusSmall = config.radiusSmall
             draftRadiusMedium = Math.max(config.radiusMedium, draftRadiusSmall)
@@ -170,6 +272,7 @@ Q.Dialog {
 
     function openPanel() {
         syncFromCurrentState()
+        showSection(0)
         open()
     }
 
@@ -195,6 +298,7 @@ Q.Dialog {
             iconTheme: draftIconTheme,
             showHidden: draftShowHidden,
             sidebarVisible: draftSidebarVisible,
+            sidebarPosition: draftSidebarPosition,
             sidebarWidth: draftSidebarWidth,
             radiusSmall: draftRadiusSmall,
             radiusMedium: draftRadiusMedium,
@@ -244,7 +348,10 @@ Q.Dialog {
 
     onRejected: root.flushPendingChanges()
     onClosed: root.flushPendingChanges()
-    Component.onCompleted: root.primeOptionSources()
+    Component.onCompleted: {
+        root.primeOptionSources()
+        root.bindAppearancePreview()
+    }
 
     Timer {
         id: settingsApplyTimer
@@ -252,548 +359,671 @@ Q.Dialog {
         onTriggered: root.applyPendingSettings()
     }
 
-    Item {
-        Layout.fillWidth: true
-        implicitHeight: Math.min(560, contentFlick.contentHeight)
+    Component {
+        id: lookPageComponent
 
-        Flickable {
-            id: contentFlick
-            anchors.fill: parent
-            clip: true
-            contentWidth: width
-            contentHeight: contentGrid.implicitHeight
-            boundsBehavior: Flickable.StopAtBounds
+        ColumnLayout {
+            width: pageLoader.width
+            spacing: 6
 
             RowLayout {
-                id: contentGrid
-                width: contentFlick.width
+                Layout.fillWidth: true
+                Layout.bottomMargin: 8
                 spacing: 12
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignTop
-                    spacing: 12
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignTop
-                    radius: Theme.radiusLarge
-                    color: Theme.containerColor(Theme.crust, 0.32)
-                    border.width: 1
-                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                    implicitHeight: generalSection.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: generalSection
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
-
-                        Text {
-                            text: "General"
-                            color: Theme.text
-                            font.pointSize: Theme.fontNormal + 1
-                            font.bold: true
-                        }
-
-                        Q.Toggle {
-                            Layout.fillWidth: true
-                            label: "Dark mode"
-                            checked: root.draftDarkMode
-                            onToggled: (value) => {
-                                root.setDraftTheme(value ? "catppuccin-mocha" : "catppuccin-latte")
-                                root.applySettingsNow()
-                            }
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: "The toggle switches between Catppuccin Mocha and Catppuccin Latte."
-                            color: Theme.subtext
-                            font.pointSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Q.Dropdown {
-                            Layout.fillWidth: true
-                            label: "Theme"
-                            model: root.themeOptions
-                            currentIndex: root.optionIndex(root.themeOptions, root.draftTheme, 0)
-                            onSelected: (_, value) => {
-                                root.setDraftTheme(value)
-                                root.applySettingsNow()
-                            }
-                        }
-
-                        Q.Dropdown {
-                            Layout.fillWidth: true
-                            label: "Font"
-                            model: root.fontOptions
-                            currentIndex: root.optionIndex(root.fontOptions, root.draftFontFamily === "" ? root.systemFontLabel : root.draftFontFamily, 0)
-                            onSelected: (_, value) => {
-                                root.draftFontFamily = value === root.systemFontLabel ? "" : value
-                                root.applySettingsNow()
-                            }
-                        }
-
-                        Q.Dropdown {
-                            Layout.fillWidth: true
-                            label: "Icon pack"
-                            model: root.iconThemeOptions
-                            currentIndex: root.optionIndex(root.iconThemeOptions, root.draftIconTheme, 0)
-                            onSelected: (_, value) => {
-                                root.draftIconTheme = value
-                                root.applySettingsNow()
-                            }
-                        }
-
-                        Q.Checkbox {
-                            label: "Show hidden files"
-                            checked: root.draftShowHidden
-                            onToggled: (value) => {
-                                root.draftShowHidden = value
-                                root.applySettingsNow()
-                            }
-                        }
-                    }
+                Text {
+                    text: "Dark Mode"
+                    color: Theme.text
+                    font.pointSize: Theme.fontNormal + 2
+                    font.bold: true
                 }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignTop
-                    radius: Theme.radiusLarge
-                    color: Theme.containerColor(Theme.crust, 0.32)
-                    border.width: 1
-                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                    implicitHeight: windowControlsSection.implicitHeight + 32
+                Item { Layout.fillWidth: true }
 
-                    ColumnLayout {
-                        id: windowControlsSection
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
-
-                        Text {
-                            text: "Window Controls"
-                            color: Theme.text
-                            font.pointSize: Theme.fontNormal + 1
-                            font.bold: true
-                        }
-
-                        Q.Toggle {
-                            Layout.fillWidth: true
-                            label: "Show window controls"
-                            checked: root.draftShowWindowControls
-                            onToggled: (value) => {
-                                root.draftShowWindowControls = value
-                                root.applySettingsNow()
-                            }
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Integrated close, minimize, and maximize buttons in the toolbar."
-                            color: Theme.subtext
-                            font.pointSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Q.Dropdown {
-                            Layout.fillWidth: true
-                            label: "Button side"
-                            enabled: root.draftShowWindowControls
-                            model: ["Right", "Left"]
-                            currentIndex: root._layoutParts.side === "left" ? 1 : 0
-                            onSelected: (_, value) => {
-                                root.rebuildButtonLayout(
-                                    value === "Left" ? "left" : "right",
-                                    root._layoutParts.hasClose,
-                                    root._layoutParts.hasMinimize,
-                                    root._layoutParts.hasMaximize
-                                )
-                            }
-                        }
-
-                        Q.Checkbox {
-                            label: "Close button"
-                            enabled: root.draftShowWindowControls
-                            checked: root._layoutParts.hasClose
-                            onToggled: (value) => {
-                                root.rebuildButtonLayout(root._layoutParts.side, value, root._layoutParts.hasMinimize, root._layoutParts.hasMaximize)
-                            }
-                        }
-
-                        Q.Checkbox {
-                            label: "Minimize button"
-                            enabled: root.draftShowWindowControls
-                            checked: root._layoutParts.hasMinimize
-                            onToggled: (value) => {
-                                root.rebuildButtonLayout(root._layoutParts.side, root._layoutParts.hasClose, value, root._layoutParts.hasMaximize)
-                            }
-                        }
-
-                        Q.Checkbox {
-                            label: "Maximize button"
-                            enabled: root.draftShowWindowControls
-                            checked: root._layoutParts.hasMaximize
-                            onToggled: (value) => {
-                                root.rebuildButtonLayout(root._layoutParts.side, root._layoutParts.hasClose, root._layoutParts.hasMinimize, value)
-                            }
-                        }
+                Q.Toggle {
+                    label: ""
+                    checked: root.draftDarkMode
+                    onToggled: (value) => {
+                        root.setDraftTheme(value ? "catppuccin-mocha" : "catppuccin-latte")
+                        root.applySettingsNow()
                     }
                 }
+            }
 
-                } // end left column
+            Q.Separator { Layout.bottomMargin: 8 }
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignTop
-                    spacing: 12
+            Text {
+                text: "Theme"
+                color: Theme.accent
+                font.pointSize: Theme.fontSmall
+                font.bold: true
+                Layout.bottomMargin: 4
+            }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignTop
-                    radius: Theme.radiusLarge
-                    color: Theme.containerColor(Theme.crust, 0.32)
-                    border.width: 1
-                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                    implicitHeight: windowSection.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: windowSection
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
-
-                        Text {
-                            text: "Window"
-                            color: Theme.text
-                            font.pointSize: Theme.fontNormal + 1
-                            font.bold: true
-                        }
-
-                        Q.Checkbox {
-                            label: "Show sidebar"
-                            checked: root.draftSidebarVisible
-                            onToggled: (value) => {
-                                root.draftSidebarVisible = value
-                                root.applySettingsNow()
-                            }
-                        }
-
-                        Q.Slider {
-                            Layout.fillWidth: true
-                            label: "Sidebar width"
-                            from: 160
-                            to: 480
-                            stepSize: 10
-                            showValue: true
-                            enabled: root.draftSidebarVisible
-                            value: root.draftSidebarWidth
-                            onMoved: (value) => {
-                                root.draftSidebarWidth = Math.round(value)
-                                root.queueSettingsApply()
-                            }
-                        }
-
-                        Q.Toggle {
-                            Layout.fillWidth: true
-                            label: "Transparent containers"
-                            checked: root.draftTransparencyEnabled
-                            onToggled: (value) => {
-                                root.draftTransparencyEnabled = value
-                                root.applySettingsNow()
-                            }
-                        }
-
-                        Q.Slider {
-                            Layout.fillWidth: true
-                            label: "Transparency"
-                            from: 0
-                            to: 100
-                            stepSize: 1
-                            showValue: true
-                            enabled: root.draftTransparencyEnabled
-                            value: root.draftTransparencyLevel * 100
-                            onMoved: (value) => {
-                                root.draftTransparencyLevel = value / 100
-                                root.queueSettingsApply()
-                            }
-                        }
-
-                        Q.Toggle {
-                            Layout.fillWidth: true
-                            label: "Animations"
-                            checked: root.draftAnimationsEnabled
-                            onToggled: (value) => {
-                                root.draftAnimationsEnabled = value
-                                root.applySettingsNow()
-                            }
-                        }
-
-                    }
+            Q.Dropdown {
+                Layout.fillWidth: true
+                label: "Theme"
+                model: root.themeOptions
+                currentIndex: root.optionIndex(root.themeOptions, root.draftTheme, 0)
+                onSelected: (_, value) => {
+                    root.setDraftTheme(value)
+                    root.applySettingsNow()
                 }
+            }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignTop
-                    radius: Theme.radiusLarge
-                    color: Theme.containerColor(Theme.crust, 0.32)
-                    border.width: 1
-                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                    implicitHeight: toolsSection.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: toolsSection
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
-
-                        Text {
-                            text: "Tools"
-                            color: Theme.text
-                            font.pointSize: Theme.fontNormal + 1
-                            font.bold: true
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Open dedicated dialogs for keyboard shortcuts and remote locations."
-                            color: Theme.subtext
-                            font.pointSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Q.Button {
-                            text: "Keyboard Shortcuts"
-                            onClicked: root.openKeyboardShortcuts()
-                        }
-
-                        Q.Button {
-                            text: "Connect to Network Location"
-                            variant: "ghost"
-                            onClicked: root.openRemoteConnect()
-                        }
-                    }
+            Q.Dropdown {
+                Layout.fillWidth: true
+                label: "Font"
+                model: root.fontOptions
+                currentIndex: root.optionIndex(root.fontOptions, root.draftFontFamily === "" ? root.systemFontLabel : root.draftFontFamily, 0)
+                onSelected: (_, value) => {
+                    root.draftFontFamily = value === root.systemFontLabel ? "" : value
+                    root.applySettingsNow()
                 }
+            }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignTop
-                    radius: Theme.radiusLarge
-                    color: Theme.containerColor(Theme.crust, 0.32)
-                    border.width: 1
-                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                    implicitHeight: appearanceSection.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: appearanceSection
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
-
-                        Text {
-                            text: "Appearance"
-                            color: Theme.text
-                            font.pointSize: Theme.fontNormal + 1
-                            font.bold: true
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Corner radius and transparency update live while you adjust them."
-                            color: Theme.subtext
-                            font.pointSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Q.Slider {
-                            Layout.fillWidth: true
-                            label: "Small radius"
-                            from: 0
-                            to: 24
-                            stepSize: 1
-                            showValue: true
-                            value: root.draftRadiusSmall
-                            onMoved: (value) => {
-                                root.draftRadiusSmall = Math.round(value)
-                                if (root.draftRadiusMedium < root.draftRadiusSmall)
-                                    root.draftRadiusMedium = root.draftRadiusSmall
-                                if (root.draftRadiusLarge < root.draftRadiusMedium)
-                                    root.draftRadiusLarge = root.draftRadiusMedium
-                                root.queueSettingsApply()
-                            }
-                        }
-
-                        Q.Slider {
-                            Layout.fillWidth: true
-                            label: "Medium radius"
-                            from: root.draftRadiusSmall
-                            to: 28
-                            stepSize: 1
-                            showValue: true
-                            value: root.draftRadiusMedium
-                            onMoved: (value) => {
-                                root.draftRadiusMedium = Math.round(value)
-                                if (root.draftRadiusLarge < root.draftRadiusMedium)
-                                    root.draftRadiusLarge = root.draftRadiusMedium
-                                root.queueSettingsApply()
-                            }
-                        }
-
-                        Q.Slider {
-                            Layout.fillWidth: true
-                            label: "Large radius"
-                            from: root.draftRadiusMedium
-                            to: 32
-                            stepSize: 1
-                            showValue: true
-                            value: root.draftRadiusLarge
-                            onMoved: (value) => {
-                                root.draftRadiusLarge = Math.round(value)
-                                root.queueSettingsApply()
-                            }
-                        }
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 1
-                            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
-                        }
-
-                        Text {
-                            text: "Animation Timing"
-                            color: Theme.text
-                            font.pointSize: Theme.fontNormal
-                            font.weight: Font.DemiBold
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Duration in milliseconds for each animation speed tier."
-                            color: Theme.subtext
-                            font.pointSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Q.Slider {
-                            Layout.fillWidth: true
-                            label: "Fast"
-                            from: 0
-                            to: 500
-                            stepSize: 10
-                            showValue: true
-                            enabled: root.draftAnimationsEnabled
-                            value: root.draftAnimDurationFast
-                            onMoved: (value) => {
-                                root.draftAnimDurationFast = Math.round(value)
-                                root.queueSettingsApply()
-                            }
-                        }
-
-                        Q.Slider {
-                            Layout.fillWidth: true
-                            label: "Normal"
-                            from: 0
-                            to: 1000
-                            stepSize: 10
-                            showValue: true
-                            enabled: root.draftAnimationsEnabled
-                            value: root.draftAnimDuration
-                            onMoved: (value) => {
-                                root.draftAnimDuration = Math.round(value)
-                                root.queueSettingsApply()
-                            }
-                        }
-
-                        Q.Slider {
-                            Layout.fillWidth: true
-                            label: "Slow"
-                            from: 0
-                            to: 1500
-                            stepSize: 10
-                            showValue: true
-                            enabled: root.draftAnimationsEnabled
-                            value: root.draftAnimDurationSlow
-                            onMoved: (value) => {
-                                root.draftAnimDurationSlow = Math.round(value)
-                                root.queueSettingsApply()
-                            }
-                        }
-
-                        Text {
-                            text: "Easing Curves"
-                            color: Theme.text
-                            font.pointSize: Theme.fontNormal
-                            font.weight: Font.DemiBold
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Enter for appearances, Exit for dismissals, Transition for state changes."
-                            color: Theme.subtext
-                            font.pointSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Q.Dropdown {
-                            Layout.fillWidth: true
-                            label: "Enter"
-                            enabled: root.draftAnimationsEnabled
-                            model: root.curveOptions
-                            currentIndex: Math.max(0, root.curveOptions.indexOf(root.draftAnimCurveEnter))
-                            onSelected: (_, value) => {
-                                root.draftAnimCurveEnter = value
-                                root.applySettingsNow()
-                            }
-                        }
-
-                        Q.Dropdown {
-                            Layout.fillWidth: true
-                            label: "Exit"
-                            enabled: root.draftAnimationsEnabled
-                            model: root.curveOptions
-                            currentIndex: Math.max(0, root.curveOptions.indexOf(root.draftAnimCurveExit))
-                            onSelected: (_, value) => {
-                                root.draftAnimCurveExit = value
-                                root.applySettingsNow()
-                            }
-                        }
-
-                        Q.Dropdown {
-                            Layout.fillWidth: true
-                            label: "Transition"
-                            enabled: root.draftAnimationsEnabled
-                            model: root.curveOptions
-                            currentIndex: Math.max(0, root.curveOptions.indexOf(root.draftAnimCurveTransition))
-                            onSelected: (_, value) => {
-                                root.draftAnimCurveTransition = value
-                                root.applySettingsNow()
-                            }
-                        }
-                    }
+            Q.Dropdown {
+                Layout.fillWidth: true
+                label: "Icon Pack"
+                model: root.iconThemeOptions
+                currentIndex: root.optionIndex(root.iconThemeOptions, root.draftIconTheme, 0)
+                onSelected: (_, value) => {
+                    root.draftIconTheme = value
+                    root.applySettingsNow()
                 }
+            }
 
-                } // end right column
+            Text {
+                text: "Surface Styling"
+                color: Theme.accent
+                font.pointSize: Theme.fontSmall
+                font.bold: true
+                Layout.topMargin: 12
+                Layout.bottomMargin: 4
+            }
+
+            Q.Toggle {
+                Layout.fillWidth: true
+                label: "Transparent containers"
+                checked: root.draftTransparencyEnabled
+                onToggled: (value) => {
+                    root.draftTransparencyEnabled = value
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Slider {
+                Layout.fillWidth: true
+                label: "Transparency"
+                from: 0
+                to: 100
+                stepSize: 1
+                showValue: true
+                enabled: root.draftTransparencyEnabled
+                value: root.draftTransparencyLevel * 100
+                onMoved: (value) => {
+                    root.draftTransparencyLevel = value / 100
+                    root.queueSettingsApply()
+                }
+            }
+
+            Q.Slider {
+                Layout.fillWidth: true
+                label: "Small radius"
+                from: 0
+                to: 24
+                stepSize: 1
+                showValue: true
+                value: root.draftRadiusSmall
+                onMoved: (value) => {
+                    root.draftRadiusSmall = Math.round(value)
+                    if (root.draftRadiusMedium < root.draftRadiusSmall)
+                        root.draftRadiusMedium = root.draftRadiusSmall
+                    if (root.draftRadiusLarge < root.draftRadiusMedium)
+                        root.draftRadiusLarge = root.draftRadiusMedium
+                    root.queueSettingsApply()
+                }
+            }
+
+            Q.Slider {
+                Layout.fillWidth: true
+                label: "Medium radius"
+                from: root.draftRadiusSmall
+                to: 28
+                stepSize: 1
+                showValue: true
+                value: root.draftRadiusMedium
+                onMoved: (value) => {
+                    root.draftRadiusMedium = Math.round(value)
+                    if (root.draftRadiusLarge < root.draftRadiusMedium)
+                        root.draftRadiusLarge = root.draftRadiusMedium
+                    root.queueSettingsApply()
+                }
+            }
+
+            Q.Slider {
+                Layout.fillWidth: true
+                label: "Large radius"
+                from: root.draftRadiusMedium
+                to: 32
+                stepSize: 1
+                showValue: true
+                value: root.draftRadiusLarge
+                onMoved: (value) => {
+                    root.draftRadiusLarge = Math.round(value)
+                    root.queueSettingsApply()
+                }
             }
         }
     }
 
-    RowLayout {
-        Layout.fillWidth: true
-        spacing: 12
+    Component {
+        id: layoutPageComponent
 
-        Text {
-            Layout.fillWidth: true
-            text: "Changes apply automatically and are still written back to the config file, so manual edits remain compatible."
-            color: Theme.subtext
-            font.pointSize: Theme.fontSmall
-            wrapMode: Text.WordWrap
+        ColumnLayout {
+            width: pageLoader.width
+            spacing: 6
+
+            Text {
+                text: "Browsing"
+                color: Theme.accent
+                font.pointSize: Theme.fontSmall
+                font.bold: true
+                Layout.bottomMargin: 4
+            }
+
+            Q.Checkbox {
+                label: "Show hidden files"
+                checked: root.draftShowHidden
+                onToggled: (value) => {
+                    root.draftShowHidden = value
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Toggle {
+                Layout.fillWidth: true
+                label: "Show sidebar"
+                checked: root.draftSidebarVisible
+                onToggled: (value) => {
+                    root.draftSidebarVisible = value
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Toggle {
+                Layout.fillWidth: true
+                label: "Sidebar on right"
+                enabled: root.draftSidebarVisible
+                checked: root.draftSidebarPosition === "right"
+                onToggled: (value) => {
+                    root.draftSidebarPosition = value ? "right" : "left"
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Slider {
+                Layout.fillWidth: true
+                label: "Sidebar width"
+                from: 160
+                to: 480
+                stepSize: 10
+                showValue: true
+                enabled: root.draftSidebarVisible
+                value: root.draftSidebarWidth
+                onMoved: (value) => {
+                    root.draftSidebarWidth = Math.round(value)
+                    root.queueSettingsApply()
+                }
+            }
+
+            Text {
+                text: "Window Controls"
+                color: Theme.accent
+                font.pointSize: Theme.fontSmall
+                font.bold: true
+                Layout.topMargin: 12
+                Layout.bottomMargin: 4
+            }
+
+            Q.Toggle {
+                Layout.fillWidth: true
+                label: "Show window controls"
+                checked: root.draftShowWindowControls
+                onToggled: (value) => {
+                    root.draftShowWindowControls = value
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Toggle {
+                Layout.fillWidth: true
+                label: "Buttons on left"
+                enabled: root.draftShowWindowControls
+                checked: root._layoutParts.side === "left"
+                onToggled: (value) => {
+                    root.rebuildButtonLayout(
+                        value ? "left" : "right",
+                        root._layoutParts.hasClose,
+                        root._layoutParts.hasMinimize,
+                        root._layoutParts.hasMaximize
+                    )
+                }
+            }
+
+            Q.Checkbox {
+                label: "Close button"
+                enabled: root.draftShowWindowControls
+                checked: root._layoutParts.hasClose
+                onToggled: (value) => {
+                    root.rebuildButtonLayout(root._layoutParts.side, value, root._layoutParts.hasMinimize, root._layoutParts.hasMaximize)
+                }
+            }
+
+            Q.Checkbox {
+                label: "Minimize button"
+                enabled: root.draftShowWindowControls
+                checked: root._layoutParts.hasMinimize
+                onToggled: (value) => {
+                    root.rebuildButtonLayout(root._layoutParts.side, root._layoutParts.hasClose, value, root._layoutParts.hasMaximize)
+                }
+            }
+
+            Q.Checkbox {
+                label: "Maximize button"
+                enabled: root.draftShowWindowControls
+                checked: root._layoutParts.hasMaximize
+                onToggled: (value) => {
+                    root.rebuildButtonLayout(root._layoutParts.side, root._layoutParts.hasClose, root._layoutParts.hasMinimize, value)
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 54
+                radius: Theme.radiusMedium
+                color: Theme.containerColor(Theme.surface, 0.22)
+                border.width: 1
+                border.color: root.sectionBorderColor
+                opacity: root.draftShowWindowControls ? 1 : 0.6
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 8
+
+                    RowLayout {
+                        visible: root._layoutParts.side === "left"
+                        spacing: 6
+
+                        Rectangle { visible: root._layoutParts.hasMinimize; width: 12; height: 12; radius: 6; color: Theme.warning }
+                        Rectangle { visible: root._layoutParts.hasMaximize; width: 12; height: 12; radius: 6; color: Theme.success }
+                        Rectangle { visible: root._layoutParts.hasClose; width: 12; height: 12; radius: 6; color: Theme.error }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 6
+                        radius: 3
+                        color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                    }
+
+                    RowLayout {
+                        visible: root._layoutParts.side !== "left"
+                        spacing: 6
+
+                        Rectangle { visible: root._layoutParts.hasMinimize; width: 12; height: 12; radius: 6; color: Theme.warning }
+                        Rectangle { visible: root._layoutParts.hasMaximize; width: 12; height: 12; radius: 6; color: Theme.success }
+                        Rectangle { visible: root._layoutParts.hasClose; width: 12; height: 12; radius: 6; color: Theme.error }
+                    }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: motionPageComponent
+
+        ColumnLayout {
+            width: pageLoader.width
+            spacing: 6
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.bottomMargin: 8
+                spacing: 12
+
+                Text {
+                    text: "Animations"
+                    color: Theme.text
+                    font.pointSize: Theme.fontNormal + 2
+                    font.bold: true
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Q.Toggle {
+                    label: ""
+                    checked: root.draftAnimationsEnabled
+                    onToggled: (value) => {
+                        root.draftAnimationsEnabled = value
+                        root.applySettingsNow()
+                    }
+                }
+            }
+
+            Q.Separator { Layout.bottomMargin: 8 }
+
+            Text {
+                text: "Timing"
+                color: Theme.accent
+                font.pointSize: Theme.fontSmall
+                font.bold: true
+                Layout.bottomMargin: 4
+            }
+
+            Q.Slider {
+                Layout.fillWidth: true
+                label: "Fast"
+                from: 0
+                to: 500
+                stepSize: 10
+                showValue: true
+                enabled: root.draftAnimationsEnabled
+                value: root.draftAnimDurationFast
+                onMoved: (value) => {
+                    root.draftAnimDurationFast = Math.round(value)
+                    root.queueSettingsApply()
+                }
+            }
+
+            Q.Slider {
+                Layout.fillWidth: true
+                label: "Normal"
+                from: 0
+                to: 1000
+                stepSize: 10
+                showValue: true
+                enabled: root.draftAnimationsEnabled
+                value: root.draftAnimDuration
+                onMoved: (value) => {
+                    root.draftAnimDuration = Math.round(value)
+                    root.queueSettingsApply()
+                }
+            }
+
+            Q.Slider {
+                Layout.fillWidth: true
+                label: "Slow"
+                from: 0
+                to: 1500
+                stepSize: 10
+                showValue: true
+                enabled: root.draftAnimationsEnabled
+                value: root.draftAnimDurationSlow
+                onMoved: (value) => {
+                    root.draftAnimDurationSlow = Math.round(value)
+                    root.queueSettingsApply()
+                }
+            }
+
+            Text {
+                text: "Curves"
+                color: Theme.accent
+                font.pointSize: Theme.fontSmall
+                font.bold: true
+                Layout.topMargin: 12
+                Layout.bottomMargin: 4
+            }
+
+            Q.Dropdown {
+                Layout.fillWidth: true
+                label: "Enter"
+                enabled: root.draftAnimationsEnabled
+                model: root.curveOptions
+                currentIndex: Math.max(0, root.curveOptions.indexOf(root.draftAnimCurveEnter))
+                onSelected: (_, value) => {
+                    root.draftAnimCurveEnter = value
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Dropdown {
+                Layout.fillWidth: true
+                label: "Exit"
+                enabled: root.draftAnimationsEnabled
+                model: root.curveOptions
+                currentIndex: Math.max(0, root.curveOptions.indexOf(root.draftAnimCurveExit))
+                onSelected: (_, value) => {
+                    root.draftAnimCurveExit = value
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Dropdown {
+                Layout.fillWidth: true
+                label: "Transition"
+                enabled: root.draftAnimationsEnabled
+                model: root.curveOptions
+                currentIndex: Math.max(0, root.curveOptions.indexOf(root.draftAnimCurveTransition))
+                onSelected: (_, value) => {
+                    root.draftAnimCurveTransition = value
+                    root.applySettingsNow()
+                }
+            }
+        }
+    }
+
+    Component {
+        id: toolsPageComponent
+
+        ColumnLayout {
+            width: pageLoader.width
+            spacing: 6
+
+            Text {
+                text: "Utilities"
+                color: Theme.accent
+                font.pointSize: Theme.fontSmall
+                font.bold: true
+                Layout.bottomMargin: 4
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+
+                Q.Button {
+                    Layout.fillWidth: true
+                    text: "Keyboard Shortcuts"
+                    onClicked: root.openKeyboardShortcuts()
+                }
+
+                Q.Button {
+                    Layout.fillWidth: true
+                    text: "Connect to Network Location"
+                    variant: "ghost"
+                    onClicked: root.openRemoteConnect()
+                }
+            }
+        }
+    }
+
+    Item {
+        id: pageContainer
+        Layout.fillWidth: true
+        implicitHeight: Math.max(460, Math.min(pageContentHeight + 120, 640, root.height - 140))
+
+        property real pageContentHeight: pageLoader.item ? pageLoader.item.implicitHeight : 0
+
+        Behavior on implicitHeight {
+            NumberAnimation {
+                duration: Theme.animDuration
+                easing.type: Easing.OutCubic
+            }
         }
 
-        Q.Button {
-            text: "Done"
-            onClicked: root.closePanel()
+        Rectangle {
+            anchors.fill: parent
+            radius: root.draftRadiusLarge + 6
+            color: Theme.containerColor(Theme.mantle, 0.9)
+            border.width: 1
+            border.color: root.sectionBorderColor
+
+            Behavior on radius {
+                NumberAnimation {
+                    duration: Theme.animDurationFast
+                    easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+                }
+            }
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 0
+
+                    Rectangle {
+                        visible: !root.compactNavigation
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: 184
+                        color: Theme.containerColor(Theme.crust, 0.96)
+                        radius: root.draftRadiusLarge + 6
+
+                        Behavior on radius {
+                            NumberAnimation {
+                                duration: Theme.animDurationFast
+                                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: root.draftRadiusLarge + 6
+                            color: parent.color
+
+                            Behavior on width {
+                                NumberAnimation {
+                                    duration: Theme.animDurationFast
+                                    easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            anchors.topMargin: 16
+                            spacing: 2
+
+                            Row {
+                                Layout.leftMargin: 12
+                                Layout.bottomMargin: 12
+                                spacing: 6
+
+                                IconSettings {
+                                    size: 16
+                                    color: Theme.text
+                                }
+
+                                Text {
+                                    text: "Settings"
+                                    color: Theme.text
+                                    font.pointSize: Theme.fontNormal + 1
+                                    font.bold: true
+                                }
+                            }
+
+                            Q.Tabs {
+                                id: sideTabs
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                orientation: Qt.Vertical
+                                model: root.sectionNavItems
+                                labelRole: "title"
+                                iconComponentRole: "iconComponent"
+                                currentIndex: root.currentSectionIndex
+                                sideTabHeight: 36
+                                sideTabWidth: 168
+                                onTabChanged: (index) => root.showSection(index)
+                            }
+
+                            Q.Button {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 12
+                                Layout.rightMargin: 12
+                                Layout.topMargin: 8
+                                text: "Reset to Defaults"
+                                variant: "ghost"
+                                onClicked: root.resetToDefaults()
+                            }
+                        }
+                    }
+
+                    Q.Separator {
+                        visible: !root.compactNavigation
+                        orientation: Qt.Vertical
+                        Layout.fillHeight: true
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 20
+                            spacing: 12
+
+                            Q.Tabs {
+                                id: compactSectionNav
+                                visible: root.compactNavigation
+                                Layout.fillWidth: true
+                                model: root.sectionNavItems
+                                labelRole: "title"
+                                currentIndex: root.currentSectionIndex
+                                onTabChanged: (index) => root.showSection(index)
+                            }
+
+                            Text {
+                                text: root.sectionItems[root.currentSectionIndex].title
+                                color: Theme.text
+                                font.pointSize: Theme.fontLarge + 2
+                                font.bold: true
+                            }
+
+                            Flickable {
+                                id: contentFlick
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                contentWidth: width
+                                contentHeight: pageLoader.item ? pageLoader.item.implicitHeight : 0
+                                boundsBehavior: Flickable.StopAtBounds
+                                interactive: contentHeight > height
+
+                                Loader {
+                                    id: pageLoader
+                                    width: contentFlick.width
+                                    sourceComponent: root.currentSectionIndex === 0
+                                        ? lookPageComponent
+                                        : root.currentSectionIndex === 1
+                                            ? layoutPageComponent
+                                            : root.currentSectionIndex === 2
+                                                ? motionPageComponent
+                                                : toolsPageComponent
+                                }
+                            }
+                        }
+                    }
+                }
+
+            }
         }
     }
 }

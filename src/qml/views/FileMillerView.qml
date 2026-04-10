@@ -340,14 +340,14 @@ FocusScope {
                         from: 0
                         to: 1
                         duration: Theme.animDurationFast
-                        easing.type: Theme.animEasingEnter
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
                     }
                     NumberAnimation {
                         properties: "scale"
                         from: 0.98
                         to: 1
                         duration: Theme.animDuration
-                        easing.type: Theme.animEasingEnter
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
                     }
                 }
             }
@@ -355,7 +355,7 @@ FocusScope {
                 NumberAnimation {
                     properties: "x,y"
                     duration: Theme.animDurationSlow
-                    easing.type: Theme.animEasingEnter
+                    easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
                 }
             }
             remove: Transition {
@@ -364,13 +364,13 @@ FocusScope {
                         properties: "opacity"
                         to: 0
                         duration: Theme.animDurationFast
-                        easing.type: Theme.animEasingExit
+                        easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                     }
                     NumberAnimation {
                         properties: "scale"
                         to: 0.98
                         duration: Theme.animDurationFast
-                        easing.type: Theme.animEasingExit
+                        easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                     }
                 }
             }
@@ -378,7 +378,7 @@ FocusScope {
                 NumberAnimation {
                     properties: "x,y"
                     duration: Theme.animDurationSlow
-                    easing.type: Theme.animEasingEnter
+                    easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
                 }
             }
 
@@ -781,8 +781,8 @@ FocusScope {
                                 scale: currentDelegate.isCutPending ? 1 : 0.88
                                 visible: opacity > 0
 
-                                Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
-                                Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
+                                Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
+                                Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
 
                                 IconScissors {
                                     anchors.centerIn: parent
@@ -804,8 +804,8 @@ FocusScope {
                                 scale: currentDelegate.isPastePending ? 1 : 0.9
                                 visible: opacity > 0
 
-                                Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
-                                Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
+                                Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
+                                Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
 
                                 Q.Spinner {
                                     anchors.centerIn: parent
@@ -1085,6 +1085,7 @@ FocusScope {
             property var textPreview: ({ content: "", truncated: false, isBinary: false, error: "" })
             property var directoryPreview: ({ entries: [], truncated: false, error: "", count: 0 })
             property var pdfPreview: ({ localPath: "", pageCount: 0, error: "" })
+            property var fontPreview: ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
             property var fileMetadata: ({})
             property string metadataHint: ""
             property int pdfPageIndex: 0
@@ -1118,8 +1119,18 @@ FocusScope {
                     return ""
                 return "Page " + (pdfPageIndex + 1) + " of " + pdfPreview.pageCount
             }
+            readonly property bool isFont: {
+                if (isRemoteUri || previewIsDir)
+                    return false
+                if (_mime.startsWith("font/") || _mime === "application/x-font-ttf"
+                    || _mime === "application/x-font-otf" || _mime === "application/vnd.ms-fontobject")
+                    return true
+                var ext = previewFileName.lastIndexOf(".") >= 0
+                    ? previewFileName.substring(previewFileName.lastIndexOf(".") + 1).toLowerCase() : ""
+                return ["ttf", "otf", "woff", "woff2"].indexOf(ext) >= 0
+            }
             readonly property bool isText: {
-                if (isRemoteUri || previewIsDir || isPdf || isImage || isVideo || isAudio || isArchive) return false
+                if (isRemoteUri || previewIsDir || isPdf || isImage || isVideo || isAudio || isArchive || isFont) return false
                 if (_mime.startsWith("text/")) return true
                 var textMimes = [
                     "application/json", "application/xml", "application/x-yaml",
@@ -1237,6 +1248,11 @@ FocusScope {
                 } else {
                     pdfPreview = ({ localPath: "", pageCount: 0, error: "" })
                 }
+
+                if (isFont)
+                    fontPreview = previewService.loadFontPreview(previewFilePath)
+                else
+                    fontPreview = ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
 
                 if (previewIsDir)
                     directoryPreview = previewService.loadDirectoryPreview(previewFilePath)
@@ -1521,13 +1537,15 @@ FocusScope {
                         interactive: true
                         boundsMovement: Flickable.StopAtBounds
                         boundsBehavior: Flickable.StopAtBounds
-                        contentWidth: Math.max(width, textArea.contentWidth)
-                        contentHeight: Math.max(height, textArea.contentHeight)
+                        contentWidth: Math.max(width, textArea.implicitWidth)
+                        contentHeight: Math.max(height, textArea.implicitHeight)
 
                         TextEdit {
                             id: textArea
                             readOnly: true
                             selectByMouse: true
+                            width: Math.max(implicitWidth, textPreviewFlick.width)
+                            height: Math.max(implicitHeight, textPreviewFlick.height)
                             textFormat: previewColumn.textPreview.usesBat && previewColumn.textPreview.html !== ""
                                 ? TextEdit.RichText
                                 : TextEdit.PlainText
@@ -1542,6 +1560,23 @@ FocusScope {
                             wrapMode: TextEdit.NoWrap
                             font.family: "monospace"
                             font.pointSize: Theme.fontSmall - 1
+
+                            onCursorRectangleChanged: {
+                                var r = cursorRectangle
+                                var pad = 4
+                                if (r.x - pad < textPreviewFlick.contentX)
+                                    textPreviewFlick.contentX = Math.max(0, r.x - pad)
+                                else if (r.x + r.width + pad > textPreviewFlick.contentX + textPreviewFlick.width)
+                                    textPreviewFlick.contentX = Math.min(
+                                        textPreviewFlick.contentWidth - textPreviewFlick.width,
+                                        r.x + r.width + pad - textPreviewFlick.width)
+                                if (r.y - pad < textPreviewFlick.contentY)
+                                    textPreviewFlick.contentY = Math.max(0, r.y - pad)
+                                else if (r.y + r.height + pad > textPreviewFlick.contentY + textPreviewFlick.height)
+                                    textPreviewFlick.contentY = Math.min(
+                                        textPreviewFlick.contentHeight - textPreviewFlick.height,
+                                        r.y + r.height + pad - textPreviewFlick.height)
+                            }
                         }
 
                         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
@@ -1604,13 +1639,115 @@ FocusScope {
                         }
                     }
 
+                    // Font preview
+                    Flickable {
+                        id: millerFontFlick
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        visible: previewColumn.isFont
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        contentWidth: width
+                        contentHeight: millerFontColumn.implicitHeight
+
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                        Column {
+                            id: millerFontColumn
+                            width: millerFontFlick.width
+                            spacing: 10
+
+                            Text {
+                                width: parent.width
+                                visible: !previewColumn.fontPreview.valid
+                                text: previewColumn.fontPreview.error || "Unable to load this font"
+                                color: Theme.error
+                                font.pointSize: Theme.fontSmall
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: previewColumn.fontPreview.valid
+                                text: previewColumn.fontPreview.styleName && previewColumn.fontPreview.styleName !== ""
+                                    ? (previewColumn.fontPreview.family + " — " + previewColumn.fontPreview.styleName)
+                                    : (previewColumn.fontPreview.family || "")
+                                color: Theme.subtext
+                                font.pointSize: Theme.fontSmall
+                                font.weight: Font.DemiBold
+                                elide: Text.ElideRight
+                            }
+
+                            Repeater {
+                                model: previewColumn.fontPreview.valid ? [12, 16, 22, 30] : []
+                                delegate: Text {
+                                    width: millerFontColumn.width
+                                    text: "The quick brown fox jumps over the lazy dog"
+                                    color: Theme.text
+                                    font.family: previewColumn.fontPreview.family || ""
+                                    font.styleName: previewColumn.fontPreview.styleName || ""
+                                    font.weight: previewColumn.fontPreview.weight || Font.Normal
+                                    font.italic: previewColumn.fontPreview.italic || false
+                                    font.pointSize: modelData
+                                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                }
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: previewColumn.fontPreview.valid
+                                text: "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789"
+                                color: Theme.text
+                                font.family: previewColumn.fontPreview.family || ""
+                                font.styleName: previewColumn.fontPreview.styleName || ""
+                                font.weight: previewColumn.fontPreview.weight || Font.Normal
+                                font.italic: previewColumn.fontPreview.italic || false
+                                font.pointSize: 16
+                                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: previewColumn.fontPreview.valid
+                                text: "Glyphs & ligatures"
+                                color: Theme.subtext
+                                font.pointSize: Theme.fontSmall
+                                font.weight: Font.DemiBold
+                                topPadding: 4
+                            }
+
+                            Repeater {
+                                model: previewColumn.fontPreview.valid
+                                    ? [
+                                        "~!@#$%^&* {} [] () I1l O0o",
+                                        "!== \\\\ <= #{ -> ~@ |> 0x12",
+                                        "|=>==<==>=|======|===|===>",
+                                        "<---|--|--------|-<->--<-|",
+                                        "[INFO] todo)) fixme))"
+                                      ]
+                                    : []
+                                delegate: Text {
+                                    width: millerFontColumn.width
+                                    text: modelData
+                                    color: Theme.text
+                                    font.family: previewColumn.fontPreview.family || ""
+                                    font.styleName: previewColumn.fontPreview.styleName || ""
+                                    font.weight: previewColumn.fontPreview.weight || Font.Normal
+                                    font.italic: previewColumn.fontPreview.italic || false
+                                    font.pointSize: 14
+                                    wrapMode: Text.NoWrap
+                                }
+                            }
+                        }
+                    }
+
                     // Fallback: icon for non-previewable files
                     Column {
                         anchors.centerIn: parent
                         spacing: 10
                         visible: !previewColumn.previewIsDir && !previewColumn.isArchive
                             && !previewColumn.hasVisualPreview && !previewColumn.isText
-                            && !previewColumn.isPdf && previewColumn.previewFilePath !== ""
+                            && !previewColumn.isPdf && !previewColumn.isFont
+                            && previewColumn.previewFilePath !== ""
 
                         Image {
                             anchors.horizontalCenter: parent.horizontalCenter

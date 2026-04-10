@@ -98,7 +98,7 @@ Q.Dialog {
         Behavior on contentHeight {
             NumberAnimation {
                 duration: Theme.animDurationSlow
-                easing.type: Theme.animEasingEnter
+                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
             }
         }
 

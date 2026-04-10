@@ -17,6 +17,7 @@ Item {
     property var textPreview: ({ content: "", truncated: false, isBinary: false, error: "" })
     property var directoryPreview: ({ entries: [], truncated: false, error: "", count: 0 })
     property var pdfPreview: ({ localPath: "", pageCount: 0, error: "" })
+    property var fontPreview: ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
     property var fileMetadata: ({})
     property string metadataHint: ""
     property int pdfPageIndex: 0
@@ -50,8 +51,16 @@ Item {
     readonly property bool isVideo: !isRemoteUri && !isDirectory && _mime.startsWith("video/")
     readonly property bool isAudio: !isRemoteUri && !isDirectory && _mime.startsWith("audio/")
     readonly property bool isPdf: !isRemoteUri && !isDirectory && _mime === "application/pdf"
+    readonly property bool isFont: {
+        if (isRemoteUri || isDirectory)
+            return false
+        if (_mime.startsWith("font/") || _mime === "application/x-font-ttf"
+            || _mime === "application/x-font-otf" || _mime === "application/vnd.ms-fontobject")
+            return true
+        return ["ttf", "otf", "woff", "woff2"].indexOf(fileExtension) >= 0
+    }
     readonly property bool isText: {
-        if (isRemoteUri || isDirectory || isPdf || isImage || isVideo || isAudio || isArchive)
+        if (isRemoteUri || isDirectory || isPdf || isImage || isVideo || isAudio || isArchive || isFont)
             return false
         if (_mime.startsWith("text/"))
             return true
@@ -195,6 +204,11 @@ Item {
             pdfPreview = ({ localPath: "", pageCount: 0, error: "" })
         }
 
+        if (isFont)
+            fontPreview = previewService.loadFontPreview(filePath)
+        else
+            fontPreview = ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
+
         if (isDirectory)
             directoryPreview = previewService.loadDirectoryPreview(filePath)
         else if (isArchive)
@@ -320,7 +334,7 @@ Item {
             from: 0
             to: 1
             duration: Theme.animDurationFast
-            easing.type: Theme.animEasingEnter
+            easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
         }
 
         NumberAnimation {
@@ -329,7 +343,7 @@ Item {
             from: 0
             to: 1
             duration: Theme.animDurationFast
-            easing.type: Theme.animEasingEnter
+            easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
         }
 
         NumberAnimation {
@@ -348,7 +362,7 @@ Item {
             from: -8
             to: 0
             duration: Theme.animDuration
-            easing.type: Theme.animEasingEnter
+            easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
         }
     }
 
@@ -361,7 +375,7 @@ Item {
                 property: "opacity"
                 to: 0
                 duration: Theme.animDurationFast
-                easing.type: Theme.animEasingExit
+                easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
             }
 
             NumberAnimation {
@@ -369,7 +383,7 @@ Item {
                 property: "opacity"
                 to: 0
                 duration: Theme.animDurationFast
-                easing.type: Theme.animEasingExit
+                easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
             }
 
             NumberAnimation {
@@ -377,7 +391,7 @@ Item {
                 property: "scale"
                 to: 0.92
                 duration: Theme.animDurationFast
-                easing.type: Theme.animEasingExit
+                easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
             }
 
             NumberAnimation {
@@ -385,7 +399,7 @@ Item {
                 property: "yOffset"
                 to: -4
                 duration: Theme.animDurationFast
-                easing.type: Theme.animEasingExit
+                easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
             }
         }
 
@@ -704,13 +718,15 @@ Item {
                             interactive: true
                             boundsMovement: Flickable.StopAtBounds
                             boundsBehavior: Flickable.StopAtBounds
-                            contentWidth: Math.max(width, textArea.contentWidth)
-                            contentHeight: Math.max(height, textArea.contentHeight)
+                            contentWidth: Math.max(width, textArea.implicitWidth)
+                            contentHeight: Math.max(height, textArea.implicitHeight)
 
                             TextEdit {
                                 id: textArea
                                 readOnly: true
                                 selectByMouse: true
+                                width: Math.max(implicitWidth, textPreviewFlick.width)
+                                height: Math.max(implicitHeight, textPreviewFlick.height)
                                 textFormat: textPreview.usesBat && textPreview.html !== ""
                                     ? TextEdit.RichText
                                     : TextEdit.PlainText
@@ -725,6 +741,23 @@ Item {
                                 wrapMode: TextEdit.NoWrap
                                 font.family: "monospace"
                                 font.pointSize: Theme.fontSmall
+
+                                onCursorRectangleChanged: {
+                                    var r = cursorRectangle
+                                    var pad = 4
+                                    if (r.x - pad < textPreviewFlick.contentX)
+                                        textPreviewFlick.contentX = Math.max(0, r.x - pad)
+                                    else if (r.x + r.width + pad > textPreviewFlick.contentX + textPreviewFlick.width)
+                                        textPreviewFlick.contentX = Math.min(
+                                            textPreviewFlick.contentWidth - textPreviewFlick.width,
+                                            r.x + r.width + pad - textPreviewFlick.width)
+                                    if (r.y - pad < textPreviewFlick.contentY)
+                                        textPreviewFlick.contentY = Math.max(0, r.y - pad)
+                                    else if (r.y + r.height + pad > textPreviewFlick.contentY + textPreviewFlick.height)
+                                        textPreviewFlick.contentY = Math.min(
+                                            textPreviewFlick.contentHeight - textPreviewFlick.height,
+                                            r.y + r.height + pad - textPreviewFlick.height)
+                                }
                             }
 
                             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
@@ -850,10 +883,110 @@ Item {
                             }
                         }
 
+                        Flickable {
+                            id: fontPreviewFlick
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            visible: root.isFont
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            contentWidth: width
+                            contentHeight: fontPreviewColumn.implicitHeight
+
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                            Column {
+                                id: fontPreviewColumn
+                                width: fontPreviewFlick.width
+                                spacing: 14
+
+                                Text {
+                                    width: parent.width
+                                    visible: !root.fontPreview.valid
+                                    text: root.fontPreview.error || "Unable to load this font"
+                                    color: Theme.error
+                                    font.pointSize: Theme.fontNormal
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    visible: root.fontPreview.valid
+                                    text: root.fontPreview.styleName && root.fontPreview.styleName !== ""
+                                        ? (root.fontPreview.family + " — " + root.fontPreview.styleName)
+                                        : (root.fontPreview.family || "")
+                                    color: Theme.subtext
+                                    font.pointSize: Theme.fontSmall
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+
+                                Repeater {
+                                    model: root.fontPreview.valid ? [12, 18, 24, 32, 48] : []
+                                    delegate: Text {
+                                        width: fontPreviewColumn.width
+                                        text: "The quick brown fox jumps over the lazy dog"
+                                        color: Theme.text
+                                        font.family: root.fontPreview.family || ""
+                                        font.styleName: root.fontPreview.styleName || ""
+                                        font.weight: root.fontPreview.weight || Font.Normal
+                                        font.italic: root.fontPreview.italic || false
+                                        font.pointSize: modelData
+                                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                    }
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    visible: root.fontPreview.valid
+                                    text: "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789  !@#$%^&*()"
+                                    color: Theme.text
+                                    font.family: root.fontPreview.family || ""
+                                    font.styleName: root.fontPreview.styleName || ""
+                                    font.weight: root.fontPreview.weight || Font.Normal
+                                    font.italic: root.fontPreview.italic || false
+                                    font.pointSize: 20
+                                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    visible: root.fontPreview.valid
+                                    text: "Glyphs & ligatures"
+                                    color: Theme.subtext
+                                    font.pointSize: Theme.fontSmall
+                                    font.weight: Font.DemiBold
+                                    topPadding: 6
+                                }
+
+                                Repeater {
+                                    model: root.fontPreview.valid
+                                        ? [
+                                            "~!@#$%^&* {} [] () I1l O0o",
+                                            "!== \\\\ <= #{ -> ~@ |> 0x12",
+                                            "|=>==<==>=|======|===|===>",
+                                            "<---|--|--------|-<->--<-|",
+                                            "[INFO] todo)) fixme))"
+                                          ]
+                                        : []
+                                    delegate: Text {
+                                        width: fontPreviewColumn.width
+                                        text: modelData
+                                        color: Theme.text
+                                        font.family: root.fontPreview.family || ""
+                                        font.styleName: root.fontPreview.styleName || ""
+                                        font.weight: root.fontPreview.weight || Font.Normal
+                                        font.italic: root.fontPreview.italic || false
+                                        font.pointSize: 18
+                                        wrapMode: Text.NoWrap
+                                    }
+                                }
+                            }
+                        }
+
                         Column {
                             anchors.centerIn: parent
                             spacing: 12
-                            visible: !root.hasVisualPreview && !root.isText && !root.isDirectory && !root.isArchive && !root.isPdf
+                            visible: !root.hasVisualPreview && !root.isText && !root.isDirectory && !root.isArchive && !root.isPdf && !root.isFont
 
                             Image {
                                 anchors.horizontalCenter: parent.horizontalCenter

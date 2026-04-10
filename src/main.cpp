@@ -53,8 +53,14 @@
 
 int main(int argc, char *argv[])
 {
-    // Suppress harmless portal registration warning on non-sandboxed apps
-    QLoggingCategory::setFilterRules("qt.qpa.services.warning=false");
+    // Suppress noisy warnings:
+    //   - qt.qpa.services: harmless portal registration warning on non-sandboxed apps
+    //   - qt.svg: Qt's SVG parser complains about unsupported filter elements
+    //     (feTurbulence, feColorMatrix, etc.) on every draw when such SVGs
+    //     are previewed/thumbnailed, even though the file still renders.
+    QLoggingCategory::setFilterRules(
+        "qt.qpa.services.warning=false\n"
+        "qt.svg.warning=false");
 
     // Enable multisampling for smoother Shape/path rendering
     QSurfaceFormat fmt;

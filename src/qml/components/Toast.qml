@@ -75,7 +75,7 @@ Item {
                         property: "opacity"
                         to: 0
                         duration: 300
-                        easing.type: Theme.animEasingExit
+                        easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                     }
                     ScriptAction {
                         script: {

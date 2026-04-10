@@ -46,6 +46,8 @@ const ShortcutSpec kShortcutSpecs[] = {
     {"select_all", "Select All"},
     {"undo", "Undo"},
     {"redo", "Redo"},
+    {"settings", "Open Settings"},
+    {"keyboard_shortcuts", "Open Keyboard Shortcuts"},
 };
 
 QStringList iconSearchDirs()
@@ -97,6 +99,8 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"select_all", "Ctrl+A"},
     {"undo", "Ctrl+Z"},
     {"redo", "Ctrl+Shift+Z"},
+    {"settings", "Ctrl+,"},
+    {"keyboard_shortcuts", "Ctrl+?"},
 };
 
 ConfigManager::ConfigManager(const QString &configPath, QObject *parent, const QString &themesDir,
@@ -187,7 +191,7 @@ void ConfigManager::setDefaults()
     m_animationsEnabled = true;
     m_animDurationFast = 100;
     m_animDuration = 200;
-    m_animDurationSlow = 700;
+    m_animDurationSlow = 350;
     m_animCurveEnter = QStringLiteral("OutCubic");
     m_animCurveExit = QStringLiteral("InCubic");
     m_animCurveTransition = QStringLiteral("Bezier");
@@ -209,7 +213,7 @@ void ConfigManager::loadConfig()
         m_animationsEnabled = true;
         m_animDurationFast = 100;
         m_animDuration = 200;
-        m_animDurationSlow = 700;
+        m_animDurationSlow = 350;
         m_animCurveEnter = QStringLiteral("OutCubic");
         m_animCurveExit = QStringLiteral("InCubic");
         m_animCurveTransition = QStringLiteral("Bezier");
@@ -460,6 +464,14 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
     if (settings.contains("sidebarWidth")) {
         m_sidebarWidth = qBound(160, settings.value("sidebarWidth").toInt(), 480);
         sidebar.insert_or_assign("width", m_sidebarWidth);
+    }
+
+    if (settings.contains("sidebarPosition")) {
+        const QString pos = settings.value("sidebarPosition").toString().trimmed();
+        if (pos == "left" || pos == "right") {
+            m_sidebarPosition = pos;
+            sidebar.insert_or_assign("position", pos.toStdString());
+        }
     }
 
     if (!sidebar.empty())

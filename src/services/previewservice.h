@@ -21,6 +21,7 @@ public:
     Q_INVOKABLE QVariantMap loadDirectoryPreview(const QString &path, int maxEntries = 40) const;
     Q_INVOKABLE QVariantMap loadArchivePreview(const QString &path, int maxEntries = 200) const;
     Q_INVOKABLE QVariantMap loadPdfPreview(const QString &path) const;
+    Q_INVOKABLE QVariantMap loadFontPreview(const QString &path);
     Q_INVOKABLE QString localPreviewPath(const QString &path) const;
 
 private:
@@ -31,4 +32,7 @@ private:
     static bool isTrashUri(const QString &path);
     static bool looksBinary(const QByteArray &data);
     static QString decodeText(const QByteArray &data);
+
+    int m_activeFontPreviewId = -1;
+    QString m_activeFontPreviewPath;
 };

@@ -380,7 +380,7 @@ FocusScope {
                                 color: Theme.accent
                                 rotation: root.sortAscending ? 180 : 0
                                 Behavior on rotation {
-                                    NumberAnimation { duration: 200; easing.type: Theme.animEasingEnter }
+                                    NumberAnimation { duration: 200; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve }
                                 }
                                 anchors.verticalCenter: parent.verticalCenter
                             }
@@ -405,6 +405,7 @@ FocusScope {
                             onPressed: {
                                 wheelScroller.stopAndSettle()
                                 root.interactionStarted()
+                                listView.forceActiveFocus()
                             }
                             onClicked: root.clickHeader(modelData.key)
                         }
@@ -438,7 +439,7 @@ FocusScope {
                 NumberAnimation {
                     properties: "x,y"
                     duration: Theme.animDurationSlow + 60
-                    easing.type: Theme.animEasingEnter
+                    easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
                 }
             }
             add: Transition {
@@ -448,14 +449,14 @@ FocusScope {
                         from: 0
                         to: 1
                         duration: Theme.animDurationFast
-                        easing.type: Theme.animEasingEnter
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
                     }
                     NumberAnimation {
                         properties: "scale"
                         from: 0.98
                         to: 1
                         duration: Theme.animDuration
-                        easing.type: Theme.animEasingEnter
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
                     }
                 }
             }
@@ -463,7 +464,7 @@ FocusScope {
                 NumberAnimation {
                     properties: "x,y"
                     duration: Theme.animDurationSlow
-                    easing.type: Theme.animEasingEnter
+                    easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
                 }
             }
             remove: Transition {
@@ -472,13 +473,13 @@ FocusScope {
                         properties: "opacity"
                         to: 0
                         duration: Theme.animDurationFast
-                        easing.type: Theme.animEasingExit
+                        easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                     }
                     NumberAnimation {
                         properties: "scale"
                         to: 0.98
                         duration: Theme.animDurationFast
-                        easing.type: Theme.animEasingExit
+                        easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
                     }
                 }
             }
@@ -486,7 +487,7 @@ FocusScope {
                 NumberAnimation {
                     properties: "x,y"
                     duration: Theme.animDurationSlow
-                    easing.type: Theme.animEasingEnter
+                    easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
                 }
             }
 
@@ -596,12 +597,14 @@ FocusScope {
 
                 Rectangle {
                     anchors.fill: parent
+                    anchors.margins: 2
+                    radius: Theme.radiusSmall
                     opacity: detRow.dragStarted ? 0.5 : 1.0
                     color: {
                         if (folderDropArea.containsDrag)
                             return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.3)
                         if (detRow.isSelected)
-                            return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+                            return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
                         if (rowMa.containsMouse)
                             return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.05)
                         // Alternating rows
@@ -670,8 +673,8 @@ FocusScope {
                                     scale: detRow.isCutPending ? 1 : 0.88
                                     visible: opacity > 0
 
-                                    Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
-                                    Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
+                                    Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
+                                    Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
 
                                     IconScissors {
                                         anchors.centerIn: parent
@@ -693,8 +696,8 @@ FocusScope {
                                     scale: detRow.isPastePending ? 1 : 0.9
                                     visible: opacity > 0
 
-                                    Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
-                                    Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter } }
+                                    Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
+                                    Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
 
                                     Q.Spinner {
                                         anchors.centerIn: parent
@@ -794,6 +797,11 @@ FocusScope {
                         onPressed: (mouse) => {
                             wheelScroller.stopAndSettle()
                             root.interactionStarted()
+                            // Claim focus immediately so arrow keys / type-ahead
+                            // work after clicking a row. Without this, focus can
+                            // linger on the toolbar / path bar / other pane and
+                            // ListView.Keys handlers never fire.
+                            listView.forceActiveFocus()
                             pressPos = Qt.point(mouse.x, mouse.y)
                             dragPending = (mouse.button === Qt.LeftButton)
                         }

@@ -78,7 +78,7 @@ Rectangle {
     }
 
     Behavior on implicitHeight {
-        NumberAnimation { duration: 150; easing.type: Theme.animEasingEnter }
+        NumberAnimation { duration: 150; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve }
     }
 
     Timer {
