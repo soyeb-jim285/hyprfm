@@ -42,15 +42,15 @@
   <screenshots>
     <screenshot type="default">
       <caption>Grid view with file preview</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.22/docs/screenshots/grid-view.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.23/docs/screenshots/grid-view.png</image>
     </screenshot>
     <screenshot>
       <caption>Miller column view</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.22/docs/screenshots/miller-view.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.23/docs/screenshots/miller-view.png</image>
     </screenshot>
     <screenshot>
       <caption>Quick preview overlay</caption>
-      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.22/docs/screenshots/quick-preview.png</image>
+      <image>https://raw.githubusercontent.com/soyeb-jim285/hyprfm/v0.4.23/docs/screenshots/quick-preview.png</image>
     </screenshot>
   </screenshots>
 
@@ -66,6 +66,11 @@
   </provides>
 
   <releases>
+    <release version="0.4.23" date="2026-04-11">
+      <description>
+        <p>Bump Quill submodule so the AppImage/Flatpak builds can load SettingsPanel.</p>
+      </description>
+    </release>
     <release version="0.4.22" date="2026-04-11">
       <description>
         <p>Font preview, keyboard/UX fixes, animation polish, and release automation.</p>
