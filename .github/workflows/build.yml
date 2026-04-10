@@ -20,6 +20,52 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Verify version consistency (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          TAG="$TAG_NAME"
+          VERSION="${TAG#v}"
+          echo "Tag push: $TAG (version $VERSION)"
+
+          fail=0
+          check() {
+            local label="$1" expected="$2" found="$3"
+            if [ "$expected" != "$found" ]; then
+              echo "::error::$label mismatch: expected '$expected', found '$found'"
+              fail=1
+            else
+              echo "OK   $label: $found"
+            fi
+          }
+
+          cmake_ver=$(grep -E '^project\(hyprfm VERSION' CMakeLists.txt \
+                       | sed -E 's/^project\(hyprfm VERSION ([0-9.]+).*/\1/')
+          check "CMakeLists.txt" "$VERSION" "$cmake_ver"
+
+          flatpak_tag=$(python3 -c '
+          import re
+          t = open("io.github.soyeb_jim285.HyprFM.yml").read()
+          m = re.search(r"url:\s*https://github\.com/soyeb-jim285/hyprfm\.git\s*\n(?:[^\n]*\n)*?\s*tag:\s*(v\d+\.\d+\.\d+)", t)
+          print(m.group(1) if m else "")
+          ')
+          check "flatpak manifest hyprfm tag" "$TAG" "$flatpak_tag"
+
+          if grep -q "<release version=\"$VERSION\"" dist/io.github.soyeb_jim285.HyprFM.metainfo.xml; then
+            echo "OK   metainfo.xml <release> entry present"
+          else
+            echo "::error::metainfo.xml is missing a <release version=\"$VERSION\"> entry"
+            fail=1
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo
+            echo "One or more version references do not match the pushed tag."
+            echo "Run scripts/release.sh $VERSION locally, then retag."
+            exit 1
+          fi
+
       - name: Install Qt6
         uses: jurplel/install-qt-action@v4
         with:
