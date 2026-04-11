@@ -35,7 +35,7 @@ add_executable(tst_clipboardmanager tst_clipboardmanager.cpp
     ${CMAKE_SOURCE_DIR}/src/services/clipboardmanager.cpp
 )
 target_include_directories(tst_clipboardmanager PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_clipboardmanager PRIVATE Qt6::Test Qt6::Core)
+target_link_libraries(tst_clipboardmanager PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME tst_clipboardmanager COMMAND tst_clipboardmanager)
 
 add_executable(tst_bookmarkmodel tst_bookmarkmodel.cpp

@@ -7,6 +7,7 @@ struct DeviceEntry {
     QString deviceName;
     QString devicePath;   // block device path, e.g. /dev/nvme0n1p5
     QString mountPoint;   // empty if unmounted
+    QString fsType;       // e.g. "ntfs", "ext4" — used for error messages
     qint64  totalSize;
     qint64  freeSpace;
     int     usagePercent;
@@ -42,6 +43,7 @@ public:
 
 signals:
     void deviceMounted(const QString &mountPoint);
+    void mountError(const QString &message);
 
 private:
     void setupUDisks2();

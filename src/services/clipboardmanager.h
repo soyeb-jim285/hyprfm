@@ -22,6 +22,9 @@ public:
     Q_INVOKABLE void clear();
     Q_INVOKABLE bool contains(const QString &path) const;
     Q_INVOKABLE QStringList take();
+    // Copy a plain string to the system clipboard (used by dialogs that
+    // need to copy install commands, paths, or shell snippets).
+    Q_INVOKABLE void copyText(const QString &text);
 
 signals:
     void changed();

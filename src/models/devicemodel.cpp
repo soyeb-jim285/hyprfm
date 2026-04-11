@@ -270,7 +270,7 @@ void DeviceModel::refresh()
             total = b.size;
         }
 
-        m_devices.append({name, b.device, mountPoint,
+        m_devices.append({name, b.device, mountPoint, b.idType.toLower(),
                           total, free, usage, removable, mounted});
     }
 
@@ -303,15 +303,20 @@ void DeviceModel::unmount(int index)
         QStringLiteral("Unmount"));
     msg << QVariant::fromValue(QVariantMap{});
 
+    const QString label = m_devices.at(index).deviceName;
+
     QDBusPendingCall pending = QDBusConnection::systemBus().asyncCall(msg);
     auto *watcher = new QDBusPendingCallWatcher(pending, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, watcher]() {
+            [this, watcher, label]() {
         QDBusPendingReply<> reply = *watcher;
-        if (reply.isError())
-            qWarning() << "UDisks2 Unmount failed:" << reply.error().message();
-        else
+        if (reply.isError()) {
+            const QString err = reply.error().message();
+            qWarning() << "UDisks2 Unmount failed:" << err;
+            emit mountError(tr("Could not unmount %1: %2").arg(label, err));
+        } else {
             refresh();
+        }
         watcher->deleteLater();
     });
 }
@@ -321,7 +326,10 @@ void DeviceModel::mount(int index)
     if (index < 0 || index >= m_devices.size())
         return;
 
-    const QString devicePath = m_devices.at(index).devicePath;
+    const DeviceEntry entry = m_devices.at(index);
+    const QString devicePath = entry.devicePath;
+    const QString fsType = entry.fsType;
+    const QString label = entry.deviceName;
 
     QDBusMessage msg = QDBusMessage::createMethodCall(
         QStringLiteral("org.freedesktop.UDisks2"),
@@ -333,10 +341,41 @@ void DeviceModel::mount(int index)
     QDBusPendingCall pending = QDBusConnection::systemBus().asyncCall(msg);
     auto *watcher = new QDBusPendingCallWatcher(pending, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, watcher]() {
+            [this, watcher, fsType, label]() {
         QDBusPendingReply<QString> reply = *watcher;
         if (reply.isError()) {
-            qWarning() << "UDisks2 Mount failed:" << reply.error().message();
+            const QString err = reply.error().message();
+            qWarning() << "UDisks2 Mount failed:" << err;
+
+            QString friendly;
+            const bool helperMissing = err.contains(
+                QStringLiteral("missing codepage or helper"), Qt::CaseInsensitive)
+                || err.contains(QStringLiteral("wrong fs type"), Qt::CaseInsensitive);
+            const bool dirtyNtfs = err.contains(
+                QStringLiteral("unsafe mount"), Qt::CaseInsensitive)
+                || err.contains(QStringLiteral("hibernated"), Qt::CaseInsensitive)
+                || err.contains(QStringLiteral("fast-restart"), Qt::CaseInsensitive);
+            const bool isNtfs = fsType == QLatin1String("ntfs")
+                || fsType == QLatin1String("ntfs3");
+
+            if (isNtfs && dirtyNtfs) {
+                friendly = tr("Could not mount %1: the NTFS volume is in an unsafe "
+                              "state (Windows Fast Startup or hibernation). Boot into "
+                              "Windows and fully shut down, or disable Fast Startup.")
+                               .arg(label);
+            } else if (isNtfs && helperMissing) {
+                friendly = tr("Could not mount %1: the NTFS mount helper is missing. "
+                              "Install it on the host with 'sudo apt install ntfs-3g' "
+                              "(Debian/Ubuntu) or 'sudo pacman -S ntfs-3g' (Arch).")
+                               .arg(label);
+            } else if (helperMissing) {
+                friendly = tr("Could not mount %1: the filesystem type (%2) is not "
+                              "supported by the kernel or the mount helper is missing.")
+                               .arg(label, fsType.isEmpty() ? tr("unknown") : fsType);
+            } else {
+                friendly = tr("Could not mount %1: %2").arg(label, err);
+            }
+            emit mountError(friendly);
         } else {
             const QString mountPath = reply.value();
             refresh();

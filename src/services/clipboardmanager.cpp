@@ -1,5 +1,8 @@
 #include "services/clipboardmanager.h"
 
+#include <QClipboard>
+#include <QGuiApplication>
+
 ClipboardManager::ClipboardManager(QObject *parent)
     : QObject(parent)
 {
@@ -44,4 +47,10 @@ QStringList ClipboardManager::take()
         emit changed();
     }
     return result;
+}
+
+void ClipboardManager::copyText(const QString &text)
+{
+    if (QClipboard *cb = QGuiApplication::clipboard())
+        cb->setText(text);
 }

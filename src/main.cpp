@@ -5,7 +5,6 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QCoreApplication>
-#include <QProcess>
 #include <QDebug>
 #include <QLoggingCategory>
 #include <QSurfaceFormat>
@@ -42,6 +41,7 @@
 #include "services/diskusageservice.h"
 #include "services/remoteaccessservice.h"
 #include "services/runtimefeaturesservice.h"
+#include "services/dependencychecker.h"
 #include "services/gitstatusservice.h"
 #include "providers/thumbnailprovider.h"
 #include "providers/iconprovider.h"
@@ -66,6 +66,31 @@ int main(int argc, char *argv[])
     QSurfaceFormat fmt;
     fmt.setSamples(4);
     QSurfaceFormat::setDefaultFormat(fmt);
+
+    // HyprFM is a Wayland-only application (wl-copy clipboard, Hyprland
+    // integration, KWin blur effects). Detect a non-Wayland session before
+    // Qt tries to load the wayland QPA plugin so users see an actionable
+    // message instead of the cryptic "Failed to create wl_display" error.
+    if (qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
+        const QByteArray sessionType = qgetenv("XDG_SESSION_TYPE");
+        const char *session = sessionType.isEmpty() ? "unknown" : sessionType.constData();
+        fprintf(stderr,
+                "\n"
+                "HyprFM: no Wayland display available (XDG_SESSION_TYPE=%s).\n"
+                "\n"
+                "HyprFM only supports Wayland sessions. Your current session\n"
+                "appears to be X11 or does not expose $WAYLAND_DISPLAY.\n"
+                "\n"
+                "To run HyprFM:\n"
+                "  * Log out and pick a Wayland session at the login screen\n"
+                "    (e.g. \"Ubuntu on Wayland\", GNOME on Wayland, Hyprland, KDE\n"
+                "    Plasma Wayland).\n"
+                "  * If running via Flatpak, also grant Wayland socket access:\n"
+                "      flatpak override --user --socket=wayland io.github.soyeb_jim285.HyprFM\n"
+                "\n",
+                session);
+        return 1;
+    }
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("HyprFM");
@@ -239,46 +264,10 @@ int main(int argc, char *argv[])
     // Create DeviceModel
     DeviceModel *devices = new DeviceModel(&app);
 
-    // Check for CLI tools and warn if missing
-    // Local-file opens go through QDesktopServices (which uses the OpenURI
-    // portal under Flatpak and xdg-open on a regular host), so xdg-open is
-    // no longer a hard requirement here.
-    const QStringList requiredTools = {"gio"};
-    // Each entry is a list of equivalent alternatives — only warn if none exist
-    const QList<QStringList> optionalToolGroups = {
-        {"fd", "fdfind"}, // fd on Arch, fdfind on Debian/Ubuntu (fd-find pkg)
-        {"wl-copy"},
-        {"wl-paste"},
-        {"ffmpeg"},
-        // udisksctl no longer needed: DeviceModel talks to UDisks2 over DBus
-        {"bat", "batcat"}, // bat on Arch, batcat on Debian/Ubuntu
-    };
-
-    auto hasTool = [](const QString &tool) {
-        QProcess which;
-        which.setProgram("which");
-        which.setArguments({tool});
-        which.start();
-        which.waitForFinished(2000);
-        return which.exitCode() == 0;
-    };
-
-    for (const QString &tool : requiredTools) {
-        if (!hasTool(tool))
-            qWarning() << "HyprFM: required tool not found:" << tool;
-    }
-
-    for (const QStringList &group : optionalToolGroups) {
-        bool found = false;
-        for (const QString &tool : group) {
-            if (hasTool(tool)) {
-                found = true;
-                break;
-            }
-        }
-        if (!found)
-            qWarning() << "HyprFM: optional tool not found:" << group.join(QStringLiteral(" or "));
-    }
+    // Aggregate runtime tools + compile-time features + DBus services for the
+    // in-app MissingDependenciesDialog. Replaces the older hand-rolled
+    // `which` loop that only logged to stderr.
+    DependencyChecker *dependencies = new DependencyChecker(&app);
 
     QQmlApplicationEngine engine;
 
@@ -336,6 +325,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("diskUsageService", diskUsageService);
     engine.rootContext()->setContextProperty("remoteAccessService", remoteAccessService);
     engine.rootContext()->setContextProperty("runtimeFeatures", runtimeFeatures);
+    engine.rootContext()->setContextProperty("dependencies", dependencies);
 
     const QString installedMainQml = dataDir.isEmpty()
         ? QString()

@@ -162,6 +162,7 @@ ApplicationWindow {
         Q.Theme.transparencyLevel = Qt.binding(() => Theme.transparencyLevel)
 
         root.scheduleActivePaneFocus()
+        missingDepsStartupTimer.start()
     }
 
     onActiveChanged: {
@@ -1031,6 +1032,24 @@ ApplicationWindow {
     Components.KeyboardShortcutsDialog {
         id: shortcutsDialog
         onClosed: root.scheduleActivePaneFocus()
+    }
+
+    Components.MissingDependenciesDialog {
+        id: missingDependenciesDialog
+        onClosed: root.scheduleActivePaneFocus()
+    }
+
+    // Show the missing-dependencies dialog shortly after startup if anything
+    // is unavailable. Delayed so the window renders first and the dialog
+    // open-animation lines up against a visible backdrop.
+    Timer {
+        id: missingDepsStartupTimer
+        interval: 400
+        repeat: false
+        onTriggered: {
+            if (dependencies && dependencies.hasAnyMissing)
+                missingDependenciesDialog.openDialog()
+        }
     }
 
     // ── Rename dialog ───────────────────────────────────────────────────────
@@ -3362,6 +3381,13 @@ ApplicationWindow {
                 toast.show("Operation completed successfully", "success")
             else
                 toast.show(error || "Operation failed", "error")
+        }
+    }
+
+    Connections {
+        target: devices
+        function onMountError(message) {
+            toast.show(message, "error")
         }
     }
 

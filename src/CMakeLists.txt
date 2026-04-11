@@ -20,6 +20,7 @@ set(HYPRFM_SOURCES
     services/diskusageservice.cpp
     services/remoteaccessservice.cpp
     services/runtimefeaturesservice.cpp
+    services/dependencychecker.cpp
     services/gitstatusservice.cpp
     services/metadataextractor.cpp
     providers/thumbnailprovider.cpp
@@ -159,6 +160,7 @@ list(APPEND hyprfm_qml_module_args
         qml/components/SearchBar.qml
         qml/components/FilterPanel.qml
         qml/components/KeyboardShortcutsDialog.qml
+        qml/components/MissingDependenciesDialog.qml
         qml/components/SettingsPanel.qml
 )
 
