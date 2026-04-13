@@ -74,6 +74,7 @@ public:
     Q_INVOKABLE void extractArchive(const QString &archivePath, const QString &destination);
     Q_INVOKABLE static bool isArchive(const QString &path);
     Q_INVOKABLE QString archiveRootFolder(const QString &archivePath);
+    Q_INVOKABLE void setWallpaper(const QString &path);
 
 signals:
     void busyChanged();

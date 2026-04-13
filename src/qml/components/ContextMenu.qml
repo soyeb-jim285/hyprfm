@@ -627,6 +627,10 @@ Item {
                 if (!remoteContext && !targetIsDir && fileOps.isArchive(targetPath))
                     items.push({ text: "Extract Here", shortcut: "", action: "extract", icon: "PackageOpen" })
 
+                // Set as wallpaper for image files
+                if (!remoteContext && !targetIsDir && typeof mime === "string" && mime.startsWith("image/"))
+                    items.push({ text: "Set as Wallpaper", shortcut: "", action: "setwallpaper", icon: "Image" })
+
                 items.push({ separator: true })
                 items.push({
                     text: effectivePaths.length > 1 ? "Bulk Rename..." : "Rename...",
@@ -730,6 +734,7 @@ Item {
         case "compress_tarbz2": fileOps.compressFiles(effectivePaths, "tar.bz2"); break
         case "compress_tar": fileOps.compressFiles(effectivePaths, "tar"); break
         case "extract": fileOps.extractArchive(targetPath, effectiveDir); break
+        case "setwallpaper": fileOps.setWallpaper(targetPath); break
         case "emptytrash": emptyTrashRequested(); break
         default: customActionRequested(action); break
         }

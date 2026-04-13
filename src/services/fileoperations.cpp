@@ -2069,3 +2069,18 @@ QByteArray FileOperations::clipboardImageData() const
 
     return imageProcess.readAllStandardOutput();
 }
+
+void FileOperations::setWallpaper(const QString &path)
+{
+    const QString resolved = QFileInfo(path).absoluteFilePath();
+    auto *proc = new QProcess(this);
+    connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+            this, [proc, resolved](int exitCode, QProcess::ExitStatus) {
+                if (exitCode != 0)
+                    qWarning() << "FileOperations::setWallpaper: hyprctl failed for" << resolved;
+                proc->deleteLater();
+            });
+    proc->start(QStringLiteral("hyprctl"),
+                {QStringLiteral("hyprpaper"), QStringLiteral("wallpaper"),
+                 QStringLiteral(",") + resolved});
+}
