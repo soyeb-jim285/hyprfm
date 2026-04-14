@@ -134,6 +134,7 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconFilter.qml
         qml/icons/IconHardDrive.qml
         qml/icons/IconHardDriveOff.qml
+        qml/icons/IconUsb.qml
         qml/icons/IconCopy.qml
         qml/icons/IconCopyPath.qml
         qml/icons/IconExternalLink.qml

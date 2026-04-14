@@ -14,6 +14,7 @@
 #include <QHash>
 #include <QStorageInfo>
 #include <QDebug>
+#include <algorithm>
 
 static const QStringList kVirtualTypes = {
     "tmpfs", "devtmpfs", "proc", "sysfs",
@@ -273,6 +274,13 @@ void DeviceModel::refresh()
         m_devices.append({name, b.device, mountPoint, b.idType.toLower(),
                           total, free, usage, removable, mounted});
     }
+
+    std::sort(m_devices.begin(), m_devices.end(),
+              [](const DeviceEntry &a, const DeviceEntry &b) {
+                  if (a.removable != b.removable)
+                      return a.removable;
+                  return a.devicePath < b.devicePath;
+              });
 
     endResetModel();
 }

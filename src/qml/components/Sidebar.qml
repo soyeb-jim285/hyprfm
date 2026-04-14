@@ -28,6 +28,8 @@ Rectangle {
     Component { id: iconGlobe; IconGlobe { size: 18; color: Theme.subtext } }
     Component { id: iconHardDrive; IconHardDrive { size: 18; color: Theme.subtext } }
     Component { id: iconHardDriveOff; IconHardDriveOff { size: 18; color: Theme.muted } }
+    Component { id: iconUsb; IconUsb { size: 18; color: Theme.subtext } }
+    Component { id: iconUsbOff; IconUsb { size: 18; color: Theme.muted } }
     Component { id: iconFolder; IconFolder { size: 18; color: Theme.subtext } }
 
     // Inverse rounded corner — top right
@@ -579,11 +581,13 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: Theme.spacing
 
-                        // Drive icon: mounted vs unmounted
+                        // Drive icon: removable vs fixed, mounted vs unmounted
                         Loader {
                             width: 18; height: 18
                             anchors.verticalCenter: parent.verticalCenter
-                            sourceComponent: model.mounted ? iconHardDrive : iconHardDriveOff
+                            sourceComponent: model.removable
+                                ? (model.mounted ? iconUsb : iconUsbOff)
+                                : (model.mounted ? iconHardDrive : iconHardDriveOff)
                         }
 
                         // Right side: name + progress bar
