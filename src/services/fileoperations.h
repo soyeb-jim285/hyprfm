@@ -75,6 +75,8 @@ public:
     Q_INVOKABLE static bool isArchive(const QString &path);
     Q_INVOKABLE QString archiveRootFolder(const QString &archivePath);
     Q_INVOKABLE void setWallpaper(const QString &path);
+    Q_INVOKABLE void setHyprlandRounding(const QString &windowTitle, int radius);
+    Q_INVOKABLE void setHyprlandBorder(const QString &windowTitle, int size);
 
 signals:
     void busyChanged();

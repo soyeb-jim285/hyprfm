@@ -2084,3 +2084,27 @@ void FileOperations::setWallpaper(const QString &path)
                 {QStringLiteral("hyprpaper"), QStringLiteral("wallpaper"),
                  QStringLiteral(",") + resolved});
 }
+
+void FileOperations::setHyprlandRounding(const QString &windowTitle, int radius)
+{
+    auto *proc = new QProcess(this);
+    connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+            this, [proc](int, QProcess::ExitStatus) { proc->deleteLater(); });
+    proc->start(QStringLiteral("hyprctl"),
+                {QStringLiteral("setprop"),
+                 QStringLiteral("title:") + windowTitle,
+                 QStringLiteral("rounding"),
+                 QString::number(radius)});
+}
+
+void FileOperations::setHyprlandBorder(const QString &windowTitle, int size)
+{
+    auto *proc = new QProcess(this);
+    connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+            this, [proc](int, QProcess::ExitStatus) { proc->deleteLater(); });
+    proc->start(QStringLiteral("hyprctl"),
+                {QStringLiteral("setprop"),
+                 QStringLiteral("title:") + windowTitle,
+                 QStringLiteral("bordersize"),
+                 QString::number(size)});
+}

@@ -236,7 +236,10 @@ ApplicationWindow {
     }
 
     function openSettingsPanel() {
-        settingsPanel.openPanel()
+        if (settingsPanel.visible)
+            settingsPanel.closePanel()
+        else
+            settingsPanel.openPanel()
     }
 
     function openKeyboardShortcutsDialog() {
@@ -1021,6 +1024,7 @@ ApplicationWindow {
 
     Components.SettingsPanel {
         id: settingsPanel
+        transientParent: root
         currentShowHidden: fsModel.showHidden
         currentSidebarVisible: root.sidebarVisible
         currentSidebarWidth: root.sidebarWidth

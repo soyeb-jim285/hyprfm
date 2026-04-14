@@ -1,19 +1,32 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Window
 import HyprFM
 import Quill as Q
 
-Q.Dialog {
+Window {
     id: root
-    anchors.fill: parent
-    z: 1000
-    dialogWidth: Math.min(920, width - 32)
-    title: ""
-    subtitle: ""
-    dialogPadding: 0
-    dialogColor: "transparent"
-    dialogBorderColor: "transparent"
-    dialogRadius: root.draftRadiusLarge + 6
+    title: "HyprFM Settings"
+    flags: Qt.Dialog | Qt.FramelessWindowHint
+    color: "transparent"
+
+    width: dialogWidth
+    height: pageContainer.implicitHeight
+    minimumWidth: dialogWidth
+    minimumHeight: height
+
+    readonly property int dialogWidth: Math.min(920, (transientParent ? transientParent.width : 920) - 32)
+    readonly property int dialogRadius: draftRadiusLarge + 6
+
+    function syncHyprlandRounding() {
+        fileOps.setHyprlandRounding(root.title, root.dialogRadius)
+        fileOps.setHyprlandBorder(root.title, 0)
+    }
+
+    onDialogRadiusChanged: {
+        if (root.visible)
+            syncHyprlandRounding()
+    }
 
     readonly property color sectionBorderColor: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
     readonly property string defaultThemeName: "catppuccin-mocha"
@@ -104,6 +117,7 @@ Q.Dialog {
 
     signal remoteConnectRequested()
     signal keyboardShortcutsRequested()
+    signal closed()
 
     readonly property string systemFontLabel: "System Default"
 
@@ -273,12 +287,21 @@ Q.Dialog {
     function openPanel() {
         syncFromCurrentState()
         showSection(0)
-        open()
+        // Center over the parent window
+        if (transientParent) {
+            root.x = transientParent.x + Math.round((transientParent.width - root.width) / 2)
+            root.y = transientParent.y + Math.round((transientParent.height - root.height) / 2)
+        }
+        root.show()
+        root.raise()
+        root.requestActivate()
+        root.syncHyprlandRounding()
     }
 
     function closePanel() {
         flushPendingChanges()
-        close()
+        root.hide()
+        root.closed()
     }
 
     function openRemoteConnect() {
@@ -346,8 +369,11 @@ Q.Dialog {
         applyPendingSettings()
     }
 
-    onRejected: root.flushPendingChanges()
-    onClosed: root.flushPendingChanges()
+    onClosing: {
+        root.flushPendingChanges()
+        root.closed()
+    }
+
     Component.onCompleted: {
         root.primeOptionSources()
         root.bindAppearancePreview()
@@ -357,6 +383,13 @@ Q.Dialog {
         id: settingsApplyTimer
         interval: 140
         onTriggered: root.applyPendingSettings()
+    }
+
+    // Close on Escape
+    Shortcut {
+        sequence: "Escape"
+        enabled: root.visible
+        onActivated: root.closePanel()
     }
 
     Component {
@@ -851,30 +884,40 @@ Q.Dialog {
 
     Item {
         id: pageContainer
-        Layout.fillWidth: true
-        implicitHeight: Math.max(460, Math.min(pageContentHeight + 120, 640, root.height - 140))
+        anchors.fill: parent
 
         property real pageContentHeight: pageLoader.item ? pageLoader.item.implicitHeight : 0
-
-        Behavior on implicitHeight {
-            NumberAnimation {
-                duration: Theme.animDuration
-                easing.type: Easing.OutCubic
-            }
-        }
+        implicitHeight: Math.max(460, Math.min(pageContentHeight + 120, 640,
+            (root.transientParent ? root.transientParent.height : 768) - 140))
 
         Rectangle {
             anchors.fill: parent
-            radius: root.draftRadiusLarge + 6
             color: Theme.containerColor(Theme.mantle, 0.9)
             border.width: 1
             border.color: root.sectionBorderColor
 
-            Behavior on radius {
-                NumberAnimation {
-                    duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+            Rectangle {
+                id: closeButton
+                z: 10
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.topMargin: 8
+                anchors.rightMargin: 8
+                width: 28
+                height: 28
+                radius: Theme.radiusSmall
+                color: closeHover.hovered
+                    ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                    : "transparent"
+
+                IconX {
+                    anchors.centerIn: parent
+                    size: 16
+                    color: Theme.text
                 }
+
+                HoverHandler { id: closeHover }
+                TapHandler { onTapped: root.closePanel() }
             }
 
             ColumnLayout {
@@ -891,29 +934,6 @@ Q.Dialog {
                         Layout.fillHeight: true
                         Layout.preferredWidth: 184
                         color: Theme.containerColor(Theme.crust, 0.96)
-                        radius: root.draftRadiusLarge + 6
-
-                        Behavior on radius {
-                            NumberAnimation {
-                                duration: Theme.animDurationFast
-                                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
-                            }
-                        }
-
-                        Rectangle {
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.bottom: parent.bottom
-                            width: root.draftRadiusLarge + 6
-                            color: parent.color
-
-                            Behavior on width {
-                                NumberAnimation {
-                                    duration: Theme.animDurationFast
-                                    easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
-                                }
-                            }
-                        }
 
                         ColumnLayout {
                             anchors.fill: parent
