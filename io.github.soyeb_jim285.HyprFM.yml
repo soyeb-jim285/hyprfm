@@ -145,7 +145,7 @@ modules:
       # ── FLATHUB SUBMISSION ──
       - type: git
         url: https://github.com/soyeb-jim285/hyprfm.git
-        tag: v0.4.24
+        tag: v0.4.25
 
       # ── LOCAL ITERATION ──
       # For testing uncommitted changes locally, comment out the git
