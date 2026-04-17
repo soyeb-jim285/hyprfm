@@ -24,11 +24,8 @@ set(HYPRFM_SOURCES
     services/gitstatusservice.cpp
     services/metadataextractor.cpp
     providers/thumbnailprovider.cpp
+    providers/pdfpreviewprovider.cpp
 )
-
-if(POPPLER_QT6_FOUND)
-    list(APPEND HYPRFM_SOURCES providers/pdfpreviewprovider.cpp)
-endif()
 
 qt_add_executable(hyprfm ${HYPRFM_SOURCES})
 
@@ -188,19 +185,6 @@ if(KF6WindowSystem_FOUND)
     target_link_libraries(hyprfm PRIVATE KF6::WindowSystem)
 endif()
 
-if(POPPLER_QT6_FOUND)
-    target_link_libraries(hyprfm PRIVATE PkgConfig::POPPLER_QT6)
-endif()
-if(LIBEXIF_FOUND)
-    target_link_libraries(hyprfm PRIVATE PkgConfig::LIBEXIF)
-endif()
-if(TAGLIB_FOUND)
-    target_link_libraries(hyprfm PRIVATE PkgConfig::TAGLIB)
-endif()
-if(LIBAVFORMAT_FOUND)
-    target_link_libraries(hyprfm PRIVATE PkgConfig::LIBAVFORMAT)
-endif()
-
 target_include_directories(hyprfm PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
@@ -213,18 +197,6 @@ target_compile_definitions(hyprfm PRIVATE
     HYPRFM_DATA_DIR="${HYPRFM_DATA_DIR}"
 )
 
-if(POPPLER_QT6_FOUND)
-    target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_POPPLER_QT6=1)
-endif()
-if(LIBEXIF_FOUND)
-    target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_LIBEXIF=1)
-endif()
-if(TAGLIB_FOUND)
-    target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_TAGLIB=1)
-endif()
-if(LIBAVFORMAT_FOUND)
-    target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_LIBAVFORMAT=1)
-endif()
 if(KF6WindowSystem_FOUND)
     target_compile_definitions(hyprfm PRIVATE HYPRFM_HAS_KWINDOWSYSTEM=1)
 endif()

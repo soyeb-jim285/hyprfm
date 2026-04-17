@@ -1,13 +1,15 @@
 #include "providers/pdfpreviewprovider.h"
 
+#include <QFileInfo>
+#include <QProcess>
 #include <QQuickTextureFactory>
+#include <QRegularExpression>
+#include <QStandardPaths>
 #include <QThreadPool>
 #include <QUrl>
 #include <QUrlQuery>
 
 #include <algorithm>
-
-#include <poppler-qt6.h>
 
 namespace {
 
@@ -32,20 +34,37 @@ PdfRequest parseRequest(const QString &id)
     return request;
 }
 
-double dpiForRequest(const QSizeF &pageSizePoints, const QSize &requestedSize)
+// pdfinfo prints "Page size:   595.28 x 841.89 pts (A4)" on one line.
+QSizeF pageSizePoints(const QString &path)
 {
-    if (!pageSizePoints.isValid())
+    QProcess proc;
+    proc.start(QStringLiteral("pdfinfo"), {path});
+    if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
+        return {};
+
+    const QString out = QString::fromUtf8(proc.readAllStandardOutput());
+    static const QRegularExpression re(
+        QStringLiteral(R"(Page size:\s*([0-9.]+)\s*x\s*([0-9.]+)\s*pts)"));
+    const auto m = re.match(out);
+    if (!m.hasMatch())
+        return {};
+    return QSizeF(m.captured(1).toDouble(), m.captured(2).toDouble());
+}
+
+double dpiForRequest(const QSizeF &pageSizePts, const QSize &requestedSize)
+{
+    if (!pageSizePts.isValid() || pageSizePts.isEmpty())
         return 120.0;
 
     double scale = 1.0;
     if (requestedSize.width() > 0 && requestedSize.height() > 0) {
-        const double xScale = requestedSize.width() / pageSizePoints.width();
-        const double yScale = requestedSize.height() / pageSizePoints.height();
+        const double xScale = requestedSize.width() / pageSizePts.width();
+        const double yScale = requestedSize.height() / pageSizePts.height();
         scale = std::min(xScale, yScale);
     } else if (requestedSize.width() > 0) {
-        scale = requestedSize.width() / pageSizePoints.width();
+        scale = requestedSize.width() / pageSizePts.width();
     } else if (requestedSize.height() > 0) {
-        scale = requestedSize.height() / pageSizePoints.height();
+        scale = requestedSize.height() / pageSizePts.height();
     }
 
     scale = std::max(0.2, scale);
@@ -65,25 +84,42 @@ PdfPreviewResponse::PdfPreviewResponse(const QString &id, const QSize &requested
 void PdfPreviewResponse::run()
 {
     const PdfRequest request = parseRequest(m_id);
-    if (request.path.isEmpty()) {
+    if (request.path.isEmpty() || !QFileInfo::exists(request.path)) {
         emit finished();
         return;
     }
 
-    std::unique_ptr<Poppler::Document> document = Poppler::Document::load(request.path);
-    if (!document || request.page < 0 || request.page >= document->numPages()) {
+    if (QStandardPaths::findExecutable(QStringLiteral("pdftoppm")).isEmpty()) {
         emit finished();
         return;
     }
 
-    std::unique_ptr<Poppler::Page> page = document->page(request.page);
-    if (!page) {
+    const QSizeF sizePts = pageSizePoints(request.path);
+    const double dpi = dpiForRequest(sizePts, m_requestedSize);
+
+    // pdftoppm writes PNG to stdout when the output root is "-".
+    QProcess proc;
+    proc.start(QStringLiteral("pdftoppm"), {
+        QStringLiteral("-png"),
+        QStringLiteral("-f"), QString::number(request.page + 1),
+        QStringLiteral("-l"), QString::number(request.page + 1),
+        QStringLiteral("-r"), QString::number(static_cast<int>(dpi + 0.5)),
+        request.path,
+        QStringLiteral("-"),
+    });
+
+    if (!proc.waitForFinished(15000) || proc.exitCode() != 0) {
         emit finished();
         return;
     }
 
-    const double dpi = dpiForRequest(page->pageSizeF(), m_requestedSize);
-    m_image = page->renderToImage(dpi, dpi);
+    const QByteArray png = proc.readAllStandardOutput();
+    if (png.isEmpty()) {
+        emit finished();
+        return;
+    }
+
+    m_image.loadFromData(png, "PNG");
     emit finished();
 }
 

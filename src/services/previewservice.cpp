@@ -14,10 +14,6 @@
 #include <QStandardPaths>
 #include <QUrl>
 
-#ifdef HYPRFM_HAS_POPPLER_QT6
-#include <poppler-qt6.h>
-#endif
-
 namespace {
 
 QString encodedUri(const QString &path)
@@ -279,11 +275,13 @@ PreviewService::PreviewService(QObject *parent)
 
 bool PreviewService::pdfPreviewAvailable() const
 {
-#ifdef HYPRFM_HAS_POPPLER_QT6
-    return true;
-#else
-    return false;
-#endif
+    return !QStandardPaths::findExecutable(QStringLiteral("pdftoppm")).isEmpty()
+        && !QStandardPaths::findExecutable(QStringLiteral("pdfinfo")).isEmpty();
+}
+
+void PreviewService::refreshSupport()
+{
+    emit supportChanged();
 }
 
 QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, int maxLines) const
@@ -535,20 +533,30 @@ QVariantMap PreviewService::loadPdfPreview(const QString &path) const
         return result;
     }
 
-#ifdef HYPRFM_HAS_POPPLER_QT6
-    std::unique_ptr<Poppler::Document> document = Poppler::Document::load(localPath);
-    if (!document) {
+    if (!pdfPreviewAvailable()) {
+        result["error"] = QStringLiteral("Install poppler-utils for PDF preview");
+        return result;
+    }
+
+    QProcess proc;
+    proc.start(QStringLiteral("pdfinfo"), {localPath});
+    if (!proc.waitForFinished(5000) || proc.exitCode() != 0) {
         result["error"] = QStringLiteral("Unable to open PDF document");
         return result;
     }
 
+    const QString out = QString::fromUtf8(proc.readAllStandardOutput());
+    static const QRegularExpression pagesRe(QStringLiteral(R"(^Pages:\s*(\d+))"),
+                                            QRegularExpression::MultilineOption);
+    const auto m = pagesRe.match(out);
+    if (!m.hasMatch()) {
+        result["error"] = QStringLiteral("Unable to read PDF page count");
+        return result;
+    }
+
     result["localPath"] = localPath;
-    result["pageCount"] = document->numPages();
+    result["pageCount"] = m.captured(1).toInt();
     return result;
-#else
-    result["error"] = QStringLiteral("PDF preview support is unavailable in this build");
-    return result;
-#endif
 }
 
 QByteArray PreviewService::readPathBytes(const QString &path, qint64 maxBytes, bool *truncated,

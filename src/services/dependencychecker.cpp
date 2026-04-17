@@ -290,57 +290,64 @@ void DependencyChecker::populate()
         buildHints(QStringLiteral("udisks2"))
     });
 
-    // ── Compile-time features ─────────────────────────────────────────────
-#ifdef HYPRFM_HAS_POPPLER_QT6
-    const bool hasPdf = true;
-#else
-    const bool hasPdf = false;
-#endif
+    // ── Optional runtime tools (media previews / metadata) ──────────────
+    //
+    // These used to be compile-time features linked against poppler-qt6,
+    // libexif, taglib, and libavformat. They're now CLI tools so installing
+    // the package picks them up at runtime — no rebuild needed.
     m_deps.append({
-        QStringLiteral("poppler-qt6"),
-        QStringLiteral("PDF preview (poppler-qt6)"),
+        QStringLiteral("poppler-utils"),
+        QStringLiteral("PDF preview (poppler-utils)"),
         QStringLiteral("Render PDF thumbnails and the PDF quick-preview panel."),
-        Kind::Feature, false, hasPdf, {},
-        buildFeatureHint(QStringLiteral("poppler-qt6"))
+        Kind::Tool, false,
+        hasExecutable(QStringLiteral("pdftoppm"))
+            && hasExecutable(QStringLiteral("pdfinfo")),
+        {QStringLiteral("pdftoppm"), QStringLiteral("pdfinfo")},
+        buildHints(QStringLiteral("poppler"), {
+            {QStringLiteral("debian"),    QStringLiteral("poppler-utils")},
+            {QStringLiteral("ubuntu"),    QStringLiteral("poppler-utils")},
+            {QStringLiteral("linuxmint"), QStringLiteral("poppler-utils")},
+            {QStringLiteral("pop"),       QStringLiteral("poppler-utils")},
+            {QStringLiteral("fedora"),    QStringLiteral("poppler-utils")},
+            {QStringLiteral("rhel"),      QStringLiteral("poppler-utils")},
+            {QStringLiteral("opensuse"),  QStringLiteral("poppler-tools")},
+            {QStringLiteral("suse"),      QStringLiteral("poppler-tools")},
+            {QStringLiteral("alpine"),    QStringLiteral("poppler-utils")},
+            {QStringLiteral("void"),      QStringLiteral("poppler")},
+            {QStringLiteral("gentoo"),    QStringLiteral("app-text/poppler")},
+            {QStringLiteral("nixos"),     QStringLiteral("poppler_utils")},
+        })
     });
 
-#ifdef HYPRFM_HAS_LIBEXIF
-    const bool hasExif = true;
-#else
-    const bool hasExif = false;
-#endif
     m_deps.append({
-        QStringLiteral("libexif"),
-        QStringLiteral("EXIF metadata (libexif)"),
+        QStringLiteral("exiftool"),
+        QStringLiteral("EXIF metadata (exiftool)"),
         QStringLiteral("Read camera, GPS and timestamp metadata from images."),
-        Kind::Feature, false, hasExif, {},
-        buildFeatureHint(QStringLiteral("libexif"))
+        Kind::Tool, false, hasExecutable(QStringLiteral("exiftool")),
+        {QStringLiteral("exiftool")},
+        buildHints(QStringLiteral("perl-image-exiftool"), {
+            {QStringLiteral("debian"),    QStringLiteral("libimage-exiftool-perl")},
+            {QStringLiteral("ubuntu"),    QStringLiteral("libimage-exiftool-perl")},
+            {QStringLiteral("linuxmint"), QStringLiteral("libimage-exiftool-perl")},
+            {QStringLiteral("pop"),       QStringLiteral("libimage-exiftool-perl")},
+            {QStringLiteral("fedora"),    QStringLiteral("perl-Image-ExifTool")},
+            {QStringLiteral("rhel"),      QStringLiteral("perl-Image-ExifTool")},
+            {QStringLiteral("opensuse"),  QStringLiteral("exiftool")},
+            {QStringLiteral("suse"),      QStringLiteral("exiftool")},
+            {QStringLiteral("alpine"),    QStringLiteral("exiftool")},
+            {QStringLiteral("void"),      QStringLiteral("perl-Image-ExifTool")},
+            {QStringLiteral("gentoo"),    QStringLiteral("media-libs/exiftool")},
+            {QStringLiteral("nixos"),     QStringLiteral("exiftool")},
+        })
     });
 
-#ifdef HYPRFM_HAS_TAGLIB
-    const bool hasTagLib = true;
-#else
-    const bool hasTagLib = false;
-#endif
     m_deps.append({
-        QStringLiteral("taglib"),
-        QStringLiteral("Audio tags (TagLib)"),
-        QStringLiteral("Read artist, album, and bitrate metadata from audio files."),
-        Kind::Feature, false, hasTagLib, {},
-        buildFeatureHint(QStringLiteral("taglib"))
-    });
-
-#ifdef HYPRFM_HAS_LIBAVFORMAT
-    const bool hasAvFormat = true;
-#else
-    const bool hasAvFormat = false;
-#endif
-    m_deps.append({
-        QStringLiteral("libavformat"),
-        QStringLiteral("Video metadata (libavformat)"),
-        QStringLiteral("Read duration, codec, and resolution metadata from videos."),
-        Kind::Feature, false, hasAvFormat, {},
-        buildFeatureHint(QStringLiteral("ffmpeg-libs"))
+        QStringLiteral("ffprobe"),
+        QStringLiteral("Audio/video metadata (ffprobe)"),
+        QStringLiteral("Read tags, duration, codec, and resolution from audio and video."),
+        Kind::Tool, false, hasExecutable(QStringLiteral("ffprobe")),
+        {QStringLiteral("ffprobe")},
+        buildHints(QStringLiteral("ffmpeg"))
     });
 
 #ifdef HYPRFM_HAS_KWINDOWSYSTEM

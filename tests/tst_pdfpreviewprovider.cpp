@@ -3,6 +3,7 @@
 #include <QPdfWriter>
 #include <QQuickTextureFactory>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
 
@@ -30,6 +31,10 @@ private:
 private slots:
     void testProviderRendersPdfPage()
     {
+        if (QStandardPaths::findExecutable("pdftoppm").isEmpty()
+            || QStandardPaths::findExecutable("pdfinfo").isEmpty())
+            QSKIP("poppler-utils (pdftoppm/pdfinfo) not installed");
+
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
 

@@ -45,9 +45,7 @@
 #include "services/gitstatusservice.h"
 #include "providers/thumbnailprovider.h"
 #include "providers/iconprovider.h"
-#ifdef HYPRFM_HAS_POPPLER_QT6
 #include "providers/pdfpreviewprovider.h"
-#endif
 #include <QIcon>
 #include <QUrl>
 
@@ -269,6 +267,14 @@ int main(int argc, char *argv[])
     // `which` loop that only logged to stderr.
     DependencyChecker *dependencies = new DependencyChecker(&app);
 
+    // When the user installs a missing tool and clicks "Re-check", propagate
+    // the refresh into feature services so their Q_PROPERTY bindings (e.g.
+    // pdfPreviewAvailable) re-evaluate without requiring an app restart.
+    QObject::connect(dependencies, &DependencyChecker::dependenciesChanged,
+                     previewService, &PreviewService::refreshSupport);
+    QObject::connect(dependencies, &DependencyChecker::dependenciesChanged,
+                     metadataExtractor, &MetadataExtractor::refreshSupport);
+
     QQmlApplicationEngine engine;
 
     // Prefer the installed data layout, but keep source-tree fallbacks for dev builds.
@@ -288,9 +294,7 @@ int main(int argc, char *argv[])
     auto *iconProvider = new IconProvider(config->iconTheme());
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
     engine.addImageProvider("icon", iconProvider);
-#ifdef HYPRFM_HAS_POPPLER_QT6
     engine.addImageProvider("pdfpreview", new PdfPreviewProvider);
-#endif
 
     DragHelper *dragHelper = new DragHelper(iconProvider, &app);
 

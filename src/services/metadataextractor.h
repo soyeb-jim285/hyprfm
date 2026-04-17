@@ -6,10 +6,10 @@
 class MetadataExtractor : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(bool hasExifSupport READ hasExifSupport CONSTANT)
-    Q_PROPERTY(bool hasTagLibSupport READ hasTagLibSupport CONSTANT)
-    Q_PROPERTY(bool hasVideoSupport READ hasVideoSupport CONSTANT)
-    Q_PROPERTY(bool hasPdfSupport READ hasPdfSupport CONSTANT)
+    Q_PROPERTY(bool hasExifSupport READ hasExifSupport NOTIFY supportChanged)
+    Q_PROPERTY(bool hasTagLibSupport READ hasTagLibSupport NOTIFY supportChanged)
+    Q_PROPERTY(bool hasVideoSupport READ hasVideoSupport NOTIFY supportChanged)
+    Q_PROPERTY(bool hasPdfSupport READ hasPdfSupport NOTIFY supportChanged)
 
 public:
     explicit MetadataExtractor(QObject *parent = nullptr);
@@ -21,6 +21,12 @@ public:
 
     Q_INVOKABLE QVariantMap extract(const QString &path) const;
     Q_INVOKABLE QString missingDepsHint(const QString &mimeType) const;
+
+public slots:
+    void refreshSupport();
+
+signals:
+    void supportChanged();
 
 private:
     QVariantMap extractImage(const QString &path) const;

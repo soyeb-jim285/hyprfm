@@ -1,13 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(hyprfm VERSION 0.4.25 LANGUAGES CXX)
 
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(POPPLER_QT6 QUIET IMPORTED_TARGET poppler-qt6)
-    pkg_check_modules(LIBEXIF QUIET IMPORTED_TARGET libexif)
-    pkg_check_modules(TAGLIB QUIET IMPORTED_TARGET taglib)
-    pkg_check_modules(LIBAVFORMAT QUIET IMPORTED_TARGET libavformat libavcodec libavutil)
-endif()
+find_package(PkgConfig REQUIRED)
 pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
 
 set(CMAKE_CXX_STANDARD 17)

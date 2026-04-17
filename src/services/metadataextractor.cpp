@@ -2,31 +2,56 @@
 
 #include <QFileInfo>
 #include <QImageReader>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QMimeDatabase>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QStandardPaths>
 
-#ifdef HYPRFM_HAS_LIBEXIF
-#include <libexif/exif-data.h>
-#include <libexif/exif-entry.h>
-#endif
+namespace {
 
-#ifdef HYPRFM_HAS_TAGLIB
-#include <taglib/fileref.h>
-#include <taglib/tag.h>
-#include <taglib/tpropertymap.h>
-#include <taglib/audioproperties.h>
-#endif
-
-#ifdef HYPRFM_HAS_LIBAVFORMAT
-extern "C" {
-#include <libavformat/avformat.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/dict.h>
+QString formatDuration(double seconds)
+{
+    if (seconds <= 0)
+        return {};
+    const int total = static_cast<int>(seconds);
+    const int h = total / 3600;
+    const int m = (total % 3600) / 60;
+    const int s = total % 60;
+    return h > 0
+        ? QStringLiteral("%1:%2:%3").arg(h).arg(m, 2, 10, QLatin1Char('0')).arg(s, 2, 10, QLatin1Char('0'))
+        : QStringLiteral("%1:%2").arg(m).arg(s, 2, 10, QLatin1Char('0'));
 }
-#endif
 
-#ifdef HYPRFM_HAS_POPPLER_QT6
-#include <poppler-qt6.h>
-#endif
+QString formatChannels(int channels)
+{
+    if (channels <= 0)
+        return {};
+    if (channels == 1) return QStringLiteral("Mono");
+    if (channels == 2) return QStringLiteral("Stereo");
+    return QString::number(channels);
+}
+
+// Preserve nice values from JSON: numbers pass through as strings without
+// quoting, while non-empty strings get trimmed and dropped when blank.
+QString jsonToString(const QJsonValue &v)
+{
+    if (v.isString())
+        return v.toString().trimmed();
+    if (v.isDouble())
+        return QString::number(v.toDouble());
+    return {};
+}
+
+bool hasExec(const QString &name)
+{
+    return !QStandardPaths::findExecutable(name).isEmpty();
+}
+
+}
 
 MetadataExtractor::MetadataExtractor(QObject *parent)
     : QObject(parent)
@@ -35,38 +60,27 @@ MetadataExtractor::MetadataExtractor(QObject *parent)
 
 bool MetadataExtractor::hasExifSupport() const
 {
-#ifdef HYPRFM_HAS_LIBEXIF
-    return true;
-#else
-    return false;
-#endif
+    return hasExec(QStringLiteral("exiftool"));
 }
 
 bool MetadataExtractor::hasTagLibSupport() const
 {
-#ifdef HYPRFM_HAS_TAGLIB
-    return true;
-#else
-    return false;
-#endif
+    return hasExec(QStringLiteral("ffprobe"));
 }
 
 bool MetadataExtractor::hasVideoSupport() const
 {
-#ifdef HYPRFM_HAS_LIBAVFORMAT
-    return true;
-#else
-    return false;
-#endif
+    return hasExec(QStringLiteral("ffprobe"));
 }
 
 bool MetadataExtractor::hasPdfSupport() const
 {
-#ifdef HYPRFM_HAS_POPPLER_QT6
-    return true;
-#else
-    return false;
-#endif
+    return hasExec(QStringLiteral("pdfinfo"));
+}
+
+void MetadataExtractor::refreshSupport()
+{
+    emit supportChanged();
 }
 
 QVariantMap MetadataExtractor::extract(const QString &path) const
@@ -89,13 +103,13 @@ QVariantMap MetadataExtractor::extract(const QString &path) const
 QString MetadataExtractor::missingDepsHint(const QString &mimeType) const
 {
     if (mimeType.startsWith("image/") && !hasExifSupport())
-        return QStringLiteral("Install libexif for camera metadata (make/model, ISO, aperture, GPS)");
+        return QStringLiteral("Install exiftool for camera metadata (make/model, ISO, aperture, GPS)");
     if (mimeType.startsWith("audio/") && !hasTagLibSupport())
-        return QStringLiteral("Install taglib for audio metadata (artist, album, genre, duration)");
+        return QStringLiteral("Install ffmpeg for audio metadata (artist, album, genre, duration)");
     if (mimeType.startsWith("video/") && !hasVideoSupport())
-        return QStringLiteral("Install ffmpeg/libavformat for video metadata (duration, codec, resolution)");
+        return QStringLiteral("Install ffmpeg for video metadata (duration, codec, resolution)");
     if (mimeType == "application/pdf" && !hasPdfSupport())
-        return QStringLiteral("Install poppler-qt6 for PDF metadata (author, title, page count)");
+        return QStringLiteral("Install poppler-utils for PDF metadata (author, title, page count)");
     return {};
 }
 
@@ -105,7 +119,6 @@ QVariantMap MetadataExtractor::extractImage(const QString &path) const
 {
     QVariantMap meta;
 
-    // Basic dimensions via Qt (always available)
     QImageReader reader(path);
     reader.setAutoTransform(false);
     const QSize size = reader.size();
@@ -123,182 +136,246 @@ QVariantMap MetadataExtractor::extractImage(const QString &path) const
             meta["Bit depth"] = QString("%1-bit").arg(depth);
     }
 
-#ifdef HYPRFM_HAS_LIBEXIF
-    ExifData *ed = exif_data_new_from_file(path.toUtf8().constData());
-    if (ed) {
-        auto getTag = [ed](ExifIfd ifd, ExifTag tag) -> QString {
-            ExifEntry *entry = exif_content_get_entry(ed->ifd[ifd], tag);
-            if (!entry) return {};
-            char buf[256];
-            exif_entry_get_value(entry, buf, sizeof(buf));
-            QString val = QString::fromUtf8(buf).trimmed();
-            return val.isEmpty() ? QString() : val;
-        };
+    if (!hasExifSupport())
+        return meta;
 
-        auto addIfPresent = [&meta, &getTag](const QString &label, ExifIfd ifd, ExifTag tag) {
-            const QString val = getTag(ifd, tag);
-            if (!val.isEmpty())
-                meta[label] = val;
-        };
+    QProcess proc;
+    // `-json` returns structured data, `-n` keeps numeric values numeric,
+    // and explicit tags keep the output small and stable.
+    proc.start(QStringLiteral("exiftool"), {
+        QStringLiteral("-json"),
+        QStringLiteral("-n"),
+        QStringLiteral("-Make"),
+        QStringLiteral("-Model"),
+        QStringLiteral("-LensModel"),
+        QStringLiteral("-DateTimeOriginal"),
+        QStringLiteral("-ExposureTime"),
+        QStringLiteral("-FNumber"),
+        QStringLiteral("-ISO"),
+        QStringLiteral("-FocalLength"),
+        QStringLiteral("-Flash"),
+        QStringLiteral("-WhiteBalance"),
+        QStringLiteral("-MeteringMode"),
+        QStringLiteral("-Software"),
+        QStringLiteral("-GPSLatitude"),
+        QStringLiteral("-GPSLatitudeRef"),
+        QStringLiteral("-GPSLongitude"),
+        QStringLiteral("-GPSLongitudeRef"),
+        path,
+    });
+    if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
+        return meta;
 
-        addIfPresent("Camera make", EXIF_IFD_0, EXIF_TAG_MAKE);
-        addIfPresent("Camera model", EXIF_IFD_0, EXIF_TAG_MODEL);
-        addIfPresent("Lens model", EXIF_IFD_EXIF, EXIF_TAG_LENS_MODEL);
-        addIfPresent("Date taken", EXIF_IFD_EXIF, EXIF_TAG_DATE_TIME_ORIGINAL);
-        addIfPresent("Exposure", EXIF_IFD_EXIF, EXIF_TAG_EXPOSURE_TIME);
-        addIfPresent("Aperture", EXIF_IFD_EXIF, EXIF_TAG_FNUMBER);
-        addIfPresent("ISO", EXIF_IFD_EXIF, EXIF_TAG_ISO_SPEED_RATINGS);
-        addIfPresent("Focal length", EXIF_IFD_EXIF, EXIF_TAG_FOCAL_LENGTH);
-        addIfPresent("Flash", EXIF_IFD_EXIF, EXIF_TAG_FLASH);
-        addIfPresent("White balance", EXIF_IFD_EXIF, EXIF_TAG_WHITE_BALANCE);
-        addIfPresent("Metering mode", EXIF_IFD_EXIF, EXIF_TAG_METERING_MODE);
-        addIfPresent("Software", EXIF_IFD_0, EXIF_TAG_SOFTWARE);
+    const QJsonDocument doc = QJsonDocument::fromJson(proc.readAllStandardOutput());
+    if (!doc.isArray() || doc.array().isEmpty())
+        return meta;
 
-        // GPS coordinates
-        const QString latRef = getTag(EXIF_IFD_GPS, static_cast<ExifTag>(EXIF_TAG_GPS_LATITUDE_REF));
-        const QString lat = getTag(EXIF_IFD_GPS, static_cast<ExifTag>(EXIF_TAG_GPS_LATITUDE));
-        const QString lonRef = getTag(EXIF_IFD_GPS, static_cast<ExifTag>(EXIF_TAG_GPS_LONGITUDE_REF));
-        const QString lon = getTag(EXIF_IFD_GPS, static_cast<ExifTag>(EXIF_TAG_GPS_LONGITUDE));
-        if (!lat.isEmpty() && !lon.isEmpty())
-            meta["GPS"] = QString("%1 %2, %3 %4").arg(lat, latRef, lon, lonRef);
+    const QJsonObject obj = doc.array().at(0).toObject();
+    auto put = [&](const QString &label, const QString &key) {
+        const QString v = jsonToString(obj.value(key));
+        if (!v.isEmpty())
+            meta[label] = v;
+    };
 
-        exif_data_unref(ed);
+    put("Camera make", "Make");
+    put("Camera model", "Model");
+    put("Lens model", "LensModel");
+    put("Date taken", "DateTimeOriginal");
+
+    if (obj.contains("ExposureTime")) {
+        const double v = obj.value("ExposureTime").toDouble();
+        if (v > 0) {
+            meta["Exposure"] = v >= 1.0
+                ? QString::number(v, 'f', 1) + " s"
+                : "1/" + QString::number(static_cast<int>(1.0 / v + 0.5)) + " s";
+        }
     }
-#endif
+    if (obj.contains("FNumber"))
+        meta["Aperture"] = "f/" + QString::number(obj.value("FNumber").toDouble(), 'f', 1);
+    put("ISO", "ISO");
+    if (obj.contains("FocalLength"))
+        meta["Focal length"] = QString::number(obj.value("FocalLength").toDouble(), 'f', 0) + " mm";
+    put("Flash", "Flash");
+    put("White balance", "WhiteBalance");
+    put("Metering mode", "MeteringMode");
+    put("Software", "Software");
+
+    const QString lat = jsonToString(obj.value("GPSLatitude"));
+    const QString lon = jsonToString(obj.value("GPSLongitude"));
+    if (!lat.isEmpty() && !lon.isEmpty()) {
+        const QString latRef = jsonToString(obj.value("GPSLatitudeRef"));
+        const QString lonRef = jsonToString(obj.value("GPSLongitudeRef"));
+        meta["GPS"] = QString("%1 %2, %3 %4").arg(lat, latRef, lon, lonRef);
+    }
 
     return meta;
 }
 
-// ── Audio ──
+// ── ffprobe-backed audio / video ──
+
+namespace {
+
+QJsonObject runFfprobe(const QString &path)
+{
+    QProcess proc;
+    proc.start(QStringLiteral("ffprobe"), {
+        QStringLiteral("-v"), QStringLiteral("error"),
+        QStringLiteral("-show_format"),
+        QStringLiteral("-show_streams"),
+        QStringLiteral("-of"), QStringLiteral("json"),
+        path,
+    });
+    if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
+        return {};
+    const QJsonDocument doc = QJsonDocument::fromJson(proc.readAllStandardOutput());
+    return doc.isObject() ? doc.object() : QJsonObject();
+}
+
+QJsonObject firstStreamOfType(const QJsonObject &probe, const QString &type)
+{
+    for (const QJsonValue &s : probe.value("streams").toArray()) {
+        const QJsonObject o = s.toObject();
+        if (o.value("codec_type").toString() == type)
+            return o;
+    }
+    return {};
+}
+
+}
 
 QVariantMap MetadataExtractor::extractAudio(const QString &path) const
 {
     QVariantMap meta;
-
-#ifdef HYPRFM_HAS_TAGLIB
-    TagLib::FileRef f(path.toUtf8().constData());
-    if (f.isNull())
+    if (!hasTagLibSupport())
         return meta;
 
-    if (auto *tag = f.tag()) {
-        auto addIfPresent = [&meta](const QString &label, const TagLib::String &val) {
-            if (!val.isEmpty())
-                meta[label] = QString::fromStdWString(val.toWString());
-        };
+    const QJsonObject probe = runFfprobe(path);
+    if (probe.isEmpty())
+        return meta;
 
-        addIfPresent("Title", tag->title());
-        addIfPresent("Artist", tag->artist());
-        addIfPresent("Album", tag->album());
-        addIfPresent("Genre", tag->genre());
-        if (tag->year() > 0)
-            meta["Year"] = QString::number(tag->year());
-        if (tag->track() > 0)
-            meta["Track"] = QString::number(tag->track());
-        addIfPresent("Comment", tag->comment());
-    }
+    const QJsonObject fmt = probe.value("format").toObject();
+    const QJsonObject tags = fmt.value("tags").toObject();
+    const QJsonObject audio = firstStreamOfType(probe, QStringLiteral("audio"));
 
-    if (auto *props = f.audioProperties()) {
-        const int secs = props->lengthInSeconds();
-        if (secs > 0) {
-            const int h = secs / 3600;
-            const int m = (secs % 3600) / 60;
-            const int s = secs % 60;
-            meta["Duration"] = h > 0
-                ? QString("%1:%2:%3").arg(h).arg(m, 2, 10, QLatin1Char('0')).arg(s, 2, 10, QLatin1Char('0'))
-                : QString("%1:%2").arg(m).arg(s, 2, 10, QLatin1Char('0'));
+    // ffprobe lowercases some container tag names and uppercases others.
+    // Normalise by looking up case-insensitively.
+    auto tagValue = [&](std::initializer_list<const char *> keys) -> QString {
+        for (auto it = tags.constBegin(); it != tags.constEnd(); ++it) {
+            const QString k = it.key().toLower();
+            for (const char *wanted : keys) {
+                if (k == QLatin1String(wanted))
+                    return it.value().toString().trimmed();
+            }
         }
-        if (props->bitrate() > 0)
-            meta["Bitrate"] = QString("%1 kbps").arg(props->bitrate());
-        if (props->sampleRate() > 0)
-            meta["Sample rate"] = QString("%1 Hz").arg(props->sampleRate());
-        if (props->channels() > 0)
-            meta["Channels"] = props->channels() == 1 ? QStringLiteral("Mono")
-                             : props->channels() == 2 ? QStringLiteral("Stereo")
-                             : QString::number(props->channels());
+        return {};
+    };
+
+    auto putTag = [&](const QString &label, std::initializer_list<const char *> keys) {
+        const QString v = tagValue(keys);
+        if (!v.isEmpty())
+            meta[label] = v;
+    };
+
+    putTag("Title",  {"title"});
+    putTag("Artist", {"artist", "author"});
+    putTag("Album",  {"album"});
+    putTag("Genre",  {"genre"});
+    putTag("Year",   {"date", "year"});
+    putTag("Track",  {"track"});
+    putTag("Comment",{"comment"});
+
+    const double duration = fmt.value("duration").toString().toDouble();
+    const QString d = formatDuration(duration);
+    if (!d.isEmpty())
+        meta["Duration"] = d;
+
+    const int bitrate = fmt.value("bit_rate").toString().toInt();
+    if (bitrate > 0)
+        meta["Bitrate"] = QStringLiteral("%1 kbps").arg(bitrate / 1000);
+
+    if (!audio.isEmpty()) {
+        const int sampleRate = audio.value("sample_rate").toString().toInt();
+        if (sampleRate > 0)
+            meta["Sample rate"] = QStringLiteral("%1 Hz").arg(sampleRate);
+        const int channels = audio.value("channels").toInt();
+        const QString chStr = formatChannels(channels);
+        if (!chStr.isEmpty())
+            meta["Channels"] = chStr;
     }
-#endif
 
     return meta;
 }
 
-// ── Video ──
-
 QVariantMap MetadataExtractor::extractVideo(const QString &path) const
 {
     QVariantMap meta;
-
-#ifdef HYPRFM_HAS_LIBAVFORMAT
-    AVFormatContext *fmt = nullptr;
-    if (avformat_open_input(&fmt, path.toUtf8().constData(), nullptr, nullptr) != 0)
+    if (!hasVideoSupport())
         return meta;
 
-    avformat_find_stream_info(fmt, nullptr);
+    const QJsonObject probe = runFfprobe(path);
+    if (probe.isEmpty())
+        return meta;
 
-    // Duration
-    if (fmt->duration > 0) {
-        const int totalSecs = static_cast<int>(fmt->duration / AV_TIME_BASE);
-        const int h = totalSecs / 3600;
-        const int m = (totalSecs % 3600) / 60;
-        const int s = totalSecs % 60;
-        meta["Duration"] = h > 0
-            ? QString("%1:%2:%3").arg(h).arg(m, 2, 10, QLatin1Char('0')).arg(s, 2, 10, QLatin1Char('0'))
-            : QString("%1:%2").arg(m).arg(s, 2, 10, QLatin1Char('0'));
-    }
+    const QJsonObject fmt = probe.value("format").toObject();
 
-    // Overall bitrate
-    if (fmt->bit_rate > 0) {
-        const double mbps = fmt->bit_rate / 1e6;
+    const double duration = fmt.value("duration").toString().toDouble();
+    const QString d = formatDuration(duration);
+    if (!d.isEmpty())
+        meta["Duration"] = d;
+
+    const qint64 bitrate = fmt.value("bit_rate").toString().toLongLong();
+    if (bitrate > 0) {
+        const double mbps = bitrate / 1e6;
         meta["Bitrate"] = mbps >= 1.0
             ? QString("%1 Mbps").arg(mbps, 0, 'f', 1)
-            : QString("%1 kbps").arg(fmt->bit_rate / 1000);
+            : QString("%1 kbps").arg(bitrate / 1000);
     }
 
-    // Stream info
-    for (unsigned i = 0; i < fmt->nb_streams; ++i) {
-        const AVStream *stream = fmt->streams[i];
-        const AVCodecParameters *codec = stream->codecpar;
-
-        if (codec->codec_type == AVMEDIA_TYPE_VIDEO) {
-            const char *codecName = avcodec_get_name(codec->codec_id);
-            if (codecName)
-                meta["Video codec"] = QString::fromUtf8(codecName);
-            if (codec->width > 0 && codec->height > 0)
-                meta["Resolution"] = QString("%1 x %2").arg(codec->width).arg(codec->height);
-            if (stream->avg_frame_rate.den > 0 && stream->avg_frame_rate.num > 0) {
-                const double fps = static_cast<double>(stream->avg_frame_rate.num) / stream->avg_frame_rate.den;
-                meta["Frame rate"] = QString("%1 fps").arg(fps, 0, 'f', 1);
-            }
-        } else if (codec->codec_type == AVMEDIA_TYPE_AUDIO) {
-            const char *codecName = avcodec_get_name(codec->codec_id);
-            if (codecName)
-                meta["Audio codec"] = QString::fromUtf8(codecName);
-            if (codec->sample_rate > 0)
-                meta["Sample rate"] = QString("%1 Hz").arg(codec->sample_rate);
-            if (codec->ch_layout.nb_channels > 0) {
-                const int ch = codec->ch_layout.nb_channels;
-                meta["Audio channels"] = ch == 1 ? QStringLiteral("Mono")
-                                       : ch == 2 ? QStringLiteral("Stereo")
-                                       : QString("%1.%2").arg(ch - 1).arg(ch > 5 ? 1 : 0);
-            }
+    const QJsonObject video = firstStreamOfType(probe, QStringLiteral("video"));
+    if (!video.isEmpty()) {
+        const QString codec = video.value("codec_name").toString();
+        if (!codec.isEmpty())
+            meta["Video codec"] = codec;
+        const int w = video.value("width").toInt();
+        const int h = video.value("height").toInt();
+        if (w > 0 && h > 0)
+            meta["Resolution"] = QStringLiteral("%1 x %2").arg(w).arg(h);
+        const QString fpsStr = video.value("avg_frame_rate").toString();
+        if (fpsStr.contains('/')) {
+            const auto parts = fpsStr.split('/');
+            const double num = parts[0].toDouble();
+            const double den = parts[1].toDouble();
+            if (num > 0 && den > 0)
+                meta["Frame rate"] = QStringLiteral("%1 fps").arg(num / den, 0, 'f', 1);
         }
     }
 
-    // Container metadata tags (title, artist, etc.)
-    if (fmt->metadata) {
-        const AVDictionaryEntry *tag = nullptr;
-        while ((tag = av_dict_get(fmt->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
-            const QString key = QString::fromUtf8(tag->key).toLower();
-            const QString val = QString::fromUtf8(tag->value).trimmed();
-            if (val.isEmpty()) continue;
-            if (key == "title") meta["Title"] = val;
-            else if (key == "artist" || key == "author") meta["Artist"] = val;
-            else if (key == "album") meta["Album"] = val;
-            else if (key == "encoder" || key == "encoding_tool") meta["Encoder"] = val;
+    const QJsonObject audio = firstStreamOfType(probe, QStringLiteral("audio"));
+    if (!audio.isEmpty()) {
+        const QString codec = audio.value("codec_name").toString();
+        if (!codec.isEmpty())
+            meta["Audio codec"] = codec;
+        const int sampleRate = audio.value("sample_rate").toString().toInt();
+        if (sampleRate > 0)
+            meta["Sample rate"] = QStringLiteral("%1 Hz").arg(sampleRate);
+        const int channels = audio.value("channels").toInt();
+        if (channels > 0) {
+            meta["Audio channels"] = channels == 1 ? QStringLiteral("Mono")
+                                   : channels == 2 ? QStringLiteral("Stereo")
+                                   : QStringLiteral("%1.%2").arg(channels - 1).arg(channels > 5 ? 1 : 0);
         }
     }
 
-    avformat_close_input(&fmt);
-#endif
+    const QJsonObject tags = fmt.value("tags").toObject();
+    for (auto it = tags.constBegin(); it != tags.constEnd(); ++it) {
+        const QString key = it.key().toLower();
+        const QString val = it.value().toString().trimmed();
+        if (val.isEmpty()) continue;
+        if (key == "title") meta["Title"] = val;
+        else if (key == "artist" || key == "author") meta["Artist"] = val;
+        else if (key == "album") meta["Album"] = val;
+        else if (key == "encoder" || key == "encoding_tool") meta["Encoder"] = val;
+    }
 
     return meta;
 }
@@ -308,45 +385,53 @@ QVariantMap MetadataExtractor::extractVideo(const QString &path) const
 QVariantMap MetadataExtractor::extractPdf(const QString &path) const
 {
     QVariantMap meta;
-
-#ifdef HYPRFM_HAS_POPPLER_QT6
-    auto doc = Poppler::Document::load(path);
-    if (!doc)
+    if (!hasPdfSupport())
         return meta;
 
-    auto addIfPresent = [&meta](const QString &label, const QString &val) {
-        if (!val.trimmed().isEmpty())
-            meta[label] = val.trimmed();
-    };
+    QProcess proc;
+    proc.start(QStringLiteral("pdfinfo"), {path});
+    if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
+        return meta;
 
-    addIfPresent("Title", doc->title());
-    addIfPresent("Author", doc->author());
-    addIfPresent("Subject", doc->subject());
-    addIfPresent("Creator", doc->creator());
-    addIfPresent("Producer", doc->producer());
+    const QString out = QString::fromUtf8(proc.readAllStandardOutput());
 
-    if (doc->creationDate().isValid())
-        meta["Created"] = doc->creationDate().toString("yyyy-MM-dd hh:mm");
-    if (doc->modificationDate().isValid())
-        meta["Modified"] = doc->modificationDate().toString("yyyy-MM-dd hh:mm");
-
-    meta["Pages"] = QString::number(doc->numPages());
-
-    if (doc->numPages() > 0) {
-        auto page = doc->page(0);
-        if (page) {
-            const QSizeF pageSize = page->pageSizeF();
-            meta["Page size"] = QString("%1 x %2 mm")
-                .arg(pageSize.width() * 25.4 / 72.0, 0, 'f', 0)
-                .arg(pageSize.height() * 25.4 / 72.0, 0, 'f', 0);
-        }
+    // pdfinfo lines look like "Key: value" with key-column padding; split on
+    // the first colon to be tolerant of values that themselves contain ':'.
+    QHash<QString, QString> kv;
+    for (const QString &line : out.split('\n', Qt::SkipEmptyParts)) {
+        const int colon = line.indexOf(':');
+        if (colon < 0) continue;
+        const QString key = line.left(colon).trimmed();
+        const QString val = line.mid(colon + 1).trimmed();
+        kv.insert(key, val);
     }
 
-    const QString version = QStringLiteral("%1.%2")
-        .arg(doc->getPdfVersion().major)
-        .arg(doc->getPdfVersion().minor);
-    meta["PDF version"] = version;
-#endif
+    auto put = [&](const QString &label, const QString &key) {
+        const QString v = kv.value(key);
+        if (!v.isEmpty())
+            meta[label] = v;
+    };
+
+    put("Title",    "Title");
+    put("Author",   "Author");
+    put("Subject",  "Subject");
+    put("Creator",  "Creator");
+    put("Producer", "Producer");
+    put("Created",  "CreationDate");
+    put("Modified", "ModDate");
+    put("Pages",    "Pages");
+
+    // Page size: "595.28 x 841.89 pts (A4)" → "210 x 297 mm"
+    const QString rawSize = kv.value("Page size");
+    static const QRegularExpression sizeRe(QStringLiteral(R"(([0-9.]+)\s*x\s*([0-9.]+)\s*pts)"));
+    const auto sm = sizeRe.match(rawSize);
+    if (sm.hasMatch()) {
+        const double w = sm.captured(1).toDouble() * 25.4 / 72.0;
+        const double h = sm.captured(2).toDouble() * 25.4 / 72.0;
+        meta["Page size"] = QString("%1 x %2 mm").arg(w, 0, 'f', 0).arg(h, 0, 'f', 0);
+    }
+
+    put("PDF version", "PDF version");
 
     return meta;
 }

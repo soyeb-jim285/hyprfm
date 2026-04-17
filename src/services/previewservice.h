@@ -9,7 +9,7 @@
 class PreviewService : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(bool pdfPreviewAvailable READ pdfPreviewAvailable CONSTANT)
+    Q_PROPERTY(bool pdfPreviewAvailable READ pdfPreviewAvailable NOTIFY supportChanged)
 
 public:
     explicit PreviewService(QObject *parent = nullptr);
@@ -23,6 +23,15 @@ public:
     Q_INVOKABLE QVariantMap loadPdfPreview(const QString &path) const;
     Q_INVOKABLE QVariantMap loadFontPreview(const QString &path);
     Q_INVOKABLE QString localPreviewPath(const QString &path) const;
+
+public slots:
+    // Re-check availability of external tools (pdftoppm/pdfinfo). Called
+    // when the user clicks Re-check in the Missing Dependencies dialog
+    // after installing a package.
+    void refreshSupport();
+
+signals:
+    void supportChanged();
 
 private:
     QByteArray readPathBytes(const QString &path, qint64 maxBytes, bool *truncated,

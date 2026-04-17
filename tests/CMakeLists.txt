@@ -67,10 +67,6 @@ add_executable(tst_previewservice tst_previewservice.cpp
 )
 target_include_directories(tst_previewservice PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_previewservice PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
-if(POPPLER_QT6_FOUND)
-    target_link_libraries(tst_previewservice PRIVATE PkgConfig::POPPLER_QT6)
-    target_compile_definitions(tst_previewservice PRIVATE HYPRFM_HAS_POPPLER_QT6=1)
-endif()
 add_test(NAME tst_previewservice COMMAND tst_previewservice)
 
 add_executable(tst_diskusageservice tst_diskusageservice.cpp
@@ -112,14 +108,12 @@ target_include_directories(tst_thumbnailprovider PRIVATE ${CMAKE_SOURCE_DIR}/src
 target_link_libraries(tst_thumbnailprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick)
 add_test(NAME tst_thumbnailprovider COMMAND tst_thumbnailprovider)
 
-if(POPPLER_QT6_FOUND)
-    add_executable(tst_pdfpreviewprovider tst_pdfpreviewprovider.cpp
-        ${CMAKE_SOURCE_DIR}/src/providers/pdfpreviewprovider.cpp
-    )
-    target_include_directories(tst_pdfpreviewprovider PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(tst_pdfpreviewprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick PkgConfig::POPPLER_QT6)
-    add_test(NAME tst_pdfpreviewprovider COMMAND tst_pdfpreviewprovider)
-endif()
+add_executable(tst_pdfpreviewprovider tst_pdfpreviewprovider.cpp
+    ${CMAKE_SOURCE_DIR}/src/providers/pdfpreviewprovider.cpp
+)
+target_include_directories(tst_pdfpreviewprovider PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_pdfpreviewprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick)
+add_test(NAME tst_pdfpreviewprovider COMMAND tst_pdfpreviewprovider)
 
 add_executable(tst_searchresultsmodel tst_searchresultsmodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/searchresultsmodel.cpp
