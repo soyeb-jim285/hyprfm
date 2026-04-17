@@ -97,15 +97,18 @@ void PdfPreviewResponse::run()
     const QSizeF sizePts = pageSizePoints(request.path);
     const double dpi = dpiForRequest(sizePts, m_requestedSize);
 
-    // pdftoppm writes PNG to stdout when the output root is "-".
+    // pdftoppm writes to stdout only when no output-prefix argument is
+    // given. Passing "-" as the prefix (a common assumption) makes recent
+    // poppler write a file named "--1.png" in the current working
+    // directory instead — silently producing no stdout output.
     QProcess proc;
     proc.start(QStringLiteral("pdftoppm"), {
         QStringLiteral("-png"),
+        QStringLiteral("-singlefile"),
         QStringLiteral("-f"), QString::number(request.page + 1),
         QStringLiteral("-l"), QString::number(request.page + 1),
         QStringLiteral("-r"), QString::number(static_cast<int>(dpi + 0.5)),
         request.path,
-        QStringLiteral("-"),
     });
 
     if (!proc.waitForFinished(15000) || proc.exitCode() != 0) {
