@@ -18,6 +18,10 @@
 #include <QTimer>
 #include <QFontDatabase>
 #include <QStyleHints>
+#include <QFileInfo>
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <unistd.h>
 #ifdef HYPRFM_HAS_KWINDOWSYSTEM
 #include <KWindowEffects>
 #endif
@@ -90,10 +94,49 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // Extract an optional path argument. We skip flag-style args so Qt's
+    // own options (e.g. `-style`, `-qmljsdebugger`) don't get mistaken
+    // for a path. Relative paths are resolved against the caller's cwd
+    // before the single-instance handoff, so the receiving process sees
+    // an absolute path regardless of where the launcher invoked us from.
+    QString initialOpenPath;
+    for (int i = 1; i < argc; ++i) {
+        QString a = QString::fromLocal8Bit(argv[i]);
+        if (a.startsWith('-')) continue;
+        initialOpenPath = a;
+        break;
+    }
+    if (!initialOpenPath.isEmpty()) {
+        QFileInfo fi(initialOpenPath);
+        if (fi.exists())
+            initialOpenPath = fi.absoluteFilePath();
+    }
+
     QGuiApplication app(argc, argv);
     app.setApplicationName("HyprFM");
     app.setOrganizationName("hyprfm");
     app.setDesktopFileName("hyprfm");
+
+    // Single-instance: if another HyprFM is already running for this user,
+    // forward our arg over a per-uid unix domain socket and exit. The
+    // running instance spawns a new tab for the path. Mirrors how browsers
+    // handle `firefox <url>` when a window is already open.
+    const QString hyprfmSocketName = QStringLiteral("hyprfm-%1").arg(static_cast<uint>(getuid()));
+    {
+        QLocalSocket probe;
+        probe.connectToServer(hyprfmSocketName);
+        if (probe.waitForConnected(150)) {
+            QJsonObject msg;
+            if (!initialOpenPath.isEmpty())
+                msg.insert(QStringLiteral("path"), initialOpenPath);
+            QByteArray payload = QJsonDocument(msg).toJson(QJsonDocument::Compact);
+            payload.append('\n');
+            probe.write(payload);
+            probe.waitForBytesWritten(500);
+            probe.disconnectFromServer();
+            return 0;
+        }
+    }
 
     QQuickStyle::setStyle("Basic");
 
@@ -445,6 +488,54 @@ int main(int argc, char *argv[])
             }
         }
     }
+
+    // Raise, focus, and navigate to a path — used for both the initial
+    // argv path and for paths forwarded by a subsequent invocation over
+    // the single-instance socket. Empty path just raises the window.
+    auto openPathInNewTab = [&engine, tabModel](const QString &path) {
+        if (!path.isEmpty()) {
+            tabModel->addTab();
+            if (auto *tab = tabModel->activeTab())
+                tab->navigateTo(path);
+        }
+        if (engine.rootObjects().isEmpty())
+            return;
+        if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+            if (win->visibility() == QWindow::Minimized || win->visibility() == QWindow::Hidden)
+                win->showNormal();
+            win->raise();
+            win->requestActivate();
+        }
+    };
+
+    // Stale socket from a crashed previous instance would block listen().
+    QLocalServer::removeServer(hyprfmSocketName);
+    QLocalServer *ipcServer = new QLocalServer(&app);
+    ipcServer->setSocketOptions(QLocalServer::UserAccessOption);
+    if (!ipcServer->listen(hyprfmSocketName)) {
+        qWarning() << "HyprFM: single-instance IPC listen failed:" << ipcServer->errorString();
+    }
+    QObject::connect(ipcServer, &QLocalServer::newConnection, &app, [ipcServer, openPathInNewTab]() {
+        while (QLocalSocket *conn = ipcServer->nextPendingConnection()) {
+            QObject::connect(conn, &QLocalSocket::readyRead, conn, [conn, openPathInNewTab]() {
+                const QByteArray data = conn->readAll();
+                for (const QByteArray &line : data.split('\n')) {
+                    const QByteArray trimmed = line.trimmed();
+                    if (trimmed.isEmpty()) continue;
+                    QJsonParseError err;
+                    const QJsonDocument doc = QJsonDocument::fromJson(trimmed, &err);
+                    if (err.error != QJsonParseError::NoError || !doc.isObject()) continue;
+                    openPathInNewTab(doc.object().value(QStringLiteral("path")).toString());
+                }
+            });
+            QObject::connect(conn, &QLocalSocket::disconnected, conn, &QObject::deleteLater);
+        }
+    });
+
+    // Apply the path this process was launched with (if any) as a new tab
+    // on the restored session.
+    if (!initialOpenPath.isEmpty())
+        QTimer::singleShot(0, &app, [=]() { openPathInNewTab(initialOpenPath); });
 
     return app.exec();
 }

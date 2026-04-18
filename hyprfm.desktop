@@ -1,9 +1,10 @@
 [Desktop Entry]
 Name=HyprFM
 Comment=File manager for Hyprland
-Exec=hyprfm
+Exec=hyprfm %U
 Icon=system-file-manager
 Terminal=false
 Type=Application
 Categories=System;FileManager;
+MimeType=inode/directory;
 StartupWMClass=hyprfm
