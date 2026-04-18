@@ -295,6 +295,24 @@ static QString udisksObjectPathFor(const QString &devicePath)
         + QFileInfo(devicePath).fileName();
 }
 
+// UDisks2 returns "Not authorized to perform operation" when polkit refuses
+// the call — in practice this is almost always because no polkit
+// authentication agent is running in the user's session (polkitd itself is
+// running, but it has no UI to prompt for the password). Fixed / internal
+// partitions require admin auth, so mount/unmount on those fails silently.
+static bool isPolkitAuthError(const QString &err)
+{
+    return err.contains(QStringLiteral("Not authorized"), Qt::CaseInsensitive);
+}
+
+static QString polkitAgentHint()
+{
+    return DeviceModel::tr(
+        "No polkit authentication agent is running. Start one in your session "
+        "(e.g. hyprpolkitagent, polkit-gnome, or polkit-kde-authentication-agent-1) "
+        "and try again.");
+}
+
 void DeviceModel::unmount(int index)
 {
     if (index < 0 || index >= m_devices.size())
@@ -321,7 +339,10 @@ void DeviceModel::unmount(int index)
         if (reply.isError()) {
             const QString err = reply.error().message();
             qWarning() << "UDisks2 Unmount failed:" << err;
-            emit mountError(tr("Could not unmount %1: %2").arg(label, err));
+            QString friendly = isPolkitAuthError(err)
+                ? tr("Could not unmount %1: %2").arg(label, polkitAgentHint())
+                : tr("Could not unmount %1: %2").arg(label, err);
+            emit mountError(friendly);
         } else {
             refresh();
         }
@@ -366,7 +387,9 @@ void DeviceModel::mount(int index)
             const bool isNtfs = fsType == QLatin1String("ntfs")
                 || fsType == QLatin1String("ntfs3");
 
-            if (isNtfs && dirtyNtfs) {
+            if (isPolkitAuthError(err)) {
+                friendly = tr("Could not mount %1: %2").arg(label, polkitAgentHint());
+            } else if (isNtfs && dirtyNtfs) {
                 friendly = tr("Could not mount %1: the NTFS volume is in an unsafe "
                               "state (Windows Fast Startup or hibernation). Boot into "
                               "Windows and fully shut down, or disable Fast Startup.")
