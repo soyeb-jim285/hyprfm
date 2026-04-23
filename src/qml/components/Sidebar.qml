@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Shapes
 import HyprFM
+import Quill as Quill
 
 Rectangle {
     id: root
@@ -642,6 +643,7 @@ Rectangle {
                                     name: model.deviceName,
                                     path: model.mountPoint,
                                     devicePath: model.devicePath,
+                                    backend: model.backend,
                                     mounted: model.mounted,
                                     removable: model.removable
                                 }, Qt.point(mapped.x, mapped.y))
@@ -650,11 +652,21 @@ Rectangle {
 
                             if (model.mounted)
                                 root.bookmarkClicked(model.mountPoint)
-                            else if (runtimeFeatures.udisksctlAvailable)
-                                devices.mount(index)
-                            else
+                            else if (model.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable)
                                 root.featureHintRequested(runtimeFeatures.installHint("deviceMount"))
+                            else
+                                devices.mount(index)
                         }
+                    }
+
+                    Quill.Tooltip {
+                        visible: deviceHoverArea.containsMouse
+                        text: model.mounted
+                            ? Quill.Format.bytes(model.freeSpace)
+                              + " free of "
+                              + Quill.Format.bytes(model.totalSize)
+                              + " (" + Math.round(model.usagePercent) + "% used)"
+                            : "Not mounted — click to mount"
                     }
                 }
             }
