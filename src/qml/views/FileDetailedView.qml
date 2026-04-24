@@ -24,6 +24,12 @@ FocusScope {
         typeAheadTimer.stop()
         Qt.callLater(refreshFolderItemCounts)
     }
+    onVisibleChanged: {
+        if (visible)
+            Qt.callLater(refreshFolderItemCounts)
+        else
+            folderItemCounts = ({})
+    }
 
     // Model bound by FileViewContainer
     property var viewModel
@@ -42,10 +48,15 @@ FocusScope {
 
     function refreshFolderItemCounts() {
         folderItemCounts = ({})
-        if (!viewModel || listView.count <= 0 || !viewModel.folderItemCounts)
+        if (!root.visible || !viewModel || listView.count <= 0 || !viewModel.folderItemCounts)
             return
+
+        var first = Math.max(0, Math.floor(listView.contentY / root.rowHeight) - 12)
+        var last = Math.min(listView.count - 1,
+            Math.ceil((listView.contentY + listView.height) / root.rowHeight) + 12)
+
         var paths = []
-        for (var i = 0; i < listView.count; ++i) {
+        for (var i = first; i <= last; ++i) {
             if (isDirForRow(i)) {
                 var p = pathForRow(i)
                 if (p && !fileOps.isRemotePath(p))
@@ -428,8 +439,11 @@ FocusScope {
             width: root.width
             height: root.height - root.rowHeight
             clip: true
+            reuseItems: true
+            cacheBuffer: 512
 
             onCountChanged: Qt.callLater(root.refreshFolderItemCounts)
+            onMovementEnded: Qt.callLater(root.refreshFolderItemCounts)
 
             focus: visible
             keyNavigationEnabled: false
@@ -642,7 +656,7 @@ FocusScope {
                                     visible: !parent.hasThumbnail
                                     source: "image://icon/" + detRow.fileIconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
                                     sourceSize: Qt.size(root.detailIconSize, root.detailIconSize)
-                                    asynchronous: false
+                                    asynchronous: true
                                 }
 
                                 Image {

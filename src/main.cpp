@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QCoreApplication>
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QLoggingCategory>
 #include <QSurfaceFormat>
 #include <QFont>
@@ -64,9 +65,10 @@ int main(int argc, char *argv[])
         "qt.qpa.services.warning=false\n"
         "qt.svg.warning=false");
 
-    // Enable multisampling for smoother Shape/path rendering
+    // Keep the default path fast. Full-window MSAA is expensive on many
+    // Wayland/compositor stacks; opt in with HYPRFM_MSAA=2/4 if wanted.
     QSurfaceFormat fmt;
-    fmt.setSamples(4);
+    fmt.setSamples(qMax(0, qEnvironmentVariableIntValue("HYPRFM_MSAA")));
     QSurfaceFormat::setDefaultFormat(fmt);
 
     // HyprFM is a Wayland-only application (wl-copy clipboard, Hyprland
@@ -116,6 +118,18 @@ int main(int argc, char *argv[])
     app.setApplicationName("HyprFM");
     app.setOrganizationName("hyprfm");
     app.setDesktopFileName("hyprfm");
+
+    // Startup timing: opt-in via HYPRFM_TIMING=1 so normal runs stay quiet.
+    // Prints milliseconds from QGuiApplication construction at each phase.
+    const bool timingEnabled = qEnvironmentVariableIntValue("HYPRFM_TIMING") != 0;
+    QElapsedTimer startupTimer;
+    startupTimer.start();
+    auto mark = [&](const char *label) {
+        if (timingEnabled)
+            qDebug().nospace() << "[startup] " << qSetFieldWidth(6) << startupTimer.elapsed()
+                               << qSetFieldWidth(0) << " ms  " << label;
+    };
+    mark("QGuiApplication ready");
 
     // Single-instance: if another HyprFM is already running for this user,
     // forward our arg over a per-uid unix domain socket and exit. The
@@ -201,9 +215,11 @@ int main(int argc, char *argv[])
 
     // Create backend instances
     ConfigManager *config = new ConfigManager(configPath, &app, themesDir, systemDefaultTheme);
+    mark("ConfigManager loaded");
     app.setFont(resolveUiFont(config->fontFamily()));
     ThemeLoader *theme = new ThemeLoader(&app);
     theme->loadTheme(config->theme(), themesDir);
+    mark("ThemeLoader loaded");
 
     TabListModel *tabModel = new TabListModel(&app);
 
@@ -243,14 +259,18 @@ int main(int argc, char *argv[])
     const QString initialSecondaryPath = tabModel->activeTab() && !tabModel->activeTab()->secondaryCurrentPath().isEmpty()
         ? tabModel->activeTab()->secondaryCurrentPath()
         : initialPrimaryPath;
+    const bool initialSplitViewEnabled = tabModel->activeTab() && tabModel->activeTab()->splitViewEnabled();
 
     FileSystemModel *fsModel = new FileSystemModel(&app);
-    fsModel->setRootPath(initialPrimaryPath);
     fsModel->setShowHidden(config->showHidden());
+    fsModel->setRootPath(initialPrimaryPath);
+    mark("Primary fsModel populated");
 
     FileSystemModel *splitFsModel = new FileSystemModel(&app);
-    splitFsModel->setRootPath(initialSecondaryPath);
     splitFsModel->setShowHidden(config->showHidden());
+    if (initialSplitViewEnabled)
+        splitFsModel->setRootPath(initialSecondaryPath);
+    mark("Secondary fsModel populated");
 
     FileSystemModel *millerParentModel = new FileSystemModel(&app);
     millerParentModel->setShowHidden(config->showHidden());
@@ -303,7 +323,7 @@ int main(int argc, char *argv[])
     RecentFilesModel *recentFiles = new RecentFilesModel(configDir + "/recents.json", &app);
 
     // Create DeviceModel
-    DeviceModel *devices = new DeviceModel(&app);
+    DeviceModel *devices = new DeviceModel(&app, true);
 
     // Aggregate runtime tools + compile-time features + DBus services for the
     // in-app MissingDependenciesDialog. Replaces the older hand-rolled
@@ -380,14 +400,29 @@ int main(int argc, char *argv[])
 
     // Prefer the installed on-disk module when it exists so deployed bundles
     // keep working even if Qt's embedded qrc payload is incomplete.
+    mark("engine.load start");
     if (!installedMainQml.isEmpty() && QFile::exists(installedMainQml)) {
         engine.load(QUrl::fromLocalFile(installedMainQml));
     } else {
         engine.loadFromModule("HyprFM", "Main");
     }
+    mark("engine.load done");
 
     if (engine.rootObjects().isEmpty())
         return -1;
+
+    // First-frame checkpoint: one-shot hook on the root window's
+    // frameSwapped signal so we know when the compositor has painted us.
+    if (timingEnabled) {
+        if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+            auto *conn = new QMetaObject::Connection;
+            *conn = QObject::connect(win, &QQuickWindow::frameSwapped, win, [conn, mark]() {
+                mark("first frame swapped");
+                QObject::disconnect(*conn);
+                delete conn;
+            }, Qt::QueuedConnection);
+        }
+    }
 
     auto applyWindowEffects = [config](QQuickWindow *window) {
         if (!window)

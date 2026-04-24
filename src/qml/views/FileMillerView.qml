@@ -59,13 +59,18 @@ FocusScope {
     readonly property int maxRowHeight: 56
     readonly property int millerIconSize: Math.round(rowHeight * 0.571)  // 16 at default 28
 
-    onCurrentPathChanged: {
+    function syncParentModel() {
+        if (!visible)
+            return
+
         if (parentPath) {
             millerParentModel.setRootPath(parentPath)
         } else {
             millerParentModel.setRootPath("")
         }
     }
+
+    onCurrentPathChanged: syncParentModel()
 
     function selectAll() {
         currentColumn.selectAll()
@@ -101,6 +106,7 @@ FocusScope {
     onVisibleChanged: {
         if (!visible)
             return
+        syncParentModel()
         Qt.callLater(root.ensureCurrentColumnFocus)
     }
 
@@ -123,6 +129,13 @@ FocusScope {
     }
 
     function updatePreview() {
+        if (!visible) {
+            millerPreviewModel.setRootPath("")
+            previewColumn.previewFilePath = ""
+            previewColumn.previewIsDir = false
+            return
+        }
+
         var idx = currentColumn.cursorIndex >= 0 ? currentColumn.cursorIndex
             : (currentColumn.selectedIndices.length > 0 ? currentColumn.selectedIndices[currentColumn.selectedIndices.length - 1] : -1)
         if (idx < 0 || !fileModel) {
@@ -151,6 +164,8 @@ FocusScope {
             width: Math.floor(root.width * 0.2)
             height: root.height
             clip: true
+            reuseItems: true
+            cacheBuffer: 512
             model: millerParentModel
             focus: false
             boundsBehavior: Flickable.StopAtBounds
@@ -276,7 +291,7 @@ FocusScope {
                             anchors.verticalCenter: parent.verticalCenter
                             source: "image://icon/" + parentDelegate.fileIconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
                             sourceSize: Qt.size(root.millerIconSize, root.millerIconSize)
-                            asynchronous: false
+                            asynchronous: true
                             opacity: parentDelegate.isCurrentDir ? 0.95 : 0.8
                         }
 
@@ -328,6 +343,8 @@ FocusScope {
             width: Math.floor(root.width * 0.5) - 1
             height: root.height
             clip: true
+            reuseItems: true
+            cacheBuffer: 512
             model: root.fileModel
             focus: root.visible
             boundsBehavior: Flickable.StopAtBounds
@@ -750,7 +767,7 @@ FocusScope {
                                 visible: !parent.hasThumbnail
                                 source: "image://icon/" + currentDelegate.fileIconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
                                 sourceSize: Qt.size(root.millerIconSize + 2, root.millerIconSize + 2)
-                                asynchronous: false
+                                asynchronous: true
                             }
 
                             Image {
@@ -1236,6 +1253,16 @@ FocusScope {
                 else
                     fileProps = ({})
 
+                if (isRemoteUri) {
+                    textPreview = ({ content: "", truncated: false, isBinary: false, error: "" })
+                    directoryPreview = ({ entries: [], truncated: false, error: "", count: 0 })
+                    pdfPreview = ({ localPath: "", pageCount: 0, error: "" })
+                    fontPreview = ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
+                    fileMetadata = ({})
+                    metadataHint = ""
+                    return
+                }
+
                 if (isText)
                     textPreview = previewService.loadTextPreview(previewFilePath)
                 else
@@ -1288,6 +1315,8 @@ FocusScope {
                         visible: previewColumn.previewIsDir
                         model: millerPreviewModel
                         clip: true
+                        reuseItems: true
+                        cacheBuffer: 256
                         interactive: true
                         boundsBehavior: Flickable.StopAtBounds
 
@@ -1313,7 +1342,7 @@ FocusScope {
                                     anchors.verticalCenter: parent.verticalCenter
                                     source: "image://icon/" + fileIconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
                                     sourceSize: Qt.size(14, 14)
-                                    asynchronous: false
+                                    asynchronous: true
                                 }
 
                                 Text {
@@ -1515,7 +1544,7 @@ FocusScope {
                             width: 64; height: 64
                             source: "image://icon/" + (previewColumn.fileProps.iconName || (previewColumn.isPdf ? "application-pdf" : "image-x-generic")) + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
                             sourceSize: Qt.size(64, 64)
-                            asynchronous: false
+                            asynchronous: true
                         }
 
                         Text {
@@ -1611,7 +1640,7 @@ FocusScope {
                             width: 72; height: 72
                             source: "image://icon/" + (previewColumn.fileProps.iconName || "application-pdf") + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
                             sourceSize: Qt.size(72, 72)
-                            asynchronous: false
+                            asynchronous: true
                         }
 
                         Text {
@@ -1756,7 +1785,7 @@ FocusScope {
                                 ? ("image://icon/" + previewColumn.fileProps.iconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0"))
                                 : ("image://icon/text-x-generic?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0"))
                             sourceSize: Qt.size(64, 64)
-                            asynchronous: false
+                            asynchronous: true
                         }
 
                         Text {

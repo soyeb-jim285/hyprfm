@@ -9,8 +9,10 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QDirIterator>
 #include <QUrl>
+#include <algorithm>
 
 // Forward declarations for helpers defined further down (used by methods
 // that appear above their definition site).
@@ -19,9 +21,35 @@ static QString runHostTool(const QString &program, const QStringList &arguments,
 
 namespace {
 
+// Shared MIME database: construction is cheap but keeping one instance
+// avoids repeating the same static-init dance across every helper below.
+QMimeDatabase &mimeDb()
+{
+    static QMimeDatabase db;
+    return db;
+}
+
 bool isTrashUri(const QString &path)
 {
     return QUrl(path).scheme() == "trash";
+}
+
+bool shouldSpawnHostTool()
+{
+    static const bool inSandbox = QFile::exists(QStringLiteral("/.flatpak-info"));
+    return inSandbox;
+}
+
+void startHostToolProcess(QProcess *process, const QString &program, const QStringList &arguments)
+{
+    if (shouldSpawnHostTool()) {
+        QStringList args;
+        args << QStringLiteral("--host") << program << arguments;
+        process->start(QStringLiteral("flatpak-spawn"), args);
+        return;
+    }
+
+    process->start(program, arguments);
 }
 
 bool isRemoteUri(const QString &path)
@@ -30,6 +58,57 @@ bool isRemoteUri(const QString &path)
     return url.isValid() && !url.scheme().isEmpty()
         && url.scheme() != QStringLiteral("file")
         && url.scheme() != QStringLiteral("trash");
+}
+
+QString remoteAuthority(const QString &uri)
+{
+    const int schemeSep = uri.indexOf(QStringLiteral("://"));
+    if (schemeSep < 0)
+        return {};
+
+    const int authorityStart = schemeSep + 3;
+    int authorityEnd = uri.size();
+    const int pathStart = uri.indexOf(QLatin1Char('/'), authorityStart);
+    const int queryStart = uri.indexOf(QLatin1Char('?'), authorityStart);
+    const int fragmentStart = uri.indexOf(QLatin1Char('#'), authorityStart);
+    for (const int marker : {pathStart, queryStart, fragmentStart}) {
+        if (marker >= 0)
+            authorityEnd = std::min(authorityEnd, marker);
+    }
+
+    return uri.mid(authorityStart, authorityEnd - authorityStart);
+}
+
+QString normalizeRemoteUri(const QString &path)
+{
+    const QUrl url(path);
+    if (!url.isValid() || url.scheme().isEmpty())
+        return path;
+
+    const QUrl normalizedUrl = url.adjusted(QUrl::NormalizePathSegments);
+
+    const QString encodedPath = [&normalizedUrl]() {
+        QString value = normalizedUrl.path(QUrl::FullyEncoded);
+        if (value.isEmpty())
+            value = QStringLiteral("/");
+        if (value.size() > 1 && value.endsWith(QLatin1Char('/')))
+            value.chop(1);
+        return value;
+    }();
+
+    QString normalized = url.scheme().toLower() + QStringLiteral("://")
+        + remoteAuthority(path)
+        + encodedPath;
+
+    const QString query = normalizedUrl.query(QUrl::FullyEncoded);
+    if (!query.isEmpty())
+        normalized += QLatin1Char('?') + query;
+
+    const QString fragment = normalizedUrl.fragment(QUrl::FullyEncoded);
+    if (!fragment.isEmpty())
+        normalized += QLatin1Char('#') + fragment;
+
+    return normalized;
 }
 
 QString normalizeLocation(const QString &path)
@@ -41,16 +120,8 @@ QString normalizeLocation(const QString &path)
     if (url.isValid() && url.scheme() == QStringLiteral("file"))
         return QDir::cleanPath(url.toLocalFile());
 
-    if (url.isValid() && !url.scheme().isEmpty()) {
-        QUrl normalized = url.adjusted(QUrl::NormalizePathSegments);
-        QString urlPath = normalized.path();
-        if (urlPath.isEmpty())
-            urlPath = QStringLiteral("/");
-        if (urlPath.size() > 1 && urlPath.endsWith('/'))
-            urlPath.chop(1);
-        normalized.setPath(urlPath);
-        return normalized.toString(QUrl::FullyEncoded);
-    }
+    if (url.isValid() && !url.scheme().isEmpty())
+        return normalizeRemoteUri(path);
 
     return QDir::cleanPath(path);
 }
@@ -60,7 +131,7 @@ QString gioLocationArg(const QString &path)
     const QString normalized = normalizeLocation(path);
     if (QUrl(normalized).scheme().isEmpty())
         return normalized;
-    return QUrl(normalized).toString(QUrl::FullyEncoded);
+    return normalized;
 }
 
 QString locationFileName(const QString &path)
@@ -71,8 +142,9 @@ QString locationFileName(const QString &path)
         QString fileName = QUrl::fromPercentEncoding(url.fileName().toUtf8());
         if (!fileName.isEmpty())
             return fileName;
-        if (!url.host().isEmpty())
-            return url.host();
+        const QString authority = remoteAuthority(normalized);
+        if (!authority.isEmpty())
+            return QUrl::fromPercentEncoding(authority.toUtf8());
         return url.scheme().toUpper();
     }
 
@@ -88,17 +160,32 @@ QString parentLocation(const QString &path)
     const QString normalized = normalizeLocation(path);
     if (isRemoteUri(normalized)) {
         QUrl url(normalized);
-        QString urlPath = url.path();
+        QString urlPath = url.path(QUrl::FullyEncoded);
+        const QString base = url.scheme().toLower() + QStringLiteral("://")
+            + remoteAuthority(normalized);
         if (urlPath.isEmpty() || urlPath == QStringLiteral("/"))
-            return normalizeLocation(url.toString(QUrl::FullyEncoded));
+            return base + QStringLiteral("/");
         if (urlPath.endsWith('/'))
             urlPath.chop(1);
         const int slashIndex = urlPath.lastIndexOf('/');
-        url.setPath(slashIndex <= 0 ? QStringLiteral("/") : urlPath.left(slashIndex));
-        return normalizeLocation(url.toString(QUrl::FullyEncoded));
+        return base + (slashIndex <= 0 ? QStringLiteral("/") : urlPath.left(slashIndex));
     }
 
     return QFileInfo(normalized).absolutePath();
+}
+
+QString afcDocumentsUriFor(const QString &path)
+{
+    const QString normalized = normalizeLocation(path);
+    const QUrl url(normalized);
+    if (url.scheme() != QLatin1String("afc"))
+        return {};
+
+    const QString authority = remoteAuthority(normalized);
+    if (authority.isEmpty() || authority.contains(QLatin1String(":3")))
+        return {};
+
+    return QStringLiteral("afc://%1:3/").arg(authority);
 }
 
 QString expandUserPath(const QString &path)
@@ -182,8 +269,7 @@ QString iconNameForMimeName(const QString &mimeName)
 {
     if (mimeName.isEmpty())
         return QStringLiteral("text-x-generic");
-    static QMimeDatabase mimeDb;
-    const QMimeType mime = mimeDb.mimeTypeForName(mimeName);
+    const QMimeType mime = mimeDb().mimeTypeForName(mimeName);
     if (!mime.isValid())
         return QStringLiteral("text-x-generic");
     QString icon = mime.iconName();
@@ -206,12 +292,11 @@ QString iconNameForEntry(const QString &name, bool isDir, const QString &content
     if (!contentType.isEmpty())
         return iconNameForMimeName(contentType);
 
-    static QMimeDatabase mimeDb;
     // mimeTypeForFile with just a name uses extension/glob lookup. If the
     // path is a real local file, MatchDefault will additionally sniff the
     // content when the glob is ambiguous, which is what disambiguates
     // .ts files between TypeScript and MPEG-TS video.
-    const QMimeType mime = mimeDb.mimeTypeForFile(name);
+    const QMimeType mime = mimeDb().mimeTypeForFile(name);
     return iconNameForMimeName(mime.name());
 }
 
@@ -221,15 +306,13 @@ QString fileTypeForEntry(const QString &name, bool isDir, const QString &content
         return QStringLiteral("folder");
 
     if (!contentType.isEmpty()) {
-        static QMimeDatabase mimeDb;
-        const QMimeType mime = mimeDb.mimeTypeForName(contentType);
+        const QMimeType mime = mimeDb().mimeTypeForName(contentType);
         if (mime.isValid())
             return mime.comment();
         return contentType;
     }
 
-    static QMimeDatabase mimeDb;
-    const QMimeType mime = mimeDb.mimeTypeForFile(name);
+    const QMimeType mime = mimeDb().mimeTypeForFile(name);
     return mime.isValid() ? mime.comment() : QFileInfo(name).suffix();
 }
 
@@ -247,8 +330,7 @@ PreviewKind previewKindForEntry(const QString &localPath, bool isDir,
 
     QString mimeName = contentType;
     if (mimeName.isEmpty()) {
-        static QMimeDatabase mimeDb;
-        const QMimeType mime = mimeDb.mimeTypeForFile(localPath);
+        const QMimeType mime = mimeDb().mimeTypeForFile(localPath);
         if (mime.isValid())
             mimeName = mime.name();
     }
@@ -260,6 +342,23 @@ PreviewKind previewKindForEntry(const QString &localPath, bool isDir,
     if (mimeName.startsWith(QLatin1String("video/")))
         return PreviewKind::Video;
     return PreviewKind::None;
+}
+
+// Build a cached permission string (e.g. "rwxr-xr-x") from QFileInfo.
+QString permissionsString(const QFileInfo &info)
+{
+    const auto p = info.permissions();
+    QString s;
+    s += (p & QFile::ReadOwner)  ? 'r' : '-';
+    s += (p & QFile::WriteOwner) ? 'w' : '-';
+    s += (p & QFile::ExeOwner)   ? 'x' : '-';
+    s += (p & QFile::ReadGroup)  ? 'r' : '-';
+    s += (p & QFile::WriteGroup) ? 'w' : '-';
+    s += (p & QFile::ExeGroup)   ? 'x' : '-';
+    s += (p & QFile::ReadOther)  ? 'r' : '-';
+    s += (p & QFile::WriteOther) ? 'w' : '-';
+    s += (p & QFile::ExeOther)   ? 'x' : '-';
+    return s;
 }
 
 QHash<QString, QString> parseGioAttributes(const QString &attributeText)
@@ -311,6 +410,69 @@ QVariantMap buildRemoteEntryFromLine(const QString &line)
     return entry;
 }
 
+QVariantMap buildFallbackRemoteProperties(const QString &path)
+{
+    QVariantMap props;
+    props[QStringLiteral("name")] = locationFileName(path);
+    props[QStringLiteral("path")] = path;
+    props[QStringLiteral("parentDir")] = parentLocation(path);
+    props[QStringLiteral("isDir")] = false;
+    props[QStringLiteral("isSymlink")] = false;
+    props[QStringLiteral("iconName")] = iconNameForEntry(props.value(QStringLiteral("name")).toString(), false);
+    props[QStringLiteral("size")] = qint64(-1);
+    props[QStringLiteral("sizeText")] = QString();
+    props[QStringLiteral("permissions")] = QString();
+    props[QStringLiteral("ownerAccess")] = 0;
+    props[QStringLiteral("groupAccess")] = 0;
+    props[QStringLiteral("otherAccess")] = 0;
+    props[QStringLiteral("isExecutable")] = false;
+    props[QStringLiteral("canEditPermissions")] = false;
+    return props;
+}
+
+QVariantMap buildRemotePropertiesFromEntry(const QVariantMap &entry)
+{
+    QVariantMap props;
+    const QString displayName = entry.value(QStringLiteral("fileName")).toString();
+    const QString path = entry.value(QStringLiteral("filePath")).toString();
+    const bool isDir = entry.value(QStringLiteral("isDir")).toBool();
+    const QString mimeType = entry.value(QStringLiteral("mimeType")).toString();
+    const QDateTime modified = entry.value(QStringLiteral("fileModified")).toDateTime();
+    const qint64 size = entry.value(QStringLiteral("fileSize")).toLongLong();
+
+    props[QStringLiteral("name")] = displayName;
+    props[QStringLiteral("path")] = path;
+    props[QStringLiteral("parentDir")] = parentLocation(path);
+    props[QStringLiteral("isDir")] = isDir;
+    props[QStringLiteral("isSymlink")] = entry.value(QStringLiteral("isSymlink")).toBool();
+    props[QStringLiteral("symlinkTarget")] = entry.value(QStringLiteral("symlinkTarget")).toString();
+    props[QStringLiteral("iconName")] = entry.value(QStringLiteral("fileIconName")).toString();
+    props[QStringLiteral("mimeType")] = mimeType;
+    props[QStringLiteral("mimeDescription")] = mimeType.isEmpty() ? QString() : mimeDb().mimeTypeForName(mimeType).comment();
+    props[QStringLiteral("created")] = QString();
+    props[QStringLiteral("modified")] = modified.isValid() ? QLocale().toString(modified, QLocale::LongFormat) : QString();
+    props[QStringLiteral("accessed")] = QString();
+    props[QStringLiteral("owner")] = QString();
+    props[QStringLiteral("group")] = QString();
+    props[QStringLiteral("permissions")] = entry.value(QStringLiteral("filePermissions")).toString();
+    props[QStringLiteral("ownerAccess")] = 0;
+    props[QStringLiteral("groupAccess")] = 0;
+    props[QStringLiteral("otherAccess")] = 0;
+    props[QStringLiteral("isExecutable")] = false;
+    props[QStringLiteral("canEditPermissions")] = false;
+
+    if (isDir) {
+        props[QStringLiteral("size")] = qint64(-1);
+        props[QStringLiteral("sizeText")] = QString();
+        props[QStringLiteral("contentText")] = QString();
+    } else {
+        props[QStringLiteral("size")] = size;
+        props[QStringLiteral("sizeText")] = size >= 0 ? formattedSize(size, true) : QString();
+    }
+
+    return props;
+}
+
 QVariantMap buildTrashEntryFromLine(const QString &line)
 {
     static const QRegularExpression lineRe(R"(^([^\t]+)\t(\d+)\t\(([^)]*)\)(?:\t(.*))?$)");
@@ -346,10 +508,9 @@ QVariantMap buildTrashEntryFromLine(const QString &line)
     }
 
     const QString contentType = attrs.value("standard::content-type");
-    QMimeDatabase mimeDb;
     const QString mimeDescription = contentType.isEmpty()
         ? QString()
-        : mimeDb.mimeTypeForName(contentType).comment();
+        : mimeDb().mimeTypeForName(contentType).comment();
 
     QVariantMap entry;
     entry["fileName"] = displayName;
@@ -416,6 +577,11 @@ FileSystemModel::FileSystemModel(QObject *parent)
             emit watchedDirectoryChanged(m_rootPath);
         refresh();
     });
+}
+
+FileSystemModel::~FileSystemModel()
+{
+    cancelRemoteReload();
 }
 
 void FileSystemModel::setGitStatusService(GitStatusService *service)
@@ -539,52 +705,45 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
         }
     }
 
-    const QFileInfo &info = m_entries.at(index.row());
+    const Entry &entry = m_entries.at(index.row());
+    const QFileInfo &info = entry.info;
 
     switch (role) {
+    // Path / filename / size / dir / symlink / modified come straight from
+    // QFileInfo's own stat cache, so they don't need the lazy populate path.
     case FileNameRole:
         return info.fileName();
     case FilePathRole:
         return info.absoluteFilePath();
     case FileSizeRole:
         return info.isDir() ? QVariant(-1) : QVariant(info.size());
-    case FileSizeTextRole: {
-        if (info.isDir())
-            return QString();
-        return formattedSize(info.size());
-    }
-    case FileTypeRole:
-        return fileTypeForEntry(info.fileName(), info.isDir());
     case FileModifiedRole:
         return info.lastModified();
-    case FileModifiedTextRole:
-        return QLocale().toString(info.lastModified(), QLocale::ShortFormat);
-    case FilePermissionsRole: {
-        auto p = info.permissions();
-        QString s;
-        s += (p & QFile::ReadOwner)  ? 'r' : '-';
-        s += (p & QFile::WriteOwner) ? 'w' : '-';
-        s += (p & QFile::ExeOwner)   ? 'x' : '-';
-        s += (p & QFile::ReadGroup)  ? 'r' : '-';
-        s += (p & QFile::WriteGroup) ? 'w' : '-';
-        s += (p & QFile::ExeGroup)   ? 'x' : '-';
-        s += (p & QFile::ReadOther)  ? 'r' : '-';
-        s += (p & QFile::WriteOther) ? 'w' : '-';
-        s += (p & QFile::ExeOther)   ? 'x' : '-';
-        return s;
-    }
     case IsDirRole:
         return info.isDir();
     case IsSymlinkRole:
         return info.isSymLink();
+    case FileSizeTextRole:
+        ensurePopulated(entry);
+        return entry.sizeText;
+    case FileTypeRole:
+        ensurePopulated(entry);
+        return entry.fileType;
+    case FileModifiedTextRole:
+        ensurePopulated(entry);
+        return entry.modifiedText;
+    case FilePermissionsRole:
+        ensurePopulated(entry);
+        return entry.permissionsText;
     case FileIconNameRole:
-        return iconNameForEntry(info.absoluteFilePath(), info.isDir());
+        ensurePopulated(entry);
+        return entry.iconName;
     case HasImagePreviewRole:
-        return previewKindForEntry(info.absoluteFilePath(), info.isDir())
-            == PreviewKind::Image;
+        ensurePopulated(entry);
+        return entry.hasImagePreview;
     case HasVideoPreviewRole:
-        return previewKindForEntry(info.absoluteFilePath(), info.isDir())
-            == PreviewKind::Video;
+        ensurePopulated(entry);
+        return entry.hasVideoPreview;
     case GitStatusRole:
         return m_gitService ? m_gitService->statusForPath(info.absoluteFilePath()) : QString();
     case GitStatusIconRole: {
@@ -644,14 +803,15 @@ bool FileSystemModel::isRemoteRoot() const
 
 void FileSystemModel::setRootPath(const QString &path)
 {
-    if (m_rootPath == path)
+    const QString normalizedPath = normalizeLocation(path);
+    if (m_rootPath == normalizedPath)
         return;
 
     // Stop watching old directory
     if (!m_rootPath.isEmpty() && !isTrashRoot() && !isRemoteRoot())
         m_watcher.removePath(m_rootPath);
 
-    m_rootPath = normalizeLocation(path);
+    m_rootPath = normalizedPath;
 
     // Watch new directory
     if (!m_rootPath.isEmpty() && !isTrashRoot() && !isRemoteRoot())
@@ -668,12 +828,16 @@ void FileSystemModel::setShowHidden(bool show)
     if (m_showHidden == show)
         return;
     m_showHidden = show;
-    reload();
+    if (!m_rootPath.isEmpty())
+        reload();
     emit showHiddenChanged();
 }
 
 void FileSystemModel::sortByColumn(const QString &column, bool ascending)
 {
+    if (m_sortColumn == column && m_sortAscending == ascending)
+        return;
+
     m_sortColumn = column;
     m_sortAscending = ascending;
 
@@ -708,12 +872,12 @@ void FileSystemModel::refresh()
         return;
     }
 
-    const QList<QFileInfo> newEntries = currentLocalEntries();
+    QList<Entry> newEntries = currentLocalEntries();
     if (applyLocalDiff(newEntries))
         return;
 
     beginResetModel();
-    m_entries = newEntries;
+    m_entries = std::move(newEntries);
     m_trashEntries.clear();
     updateLocalCounts();
     endResetModel();
@@ -731,7 +895,7 @@ QString FileSystemModel::filePath(int row) const
     if (isRemoteRoot())
         return m_remoteEntries.at(row).value(QStringLiteral("filePath")).toString();
 
-    return m_entries.at(row).absoluteFilePath();
+    return m_entries.at(row).info.absoluteFilePath();
 }
 
 bool FileSystemModel::isDir(int row) const
@@ -745,7 +909,7 @@ bool FileSystemModel::isDir(int row) const
     if (isRemoteRoot())
         return m_remoteEntries.at(row).value(QStringLiteral("isDir")).toBool();
 
-    return m_entries.at(row).isDir();
+    return m_entries.at(row).info.isDir();
 }
 
 QString FileSystemModel::fileName(int row) const
@@ -759,25 +923,31 @@ QString FileSystemModel::fileName(int row) const
     if (isRemoteRoot())
         return m_remoteEntries.at(row).value(QStringLiteral("fileName")).toString();
 
-    return m_entries.at(row).fileName();
+    return m_entries.at(row).info.fileName();
 }
 
 void FileSystemModel::reload()
 {
+    cancelRemoteReload();
+    ++m_remoteReloadGeneration;
+
     beginResetModel();
     m_entries.clear();
     m_remoteEntries.clear();
     m_trashEntries.clear();
+    m_fileCount = 0;
+    m_folderCount = 0;
 
     if (isTrashRoot())
         reloadTrash();
-    else if (isRemoteRoot())
-        reloadRemote();
-    else
+    else if (!isRemoteRoot())
         reloadLocal();
 
     endResetModel();
     emit countsChanged();
+
+    if (isRemoteRoot())
+        reloadRemote();
 }
 
 void FileSystemModel::reloadLocal()
@@ -794,7 +964,6 @@ void FileSystemModel::reloadRemote()
         return;
     }
 
-    QProcess proc;
     QStringList args = {
         QStringLiteral("list"),
         QStringLiteral("-l"),
@@ -806,17 +975,95 @@ void FileSystemModel::reloadRemote()
         args.append(QStringLiteral("-h"));
     args.append(gioLocationArg(m_rootPath));
 
-    proc.start(QStringLiteral("gio"), args);
-    if (proc.waitForFinished(8000) && proc.exitCode() == 0) {
-        const QStringList lines = QString::fromUtf8(proc.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
-        for (const QString &line : lines) {
-            const QVariantMap entry = buildRemoteEntryFromLine(line);
-            if (!entry.isEmpty())
-                m_remoteEntries.append(entry);
+    const int generation = m_remoteReloadGeneration;
+    const QString rootPath = m_rootPath;
+    auto *process = new QProcess(this);
+    m_remoteReloadProcess = process;
+
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, process, generation, rootPath](int exitCode, QProcess::ExitStatus) {
+        if (process != m_remoteReloadProcess || generation != m_remoteReloadGeneration) {
+            process->deleteLater();
+            return;
+        }
+
+        const QByteArray output = exitCode == 0 ? process->readAllStandardOutput() : QByteArray();
+        m_remoteReloadProcess = nullptr;
+        process->deleteLater();
+
+        if (output.isEmpty() && exitCode != 0)
+            return;
+
+        applyRemoteReload(rootPath, output);
+    });
+
+    startHostToolProcess(process, QStringLiteral("gio"), args);
+    QTimer::singleShot(8000, process, [this, process, generation]() {
+        if (process == m_remoteReloadProcess
+            && generation == m_remoteReloadGeneration
+            && process->state() != QProcess::NotRunning) {
+            process->kill();
+        }
+    });
+}
+
+void FileSystemModel::cancelRemoteReload()
+{
+    if (!m_remoteReloadProcess)
+        return;
+
+    m_remoteReloadProcess->disconnect();
+    if (m_remoteReloadProcess->state() != QProcess::NotRunning) {
+        m_remoteReloadProcess->kill();
+        m_remoteReloadProcess->waitForFinished(100);
+    }
+    m_remoteReloadProcess->deleteLater();
+    m_remoteReloadProcess = nullptr;
+}
+
+void FileSystemModel::applyRemoteReload(const QString &rootPath, const QByteArray &output)
+{
+    if (rootPath != m_rootPath || !isRemoteRoot())
+        return;
+
+    QList<QVariantMap> entries;
+    const QStringList lines = QString::fromUtf8(output).split('\n', Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        const QVariantMap entry = buildRemoteEntryFromLine(line);
+        if (!entry.isEmpty())
+            entries.append(entry);
+    }
+
+    const QString afcDocumentsUri = afcDocumentsUriFor(m_rootPath);
+    if (!afcDocumentsUri.isEmpty()) {
+        bool alreadyPresent = false;
+        for (const QVariantMap &entry : std::as_const(entries)) {
+            if (entry.value(QStringLiteral("filePath")).toString() == afcDocumentsUri) {
+                alreadyPresent = true;
+                break;
+            }
+        }
+
+        if (!alreadyPresent) {
+            QVariantMap entry;
+            entry[QStringLiteral("fileName")] = QStringLiteral("Apps");
+            entry[QStringLiteral("filePath")] = afcDocumentsUri;
+            entry[QStringLiteral("fileSize")] = QVariant(qint64(-1));
+            entry[QStringLiteral("fileSizeText")] = QString();
+            entry[QStringLiteral("fileType")] = QStringLiteral("folder");
+            entry[QStringLiteral("fileModified")] = QDateTime();
+            entry[QStringLiteral("fileModifiedText")] = QString();
+            entry[QStringLiteral("filePermissions")] = QString();
+            entry[QStringLiteral("isDir")] = true;
+            entry[QStringLiteral("isSymlink")] = false;
+            entry[QStringLiteral("fileIconName")] = QStringLiteral("folder");
+            entry[QStringLiteral("mimeType")] = QStringLiteral("inode/directory");
+            entry[QStringLiteral("symlinkTarget")] = QString();
+            entries.prepend(entry);
         }
     }
 
-    std::sort(m_remoteEntries.begin(), m_remoteEntries.end(), [this](const QVariantMap &lhs, const QVariantMap &rhs) {
+    std::sort(entries.begin(), entries.end(), [this](const QVariantMap &lhs, const QVariantMap &rhs) {
         const bool lhsDir = lhs.value(QStringLiteral("isDir")).toBool();
         const bool rhsDir = rhs.value(QStringLiteral("isDir")).toBool();
         if (lhsDir != rhsDir)
@@ -846,18 +1093,22 @@ void FileSystemModel::reloadRemote()
 
     int files = 0;
     int folders = 0;
-    for (const auto &entry : std::as_const(m_remoteEntries)) {
+    for (const auto &entry : std::as_const(entries)) {
         if (entry.value(QStringLiteral("isDir")).toBool())
             ++folders;
         else
             ++files;
     }
 
+    beginResetModel();
+    m_remoteEntries = std::move(entries);
     m_fileCount = files;
     m_folderCount = folders;
+    endResetModel();
+    emit countsChanged();
 }
 
-QList<QFileInfo> FileSystemModel::currentLocalEntries() const
+QList<FileSystemModel::Entry> FileSystemModel::currentLocalEntries() const
 {
     if (m_rootPath.isEmpty())
         return {};
@@ -867,15 +1118,43 @@ QList<QFileInfo> FileSystemModel::currentLocalEntries() const
     if (m_showHidden)
         filters |= QDir::Hidden;
 
-    return dir.entryInfoList(filters, m_sortFlags);
+    // Fast path: only the syscall + QFileInfo construction. Derived fields
+    // (icon name, mime-backed type, locale-formatted date, permission text)
+    // populate lazily on first data() request for each row.
+    const QFileInfoList infos = dir.entryInfoList(filters, m_sortFlags);
+    QList<Entry> entries;
+    entries.reserve(infos.size());
+    for (const QFileInfo &info : infos) {
+        Entry e;
+        e.info = info;
+        entries.append(std::move(e));
+    }
+    return entries;
+}
+
+void FileSystemModel::ensurePopulated(const Entry &entry) const
+{
+    if (entry.populated)
+        return;
+    const bool isDir = entry.info.isDir();
+    const QString absPath = entry.info.absoluteFilePath();
+    entry.iconName = iconNameForEntry(absPath, isDir);
+    entry.fileType = fileTypeForEntry(entry.info.fileName(), isDir);
+    entry.sizeText = isDir ? QString() : formattedSize(entry.info.size());
+    entry.modifiedText = QLocale().toString(entry.info.lastModified(), QLocale::ShortFormat);
+    entry.permissionsText = permissionsString(entry.info);
+    const PreviewKind kind = previewKindForEntry(absPath, isDir);
+    entry.hasImagePreview = kind == PreviewKind::Image;
+    entry.hasVideoPreview = kind == PreviewKind::Video;
+    entry.populated = true;
 }
 
 void FileSystemModel::updateLocalCounts()
 {
     int files = 0;
     int folders = 0;
-    for (const auto &info : m_entries) {
-        if (info.isDir())
+    for (const Entry &entry : m_entries) {
+        if (entry.info.isDir())
             ++folders;
         else
             ++files;
@@ -884,21 +1163,25 @@ void FileSystemModel::updateLocalCounts()
     m_folderCount = folders;
 }
 
-bool FileSystemModel::applyLocalDiff(const QList<QFileInfo> &newEntries)
+bool FileSystemModel::applyLocalDiff(const QList<Entry> &newEntries)
 {
     const int oldCount = m_entries.size();
     const int newCount = newEntries.size();
 
+    auto pathAt = [](const QList<Entry> &list, int row) {
+        return list.at(row).info.absoluteFilePath();
+    };
+
     if (newCount == oldCount + 1) {
         int insertRow = 0;
         while (insertRow < oldCount
-               && m_entries.at(insertRow).absoluteFilePath() == newEntries.at(insertRow).absoluteFilePath()) {
+               && pathAt(m_entries, insertRow) == pathAt(newEntries, insertRow)) {
             ++insertRow;
         }
 
         bool matches = true;
         for (int oldRow = insertRow, newRow = insertRow + 1; oldRow < oldCount; ++oldRow, ++newRow) {
-            if (m_entries.at(oldRow).absoluteFilePath() != newEntries.at(newRow).absoluteFilePath()) {
+            if (pathAt(m_entries, oldRow) != pathAt(newEntries, newRow)) {
                 matches = false;
                 break;
             }
@@ -917,13 +1200,13 @@ bool FileSystemModel::applyLocalDiff(const QList<QFileInfo> &newEntries)
     if (newCount + 1 == oldCount) {
         int removeRow = 0;
         while (removeRow < newCount
-               && m_entries.at(removeRow).absoluteFilePath() == newEntries.at(removeRow).absoluteFilePath()) {
+               && pathAt(m_entries, removeRow) == pathAt(newEntries, removeRow)) {
             ++removeRow;
         }
 
         bool matches = true;
         for (int oldRow = removeRow + 1, newRow = removeRow; newRow < newCount; ++oldRow, ++newRow) {
-            if (m_entries.at(oldRow).absoluteFilePath() != newEntries.at(newRow).absoluteFilePath()) {
+            if (pathAt(m_entries, oldRow) != pathAt(newEntries, newRow)) {
                 matches = false;
                 break;
             }
@@ -942,7 +1225,7 @@ bool FileSystemModel::applyLocalDiff(const QList<QFileInfo> &newEntries)
     if (newCount == oldCount) {
         bool sameOrder = true;
         for (int row = 0; row < newCount; ++row) {
-            if (m_entries.at(row).absoluteFilePath() != newEntries.at(row).absoluteFilePath()) {
+            if (pathAt(m_entries, row) != pathAt(newEntries, row)) {
                 sameOrder = false;
                 break;
             }
@@ -951,8 +1234,15 @@ bool FileSystemModel::applyLocalDiff(const QList<QFileInfo> &newEntries)
         if (sameOrder) {
             m_entries = newEntries;
             updateLocalCounts();
-            if (newCount > 0)
-                emit dataChanged(index(0, 0), index(newCount - 1, 0));
+            if (newCount > 0) {
+                static const QVector<int> changedRoles = {
+                    FileSizeRole, FileSizeTextRole,
+                    FileModifiedRole, FileModifiedTextRole,
+                    FilePermissionsRole,
+                    HasImagePreviewRole, HasVideoPreviewRole,
+                };
+                emit dataChanged(index(0, 0), index(newCount - 1, 0), changedRoles);
+            }
             emit countsChanged();
             return true;
         }
@@ -1109,8 +1399,7 @@ QVariantMap FileSystemModel::fileProperties(const QString &path) const
     }
 
     // MIME type
-    QMimeDatabase mimeDb;
-    auto mime = mimeDb.mimeTypeForFile(info);
+    auto mime = mimeDb().mimeTypeForFile(info);
     props["mimeType"] = mime.name();
     props["mimeDescription"] = mime.comment();
 
@@ -1155,31 +1444,23 @@ QVariantMap FileSystemModel::fileProperties(const QString &path) const
 
 QVariantMap FileSystemModel::remoteFileProperties(const QString &path) const
 {
+    const QString normalizedPath = normalizeLocation(path);
+    for (const auto &entry : m_remoteEntries) {
+        if (entry.value(QStringLiteral("filePath")).toString() == normalizedPath)
+            return buildRemotePropertiesFromEntry(entry);
+    }
+
     QVariantMap props;
     QProcess proc;
     proc.start(QStringLiteral("gio"), {
         QStringLiteral("info"),
         QStringLiteral("-a"),
         QStringLiteral("standard::name,standard::display-name,standard::content-type,standard::size,standard::is-symlink,standard::symlink-target,time::created,time::modified,time::access,owner::user,owner::group,unix::mode,access::can-read,access::can-write,access::can-execute"),
-        gioLocationArg(path)
+        gioLocationArg(normalizedPath)
     });
 
     if (!proc.waitForFinished(8000) || proc.exitCode() != 0) {
-        props["name"] = locationFileName(path);
-        props["path"] = path;
-        props["parentDir"] = parentLocation(path);
-        props["isDir"] = false;
-        props["isSymlink"] = false;
-        props["iconName"] = iconNameForEntry(props.value("name").toString(), false);
-        props["size"] = qint64(-1);
-        props["sizeText"] = QString();
-        props["permissions"] = QString();
-        props["ownerAccess"] = 0;
-        props["groupAccess"] = 0;
-        props["otherAccess"] = 0;
-        props["isExecutable"] = false;
-        props["canEditPermissions"] = false;
-        return props;
+        return buildFallbackRemoteProperties(normalizedPath);
     }
 
     const QString output = QString::fromUtf8(proc.readAllStandardOutput());
@@ -1206,21 +1487,20 @@ QVariantMap FileSystemModel::remoteFileProperties(const QString &path) const
 
     const QString typeText = fields.value(QStringLiteral("type")).toLower();
     const bool isDir = typeText.contains(QStringLiteral("directory"));
-    const QString displayName = fields.value(QStringLiteral("display name"), locationFileName(path));
+    const QString displayName = fields.value(QStringLiteral("display name"), locationFileName(normalizedPath));
     const QString mimeType = fields.value(QStringLiteral("standard::content-type"));
     const qint64 size = fields.value(QStringLiteral("standard::size")).toLongLong();
     const int unixMode = fields.value(QStringLiteral("unix::mode")).toInt();
-    QMimeDatabase mimeDb;
 
     props["name"] = displayName;
-    props["path"] = path;
-    props["parentDir"] = parentLocation(path);
+    props["path"] = normalizedPath;
+    props["parentDir"] = parentLocation(normalizedPath);
     props["isDir"] = isDir;
     props["isSymlink"] = fields.value(QStringLiteral("standard::is-symlink")) == QStringLiteral("TRUE");
     props["symlinkTarget"] = fields.value(QStringLiteral("standard::symlink-target"));
     props["iconName"] = iconNameForEntry(displayName, isDir, mimeType);
     props["mimeType"] = mimeType;
-    props["mimeDescription"] = mimeType.isEmpty() ? QString() : mimeDb.mimeTypeForName(mimeType).comment();
+    props["mimeDescription"] = mimeType.isEmpty() ? QString() : mimeDb().mimeTypeForName(mimeType).comment();
     props["created"] = QLocale().toString(dateTimeFromSeconds(fields.value(QStringLiteral("time::created"))), QLocale::LongFormat);
     props["modified"] = QLocale().toString(dateTimeFromSeconds(fields.value(QStringLiteral("time::modified"))), QLocale::LongFormat);
     props["accessed"] = QLocale().toString(dateTimeFromSeconds(fields.value(QStringLiteral("time::access"))), QLocale::LongFormat);
@@ -1234,44 +1514,9 @@ QVariantMap FileSystemModel::remoteFileProperties(const QString &path) const
     props["canEditPermissions"] = false;
 
     if (isDir) {
-        QProcess listProc;
-        QStringList args = {
-            QStringLiteral("list"),
-            QStringLiteral("-l"),
-            QStringLiteral("-u"),
-            QStringLiteral("-a"),
-            QStringLiteral("standard::display-name,standard::content-type,time::modified,unix::mode,standard::is-symlink,standard::symlink-target"),
-            gioLocationArg(path)
-        };
-        if (m_showHidden)
-            args.insert(3, QStringLiteral("-h"));
-        listProc.start(QStringLiteral("gio"), args);
-        if (listProc.waitForFinished(8000) && listProc.exitCode() == 0) {
-            const QStringList lines = QString::fromUtf8(listProc.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
-            int folderCount = 0;
-            int fileCount = 0;
-            for (const QString &line : lines) {
-                const QVariantMap entry = buildRemoteEntryFromLine(line);
-                if (entry.isEmpty())
-                    continue;
-                if (entry.value(QStringLiteral("isDir")).toBool())
-                    ++folderCount;
-                else
-                    ++fileCount;
-            }
-
-            const int itemCount = fileCount + folderCount;
-            props["containedItems"] = itemCount;
-            props["containedFiles"] = fileCount;
-            props["containedFolders"] = folderCount;
-            props["contentText"] = QString("%1 items (%2 files, %3 folders)").arg(itemCount).arg(fileCount).arg(folderCount);
-            props["sizeText"] = QString("%1 items").arg(itemCount);
-            props["size"] = qint64(-1);
-        } else {
-            props["contentText"] = QString();
-            props["sizeText"] = QString();
-            props["size"] = qint64(-1);
-        }
+        props["contentText"] = QString();
+        props["sizeText"] = QString();
+        props["size"] = qint64(-1);
     } else {
         props["size"] = size;
         props["sizeText"] = formattedSize(size, true);

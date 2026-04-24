@@ -32,6 +32,11 @@ GridView {
     property string typeAheadBuffer: ""
 
     clip: true
+    reuseItems: true
+    // cacheBuffer deliberately modest — delegate reuse via reuseItems is the
+    // big win; larger off-screen buffers just materialize thumbnails the
+    // user may never scroll to.
+    cacheBuffer: 512
     // Zoom controls column count, not icon size
     property int columnCount: 7
     readonly property int minColumns: 2
@@ -546,7 +551,7 @@ GridView {
             height: root.iconSize
             source: "image://icon/" + delegateItem.fileIconName + "?theme=" + config.iconTheme + "&builtin=" + (config.builtinIcons ? "1" : "0")
             sourceSize: Qt.size(root.iconRequestSize, root.iconRequestSize)
-            asynchronous: false
+            asynchronous: true
         }
 
         Rectangle {

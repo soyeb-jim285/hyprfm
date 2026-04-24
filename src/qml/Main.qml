@@ -55,16 +55,9 @@ ApplicationWindow {
                 root.clearPaneSearch("primary")
                 root.clearPaneSearch("secondary")
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
-                    // Sync miller parent model
-                    if (tabModel.activeTab.currentPath && tabModel.activeTab.currentPath !== "/") {
-                        var cp = tabModel.activeTab.currentPath
-                        if (cp.endsWith("/") && cp.length > 1) cp = cp.slice(0, -1)
-                        var pidx = cp.lastIndexOf("/")
-                        millerParentModel.setRootPath(pidx <= 0 ? "/" : cp.substring(0, pidx))
-                    } else {
-                        millerParentModel.setRootPath("")
-                    }
-                splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
+                root.syncMillerParentModel(tabModel.activeTab.currentPath)
+                if (tabModel.activeTab.splitViewEnabled)
+                    splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
                 root.applyActiveTabSort()
                 root.scheduleActivePaneFocus()
             }
@@ -80,15 +73,7 @@ ApplicationWindow {
         function onCurrentPathChanged() {
             if (tabModel.activeTab) {
                 fsModel.setRootPath(tabModel.activeTab.currentPath)
-                // Sync miller parent model
-                if (tabModel.activeTab.currentPath && tabModel.activeTab.currentPath !== "/") {
-                    var cp = tabModel.activeTab.currentPath
-                    if (cp.endsWith("/") && cp.length > 1) cp = cp.slice(0, -1)
-                    var pidx = cp.lastIndexOf("/")
-                    millerParentModel.setRootPath(pidx <= 0 ? "/" : cp.substring(0, pidx))
-                } else {
-                    millerParentModel.setRootPath("")
-                }
+                root.syncMillerParentModel(tabModel.activeTab.currentPath)
                 root.setPaneRecents("primary", false)
                 root.clearPaneSearch("primary")
                 root.scheduleActivePaneFocus()
@@ -105,9 +90,21 @@ ApplicationWindow {
         function onSortChanged() {
             root.applyActiveTabSort()
         }
+        function onViewModeChanged() {
+            if (tabModel.activeTab)
+                root.syncMillerParentModel(tabModel.activeTab.currentPath)
+            root.scheduleActivePaneFocus()
+        }
         function onSplitViewEnabledChanged() {
-            if (!tabModel.activeTab || tabModel.activeTab.splitViewEnabled)
+            if (!tabModel.activeTab)
                 return
+
+            if (tabModel.activeTab.splitViewEnabled) {
+                splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
+                root.applyActiveTabSort()
+                root.scheduleActivePaneFocus()
+                return
+            }
 
             if (root.activePane === "secondary")
                 root.activePane = "primary"
@@ -128,9 +125,9 @@ ApplicationWindow {
     Component.onCompleted: {
         if (tabModel.activeTab) {
             fsModel.setRootPath(tabModel.activeTab.currentPath)
-            fsModel.refresh()
-            splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
-            splitFsModel.refresh()
+            if (tabModel.activeTab.splitViewEnabled)
+                splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
+            root.syncMillerParentModel(tabModel.activeTab.currentPath)
             root.applyActiveTabSort()
         }
 
@@ -139,8 +136,19 @@ ApplicationWindow {
         Q.Theme.backgroundAlt = Qt.binding(() => Theme.mantle)
         Q.Theme.backgroundDeep = Qt.binding(() => Theme.crust)
         Q.Theme.surface0 = Qt.binding(() => Theme.surface)
-        Q.Theme.surface1 = Qt.binding(() => Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1))
-        Q.Theme.surface2 = Qt.binding(() => Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.15))
+        // surface1/surface2 back Quill components that need an opaque fill
+        // (Tooltip, Popup, etc.), so pre-composite the 10%/15% text tint onto
+        // the base background instead of emitting a translucent color.
+        Q.Theme.surface1 = Qt.binding(() => Qt.rgba(
+            Theme.base.r * 0.9 + Theme.text.r * 0.1,
+            Theme.base.g * 0.9 + Theme.text.g * 0.1,
+            Theme.base.b * 0.9 + Theme.text.b * 0.1,
+            1.0))
+        Q.Theme.surface2 = Qt.binding(() => Qt.rgba(
+            Theme.base.r * 0.85 + Theme.text.r * 0.15,
+            Theme.base.g * 0.85 + Theme.text.g * 0.15,
+            Theme.base.b * 0.85 + Theme.text.b * 0.15,
+            1.0))
         Q.Theme.textPrimary = Qt.binding(() => Theme.text)
         Q.Theme.textSecondary = Qt.binding(() => Theme.subtext)
         Q.Theme.textTertiary = Qt.binding(() => Theme.muted)
@@ -224,6 +232,16 @@ ApplicationWindow {
     function parentDirForPath(path) {
         var slashIndex = path.lastIndexOf("/")
         return slashIndex > 0 ? path.substring(0, slashIndex) : "/"
+    }
+
+    function syncMillerParentModel(path) {
+        if (!tabModel.activeTab || tabModel.activeTab.viewMode !== "miller") {
+            millerParentModel.setRootPath("")
+            return
+        }
+
+        var parent = path ? fileOps.parentPath(path) : ""
+        millerParentModel.setRootPath(parent && parent !== path ? parent : "")
     }
 
     function isLocalPath(path) {
@@ -723,7 +741,8 @@ ApplicationWindow {
             return
 
         fsModel.sortByColumn(tabModel.activeTab.sortBy, tabModel.activeTab.sortAscending)
-        splitFsModel.sortByColumn(tabModel.activeTab.sortBy, tabModel.activeTab.sortAscending)
+        if (tabModel.activeTab.splitViewEnabled)
+            splitFsModel.sortByColumn(tabModel.activeTab.sortBy, tabModel.activeTab.sortAscending)
     }
 
     function updateSelectionStatus() {
@@ -1762,7 +1781,7 @@ ApplicationWindow {
                 apps = []
 
             // Extract rich metadata
-            var md = metadataExtractor.extract(path)
+            var md = fileOps.isRemotePath(path) ? ({}) : metadataExtractor.extract(path)
             var keys = Object.keys(md)
             var result = []
             for (var i = 0; i < keys.length; ++i) {
@@ -1770,7 +1789,7 @@ ApplicationWindow {
                     result.push({ label: keys[i], value: String(md[keys[i]]) })
             }
             _metadataKeys = result
-            _metadataHint = metadataExtractor.missingDepsHint(props.mimeType || "")
+            _metadataHint = fileOps.isRemotePath(path) ? "" : metadataExtractor.missingDepsHint(props.mimeType || "")
 
             visible = true
             propsBox.opacity = 0
@@ -2599,13 +2618,13 @@ ApplicationWindow {
                 if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
                     bookmarks.removeBookmark(sidebarItem.index)
             } else if (action === "mountdevice") {
-                if (!runtimeFeatures.udisksctlAvailable) {
+                if (sidebarItem.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable) {
                     toast.show(runtimeFeatures.installHint("deviceMount"), "info")
                 } else if (sidebarItem.kind === "device" && sidebarItem.index >= 0) {
                     devices.mount(sidebarItem.index)
                 }
             } else if (action === "unmountdevice") {
-                if (!runtimeFeatures.udisksctlAvailable) {
+                if (sidebarItem.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable) {
                     toast.show(runtimeFeatures.installHint("deviceMount"), "info")
                 } else if (sidebarItem.kind === "device" && sidebarItem.index >= 0) {
                     devices.unmount(sidebarItem.index)

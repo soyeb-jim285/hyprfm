@@ -68,6 +68,16 @@ static bool isVideoFile(const QString &path)
     return mime.isValid() && mime.name().startsWith(QLatin1String("video/"));
 }
 
+static QThreadPool *thumbnailPool()
+{
+    static QThreadPool *pool = []() {
+        auto *p = new QThreadPool;
+        p->setMaxThreadCount(2);
+        return p;
+    }();
+    return pool;
+}
+
 // ---------------------------------------------------------------------------
 // ThumbnailResponse
 // ---------------------------------------------------------------------------
@@ -77,7 +87,7 @@ ThumbnailResponse::ThumbnailResponse(const QString &id, const QSize &requestedSi
     , m_requestedSize(requestedSize)
 {
     setAutoDelete(false);
-    QThreadPool::globalInstance()->start(this);
+    thumbnailPool()->start(this);
 }
 
 void ThumbnailResponse::run()
@@ -134,6 +144,9 @@ void ThumbnailResponse::generateVideoThumbnail()
 
     QProcess proc;
     proc.start("ffmpeg", {
+        "-v", "error",
+        "-nostdin",
+        "-threads", "1",
         "-ss", "1",            // seek to 1 second
         "-i", m_id,
         "-vframes", "1",       // extract 1 frame

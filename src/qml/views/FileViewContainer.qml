@@ -36,7 +36,7 @@ Item {
         id: gridView
         anchors.fill: parent
         visible: root.viewMode === "grid"
-        model: root.fileModel
+        model: visible ? root.fileModel : null
         currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
@@ -50,7 +50,7 @@ Item {
         id: detailedView
         anchors.fill: parent
         visible: root.viewMode === "detailed"
-        viewModel: root.fileModel
+        viewModel: visible ? root.fileModel : null
         currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
@@ -67,7 +67,7 @@ Item {
         id: millerView
         anchors.fill: parent
         visible: root.viewMode === "miller"
-        fileModel: root.fileModel
+        fileModel: visible ? root.fileModel : null
         currentPath: root.currentPath
 
         onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)

@@ -52,6 +52,11 @@ add_executable(tst_fileoperations tst_fileoperations.cpp
 target_include_directories(tst_fileoperations PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_fileoperations PRIVATE Qt6::Test Qt6::Core Qt6::Gui PkgConfig::GIO)
 add_test(NAME tst_fileoperations COMMAND tst_fileoperations)
+# Shares gio trash state with tst_giotransferworker; serialize to avoid flakes.
+set_tests_properties(tst_fileoperations PROPERTIES
+    RUN_SERIAL TRUE
+    TIMEOUT 120
+)
 
 add_executable(tst_undomanager tst_undomanager.cpp
     ${CMAKE_SOURCE_DIR}/src/services/undomanager.cpp
@@ -93,7 +98,7 @@ add_executable(tst_devicemodel tst_devicemodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/devicemodel.cpp
 )
 target_include_directories(tst_devicemodel PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_devicemodel PRIVATE Qt6::Test Qt6::Core Qt6::DBus)
+target_link_libraries(tst_devicemodel PRIVATE Qt6::Test Qt6::Core Qt6::DBus PkgConfig::GIO)
 add_test(NAME tst_devicemodel COMMAND tst_devicemodel)
 
 add_executable(tst_iconprovider tst_iconprovider.cpp)
@@ -155,3 +160,9 @@ add_executable(tst_giotransferworker tst_giotransferworker.cpp
 target_include_directories(tst_giotransferworker PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_giotransferworker PRIVATE Qt6::Test Qt6::Core PkgConfig::GIO)
 add_test(NAME tst_giotransferworker COMMAND tst_giotransferworker)
+# gio spawns child processes and shares trash/mount state with other tests;
+# running serially prevents flaky timeouts under `ctest -j`.
+set_tests_properties(tst_giotransferworker PROPERTIES
+    RUN_SERIAL TRUE
+    TIMEOUT 120
+)

@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QList>
+#include <QProcess>
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
@@ -43,6 +44,7 @@ public:
     Q_ENUM(Roles)
 
     explicit FileSystemModel(QObject *parent = nullptr);
+    ~FileSystemModel() override;
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
@@ -79,13 +81,33 @@ signals:
     void watchedDirectoryChanged(const QString &path);
 
 private:
+    // Lazy per-row display cache. QMimeDatabase / QLocale / permission-string
+    // work is deferred until data() actually asks for it, so navigation into
+    // a directory with thousands of files doesn't pay for rows the view will
+    // never render. First access populates all derived fields together.
+    struct Entry {
+        QFileInfo info;
+        mutable QString iconName;
+        mutable QString fileType;
+        mutable QString sizeText;
+        mutable QString modifiedText;
+        mutable QString permissionsText;
+        mutable bool hasImagePreview = false;
+        mutable bool hasVideoPreview = false;
+        mutable bool populated = false;
+    };
+
+    void ensurePopulated(const Entry &entry) const;
+
     void reload();
     void reloadLocal();
     void reloadRemote();
     void reloadTrash();
-    QList<QFileInfo> currentLocalEntries() const;
+    void cancelRemoteReload();
+    void applyRemoteReload(const QString &rootPath, const QByteArray &output);
+    QList<Entry> currentLocalEntries() const;
     void updateLocalCounts();
-    bool applyLocalDiff(const QList<QFileInfo> &newEntries);
+    bool applyLocalDiff(const QList<Entry> &newEntries);
     bool isTrashRoot() const;
     bool isRemoteRoot() const;
     QVariantMap remoteFileProperties(const QString &path) const;
@@ -93,12 +115,14 @@ private:
 
     QString m_rootPath;
     bool m_showHidden = false;
-    QList<QFileInfo> m_entries;
+    QList<Entry> m_entries;
     QList<QVariantMap> m_remoteEntries;
     QList<QVariantMap> m_trashEntries;
     int m_fileCount = 0;
     int m_folderCount = 0;
     GitStatusService *m_gitService = nullptr;
+    QProcess *m_remoteReloadProcess = nullptr;
+    int m_remoteReloadGeneration = 0;
     QFileSystemWatcher m_watcher;
     QDir::SortFlags m_sortFlags = QDir::Name | QDir::DirsFirst | QDir::IgnoreCase;
     QString m_sortColumn = "name";

@@ -35,8 +35,9 @@ private slots:
         QCOMPARE(roles.value(DeviceModel::UsagePercentRole), QByteArray("usagePercent"));
         QCOMPARE(roles.value(DeviceModel::RemovableRole),    QByteArray("removable"));
         QCOMPARE(roles.value(DeviceModel::MountedRole),      QByteArray("mounted"));
+        QCOMPARE(roles.value(DeviceModel::BackendRole),      QByteArray("backend"));
 
-        QCOMPARE(roles.size(), 8);
+        QCOMPARE(roles.size(), 9);
     }
 
     void testRootDevicePresent()
@@ -157,6 +158,21 @@ private slots:
                 qPrintable(QString("Row %1: usagePercent %2 < 0").arg(i).arg(usage)));
             QVERIFY2(usage <= 100,
                 qPrintable(QString("Row %1: usagePercent %2 > 100").arg(i).arg(usage)));
+        }
+    }
+
+    void testBackendRoleValues()
+    {
+        DeviceModel model;
+
+        for (int i = 0; i < model.rowCount(); ++i) {
+            QModelIndex idx = model.index(i);
+            const QString backend = model.data(idx, DeviceModel::BackendRole).toString();
+            QVERIFY2(backend == QStringLiteral("udisks2")
+                         || backend == QStringLiteral("gio"),
+                     qPrintable(QString("Unexpected backend at row %1: %2")
+                                    .arg(i)
+                                    .arg(backend)));
         }
     }
 };

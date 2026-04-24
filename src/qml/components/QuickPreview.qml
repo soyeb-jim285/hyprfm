@@ -191,6 +191,16 @@ Item {
         else
             fileProps = ({})
 
+        if (isRemoteUri) {
+            textPreview = ({ content: "", truncated: false, isBinary: false, error: "" })
+            pdfPreview = ({ localPath: "", pageCount: 0, error: "" })
+            fontPreview = ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
+            directoryPreview = ({ entries: [], truncated: false, error: "", count: 0 })
+            fileMetadata = ({})
+            metadataHint = ""
+            return
+        }
+
         if (isText)
             textPreview = previewService.loadTextPreview(filePath)
         else

@@ -5,9 +5,11 @@
 #include <QPainter>
 #include <QDir>
 #include <QFile>
+#include <QHash>
 #include <QImage>
 #include <QIcon>
-#include <QProcess>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QDebug>
@@ -20,23 +22,20 @@ public:
     {
         rebuildSearchDirs();
         setPrimaryTheme(primaryTheme);
-
-        // Check if rsvg-convert is available
-        QProcess check;
-        check.start("rsvg-convert", {"--version"});
-        m_hasRsvg = check.waitForFinished(1000) && check.exitCode() == 0;
     }
 
     void setPrimaryTheme(const QString &primaryTheme)
     {
         const QString themeName = primaryTheme.trimmed().isEmpty() ? QStringLiteral("Adwaita")
-                                                                   : primaryTheme.trimmed();
+                                                                    : primaryTheme.trimmed();
+        QMutexLocker locker(&m_cacheMutex);
         if (m_primaryTheme == themeName && !m_primaryDirs.isEmpty())
             return;
 
         m_primaryTheme = themeName;
         m_primaryDirs.clear();
         m_fallbackDirs.clear();
+        m_cache.clear();
 
         for (const auto &dir : m_searchDirs) {
             const QString path = dir + "/" + themeName;
@@ -77,10 +76,31 @@ public:
 
         bool isSymbolic = iconName.endsWith("-symbolic");
 
+        const QString tintKey = tintColor.isValid() ? tintColor.name(QColor::HexArgb) : QString();
+        QStringList primaryDirs;
+        QStringList fallbackDirs;
+        QString cacheKey;
+        {
+            QMutexLocker locker(&m_cacheMutex);
+            cacheKey = m_primaryTheme + QLatin1Char('\x1f')
+                + iconName + QLatin1Char('\x1f')
+                + QString::number(sz) + QLatin1Char('\x1f')
+                + tintKey;
+            const auto cached = m_cache.constFind(cacheKey);
+            if (cached != m_cache.constEnd()) {
+                if (size)
+                    *size = cached->size();
+                return *cached;
+            }
+
+            primaryDirs = m_primaryDirs;
+            fallbackDirs = m_fallbackDirs;
+        }
+
         // For symbolic (UI) icons: ONLY search primary theme
         // If not found → return empty so QML uses PathSvg fallback
         // For file/mime icons: search primary first, then fallbacks
-        QString svgPath = findIconIn(iconName, sz, m_primaryDirs);
+        QString svgPath = findIconIn(iconName, sz, primaryDirs);
 
         if (svgPath.isEmpty()) {
             if (isSymbolic) {
@@ -88,18 +108,20 @@ public:
                 QImage empty(1, 1, QImage::Format_ARGB32_Premultiplied);
                 empty.fill(Qt::transparent);
                 if (size) *size = QSize(0, 0);
+                remember(cacheKey, empty);
                 return empty;
             }
             // File icon: try fallback themes
-            svgPath = findIconIn(iconName, sz, m_fallbackDirs);
+            svgPath = findIconIn(iconName, sz, fallbackDirs);
             if (svgPath.isEmpty())
-                svgPath = findIconIn("text-x-generic", sz, m_primaryDirs);
+                svgPath = findIconIn("text-x-generic", sz, primaryDirs);
             if (svgPath.isEmpty())
-                svgPath = findIconIn("text-x-generic", sz, m_fallbackDirs);
+                svgPath = findIconIn("text-x-generic", sz, fallbackDirs);
             if (svgPath.isEmpty()) {
                 if (size) *size = iconSize;
                 QImage empty(iconSize, QImage::Format_ARGB32_Premultiplied);
                 empty.fill(Qt::transparent);
+                remember(cacheKey, empty);
                 return empty;
             }
         }
@@ -108,15 +130,11 @@ public:
         img.fill(Qt::transparent);
 
         if (svgPath.endsWith(".svg") || svgPath.endsWith(".svgz")) {
-            if (m_hasRsvg) {
-                img = renderWithRsvg(svgPath, iconSize);
-            } else {
-                QSvgRenderer renderer(svgPath);
-                if (renderer.isValid()) {
-                    QPainter painter(&img);
-                    renderer.render(&painter);
-                    painter.end();
-                }
+            QSvgRenderer renderer(svgPath);
+            if (renderer.isValid()) {
+                QPainter painter(&img);
+                renderer.render(&painter);
+                painter.end();
             }
         } else {
             QImage loaded(svgPath);
@@ -138,10 +156,19 @@ public:
 
         if (size)
             *size = iconSize;
+        remember(cacheKey, img);
         return img;
     }
 
 private:
+    void remember(const QString &key, const QImage &image)
+    {
+        QMutexLocker locker(&m_cacheMutex);
+        if (m_cache.size() > 512)
+            m_cache.clear();
+        m_cache.insert(key, image);
+    }
+
     void rebuildSearchDirs()
     {
         m_searchDirs.clear();
@@ -158,32 +185,6 @@ private:
             if (!m_searchDirs.contains(iconDir))
                 m_searchDirs.append(iconDir);
         }
-    }
-
-    QImage renderWithRsvg(const QString &svgPath, const QSize &iconSize) const
-    {
-        QProcess proc;
-        proc.start("rsvg-convert",
-                    {"-w", QString::number(iconSize.width()),
-                     "-h", QString::number(iconSize.height()),
-                     "--keep-aspect-ratio",
-                     "-f", "png",
-                     svgPath});
-
-        if (!proc.waitForFinished(2000) || proc.exitCode() != 0) {
-            QImage empty(iconSize, QImage::Format_ARGB32_Premultiplied);
-            empty.fill(Qt::transparent);
-            return empty;
-        }
-
-        QImage img;
-        img.loadFromData(proc.readAllStandardOutput(), "PNG");
-        if (img.isNull()) {
-            QImage empty(iconSize, QImage::Format_ARGB32_Premultiplied);
-            empty.fill(Qt::transparent);
-            return empty;
-        }
-        return img;
     }
 
     QString findIconIn(const QString &name, int size, const QStringList &themeDirs) const
@@ -246,5 +247,6 @@ private:
     QStringList m_searchDirs;
     QStringList m_primaryDirs;
     QStringList m_fallbackDirs;
-    bool m_hasRsvg = false;
+    QHash<QString, QImage> m_cache;
+    QMutex m_cacheMutex;
 };

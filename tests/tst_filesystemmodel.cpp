@@ -75,6 +75,16 @@ private slots:
         QCOMPARE(rootSpy.count(), 0);
     }
 
+    void testRemoteRootPathPreservesAuthorityCase()
+    {
+        FileSystemModel model;
+        const QString uri = QStringLiteral("gphoto2://Apple_Inc._iPhone_ABC123/");
+
+        model.setRootPath(uri);
+
+        QCOMPARE(model.rootPath(), uri);
+    }
+
     // 5. Empty root path yields 0 rows
     void testEmptyRootPath()
     {

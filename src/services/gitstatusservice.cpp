@@ -49,6 +49,10 @@ GitStatusService::GitStatusService(QObject *parent)
     m_indexWatcher = new QFileSystemWatcher(this);
     connect(m_indexWatcher, &QFileSystemWatcher::fileChanged,
             this, &GitStatusService::onGitIndexChanged);
+
+    m_statusDebounce.setSingleShot(true);
+    m_statusDebounce.setInterval(80);
+    connect(&m_statusDebounce, &QTimer::timeout, this, &GitStatusService::queryGitStatus);
 }
 
 void GitStatusService::setRootPath(const QString &path)
@@ -59,38 +63,28 @@ void GitStatusService::setRootPath(const QString &path)
     m_rootPath = path;
     m_statusCache.clear();
     m_dirtyDirs.clear();
+    m_statusDebounce.stop();
+    stopProcesses();
+
+    if (!m_repoRoot.isEmpty()) {
+        const QString oldIndex = m_repoRoot + QStringLiteral("/.git/index");
+        if (m_indexWatcher->files().contains(oldIndex))
+            m_indexWatcher->removePath(oldIndex);
+        m_repoRoot.clear();
+        emit statusChanged();
+    }
 
     if (!m_gitAvailable || isRemotePath(path)) {
-        if (!m_repoRoot.isEmpty()) {
-            m_repoRoot.clear();
-            emit statusChanged();
-        }
+        emit statusChanged();
         return;
     }
 
-    const QString oldRoot = m_repoRoot;
-    findRepoRoot(path);
+    startFindRepoRoot(path);
+}
 
-    if (m_repoRoot != oldRoot) {
-        // Stop watching old index
-        if (!oldRoot.isEmpty()) {
-            const QString oldIndex = oldRoot + QStringLiteral("/.git/index");
-            if (m_indexWatcher->files().contains(oldIndex))
-                m_indexWatcher->removePath(oldIndex);
-        }
-
-        // Watch new index
-        if (!m_repoRoot.isEmpty()) {
-            const QString newIndex = m_repoRoot + QStringLiteral("/.git/index");
-            if (QFileInfo::exists(newIndex))
-                m_indexWatcher->addPath(newIndex);
-        }
-    }
-
-    if (!m_repoRoot.isEmpty())
-        queryGitStatus();
-    else
-        emit statusChanged();
+void GitStatusService::scheduleGitStatus()
+{
+    m_statusDebounce.start();
 }
 
 QString GitStatusService::statusForPath(const QString &path) const
@@ -113,25 +107,69 @@ bool GitStatusService::isGitRepo() const
     return !m_repoRoot.isEmpty();
 }
 
-void GitStatusService::findRepoRoot(const QString &path)
+void GitStatusService::stopProcesses()
+{
+    if (m_repoProcess) {
+        m_repoProcess->disconnect();
+        if (m_repoProcess->state() != QProcess::NotRunning)
+            m_repoProcess->kill();
+        m_repoProcess->deleteLater();
+        m_repoProcess = nullptr;
+    }
+
+    if (m_gitProcess) {
+        m_gitProcess->disconnect();
+        if (m_gitProcess->state() != QProcess::NotRunning)
+            m_gitProcess->kill();
+        m_gitProcess->deleteLater();
+        m_gitProcess = nullptr;
+    }
+}
+
+void GitStatusService::startFindRepoRoot(const QString &path)
 {
     QDir dir(path);
     if (!dir.exists()) {
-        m_repoRoot.clear();
         emit statusChanged();
         return;
     }
 
-    QProcess revParse;
-    revParse.setWorkingDirectory(path);
-    startGitTool(&revParse, {QStringLiteral("rev-parse"), QStringLiteral("--show-toplevel")});
-    revParse.waitForFinished(2000);
-    if (revParse.exitCode() != 0) {
-        m_repoRoot.clear();
-        emit statusChanged();
-        return;
-    }
-    m_repoRoot = QString::fromUtf8(revParse.readAllStandardOutput()).trimmed();
+    auto *process = new QProcess(this);
+    m_repoProcess = process;
+    process->setWorkingDirectory(path);
+
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, process](int exitCode, QProcess::ExitStatus) {
+        if (process != m_repoProcess) {
+            process->deleteLater();
+            return;
+        }
+
+        const QString repoRoot = exitCode == 0
+            ? QString::fromUtf8(process->readAllStandardOutput()).trimmed()
+            : QString();
+        m_repoProcess = nullptr;
+        process->deleteLater();
+
+        if (repoRoot.isEmpty()) {
+            emit statusChanged();
+            return;
+        }
+
+        m_repoRoot = repoRoot;
+        const QString newIndex = m_repoRoot + QStringLiteral("/.git/index");
+        if (QFileInfo::exists(newIndex) && !m_indexWatcher->files().contains(newIndex))
+            m_indexWatcher->addPath(newIndex);
+
+        scheduleGitStatus();
+    });
+
+    QTimer::singleShot(2000, process, [this, process]() {
+        if (process == m_repoProcess && process->state() != QProcess::NotRunning)
+            process->kill();
+    });
+
+    startGitTool(process, {QStringLiteral("rev-parse"), QStringLiteral("--show-toplevel")});
 }
 
 void GitStatusService::queryGitStatus()
@@ -142,10 +180,8 @@ void GitStatusService::queryGitStatus()
     // Kill any running process
     if (m_gitProcess) {
         m_gitProcess->disconnect();
-        if (m_gitProcess->state() != QProcess::NotRunning) {
+        if (m_gitProcess->state() != QProcess::NotRunning)
             m_gitProcess->kill();
-            m_gitProcess->waitForFinished(500);
-        }
         m_gitProcess->deleteLater();
     }
 
@@ -259,7 +295,7 @@ void GitStatusService::onGitIndexChanged(const QString &path)
     if (!m_indexWatcher->files().contains(path) && QFileInfo::exists(path))
         m_indexWatcher->addPath(path);
 
-    queryGitStatus();
+    scheduleGitStatus();
 }
 
 void GitStatusService::markParentsDirty(const QString &filePath)
