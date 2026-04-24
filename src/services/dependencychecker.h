@@ -59,6 +59,7 @@ signals:
 private:
     void detectDistro();
     void populate();
+    static bool hasAnyFile(const QStringList &paths);
     static bool hasExecutable(const QString &name);
     static bool hasHostExecutable(const QString &name);
     static bool inFlatpakSandbox();

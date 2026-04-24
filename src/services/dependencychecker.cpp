@@ -280,6 +280,69 @@ void DependencyChecker::populate()
         buildHints(QStringLiteral("gvfs"))
     });
 
+    const bool gvfsAfcAvailable = hasExecutable(QStringLiteral("gio")) && hasAnyFile({
+        QStringLiteral("/usr/share/gvfs/mounts/afc.mount"),
+        QStringLiteral("/usr/lib/gvfs/gvfsd-afc"),
+        QStringLiteral("/usr/libexec/gvfsd-afc"),
+    });
+    m_deps.append({
+        QStringLiteral("gvfs-afc"),
+        QStringLiteral("GVFS AFC backend"),
+        QStringLiteral("Browse iPhone and iPad files from the device sidebar over USB."),
+        Kind::Tool, false, gvfsAfcAvailable,
+        {QStringLiteral("afc.mount"), QStringLiteral("gvfsd-afc")},
+        buildHints(QStringLiteral("gvfs-afc"), {
+            {QStringLiteral("debian"),    QStringLiteral("gvfs-backends")},
+            {QStringLiteral("ubuntu"),    QStringLiteral("gvfs-backends")},
+            {QStringLiteral("linuxmint"), QStringLiteral("gvfs-backends")},
+            {QStringLiteral("pop"),       QStringLiteral("gvfs-backends")},
+        })
+    });
+
+    const bool gvfsGphoto2Available = hasExecutable(QStringLiteral("gio")) && hasAnyFile({
+        QStringLiteral("/usr/share/gvfs/mounts/gphoto2.mount"),
+        QStringLiteral("/usr/lib/gvfs/gvfsd-gphoto2"),
+        QStringLiteral("/usr/libexec/gvfsd-gphoto2"),
+    });
+    m_deps.append({
+        QStringLiteral("gvfs-gphoto2"),
+        QStringLiteral("GVFS gphoto2 backend"),
+        QStringLiteral("Browse iPhone photos and videos through the camera/PTP backend."),
+        Kind::Tool, false, gvfsGphoto2Available,
+        {QStringLiteral("gphoto2.mount"), QStringLiteral("gvfsd-gphoto2")},
+        buildHints(QStringLiteral("gvfs-gphoto2"), {
+            {QStringLiteral("debian"),    QStringLiteral("gvfs-backends")},
+            {QStringLiteral("ubuntu"),    QStringLiteral("gvfs-backends")},
+            {QStringLiteral("linuxmint"), QStringLiteral("gvfs-backends")},
+            {QStringLiteral("pop"),       QStringLiteral("gvfs-backends")},
+        })
+    });
+
+    m_deps.append({
+        QStringLiteral("usbmuxd"),
+        QStringLiteral("usbmuxd"),
+        QStringLiteral("Detect and broker USB connections to iPhone and iPad devices."),
+        Kind::Tool, false, hasExecutable(QStringLiteral("usbmuxd"))
+            || hasHostExecutable(QStringLiteral("usbmuxd")),
+        {QStringLiteral("usbmuxd")},
+        buildHints(QStringLiteral("usbmuxd"))
+    });
+
+    m_deps.append({
+        QStringLiteral("libimobiledevice"),
+        QStringLiteral("libimobiledevice tools"),
+        QStringLiteral("Provide pairing and recovery tools such as idevicepair for iPhone and iPad access."),
+        Kind::Tool, false, hasExecutable(QStringLiteral("idevicepair"))
+            || hasHostExecutable(QStringLiteral("idevicepair")),
+        {QStringLiteral("idevicepair")},
+        buildHints(QStringLiteral("libimobiledevice"), {
+            {QStringLiteral("debian"),    QStringLiteral("libimobiledevice-utils")},
+            {QStringLiteral("ubuntu"),    QStringLiteral("libimobiledevice-utils")},
+            {QStringLiteral("linuxmint"), QStringLiteral("libimobiledevice-utils")},
+            {QStringLiteral("pop"),       QStringLiteral("libimobiledevice-utils")},
+        })
+    });
+
     // ── DBus services ─────────────────────────────────────────────────────
     m_deps.append({
         QStringLiteral("udisks2"),
@@ -443,6 +506,23 @@ QVariantMap DependencyChecker::toVariant(const Dependency &dep) const
 bool DependencyChecker::hasExecutable(const QString &name)
 {
     return !QStandardPaths::findExecutable(name).isEmpty();
+}
+
+bool DependencyChecker::hasAnyFile(const QStringList &paths)
+{
+    QStringList candidates = paths;
+    if (inFlatpakSandbox()) {
+        for (const QString &path : paths) {
+            if (path.startsWith(QLatin1Char('/')))
+                candidates.append(QStringLiteral("/run/host") + path);
+        }
+    }
+
+    for (const QString &path : candidates) {
+        if (QFileInfo::exists(path))
+            return true;
+    }
+    return false;
 }
 
 bool DependencyChecker::inFlatpakSandbox()
