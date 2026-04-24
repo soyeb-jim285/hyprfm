@@ -209,7 +209,7 @@ private slots:
 
         QCOMPARE(mgr.animDurationFast(), 100);
         QCOMPARE(mgr.animDuration(), 200);
-        QCOMPARE(mgr.animDurationSlow(), 700);
+        QCOMPARE(mgr.animDurationSlow(), 350);
         QCOMPARE(mgr.animCurveEnter(), QString("OutCubic"));
         QCOMPARE(mgr.animCurveExit(), QString("InCubic"));
         QCOMPARE(mgr.animCurveTransition(), QString("Bezier"));
