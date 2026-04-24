@@ -1,5 +1,110 @@
 #include "services/giotransferworker.h"
 
+#include <QLoggingCategory>
+#include <QUrl>
+
+// Turn on with QT_LOGGING_RULES="hyprfm.transfer.debug=true" to trace every
+// item. Warnings/errors go out unconditionally under hyprfm.transfer so the
+// user sees failure reasons in the terminal.
+Q_LOGGING_CATEGORY(lcTransfer, "hyprfm.transfer")
+
+namespace {
+
+bool isUriPath(const QString &path)
+{
+    const QUrl url(path);
+    return url.isValid() && !url.scheme().isEmpty();
+}
+
+GFile *gFileForLocation(const QString &path)
+{
+    const QByteArray utf8 = path.toUtf8();
+    if (isUriPath(path))
+        return g_file_new_for_uri(utf8.constData());
+    return g_file_new_for_path(utf8.constData());
+}
+
+struct MountResult {
+    bool ok = false;
+    int errCode = 0;
+    QString errMsg;
+    GMainLoop *loop = nullptr;
+};
+
+// Generic GIO failures on afc:// / gphoto2:// surface libimobiledevice's
+// raw messages ("No device found. Make sure usbmuxd is set up correctly.",
+// "Device requested to be paired", etc.). These aren't actionable on their
+// own — translate to something the user can do.
+QString humanizeMobileDeviceError(const QString &raw)
+{
+    const QString lower = raw.toLower();
+    const bool mentionsMobile = lower.contains(QLatin1String("libimobiledevice"))
+                             || lower.contains(QLatin1String("usbmuxd"))
+                             || lower.contains(QLatin1String("no device found"))
+                             || lower.contains(QLatin1String("not paired"))
+                             || lower.contains(QLatin1String("device requested to be paired"))
+                             || lower.contains(QLatin1String("pair record"));
+    if (!mentionsMobile)
+        return raw;
+
+    return QStringLiteral(
+        "iPhone / iPad is unreachable. "
+        "Plug it in, unlock the screen, tap \"Trust\" when prompted, "
+        "and make sure usbmuxd is running (systemctl status usbmuxd).");
+}
+
+// Block the calling (worker) thread until `g_file_mount_enclosing_volume`
+// completes. Dolphin does the equivalent through KIO's worker, which quietly
+// mounts GVfs volumes on first access. Without this, operations against an
+// `afc://` / `mtp://` / `smb://` URI whose volume happens to be un-mounted at
+// the moment fail with G_IO_ERROR_NOT_MOUNTED even if the user reached that
+// URI through the sidebar.
+bool mountEnclosingVolumeSync(GFile *file, QString *errorOut, int *errCodeOut)
+{
+    GMainContext *ctx = g_main_context_new();
+    g_main_context_push_thread_default(ctx);
+
+    MountResult result;
+    result.loop = g_main_loop_new(ctx, FALSE);
+
+    g_file_mount_enclosing_volume(
+        file,
+        G_MOUNT_MOUNT_NONE,
+        nullptr,   // no GMountOperation — no auth prompts from the worker
+        nullptr,
+        [](GObject *src, GAsyncResult *res, gpointer data) {
+            auto *r = static_cast<MountResult *>(data);
+            GError *err = nullptr;
+            if (g_file_mount_enclosing_volume_finish(G_FILE(src), res, &err)) {
+                r->ok = true;
+            } else if (err) {
+                // ALREADY_MOUNTED means somebody raced us — still good.
+                if (err->code == G_IO_ERROR_ALREADY_MOUNTED) {
+                    r->ok = true;
+                } else {
+                    r->errCode = err->code;
+                    r->errMsg = QString::fromUtf8(err->message);
+                }
+                g_error_free(err);
+            }
+            g_main_loop_quit(r->loop);
+        },
+        &result);
+
+    g_main_loop_run(result.loop);
+    g_main_loop_unref(result.loop);
+    g_main_context_pop_thread_default(ctx);
+    g_main_context_unref(ctx);
+
+    if (errorOut)
+        *errorOut = result.errMsg;
+    if (errCodeOut)
+        *errCodeOut = result.errCode;
+    return result.ok;
+}
+
+} // namespace
+
 GioTransferWorker::GioTransferWorker(QObject *parent)
     : QObject(parent)
 {
@@ -35,32 +140,64 @@ void GioTransferWorker::execute(const QList<TransferItem> &items, bool moveOpera
             break;
         }
 
+        qCInfo(lcTransfer).nospace() << "item start  src=" << item.sourcePath
+                                     << " dst=" << item.targetPath
+                                     << (moveOperation ? " (move)" : " (copy)");
+
         emit itemStarted(item.sourcePath, item.targetPath);
 
-        GFile *targetFile = g_file_new_for_path(item.targetPath.toUtf8().constData());
+        GFile *targetFile = gFileForLocation(item.targetPath);
+
+        // Don't call mount_enclosing_volume proactively. GVfs volumes opened
+        // through the sidebar (click-to-browse) are already mounted, and the
+        // afc backend treats a second mount attempt on an already-mounted
+        // House-Arrest port (afc://UDID:N/) as a fresh session request —
+        // libimobiledevice then confusingly returns "No device found" even
+        // though the existing mount is fine. Let the copy use the active
+        // mount; we only remount if the copy itself fails with NOT_MOUNTED
+        // (handled below — covers gvfs idle-timeout disconnects).
+
         GFile *targetParent = g_file_get_parent(targetFile);
         if (targetParent) {
-            GError *dirErr = nullptr;
-            g_file_make_directory_with_parents(targetParent, nullptr, &dirErr);
-            if (dirErr) {
-                // Ignore "already exists"
-                if (dirErr->code != G_IO_ERROR_EXISTS)
-                    qWarning("Failed to create parent dir: %s", dirErr->message);
-                g_error_free(dirErr);
+            // Skip the create call entirely when the parent already exists —
+            // the common case for pasting into an existing folder. Avoids a
+            // round-trip on slow GVfs mounts and suppresses spurious
+            // "not mounted" warnings from iOS afc:// / MTP backends that
+            // refuse mkdir at their root even though the target dir is fine.
+            if (!g_file_query_exists(targetParent, nullptr)) {
+                GError *dirErr = nullptr;
+                g_file_make_directory_with_parents(targetParent, nullptr, &dirErr);
+                if (dirErr) {
+                    const int code = dirErr->code;
+                    const bool harmless = code == G_IO_ERROR_EXISTS
+                                       || code == G_IO_ERROR_NOT_MOUNTED
+                                       || code == G_IO_ERROR_NOT_SUPPORTED
+                                       || code == G_IO_ERROR_READ_ONLY
+                                       || code == G_IO_ERROR_PERMISSION_DENIED;
+                    if (!harmless) {
+                        qCWarning(lcTransfer).nospace()
+                            << "make_directory_with_parents failed for "
+                            << item.targetPath << " (code " << code << "): "
+                            << dirErr->message;
+                    }
+                    g_error_free(dirErr);
+                }
             }
             g_object_unref(targetParent);
         }
 
         // Handle backup if overwrite + backupPath set
         if (item.overwrite && !item.backupPath.isEmpty()) {
-            GFile *existingTarget = g_file_new_for_path(item.targetPath.toUtf8().constData());
-            GFile *backupFile = g_file_new_for_path(item.backupPath.toUtf8().constData());
+            GFile *existingTarget = gFileForLocation(item.targetPath);
+            GFile *backupFile = gFileForLocation(item.backupPath);
             GFile *backupParent = g_file_get_parent(backupFile);
             if (backupParent) {
-                GError *bpErr = nullptr;
-                g_file_make_directory_with_parents(backupParent, nullptr, &bpErr);
-                if (bpErr)
-                    g_error_free(bpErr);
+                if (!g_file_query_exists(backupParent, nullptr)) {
+                    GError *bpErr = nullptr;
+                    g_file_make_directory_with_parents(backupParent, nullptr, &bpErr);
+                    if (bpErr)
+                        g_error_free(bpErr);
+                }
                 g_object_unref(backupParent);
             }
             GError *mvErr = nullptr;
@@ -72,7 +209,7 @@ void GioTransferWorker::execute(const QList<TransferItem> &items, bool moveOpera
         }
 
         // Query source file type
-        GFile *sourceFile = g_file_new_for_path(item.sourcePath.toUtf8().constData());
+        GFile *sourceFile = gFileForLocation(item.sourcePath);
         GError *infoErr = nullptr;
         GFileInfo *info = g_file_query_info(sourceFile,
             G_FILE_ATTRIBUTE_STANDARD_TYPE,
@@ -109,7 +246,20 @@ void GioTransferWorker::execute(const QList<TransferItem> &items, bool moveOpera
                 g_object_unref(targetFile);
                 break;
             }
-            const char *slTarget = g_file_info_get_symlink_target(slInfo);
+
+            const char *slTarget = g_file_info_has_attribute(
+                slInfo, G_FILE_ATTRIBUTE_STANDARD_SYMLINK_TARGET)
+                ? g_file_info_get_symlink_target(slInfo)
+                : nullptr;
+            if (!slTarget) {
+                success = false;
+                errorMsg = tr("Could not read symbolic link target");
+                g_object_unref(slInfo);
+                g_object_unref(sourceFile);
+                g_object_unref(targetFile);
+                break;
+            }
+
             GError *mkErr = nullptr;
             g_file_make_symbolic_link(targetFile, slTarget, m_cancellable, &mkErr);
             if (mkErr) {
@@ -126,18 +276,54 @@ void GioTransferWorker::execute(const QList<TransferItem> &items, bool moveOpera
         } else if (fileType == G_FILE_TYPE_DIRECTORY) {
             if (!copyRecursive(sourceFile, targetFile, flags, &errorMsg)) {
                 success = false;
+                qCWarning(lcTransfer).nospace()
+                    << "directory copy failed  src=" << item.sourcePath
+                    << " dst=" << item.targetPath
+                    << " msg=" << errorMsg;
                 g_object_unref(sourceFile);
                 g_object_unref(targetFile);
                 break;
             }
+            qCInfo(lcTransfer) << "directory copy done" << item.targetPath;
         } else {
             // Regular file
             GError *cpErr = nullptr;
             gboolean ok = g_file_copy(sourceFile, targetFile, flags,
                 m_cancellable, progressCallback, this, &cpErr);
+
+            // Late auto-mount + retry: a volume can become un-mounted
+            // between startup and copy (gvfs idle timeouts are common on
+            // afc://). Mount once, try again, then give up.
+            if (!ok && cpErr && cpErr->code == G_IO_ERROR_NOT_MOUNTED
+                && isUriPath(item.targetPath)) {
+                qCInfo(lcTransfer) << "copy hit NOT_MOUNTED; attempting remount for"
+                                   << item.targetPath;
+                g_error_free(cpErr);
+                cpErr = nullptr;
+
+                QString mountErr;
+                int mountCode = 0;
+                if (mountEnclosingVolumeSync(targetFile, &mountErr, &mountCode)) {
+                    ok = g_file_copy(sourceFile, targetFile, flags,
+                        m_cancellable, progressCallback, this, &cpErr);
+                } else {
+                    errorMsg = mountErr.isEmpty()
+                        ? QStringLiteral("Could not mount destination volume")
+                        : mountErr;
+                }
+            }
+
             if (!ok) {
                 success = false;
-                errorMsg = gErrorToUserMessage(cpErr);
+                if (errorMsg.isEmpty()) {
+                    const QString raw = gErrorToUserMessage(cpErr);
+                    errorMsg = humanizeMobileDeviceError(raw);
+                }
+                qCWarning(lcTransfer).nospace()
+                    << "copy failed  src=" << item.sourcePath
+                    << " dst=" << item.targetPath
+                    << " code=" << (cpErr ? cpErr->code : -1)
+                    << " msg=" << (cpErr ? cpErr->message : "(null)");
                 if (cpErr) g_error_free(cpErr);
                 g_object_unref(sourceFile);
                 g_object_unref(targetFile);
@@ -205,7 +391,7 @@ qint64 GioTransferWorker::scanTotalBytes(const QList<TransferItem> &items)
 {
     qint64 total = 0;
     for (const auto &item : items) {
-        GFile *file = g_file_new_for_path(item.sourcePath.toUtf8().constData());
+        GFile *file = gFileForLocation(item.sourcePath);
         total += scanPathBytes(file);
         g_object_unref(file);
     }
@@ -271,12 +457,44 @@ qint64 GioTransferWorker::scanPathBytes(GFile *file)
 
 bool GioTransferWorker::copyRecursive(GFile *source, GFile *destination, GFileCopyFlags flags, QString *error)
 {
-    // Create target directory
+    gchar *dstUriRaw = g_file_get_uri(destination);
+    const QString dstUri = QString::fromUtf8(dstUriRaw ? dstUriRaw : "");
+    if (dstUriRaw) g_free(dstUriRaw);
+
+    qCDebug(lcTransfer) << "recurse mkdir" << dstUri;
+
+    // Create target directory. If the backing GVfs volume timed out between
+    // the user opening it in the sidebar and this transfer firing, we get
+    // G_IO_ERROR_NOT_MOUNTED — remount once and try again.
     GError *mkErr = nullptr;
     g_file_make_directory_with_parents(destination, m_cancellable, &mkErr);
+    if (mkErr && mkErr->code == G_IO_ERROR_NOT_MOUNTED) {
+        qCInfo(lcTransfer) << "recurse mkdir hit NOT_MOUNTED; attempting remount for" << dstUri;
+        g_error_free(mkErr);
+        mkErr = nullptr;
+
+        QString mountErr;
+        int mountCode = 0;
+        if (mountEnclosingVolumeSync(destination, &mountErr, &mountCode)) {
+            qCInfo(lcTransfer) << "recurse remount ok; retrying mkdir on" << dstUri;
+            g_file_make_directory_with_parents(destination, m_cancellable, &mkErr);
+        } else {
+            qCWarning(lcTransfer).nospace()
+                << "recurse remount failed  dst=" << dstUri
+                << " code=" << mountCode
+                << " msg=" << mountErr;
+            *error = humanizeMobileDeviceError(mountErr.isEmpty()
+                ? QStringLiteral("Could not mount destination volume") : mountErr);
+            return false;
+        }
+    }
     if (mkErr) {
         if (mkErr->code != G_IO_ERROR_EXISTS) {
-            *error = gErrorToUserMessage(mkErr);
+            qCWarning(lcTransfer).nospace()
+                << "recurse mkdir failed  dst=" << dstUri
+                << " code=" << mkErr->code
+                << " msg=" << mkErr->message;
+            *error = humanizeMobileDeviceError(gErrorToUserMessage(mkErr));
             g_error_free(mkErr);
             return false;
         }
@@ -314,9 +532,18 @@ bool GioTransferWorker::copyRecursive(GFile *source, GFile *destination, GFileCo
         if (childType == G_FILE_TYPE_DIRECTORY) {
             ok = copyRecursive(childSrc, childDst, flags, error);
         } else if (childType == G_FILE_TYPE_SYMBOLIC_LINK) {
-            const char *slTarget = g_file_info_get_symlink_target(childInfo);
+            const char *slTarget = g_file_info_has_attribute(
+                childInfo, G_FILE_ATTRIBUTE_STANDARD_SYMLINK_TARGET)
+                ? g_file_info_get_symlink_target(childInfo)
+                : nullptr;
+            if (!slTarget) {
+                *error = tr("Could not read symbolic link target");
+                ok = false;
+            }
+
             GError *slErr = nullptr;
-            g_file_make_symbolic_link(childDst, slTarget, m_cancellable, &slErr);
+            if (ok)
+                g_file_make_symbolic_link(childDst, slTarget, m_cancellable, &slErr);
             if (slErr) {
                 *error = gErrorToUserMessage(slErr);
                 g_error_free(slErr);
@@ -326,10 +553,17 @@ bool GioTransferWorker::copyRecursive(GFile *source, GFile *destination, GFileCo
         } else {
             // Regular file
             GError *cpErr = nullptr;
+            qCDebug(lcTransfer) << "recurse copy" << name;
             gboolean cpOk = g_file_copy(childSrc, childDst, flags,
                 m_cancellable, progressCallback, this, &cpErr);
             if (!cpOk) {
-                *error = gErrorToUserMessage(cpErr);
+                gchar *cdUri = g_file_get_uri(childDst);
+                qCWarning(lcTransfer).nospace()
+                    << "recurse copy failed  child=" << (cdUri ? cdUri : name)
+                    << " code=" << (cpErr ? cpErr->code : -1)
+                    << " msg=" << (cpErr ? cpErr->message : "(null)");
+                if (cdUri) g_free(cdUri);
+                *error = humanizeMobileDeviceError(gErrorToUserMessage(cpErr));
                 if (cpErr) g_error_free(cpErr);
                 ok = false;
             } else {

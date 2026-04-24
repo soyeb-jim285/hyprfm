@@ -445,6 +445,22 @@ private slots:
         QVERIFY(!dir.exists("doomed_dir"));
     }
 
+    void testDeleteDirectoryViaFileUri()
+    {
+        TestDir dir;
+        dir.createDir("doomed_uri_dir");
+        dir.createFile("doomed_uri_dir/inner.txt", "bye");
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+
+        ops.deleteFiles({QUrl::fromLocalFile(dir.path() + "/doomed_uri_dir").toString()});
+
+        QVERIFY(spy.wait(5000));
+        QCOMPARE(spy.at(0).at(0).toBool(), true);
+        QVERIFY(!dir.exists("doomed_uri_dir"));
+    }
+
     void testDeleteMultiple()
     {
         TestDir dir;

@@ -19,6 +19,7 @@
 #include <QTemporaryFile>
 #include <QUuid>
 #include <QUrl>
+#include <algorithm>
 #include <unistd.h>
 
 #undef signals
@@ -55,6 +56,53 @@ bool isRemoteUriPath(const QString &path)
         && url.scheme() != QStringLiteral("trash");
 }
 
+QString remoteAuthority(const QString &uri)
+{
+    const int schemeSep = uri.indexOf(QStringLiteral("://"));
+    if (schemeSep < 0)
+        return {};
+
+    const int authorityStart = schemeSep + 3;
+    int authorityEnd = uri.size();
+    const int pathStart = uri.indexOf(QLatin1Char('/'), authorityStart);
+    const int queryStart = uri.indexOf(QLatin1Char('?'), authorityStart);
+    const int fragmentStart = uri.indexOf(QLatin1Char('#'), authorityStart);
+    for (const int marker : {pathStart, queryStart, fragmentStart}) {
+        if (marker >= 0)
+            authorityEnd = std::min(authorityEnd, marker);
+    }
+
+    return uri.mid(authorityStart, authorityEnd - authorityStart);
+}
+
+QString normalizeRemoteUri(const QString &path)
+{
+    const QUrl url(path);
+    if (!url.isValid() || url.scheme().isEmpty())
+        return path;
+
+    const QUrl normalizedUrl = url.adjusted(QUrl::NormalizePathSegments);
+    QString encodedPath = normalizedUrl.path(QUrl::FullyEncoded);
+    if (encodedPath.isEmpty())
+        encodedPath = QStringLiteral("/");
+    if (encodedPath.size() > 1 && encodedPath.endsWith(QLatin1Char('/')))
+        encodedPath.chop(1);
+
+    QString normalized = url.scheme().toLower() + QStringLiteral("://")
+        + remoteAuthority(path)
+        + encodedPath;
+
+    const QString query = normalizedUrl.query(QUrl::FullyEncoded);
+    if (!query.isEmpty())
+        normalized += QLatin1Char('?') + query;
+
+    const QString fragment = normalizedUrl.fragment(QUrl::FullyEncoded);
+    if (!fragment.isEmpty())
+        normalized += QLatin1Char('#') + fragment;
+
+    return normalized;
+}
+
 QString normalizeLocation(const QString &path)
 {
     if (path.isEmpty())
@@ -64,16 +112,8 @@ QString normalizeLocation(const QString &path)
     if (url.isValid() && url.scheme() == QStringLiteral("file"))
         return QDir::cleanPath(url.toLocalFile());
 
-    if (url.isValid() && !url.scheme().isEmpty()) {
-        QUrl normalized = url.adjusted(QUrl::NormalizePathSegments);
-        QString urlPath = normalized.path();
-        if (urlPath.isEmpty())
-            urlPath = QStringLiteral("/");
-        if (urlPath.size() > 1 && urlPath.endsWith('/'))
-            urlPath.chop(1);
-        normalized.setPath(urlPath);
-        return normalized.toString(QUrl::FullyEncoded);
-    }
+    if (url.isValid() && !url.scheme().isEmpty())
+        return normalizeRemoteUri(path);
 
     return QDir::cleanPath(path);
 }
@@ -103,7 +143,7 @@ QString gioLocationArg(const QString &path)
 {
     const QString normalized = normalizeLocation(path);
     if (isUriPath(normalized))
-        return QUrl(normalized).toString(QUrl::FullyEncoded);
+        return normalized;
     return normalized;
 }
 
@@ -115,8 +155,9 @@ QString locationFileName(const QString &path)
         QString fileName = QUrl::fromPercentEncoding(url.fileName().toUtf8());
         if (!fileName.isEmpty())
             return fileName;
-        if (!url.host().isEmpty())
-            return url.host();
+        const QString authority = remoteAuthority(normalized);
+        if (!authority.isEmpty())
+            return QUrl::fromPercentEncoding(authority.toUtf8());
         return url.scheme().toUpper();
     }
 
@@ -163,16 +204,17 @@ QString parentLocation(const QString &path)
 
     if (isRemoteUriPath(normalized)) {
         QUrl url(normalized);
-        QString urlPath = url.path();
+        QString urlPath = url.path(QUrl::FullyEncoded);
+        const QString base = url.scheme().toLower() + QStringLiteral("://")
+            + remoteAuthority(normalized);
         if (urlPath.isEmpty() || urlPath == QStringLiteral("/"))
-            return normalizeLocation(url.toString(QUrl::FullyEncoded));
+            return base + QStringLiteral("/");
 
         if (urlPath.endsWith('/'))
             urlPath.chop(1);
 
         const int slashIndex = urlPath.lastIndexOf('/');
-        url.setPath(slashIndex <= 0 ? QStringLiteral("/") : urlPath.left(slashIndex));
-        return normalizeLocation(url.toString(QUrl::FullyEncoded));
+        return base + (slashIndex <= 0 ? QStringLiteral("/") : urlPath.left(slashIndex));
     }
 
     const QFileInfo info(normalized);
@@ -183,12 +225,25 @@ QString joinLocation(const QString &parentPath, const QString &name)
 {
     const QString normalizedParent = normalizeLocation(parentPath);
     if (isUriPath(normalizedParent)) {
-        QUrl url(normalizedParent);
-        QString urlPath = url.path();
+        const QUrl url(normalizedParent);
+        QString urlPath = url.path(QUrl::FullyEncoded);
         if (!urlPath.endsWith('/'))
             urlPath += '/';
-        url.setPath(urlPath + name);
-        return normalizeLocation(url.toString(QUrl::FullyEncoded));
+
+        QString joined = url.scheme().toLower() + QStringLiteral("://")
+            + remoteAuthority(normalizedParent)
+            + urlPath
+            + QString::fromUtf8(QUrl::toPercentEncoding(name, "/"));
+
+        const QString query = url.query(QUrl::FullyEncoded);
+        if (!query.isEmpty())
+            joined += QLatin1Char('?') + query;
+
+        const QString fragment = url.fragment(QUrl::FullyEncoded);
+        if (!fragment.isEmpty())
+            joined += QLatin1Char('#') + fragment;
+
+        return normalizeLocation(joined);
     }
 
     return QDir(normalizedParent).filePath(name);
@@ -213,6 +268,64 @@ bool gioPathExists(const QString &path)
     return exists;
 }
 
+bool deleteGFileRecursive(GFile *file, QString *error, GCancellable *cancellable = nullptr)
+{
+    const GFileType type = g_file_query_file_type(
+        file, G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, cancellable);
+    if (type != G_FILE_TYPE_DIRECTORY) {
+        GError *delErr = nullptr;
+        const bool ok = g_file_delete(file, cancellable, &delErr);
+        if (!ok && error)
+            *error = delErr ? QString::fromUtf8(delErr->message)
+                            : QStringLiteral("Failed to delete item");
+        if (delErr)
+            g_error_free(delErr);
+        return ok;
+    }
+
+    GError *enumErr = nullptr;
+    GFileEnumerator *enumerator = g_file_enumerate_children(
+        file,
+        G_FILE_ATTRIBUTE_STANDARD_NAME,
+        G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS,
+        cancellable,
+        &enumErr);
+    if (!enumerator) {
+        if (error)
+            *error = enumErr ? QString::fromUtf8(enumErr->message)
+                             : QStringLiteral("Failed to enumerate directory");
+        if (enumErr)
+            g_error_free(enumErr);
+        return false;
+    }
+
+    GFileInfo *childInfo = nullptr;
+    while ((childInfo = g_file_enumerator_next_file(enumerator, cancellable, nullptr)) != nullptr) {
+        GFile *child = g_file_get_child(file, g_file_info_get_name(childInfo));
+        g_object_unref(childInfo);
+
+        const bool ok = deleteGFileRecursive(child, error, cancellable);
+        g_object_unref(child);
+        if (!ok) {
+            g_file_enumerator_close(enumerator, nullptr, nullptr);
+            g_object_unref(enumerator);
+            return false;
+        }
+    }
+
+    g_file_enumerator_close(enumerator, nullptr, nullptr);
+    g_object_unref(enumerator);
+
+    GError *delErr = nullptr;
+    const bool ok = g_file_delete(file, cancellable, &delErr);
+    if (!ok && error)
+        *error = delErr ? QString::fromUtf8(delErr->message)
+                        : QStringLiteral("Failed to delete directory");
+    if (delErr)
+        g_error_free(delErr);
+    return ok;
+}
+
 QVariantMap remotePathInfo(const QString &path)
 {
     QVariantMap result;
@@ -235,7 +348,10 @@ QVariantMap remotePathInfo(const QString &path)
     result[QStringLiteral("path")] = normalized;
     result[QStringLiteral("isDir")] = g_file_info_get_file_type(info) == G_FILE_TYPE_DIRECTORY;
     result[QStringLiteral("size")] = static_cast<qint64>(g_file_info_get_size(info));
-    result[QStringLiteral("isSymlink")] = static_cast<bool>(g_file_info_get_is_symlink(info));
+    result[QStringLiteral("isSymlink")] = g_file_info_has_attribute(
+        info, G_FILE_ATTRIBUTE_STANDARD_IS_SYMLINK)
+        ? static_cast<bool>(g_file_info_get_is_symlink(info))
+        : false;
 
     g_object_unref(info);
     g_object_unref(file);
@@ -375,21 +491,20 @@ QVariantList buildBreadcrumbs(const QString &path)
 
     if (isRemoteUriPath(normalized)) {
         const QUrl url(normalized);
-        const QString authority = !url.userName().isEmpty()
-            ? QStringLiteral("%1@%2").arg(url.userName(), url.host())
-            : url.host().isEmpty() ? url.scheme().toUpper() : url.host();
-        const QString rootPath = normalizeLocation(QUrl(url.scheme() + QStringLiteral("://") + url.authority()).toString(QUrl::FullyEncoded));
+        const QString authority = !remoteAuthority(normalized).isEmpty()
+            ? QUrl::fromPercentEncoding(remoteAuthority(normalized).toUtf8())
+            : url.scheme().toUpper();
+        const QString rootPath = url.scheme().toLower() + QStringLiteral("://")
+            + remoteAuthority(normalized) + QStringLiteral("/");
         segments.append(QVariantMap{{QStringLiteral("label"), authority},
                                     {QStringLiteral("fullPath"), rootPath}});
 
         QString accumulatedPath;
-        const QStringList parts = url.path().split('/', Qt::SkipEmptyParts);
+        const QStringList parts = url.path(QUrl::FullyEncoded).split('/', Qt::SkipEmptyParts);
         for (const QString &part : parts) {
             accumulatedPath += QStringLiteral("/") + part;
-            QUrl step = url;
-            step.setPath(accumulatedPath);
             segments.append(QVariantMap{{QStringLiteral("label"), QUrl::fromPercentEncoding(part.toUtf8())},
-                                        {QStringLiteral("fullPath"), normalizeLocation(step.toString(QUrl::FullyEncoded))}});
+                                        {QStringLiteral("fullPath"), rootPath.left(rootPath.size() - 1) + accumulatedPath}});
         }
         return segments;
     }
@@ -1005,19 +1120,27 @@ void FileOperations::restoreFromTrash(const QStringList &paths)
 
 bool FileOperations::isTrashPath(const QString &path) const
 {
-    return isTrashUriPath(path) || !matchingTrashFilesRoot(path).isEmpty();
+    const QString normalized = normalizeLocation(path);
+    if (isTrashUriPath(normalized))
+        return true;
+    if (isRemoteUriPath(normalized))
+        return false;
+    return !matchingTrashFilesRoot(normalized).isEmpty();
 }
 
 QString FileOperations::trashFilesPathFor(const QString &path) const
 {
-    if (isTrashUriPath(path))
+    const QString normalized = normalizeLocation(path);
+    if (isTrashUriPath(normalized))
         return trashUriRootPath();
+    if (isRemoteUriPath(normalized))
+        return homeTrashFilesPath();
 
-    const QString matchedRoot = matchingTrashFilesRoot(path);
+    const QString matchedRoot = matchingTrashFilesRoot(normalized);
     if (!matchedRoot.isEmpty())
         return matchedRoot;
 
-    const QStringList roots = trashRootCandidatesForPath(path);
+    const QStringList roots = trashRootCandidatesForPath(normalized);
     if (!roots.isEmpty())
         return QDir(roots.first()).filePath("files");
 
@@ -1097,10 +1220,9 @@ void FileOperations::deleteFiles(const QStringList &paths)
 
                 if (isUriPath(normalized)) {
                     GFile *file = gFileForLocation(normalized);
-                    GError *gErr = nullptr;
-                    if (!g_file_delete(file, nullptr, &gErr)) {
-                        if (gErr) { lastError = QString::fromUtf8(gErr->message); g_error_free(gErr); }
-                    }
+                    QString err;
+                    if (!deleteGFileRecursive(file, &err) && !err.isEmpty())
+                        lastError = err;
                     g_object_unref(file);
                 } else {
                     QFileInfo info(normalized);
@@ -1447,10 +1569,9 @@ void FileOperations::emptyTrash()
             for (int i = 0; i < total; ++i) {
                 report(i, total, names[i]);
                 GFile *child = g_file_get_child(trash, names[i].toUtf8().constData());
-                GError *delErr = nullptr;
-                if (!g_file_delete(child, nullptr, &delErr)) {
-                    if (delErr) { lastError = QString::fromUtf8(delErr->message); g_error_free(delErr); }
-                }
+                QString err;
+                if (!deleteGFileRecursive(child, &err) && !err.isEmpty())
+                    lastError = err;
                 g_object_unref(child);
             }
 
