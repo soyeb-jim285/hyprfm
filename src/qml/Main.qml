@@ -3028,6 +3028,7 @@ ApplicationWindow {
                 Sidebar {
                     width: root.sidebarWidth
                     height: parent.height
+                    tooltipLayer: sidebarTooltipLayer
                     currentPath: panePath(activePane)
                     trashPath: root.unifiedTrashPath
                     isRecentsView: root.isRecentsView
@@ -3341,6 +3342,12 @@ ApplicationWindow {
                 }
             }
         }
+    }
+
+    Item {
+        id: sidebarTooltipLayer
+        anchors.fill: parent
+        z: 900
     }
 
     // ── Mouse back/forward button support ────────────────────────────────────

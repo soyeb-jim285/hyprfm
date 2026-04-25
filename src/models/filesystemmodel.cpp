@@ -3,6 +3,7 @@
 #include <QLocale>
 #include <QDateTime>
 #include <QDebug>
+#include <QFuture>
 #include <QMimeDatabase>
 #include <QStorageInfo>
 #include <QProcess>
@@ -12,6 +13,7 @@
 #include <QTimer>
 #include <QDirIterator>
 #include <QUrl>
+#include <QtConcurrent>
 #include <algorithm>
 
 // Forward declarations for helpers defined further down (used by methods
@@ -582,6 +584,7 @@ FileSystemModel::FileSystemModel(QObject *parent)
 FileSystemModel::~FileSystemModel()
 {
     cancelRemoteReload();
+    cancelLocalReload();
 }
 
 void FileSystemModel::setGitStatusService(GitStatusService *service)
@@ -872,16 +875,10 @@ void FileSystemModel::refresh()
         return;
     }
 
-    QList<Entry> newEntries = currentLocalEntries();
-    if (applyLocalDiff(newEntries))
-        return;
-
-    beginResetModel();
-    m_entries = std::move(newEntries);
-    m_trashEntries.clear();
-    updateLocalCounts();
-    endResetModel();
-    emit countsChanged();
+    // Local refresh triggered by QFileSystemWatcher or user action: keep
+    // existing rows visible and diff the new scan against them so small
+    // edits don't force a full reset.
+    scheduleLocalReload(/*tryDiff=*/true);
 }
 
 QString FileSystemModel::filePath(int row) const
@@ -931,29 +928,132 @@ void FileSystemModel::reload()
     cancelRemoteReload();
     ++m_remoteReloadGeneration;
 
+    if (isTrashRoot()) {
+        // Trash scan runs gio synchronously already; wrap in the reset.
+        beginResetModel();
+        m_entries.clear();
+        m_remoteEntries.clear();
+        m_trashEntries.clear();
+        m_fileCount = 0;
+        m_folderCount = 0;
+        reloadTrash();
+        endResetModel();
+        emit countsChanged();
+        return;
+    }
+
+    if (isRemoteRoot()) {
+        // Remote: clear existing rows first so the old dir disappears,
+        // then fire the async gio process. reloadRemote() / applyRemoteReload
+        // own their own model-reset around the result.
+        beginResetModel();
+        m_entries.clear();
+        m_remoteEntries.clear();
+        m_trashEntries.clear();
+        m_fileCount = 0;
+        m_folderCount = 0;
+        endResetModel();
+        emit countsChanged();
+        reloadRemote();
+        return;
+    }
+
+    // Local: clear existing rows immediately so old directory's contents
+    // vanish the moment the user navigates; the async scan will repopulate
+    // via applyLocalReload() which runs its own begin/endResetModel.
     beginResetModel();
     m_entries.clear();
     m_remoteEntries.clear();
     m_trashEntries.clear();
     m_fileCount = 0;
     m_folderCount = 0;
-
-    if (isTrashRoot())
-        reloadTrash();
-    else if (!isRemoteRoot())
-        reloadLocal();
-
     endResetModel();
     emit countsChanged();
 
-    if (isRemoteRoot())
-        reloadRemote();
+    reloadLocal();
 }
 
 void FileSystemModel::reloadLocal()
 {
-    m_entries = currentLocalEntries();
+    scheduleLocalReload(/*tryDiff=*/false);
+}
+
+FileSystemModel::LocalReloadResult FileSystemModel::scanLocalEntries(
+    quint64 generation, const QString &rootPath, bool showHidden,
+    QDir::SortFlags sortFlags)
+{
+    LocalReloadResult result;
+    result.generation = generation;
+    if (rootPath.isEmpty())
+        return result;
+
+    QDir dir(rootPath);
+    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot;
+    if (showHidden)
+        filters |= QDir::Hidden;
+
+    const QFileInfoList infos = dir.entryInfoList(filters, sortFlags);
+    result.entries.reserve(infos.size());
+    for (const QFileInfo &info : infos) {
+        Entry e;
+        e.info = info;
+        result.entries.append(std::move(e));
+    }
+    return result;
+}
+
+void FileSystemModel::scheduleLocalReload(bool tryDiff)
+{
+    const quint64 gen = ++m_localReloadGeneration;
+    m_localReloadTryDiff = tryDiff;
+
+    if (m_synchronousReload) {
+        // Test mode: run scan inline so rowCount is correct before the
+        // caller moves on.
+        applyLocalReload(scanLocalEntries(gen, m_rootPath, m_showHidden, m_sortFlags),
+                         tryDiff);
+        return;
+    }
+
+    if (!m_localReloadWatcher) {
+        m_localReloadWatcher = new QFutureWatcher<LocalReloadResult>(this);
+        connect(m_localReloadWatcher, &QFutureWatcherBase::finished, this, [this]() {
+            if (!m_localReloadWatcher)
+                return;
+            applyLocalReload(m_localReloadWatcher->result(), m_localReloadTryDiff);
+        });
+    }
+
+    auto future = QtConcurrent::run(&FileSystemModel::scanLocalEntries,
+                                    gen, m_rootPath, m_showHidden, m_sortFlags);
+    m_localReloadWatcher->setFuture(future);
+}
+
+void FileSystemModel::cancelLocalReload()
+{
+    if (!m_localReloadWatcher)
+        return;
+    m_localReloadWatcher->disconnect(this);
+    m_localReloadWatcher->waitForFinished();
+}
+
+void FileSystemModel::applyLocalReload(LocalReloadResult result, bool tryDiff)
+{
+    // Drop stale results — the user already navigated elsewhere and a newer
+    // scan has been dispatched; whatever came back is for a path we no
+    // longer care about.
+    if (result.generation != m_localReloadGeneration)
+        return;
+
+    if (tryDiff && applyLocalDiff(result.entries))
+        return;
+
+    beginResetModel();
+    m_entries = std::move(result.entries);
+    m_trashEntries.clear();
     updateLocalCounts();
+    endResetModel();
+    emit countsChanged();
 }
 
 void FileSystemModel::reloadRemote()

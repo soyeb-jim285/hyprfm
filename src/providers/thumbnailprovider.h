@@ -18,6 +18,7 @@ public:
 
 private:
     void generateImageThumbnail();
+    void generateSvgThumbnail();
     void generateVideoThumbnail();
 
     QString m_id;

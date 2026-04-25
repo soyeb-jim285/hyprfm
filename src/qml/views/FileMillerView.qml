@@ -70,7 +70,14 @@ FocusScope {
         }
     }
 
-    onCurrentPathChanged: syncParentModel()
+    onCurrentPathChanged: {
+        syncParentModel()
+        // See FileGridView/FileDetailedView: reset sticky drag state so
+        // wheel scrolling works immediately after navigation without the
+        // user needing to click an item first.
+        if (currentColumn) currentColumn.interactive = true
+        if (parentColumn) parentColumn.interactive = true
+    }
 
     function selectAll() {
         currentColumn.selectAll()
@@ -1113,6 +1120,7 @@ FocusScope {
             readonly property bool isTrashUri: previewFilePath.startsWith("trash:///")
             readonly property bool isArchive: !previewIsDir && fileOps.isArchive(previewFilePath)
             readonly property bool isImage: !isRemoteUri && !previewIsDir && _mime.startsWith("image/")
+            readonly property bool isSvg: isImage && _mime === "image/svg+xml"
             readonly property bool isVideo: !isRemoteUri && !previewIsDir && _mime.startsWith("video/")
             readonly property bool isAudio: !isRemoteUri && !previewIsDir && (_mime.startsWith("audio/") || false)
             readonly property bool isPdf: !isRemoteUri && !previewIsDir && _mime === "application/pdf"
@@ -1122,7 +1130,7 @@ FocusScope {
             readonly property bool hasVisualPreview: isImage || (isVideo && videoPreviewAvailable)
             readonly property string visualSource: {
                 if (!hasVisualPreview || previewFilePath === "") return ""
-                if (isVideo || isTrashUri) return "image://thumbnail/" + previewFilePath
+                if (isVideo || isTrashUri || isSvg) return "image://thumbnail/" + previewFilePath
                 return "file://" + previewFilePath
             }
             readonly property string pdfImageSource: {

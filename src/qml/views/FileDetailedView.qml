@@ -22,6 +22,10 @@ FocusScope {
         pendingFocusPath = ""
         typeAheadBuffer = ""
         typeAheadTimer.stop()
+        // Reset any sticky `interactive=false` left behind by an in-flight
+        // rubberband / drag in the previous directory — otherwise the wheel
+        // handler short-circuits until the user clicks something.
+        if (listView) listView.interactive = true
         Qt.callLater(refreshFolderItemCounts)
     }
     onVisibleChanged: {

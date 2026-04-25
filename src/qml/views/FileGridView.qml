@@ -19,6 +19,11 @@ GridView {
         pendingFocusPath = ""
         typeAheadBuffer = ""
         typeAheadTimer.stop()
+        // Reset any sticky state from the outgoing directory (rubberband,
+        // in-progress drag) so wheel scrolling works immediately in the
+        // new one instead of waiting for the user to click.
+        isDragging = false
+        interactive = true
     }
 
     signal fileActivated(string filePath, bool isDirectory)

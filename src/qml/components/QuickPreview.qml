@@ -48,6 +48,9 @@ Item {
     readonly property bool isRemoteUri: fileOps.isRemotePath(filePath)
     readonly property string _mime: fileProps.mimeType || ""
     readonly property bool isImage: !isRemoteUri && !isDirectory && _mime.startsWith("image/")
+    // SVGs need explicit routing through the thumbnail provider (QSvgRenderer
+    // path). Qt's default Image handler treats viewBox-only SVGs as 0×0.
+    readonly property bool isSvg: isImage && _mime === "image/svg+xml"
     readonly property bool isVideo: !isRemoteUri && !isDirectory && _mime.startsWith("video/")
     readonly property bool isAudio: !isRemoteUri && !isDirectory && _mime.startsWith("audio/")
     readonly property bool isPdf: !isRemoteUri && !isDirectory && _mime === "application/pdf"
@@ -102,7 +105,7 @@ Item {
     readonly property string visualSource: {
         if (!hasVisualPreview || filePath === "")
             return ""
-        if (isVideo || isTrashUri)
+        if (isVideo || isTrashUri || isSvg)
             return "image://thumbnail/" + filePath
         return "file://" + filePath
     }

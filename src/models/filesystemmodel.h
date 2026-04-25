@@ -3,6 +3,7 @@
 #include <QAbstractListModel>
 #include <QFileSystemWatcher>
 #include <QFileInfo>
+#include <QFutureWatcher>
 #include <QDir>
 #include <QList>
 #include <QProcess>
@@ -72,6 +73,12 @@ public:
     Q_INVOKABLE QString homePath() const;
     Q_INVOKABLE QVariantList pathSuggestions(const QString &input, int limit = 8) const;
 
+    // Tests need a predictable "rowCount is correct right after setRootPath()"
+    // guarantee, so expose a switch that runs local scans on the calling
+    // thread. Production code leaves this false and benefits from the
+    // non-blocking QtConcurrent path.
+    void setSynchronousReload(bool on) { m_synchronousReload = on; }
+
     void setGitStatusService(GitStatusService *service);
 
 signals:
@@ -97,6 +104,14 @@ private:
         mutable bool populated = false;
     };
 
+    // Packaged so the worker can carry its own generation number back to
+    // the handler, letting us drop results from scans the user has already
+    // navigated away from even if the QFutureWatcher fired.
+    struct LocalReloadResult {
+        quint64 generation = 0;
+        QList<Entry> entries;
+    };
+
     void ensurePopulated(const Entry &entry) const;
 
     void reload();
@@ -105,6 +120,16 @@ private:
     void reloadTrash();
     void cancelRemoteReload();
     void applyRemoteReload(const QString &rootPath, const QByteArray &output);
+    // Local scans go through a QtConcurrent future so the GUI thread never
+    // blocks on QDir::entryInfoList. Generation counter ensures stale
+    // results (user navigated away mid-scan) are discarded.
+    void scheduleLocalReload(bool tryDiff);
+    void cancelLocalReload();
+    void applyLocalReload(LocalReloadResult result, bool tryDiff);
+    static LocalReloadResult scanLocalEntries(quint64 generation,
+                                              const QString &rootPath,
+                                              bool showHidden,
+                                              QDir::SortFlags sortFlags);
     QList<Entry> currentLocalEntries() const;
     void updateLocalCounts();
     bool applyLocalDiff(const QList<Entry> &newEntries);
@@ -123,6 +148,10 @@ private:
     GitStatusService *m_gitService = nullptr;
     QProcess *m_remoteReloadProcess = nullptr;
     int m_remoteReloadGeneration = 0;
+    QFutureWatcher<LocalReloadResult> *m_localReloadWatcher = nullptr;
+    quint64 m_localReloadGeneration = 0;
+    bool m_localReloadTryDiff = false;
+    bool m_synchronousReload = false;
     QFileSystemWatcher m_watcher;
     QDir::SortFlags m_sortFlags = QDir::Name | QDir::DirsFirst | QDir::IgnoreCase;
     QString m_sortColumn = "name";

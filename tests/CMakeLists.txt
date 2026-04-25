@@ -91,7 +91,7 @@ target_include_directories(tst_filesystemmodel PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/third_party
 )
-target_link_libraries(tst_filesystemmodel PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg Qt6::SvgWidgets)
+target_link_libraries(tst_filesystemmodel PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg Qt6::SvgWidgets Qt6::Concurrent)
 add_test(NAME tst_filesystemmodel COMMAND tst_filesystemmodel)
 
 add_executable(tst_devicemodel tst_devicemodel.cpp
@@ -110,7 +110,7 @@ add_executable(tst_thumbnailprovider tst_thumbnailprovider.cpp
     ${CMAKE_SOURCE_DIR}/src/providers/thumbnailprovider.cpp
 )
 target_include_directories(tst_thumbnailprovider PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_thumbnailprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick)
+target_link_libraries(tst_thumbnailprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick Qt6::Svg)
 add_test(NAME tst_thumbnailprovider COMMAND tst_thumbnailprovider)
 
 add_executable(tst_pdfpreviewprovider tst_pdfpreviewprovider.cpp
@@ -140,7 +140,7 @@ target_include_directories(tst_searchproxymodel PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/third_party
 )
-target_link_libraries(tst_searchproxymodel PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg Qt6::SvgWidgets)
+target_link_libraries(tst_searchproxymodel PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg Qt6::SvgWidgets Qt6::Concurrent)
 add_test(NAME tst_searchproxymodel COMMAND tst_searchproxymodel)
 
 add_executable(tst_searchservice tst_searchservice.cpp

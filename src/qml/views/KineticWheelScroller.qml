@@ -13,17 +13,35 @@ MouseArea {
     property real kineticGain: 1.35
     property real smoothing: 0.72
     property real edgeEpsilon: 1.0
-    property real overshootLimit: 72
-    property real overshootResistance: 0.55
-    property real maxOvershootInput: 320
-    property real kineticBounceGain: 0.035
-    property real maxKineticBounceInput: 180
+    // Browser-style overscroll: larger visible rubber-band, softer
+    // resistance, and a springy settle on release.
+    property real overshootLimit: 140
+    property real overshootResistance: 0.38
+    property real maxOvershootInput: 520
+    // Bounce magnitude per unit of impact velocity. Lower = gentler
+    // bounce for the same fling speed. Rule of thumb: a 1500 px/s impact
+    // should produce a 30–45 px visible bounce.
+    property real kineticBounceGain: 0.022
+    property real maxKineticBounceInput: 140
+    // Minimum impact velocity that actually produces a visible bounce.
+    // Very slow landings skip bounce entirely — matches what browsers do
+    // when a fling decays to near-zero before reaching the edge.
+    property real minBounceVelocity: 260
 
     property real velocity: 0
     property double lastWheelTimestamp: 0
     property bool kineticCandidate: false
     property real overshootInput: 0
     property real pendingKineticBounceVelocity: 0
+    // Set by runKineticGlide when the glide will clamp against an edge.
+    // It is the glide velocity at the instant of impact, which drives the
+    // elastic bounce amount and duration — browser-style: slow impact
+    // makes a small gentle bounce; fast impact makes a big springy one.
+    property real pendingImpactVelocity: 0
+
+    // Browser-style exponential-feeling glide replaces the linear
+    // flickDeceleration decay. Tail uses OutQuart — soft landing.
+    property real kineticTau: 0.42
 
     readonly property real visualOvershoot: overshootInput < 0
         ? rubberDistance(-overshootInput)
@@ -169,7 +187,9 @@ MouseArea {
         lastWheelTimestamp = 0
         kineticCandidate = false
         pendingKineticBounceVelocity = 0
+        pendingImpactVelocity = 0
         finishTimer.stop()
+        kineticAnim.stop()
     }
 
     function bounceBack() {
@@ -178,7 +198,11 @@ MouseArea {
             return
         }
 
+        // Scale spring-settle duration with overshoot magnitude so tiny
+        // rubber-band pulls snap back instantly and deep pulls breathe.
+        var mag = Math.min(1.0, Math.abs(overshootInput) / maxOvershootInput)
         bounceBackAnimation.stop()
+        bounceBackAnimation.duration = Math.round(240 + mag * 340)
         bounceBackAnimation.from = overshootInput
         bounceBackAnimation.to = 0
         bounceBackAnimation.start()
@@ -188,6 +212,12 @@ MouseArea {
         if (!flickable || contentVelocity === 0)
             return
 
+        // Below the minimum, the landing is too gentle to bother bouncing
+        // — browsers do the same: a fling that decayed to a crawl just
+        // stops. Anything at or above scales linearly with velocity.
+        if (Math.abs(contentVelocity) < minBounceVelocity)
+            return
+
         var atTop = flickable.contentY <= minimumContentY() + edgeEpsilon
         var atBottom = flickable.contentY >= maximumContentY() - edgeEpsilon
         if ((contentVelocity < 0 && !atTop) || (contentVelocity > 0 && !atBottom))
@@ -195,25 +225,88 @@ MouseArea {
 
         var target = Math.max(-maxKineticBounceInput,
                               Math.min(maxKineticBounceInput, contentVelocity * kineticBounceGain))
-        if (Math.abs(target) <= edgeEpsilon)
+        if (Math.abs(target) < 3)
             return
+
+        // Durations scale with bounce magnitude so small bounces snap
+        // back quickly and big ones breathe.
+        var mag = Math.min(1.0, Math.abs(target) / maxKineticBounceInput)
+        var inDur  = Math.round(35 + mag * 110)
+        var outDur = Math.round(170 + mag * 330)
 
         kineticBounceSequence.stop()
         bounceBackAnimation.stop()
         overshootInput = 0
         kineticBounceIn.from = 0
         kineticBounceIn.to = target
+        kineticBounceIn.duration = inDur
         kineticBounceOut.from = target
         kineticBounceOut.to = 0
+        kineticBounceOut.duration = outDur
         kineticBounceSequence.start()
     }
 
     function stopAndSettle() {
+        kineticAnim.stop()
         if (flickable && flickable.flicking)
             flickable.cancelFlick()
 
         resetState()
         bounceBack()
+    }
+
+    function runKineticGlide(contentVelocity) {
+        // contentVelocity > 0 means the content should scroll downward
+        // (contentY increases), matching deltaFor()'s sign convention.
+        if (!flickable || contentVelocity === 0) {
+            pendingImpactVelocity = 0
+            return false
+        }
+
+        var current = flickable.contentY
+        var unclampedTarget = current + contentVelocity * kineticTau
+        var target = boundedContentY(unclampedTarget)
+        var distUnclamped = Math.abs(unclampedTarget - current)
+        var distActual = Math.abs(target - current)
+        if (distActual < 4) {
+            pendingImpactVelocity = 0
+            return false
+        }
+
+        // If the glide is clipped by an edge, compute the velocity at the
+        // moment of impact using the OutQuart velocity profile. That is
+        // the velocity the bounce should feed on — gentle impacts get
+        // gentle bounces, hard impacts get big springy ones.
+        var hitsEdge = distActual + 0.5 < distUnclamped
+        if (hitsEdge && distUnclamped > 0) {
+            var f = distActual / distUnclamped        // fraction covered
+            // OutQuart: y = 1 - (1-x)^4, so velocity fraction at distance
+            // fraction f equals (1-f)^(3/4) (times the constant peak).
+            var velFraction = Math.pow(Math.max(0, 1 - f), 0.75)
+            pendingImpactVelocity = contentVelocity * velFraction
+        } else {
+            pendingImpactVelocity = 0
+        }
+
+        kineticAnim.stop()
+        kineticAnim.from = current
+        kineticAnim.to = target
+        // Duration from distance and velocity; clamped so short flicks
+        // stay snappy and long flicks don't run forever.
+        kineticAnim.duration = Math.round(
+            Math.min(1400, Math.max(180,
+                distActual / Math.abs(contentVelocity) * 1800)))
+        kineticAnim.start()
+        return true
+    }
+
+    function atEdgeFor(contentVelocity) {
+        if (!flickable) return false
+        if (contentVelocity > 0)
+            return flickable.contentY >= maximumContentY() - edgeEpsilon
+        if (contentVelocity < 0)
+            return flickable.contentY <= minimumContentY() + edgeEpsilon
+        return false
     }
 
     function finishScroll() {
@@ -237,8 +330,18 @@ MouseArea {
         kineticCandidate = false
 
         if (useKinetic) {
-            pendingKineticBounceVelocity = contentVelocity
-            flickable.flick(0, -contentVelocity)
+            if (atEdgeFor(contentVelocity)) {
+                // Already at the edge — fling bounces immediately.
+                pendingKineticBounceVelocity = 0
+                triggerKineticBounce(contentVelocity)
+            } else if (runKineticGlide(contentVelocity)) {
+                // Glide started — bounce fires on kineticAnim.onFinished
+                // if it lands at an edge.
+                pendingKineticBounceVelocity = contentVelocity
+            } else {
+                pendingKineticBounceVelocity = 0
+                flickable.returnToBounds()
+            }
         } else {
             pendingKineticBounceVelocity = 0
             flickable.returnToBounds()
@@ -267,8 +370,16 @@ MouseArea {
             return
         }
 
+        // Cancel any in-flight glide — user input always wins, position
+        // stays where it is, then new delta is applied from there.
+        if (kineticAnim.running) {
+            pendingKineticBounceVelocity = 0
+            pendingImpactVelocity = 0
+            kineticAnim.stop()
+        }
         if (flickable.flicking) {
             pendingKineticBounceVelocity = 0
+            pendingImpactVelocity = 0
             flickable.cancelFlick()
         }
 
@@ -311,11 +422,35 @@ MouseArea {
     }
 
     NumberAnimation {
+        id: kineticAnim
+        target: root.flickable
+        property: "contentY"
+        easing.type: Easing.OutQuart
+        onFinished: {
+            // Prefer the impact-time velocity (computed in runKineticGlide)
+            // so the bounce matches the residual energy at the moment the
+            // glide hit the edge — slow landings → soft bounce, fast
+            // landings → big springy bounce.
+            var bv = Math.abs(root.pendingImpactVelocity) > root.edgeEpsilon
+                    ? root.pendingImpactVelocity
+                    : root.pendingKineticBounceVelocity
+            root.pendingImpactVelocity = 0
+            root.pendingKineticBounceVelocity = 0
+            if (Math.abs(bv) > root.edgeEpsilon)
+                root.triggerKineticBounce(bv)
+        }
+    }
+
+    // Browser-style spring-back: critically damped feel with a tiny
+    // single-ring overshoot — amplitude scales with the input range,
+    // so small pulls produce small rings, big pulls produce big rings.
+    NumberAnimation {
         id: bounceBackAnimation
         target: root
         property: "overshootInput"
-        duration: 260
-        easing.type: Easing.OutCubic
+        duration: 360
+        easing.type: Easing.OutBack
+        easing.overshoot: 0.7
     }
 
     SequentialAnimation {
@@ -326,15 +461,16 @@ MouseArea {
             target: root
             property: "overshootInput"
             duration: 90
-            easing.type: Easing.OutCubic
+            easing.type: Easing.OutQuart
         }
 
         NumberAnimation {
             id: kineticBounceOut
             target: root
             property: "overshootInput"
-            duration: 230
-            easing.type: Easing.OutCubic
+            duration: 360
+            easing.type: Easing.OutBack
+            easing.overshoot: 0.9
         }
     }
 

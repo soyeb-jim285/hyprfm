@@ -24,6 +24,7 @@ private slots:
     void testInitialState()
     {
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QVERIFY(model.rootPath().isEmpty());
         QCOMPARE(model.rowCount(), 0);
         QCOMPARE(model.fileCount(), 0);
@@ -35,6 +36,7 @@ private slots:
     void testHomePath()
     {
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QCOMPARE(model.homePath(), QDir::homePath());
     }
 
@@ -47,6 +49,7 @@ private slots:
         dir.createDir("subdir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QSignalSpy rootSpy(&model, &FileSystemModel::rootPathChanged);
         QSignalSpy countSpy(&model, &FileSystemModel::countsChanged);
 
@@ -67,6 +70,7 @@ private slots:
         dir.createFile("file.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QSignalSpy rootSpy(&model, &FileSystemModel::rootPathChanged);
@@ -78,6 +82,7 @@ private slots:
     void testRemoteRootPathPreservesAuthorityCase()
     {
         FileSystemModel model;
+        model.setSynchronousReload(true);
         const QString uri = QStringLiteral("gphoto2://Apple_Inc._iPhone_ABC123/");
 
         model.setRootPath(uri);
@@ -92,6 +97,7 @@ private slots:
         dir.createFile("file.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
         QVERIFY(model.rowCount() > 0);
 
@@ -105,6 +111,7 @@ private slots:
         TestDir dir;
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QCOMPARE(model.rowCount(), 0);
@@ -133,6 +140,7 @@ private slots:
             QSKIP("gio trash failed in this environment");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath("trash:///");
 
         QString foundUri;
@@ -164,6 +172,7 @@ private slots:
         dir.createFile(".hidden");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QCOMPARE(model.rowCount(), 1);
@@ -181,6 +190,7 @@ private slots:
         dir.createFile(".hidden");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
         model.setShowHidden(true);
         QCOMPARE(model.rowCount(), 2);
@@ -192,6 +202,7 @@ private slots:
     void testSetShowHiddenSameValueNoSignal()
     {
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QCOMPARE(model.showHidden(), false);
 
         QSignalSpy spy(&model, &FileSystemModel::showHiddenChanged);
@@ -212,6 +223,7 @@ private slots:
         dir.createFile("hello.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QModelIndex idx = model.index(0);
@@ -224,6 +236,7 @@ private slots:
         QString fullPath = dir.createFile("hello.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QModelIndex idx = model.index(0);
@@ -236,6 +249,7 @@ private slots:
         dir.createFile("data.txt", QByteArray(500, 'x'));
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QModelIndex idx = model.index(0);
@@ -248,6 +262,7 @@ private slots:
         dir.createDir("subdir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         // Find the directory row
@@ -279,6 +294,7 @@ private slots:
         dir.createFile("file.bin", QByteArray(size, 'a'));
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QCOMPARE(model.rowCount(), 1);
@@ -292,6 +308,7 @@ private slots:
         dir.createDir("emptydir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         int dirRow = -1;
@@ -309,6 +326,7 @@ private slots:
         dir.createDir("mydir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         int dirRow = -1;
@@ -330,6 +348,7 @@ private slots:
                        QByteArray::fromHex("89504E470D0A1A0A"));
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QModelIndex idx = model.index(0);
@@ -349,6 +368,7 @@ private slots:
         dir.createFile("mod.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QModelIndex idx = model.index(0);
@@ -363,6 +383,7 @@ private slots:
         dir.createFile("mod.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QModelIndex idx = model.index(0);
@@ -376,6 +397,7 @@ private slots:
         dir.createFile("perm.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QModelIndex idx = model.index(0);
@@ -392,6 +414,7 @@ private slots:
         dir.createDir("subdir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         bool foundFile = false, foundDir = false;
@@ -417,6 +440,7 @@ private slots:
         dir.createSymlink(target, "link.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         bool foundSymlink = false;
@@ -464,6 +488,7 @@ private slots:
         dir.createFile(filename, QByteArray("placeholder"));
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QCOMPARE(model.rowCount(), 1);
@@ -480,6 +505,7 @@ private slots:
         dir.createDir("mydir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         int dirRow = -1;
@@ -497,6 +523,7 @@ private slots:
         dir.createDir("subdir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         int dirRow = -1;
@@ -513,6 +540,7 @@ private slots:
     void testInvalidIndexReturnsEmpty()
     {
         FileSystemModel model;
+        model.setSynchronousReload(true);
 
         QModelIndex invalid;
         QVERIFY(!model.data(invalid, FileSystemModel::FileNameRole).isValid());
@@ -533,6 +561,7 @@ private slots:
         dir.createDir("mydir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QCOMPARE(model.rowCount(), 2);
@@ -560,6 +589,7 @@ private slots:
     void testAccessorMethodsOutOfBounds()
     {
         FileSystemModel model;
+        model.setSynchronousReload(true);
 
         QVERIFY(model.filePath(-1).isEmpty());
         QVERIFY(model.filePath(0).isEmpty());
@@ -578,6 +608,7 @@ private slots:
         dir.createFile("bravo.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
         model.sortByColumn("name", true);
 
@@ -595,6 +626,7 @@ private slots:
         dir.createFile("bravo.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
         model.sortByColumn("name", false);
 
@@ -612,6 +644,7 @@ private slots:
         dir.createFile("medium.txt", QByteArray(100, 'c'));
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
         model.sortByColumn("size", true);
 
@@ -629,6 +662,7 @@ private slots:
         dir.createDir("asubdir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
         model.sortByColumn("name", true);
 
@@ -645,6 +679,7 @@ private slots:
         dir.createFile("alpha.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
         model.sortByColumn("unknown_column", true);
 
@@ -660,6 +695,7 @@ private slots:
         dir.createFile("existing.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
         QCOMPARE(model.rowCount(), 1);
 
@@ -676,6 +712,7 @@ private slots:
         QString path = dir.createFile("test.txt", QByteArray(200, 'x'));
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QVariantMap props = model.fileProperties(path);
 
         QCOMPARE(props["name"].toString(), QString("test.txt"));
@@ -696,6 +733,7 @@ private slots:
         dir.createDir("mydir/subsubdir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QVariantMap props = model.fileProperties(subdir);
 
         QCOMPARE(props["isDir"].toBool(), true);
@@ -711,6 +749,7 @@ private slots:
         QString linkPath = dir.createSymlink(target, "link.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QVariantMap props = model.fileProperties(linkPath);
 
         QCOMPARE(props["isSymlink"].toBool(), true);
@@ -723,6 +762,7 @@ private slots:
         QString path = dir.createFile("owned.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QVariantMap props = model.fileProperties(path);
 
         QVERIFY(props.contains("owner"));
@@ -735,6 +775,7 @@ private slots:
         QString path = dir.createFile("timed.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QVariantMap props = model.fileProperties(path);
 
         QVERIFY(props.contains("created"));
@@ -749,6 +790,7 @@ private slots:
         QString path = dir.createFile("disk.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QVariantMap props = model.fileProperties(path);
 
         // Disk info should be present (running on a real FS)
@@ -764,6 +806,7 @@ private slots:
         QString path = dir.createFile("access.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QVariantMap props = model.fileProperties(path);
 
         QVERIFY(props.contains("ownerAccess"));
@@ -781,6 +824,7 @@ private slots:
         QString path = dir.createFile("perms.txt", "data");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         bool ok = model.setFilePermissions(path, 1, 0, 0); // owner read-only
         QVERIFY(ok);
 
@@ -801,6 +845,7 @@ private slots:
         model_setPermissionsHelper(path, 1, 0, 0);
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         bool ok = model.setFilePermissions(path, 2, 1, 1); // owner rw, group r, other r
         QVERIFY(ok);
 
@@ -813,6 +858,7 @@ private slots:
     void testRoleNames()
     {
         FileSystemModel model;
+        model.setSynchronousReload(true);
         auto roles = model.roleNames();
 
         QCOMPARE(roles.count(), 15);
@@ -837,6 +883,7 @@ private slots:
     void testModelTesterEmpty()
     {
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QAbstractItemModelTester tester(&model, QAbstractItemModelTester::FailureReportingMode::QtTest);
         Q_UNUSED(tester);
         // Just constructing with no path should pass consistency checks
@@ -850,6 +897,7 @@ private slots:
         dir.createDir("subdir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QAbstractItemModelTester tester(&model, QAbstractItemModelTester::FailureReportingMode::QtTest);
 
         model.setRootPath(dir.path());
@@ -864,6 +912,7 @@ private slots:
         dir.createDir("mydir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QAbstractItemModelTester tester(&model, QAbstractItemModelTester::FailureReportingMode::QtTest);
 
         model.setRootPath(dir.path());
@@ -878,6 +927,7 @@ private slots:
         dir.createFile(".hidden");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QAbstractItemModelTester tester(&model, QAbstractItemModelTester::FailureReportingMode::QtTest);
 
         model.setRootPath(dir.path());
@@ -892,6 +942,7 @@ private slots:
         dir.createFile("initial.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
         QCOMPARE(model.rowCount(), 1);
 
@@ -907,6 +958,7 @@ private slots:
         dir.createFile("file2.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
         QCOMPARE(model.rowCount(), 2);
 
@@ -924,6 +976,7 @@ private slots:
         dir.createDir("subdir");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         QSignalSpy spy(&model, &FileSystemModel::countsChanged);
 
         model.setRootPath(dir.path());
@@ -940,6 +993,7 @@ private slots:
         dir.createFile(".hidden");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         model.setRootPath(dir.path());
 
         QSignalSpy spy(&model, &FileSystemModel::countsChanged);
@@ -958,6 +1012,7 @@ private slots:
         dir.createFile("Alpha.txt");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         const QVariantList suggestions = model.pathSuggestions(dir.path() + "/Al", 8);
 
         QCOMPARE(suggestions.size(), 2);
@@ -973,6 +1028,7 @@ private slots:
         dir.createDir("config");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         const QVariantList suggestions = model.pathSuggestions(dir.path() + "/.", 8);
 
         QCOMPARE(suggestions.size(), 1);
@@ -987,6 +1043,7 @@ private slots:
         dir.createDir("Alps");
 
         FileSystemModel model;
+        model.setSynchronousReload(true);
         const QVariantList suggestions = model.pathSuggestions(dir.path() + "/Al", 2);
 
         QCOMPARE(suggestions.size(), 2);

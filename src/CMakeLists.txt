@@ -179,6 +179,7 @@ target_link_libraries(hyprfm PRIVATE
     Qt6::Widgets
     Qt6::Svg
     Qt6::Network
+    Qt6::Concurrent
     PkgConfig::GIO
 )
 

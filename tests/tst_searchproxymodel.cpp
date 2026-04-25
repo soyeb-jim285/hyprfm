@@ -24,6 +24,7 @@ private slots:
         dir.createFile("hello_world.h");
 
         FileSystemModel source;
+        source.setSynchronousReload(true);
         source.setRootPath(dir.path());
 
         SearchProxyModel proxy;
@@ -42,6 +43,7 @@ private slots:
         dir.createFile("other.cpp");
 
         FileSystemModel source;
+        source.setSynchronousReload(true);
         source.setRootPath(dir.path());
 
         SearchProxyModel proxy;
@@ -80,6 +82,7 @@ private slots:
         dir.createFile("readme.md");
 
         FileSystemModel source;
+        source.setSynchronousReload(true);
         source.setRootPath(dir.path());
 
         SearchProxyModel proxy;
@@ -95,6 +98,7 @@ private slots:
         dir.createDir("subdir");
 
         FileSystemModel source;
+        source.setSynchronousReload(true);
         source.setRootPath(dir.path());
 
         SearchProxyModel proxy;
@@ -110,6 +114,7 @@ private slots:
         dir.createFile("medium.txt", QByteArray(500000, 'x'));
 
         FileSystemModel source;
+        source.setSynchronousReload(true);
         source.setRootPath(dir.path());
 
         SearchProxyModel proxy;
@@ -128,6 +133,7 @@ private slots:
         dir.createFile("new.txt", "new");
 
         FileSystemModel source;
+        source.setSynchronousReload(true);
         source.setRootPath(dir.path());
 
         SearchProxyModel proxy;
@@ -144,6 +150,7 @@ private slots:
         dir.createFile("readme.md", "# Hello");
 
         FileSystemModel source;
+        source.setSynchronousReload(true);
         source.setRootPath(dir.path());
 
         SearchProxyModel proxy;
@@ -161,6 +168,7 @@ private slots:
         dir.createDir("sub");
 
         FileSystemModel source;
+        source.setSynchronousReload(true);
         source.setRootPath(dir.path());
 
         SearchProxyModel proxy;
@@ -176,6 +184,7 @@ private slots:
         dir.createFile("b.cpp");
 
         FileSystemModel source;
+        source.setSynchronousReload(true);
         source.setRootPath(dir.path());
 
         SearchProxyModel proxy;
@@ -198,6 +207,7 @@ private slots:
         dir.createFile("beta.txt");
 
         FileSystemModel source;
+        source.setSynchronousReload(true);
         source.setRootPath(dir.path());
 
         SearchProxyModel proxy;
@@ -214,6 +224,7 @@ private slots:
         dir.createFile("myfile.txt");
 
         FileSystemModel source;
+        source.setSynchronousReload(true);
         source.setRootPath(dir.path());
 
         SearchProxyModel proxy;
