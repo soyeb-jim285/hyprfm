@@ -7,7 +7,7 @@ MouseArea {
 
     property real wheelStep: 56
     property real mouseWheelMultiplier: 1.0
-    property real touchpadMultiplier: 1.0
+    property real touchpadMultiplier: 1.35
     property real minVelocity: 180
     property real maxVelocity: 5200
     property real kineticGain: 1.35
@@ -18,11 +18,10 @@ MouseArea {
     property real overshootLimit: 140
     property real overshootResistance: 0.38
     property real maxOvershootInput: 520
-    // Bounce magnitude per unit of impact velocity. Lower = gentler
-    // bounce for the same fling speed. Rule of thumb: a 1500 px/s impact
-    // should produce a 30–45 px visible bounce.
-    property real kineticBounceGain: 0.022
-    property real maxKineticBounceInput: 140
+    // Bounce magnitude per unit of impact velocity. Keep this deliberately
+    // small: slow edge hits should settle, not fire a visibly faster bounce.
+    property real kineticBounceGain: 0.018
+    property real maxKineticBounceInput: 90
     // Minimum impact velocity that actually produces a visible bounce.
     // Very slow landings skip bounce entirely — matches what browsers do
     // when a fling decays to near-zero before reaching the edge.
@@ -32,6 +31,7 @@ MouseArea {
     property double lastWheelTimestamp: 0
     property bool kineticCandidate: false
     property real overshootInput: 0
+    property real overshootReleaseVelocity: 0
     property real pendingKineticBounceVelocity: 0
     // Set by runKineticGlide when the glide will clamp against an edge.
     // It is the glide velocity at the instant of impact, which drives the
@@ -121,9 +121,7 @@ MouseArea {
 
     function shouldUseKinetic(wheel, gap) {
         return wheel.pixelDelta.y !== 0
-            || wheel.phase !== Qt.NoScrollPhase
-            || Math.abs(wheel.angleDelta.y) < 120
-            || gap < 50
+            || (wheel.phase !== Qt.NoScrollPhase && wheel.angleDelta.y === 0)
     }
 
     function scrollBy(delta) {
@@ -188,23 +186,32 @@ MouseArea {
         kineticCandidate = false
         pendingKineticBounceVelocity = 0
         pendingImpactVelocity = 0
+        overshootReleaseVelocity = 0
         finishTimer.stop()
         kineticAnim.stop()
+        kineticBounceSequence.stop()
+        bounceBackAnimation.stop()
     }
 
     function bounceBack() {
         if (!hasOvershoot()) {
             setOvershootInput(0)
+            overshootReleaseVelocity = 0
             return
         }
 
-        // Scale spring-settle duration with overshoot magnitude so tiny
-        // rubber-band pulls snap back instantly and deep pulls breathe.
         var mag = Math.min(1.0, Math.abs(overshootInput) / maxOvershootInput)
+        var speed = Math.abs(overshootReleaseVelocity)
+        var duration = speed >= minBounceVelocity
+            ? Math.round(Math.max(280, Math.min(620, Math.abs(overshootInput) / speed * 1600)))
+            : Math.round(380 + mag * 260)
+
+        kineticBounceSequence.stop()
         bounceBackAnimation.stop()
-        bounceBackAnimation.duration = Math.round(240 + mag * 340)
+        bounceBackAnimation.duration = duration
         bounceBackAnimation.from = overshootInput
         bounceBackAnimation.to = 0
+        overshootReleaseVelocity = 0
         bounceBackAnimation.start()
     }
 
@@ -212,30 +219,28 @@ MouseArea {
         if (!flickable || contentVelocity === 0)
             return
 
-        // Below the minimum, the landing is too gentle to bother bouncing
-        // — browsers do the same: a fling that decayed to a crawl just
-        // stops. Anything at or above scales linearly with velocity.
-        if (Math.abs(contentVelocity) < minBounceVelocity)
-            return
-
         var atTop = flickable.contentY <= minimumContentY() + edgeEpsilon
         var atBottom = flickable.contentY >= maximumContentY() - edgeEpsilon
         if ((contentVelocity < 0 && !atTop) || (contentVelocity > 0 && !atBottom))
             return
 
-        var target = Math.max(-maxKineticBounceInput,
-                              Math.min(maxKineticBounceInput, contentVelocity * kineticBounceGain))
-        if (Math.abs(target) < 3)
-            return
+        var speed = Math.abs(contentVelocity)
+        var effectiveVelocity = contentVelocity
+        if (speed < minBounceVelocity)
+            effectiveVelocity = (contentVelocity < 0 ? -1 : 1) * Math.max(90, speed * 0.6)
 
-        // Durations scale with bounce magnitude so small bounces snap
-        // back quickly and big ones breathe.
+        var target = Math.max(-maxKineticBounceInput,
+                              Math.min(maxKineticBounceInput, effectiveVelocity * kineticBounceGain))
+        if (Math.abs(target) < 2.5)
+            target = contentVelocity < 0 ? -2.5 : 2.5
+
         var mag = Math.min(1.0, Math.abs(target) / maxKineticBounceInput)
-        var inDur  = Math.round(35 + mag * 110)
-        var outDur = Math.round(170 + mag * 330)
+        var inDur  = Math.round(150 + mag * 120)
+        var outDur = Math.round(320 + mag * 300)
 
         kineticBounceSequence.stop()
         bounceBackAnimation.stop()
+        overshootReleaseVelocity = 0
         overshootInput = 0
         kineticBounceIn.from = 0
         kineticBounceIn.to = target
@@ -316,25 +321,30 @@ MouseArea {
         finishTimer.stop()
 
         if (hasOvershoot()) {
-            resetState()
+            velocity = 0
+            lastWheelTimestamp = 0
+            kineticCandidate = false
+            pendingKineticBounceVelocity = 0
+            pendingImpactVelocity = 0
+            kineticAnim.stop()
             bounceBack()
             return
         }
 
-        var contentVelocity = Math.max(-maxVelocity, Math.min(maxVelocity, velocity * kineticGain))
-        contentVelocity = clampedContentVelocity(contentVelocity)
-        var useKinetic = kineticCandidate && Math.abs(contentVelocity) >= minVelocity
+        var rawContentVelocity = Math.max(-maxVelocity, Math.min(maxVelocity, velocity * kineticGain))
+        var contentVelocity = clampedContentVelocity(rawContentVelocity)
+        var useKinetic = kineticCandidate && Math.abs(rawContentVelocity) >= minVelocity
 
         velocity = 0
         lastWheelTimestamp = 0
         kineticCandidate = false
 
         if (useKinetic) {
-            if (atEdgeFor(contentVelocity)) {
+            if (atEdgeFor(rawContentVelocity)) {
                 // Already at the edge — fling bounces immediately.
                 pendingKineticBounceVelocity = 0
-                triggerKineticBounce(contentVelocity)
-            } else if (runKineticGlide(contentVelocity)) {
+                triggerKineticBounce(rawContentVelocity)
+            } else if (Math.abs(contentVelocity) >= minVelocity && runKineticGlide(contentVelocity)) {
                 // Glide started — bounce fires on kineticAnim.onFinished
                 // if it lands at an edge.
                 pendingKineticBounceVelocity = contentVelocity
@@ -377,6 +387,8 @@ MouseArea {
             pendingImpactVelocity = 0
             kineticAnim.stop()
         }
+        kineticBounceSequence.stop()
+        bounceBackAnimation.stop()
         if (flickable.flicking) {
             pendingKineticBounceVelocity = 0
             pendingImpactVelocity = 0
@@ -387,12 +399,16 @@ MouseArea {
         var gap = lastWheelTimestamp > 0 ? now - lastWheelTimestamp : 16
         var dt = Math.max(8, Math.min(24, gap))
         var instantVelocity = (delta / dt) * 1000
+        var isTouchpad = wheel.pixelDelta.y !== 0
+            || (wheel.phase !== Qt.NoScrollPhase && wheel.angleDelta.y === 0)
 
-        kineticCandidate = kineticCandidate || shouldUseKinetic(wheel, gap)
+        kineticCandidate = isTouchpad && (kineticCandidate || shouldUseKinetic(wheel, gap))
         scrollStarted()
         scrollBy(delta)
 
         if (hasOvershoot()) {
+            overshootReleaseVelocity = Math.max(-maxVelocity,
+                                                Math.min(maxVelocity, isTouchpad ? instantVelocity : 0))
             velocity = 0
             kineticCandidate = false
             lastWheelTimestamp = now
@@ -401,12 +417,17 @@ MouseArea {
             return
         }
 
-        velocity = lastWheelTimestamp <= 0
-            ? instantVelocity
-            : velocity * (1.0 - smoothing) + instantVelocity * smoothing
+        velocity = isTouchpad
+            ? (lastWheelTimestamp <= 0
+                ? instantVelocity
+                : velocity * (1.0 - smoothing) + instantVelocity * smoothing)
+            : 0
         lastWheelTimestamp = now
 
-        finishTimer.restart()
+        if (isTouchpad || hasOvershoot())
+            finishTimer.restart()
+        else
+            finishTimer.stop()
 
         if (wheel.phase === Qt.ScrollEnd)
             finishScroll()
@@ -441,16 +462,11 @@ MouseArea {
         }
     }
 
-    // Browser-style spring-back: critically damped feel with a tiny
-    // single-ring overshoot — amplitude scales with the input range,
-    // so small pulls produce small rings, big pulls produce big rings.
     NumberAnimation {
         id: bounceBackAnimation
         target: root
         property: "overshootInput"
-        duration: 360
-        easing.type: Easing.OutBack
-        easing.overshoot: 0.7
+        easing.type: Easing.OutCubic
     }
 
     SequentialAnimation {
@@ -460,17 +476,14 @@ MouseArea {
             id: kineticBounceIn
             target: root
             property: "overshootInput"
-            duration: 90
-            easing.type: Easing.OutQuart
+            easing.type: Easing.OutCubic
         }
 
         NumberAnimation {
             id: kineticBounceOut
             target: root
             property: "overshootInput"
-            duration: 360
-            easing.type: Easing.OutBack
-            easing.overshoot: 0.9
+            easing.type: Easing.OutCubic
         }
     }
 

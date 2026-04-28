@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import HyprFM
 import Quill as Q
@@ -210,6 +211,9 @@ Q.Dialog {
             contentWidth: width
             contentHeight: shortcutsColumn.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
+            boundsMovement: Flickable.StopAtBounds
+
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
             ColumnLayout {
                 id: shortcutsColumn
@@ -378,6 +382,18 @@ Q.Dialog {
                         }
                     }
                 }
+            }
+
+            KineticWheelScroller {
+                anchors.fill: parent
+                z: 10
+                flickable: shortcutsFlick
+                wheelStep: 42
+                mouseWheelMultiplier: 0.75
+                touchpadMultiplier: 1.35
+                minVelocity: 135
+                maxVelocity: 3900
+                kineticGain: 1.01
             }
         }
     }

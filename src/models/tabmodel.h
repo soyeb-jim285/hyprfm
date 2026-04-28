@@ -9,7 +9,7 @@ class TabModel : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString currentPath READ currentPath NOTIFY currentPathChanged)
-    Q_PROPERTY(QString title READ title NOTIFY currentPathChanged)
+    Q_PROPERTY(QString title READ title NOTIFY titleChanged)
     Q_PROPERTY(QString viewMode READ viewMode WRITE setViewMode NOTIFY viewModeChanged)
     Q_PROPERTY(bool canGoBack READ canGoBack NOTIFY historyChanged)
     Q_PROPERTY(bool canGoForward READ canGoForward NOTIFY historyChanged)
@@ -53,6 +53,7 @@ public:
 
 signals:
     void currentPathChanged();
+    void titleChanged();
     void viewModeChanged();
     void historyChanged();
     void splitViewEnabledChanged();

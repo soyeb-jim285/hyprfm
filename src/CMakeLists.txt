@@ -119,6 +119,7 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconClock.qml
         qml/icons/IconTrash.qml
         qml/icons/IconImage.qml
+        qml/icons/IconKeyboard.qml
         qml/icons/IconDownload.qml
         qml/icons/IconFolder.qml
         qml/icons/IconFileText.qml

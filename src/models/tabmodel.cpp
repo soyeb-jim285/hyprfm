@@ -83,7 +83,11 @@ QString TabModel::currentPath() const { return m_currentPath; }
 
 QString TabModel::title() const
 {
-    return displayNameForPath(m_currentPath);
+    const QString primaryTitle = displayNameForPath(m_currentPath);
+    if (!m_splitViewEnabled)
+        return primaryTitle;
+
+    return primaryTitle + QStringLiteral(" / ") + displayNameForPath(m_secondaryCurrentPath);
 }
 
 QString TabModel::viewMode() const { return m_viewMode; }
@@ -117,6 +121,7 @@ void TabModel::setSplitViewEnabled(bool enabled)
 
     m_splitViewEnabled = enabled;
     emit splitViewEnabledChanged();
+    emit titleChanged();
 }
 
 void TabModel::setSecondaryCurrentPath(const QString &path)
@@ -127,6 +132,7 @@ void TabModel::setSecondaryCurrentPath(const QString &path)
     m_secondaryCurrentPath = path;
     m_secondaryInitialized = true;
     emit secondaryCurrentPathChanged();
+    emit titleChanged();
 }
 
 void TabModel::setSortBy(const QString &column)
@@ -153,6 +159,7 @@ void TabModel::navigateTo(const QString &path)
     m_forwardStack.clear();
     m_currentPath = path;
     emit currentPathChanged();
+    emit titleChanged();
     emit historyChanged();
 }
 
@@ -166,6 +173,7 @@ void TabModel::navigateSecondaryTo(const QString &path)
     m_secondaryCurrentPath = path;
     m_secondaryInitialized = true;
     emit secondaryCurrentPathChanged();
+    emit titleChanged();
     emit secondaryHistoryChanged();
 }
 
@@ -176,6 +184,7 @@ void TabModel::goBack()
     m_forwardStack.append(m_currentPath);
     m_currentPath = m_backStack.takeLast();
     emit currentPathChanged();
+    emit titleChanged();
     emit historyChanged();
 }
 
@@ -187,6 +196,7 @@ void TabModel::secondaryGoBack()
     m_secondaryForwardStack.append(m_secondaryCurrentPath);
     m_secondaryCurrentPath = m_secondaryBackStack.takeLast();
     emit secondaryCurrentPathChanged();
+    emit titleChanged();
     emit secondaryHistoryChanged();
 }
 
@@ -197,6 +207,7 @@ void TabModel::goForward()
     m_backStack.append(m_currentPath);
     m_currentPath = m_forwardStack.takeLast();
     emit currentPathChanged();
+    emit titleChanged();
     emit historyChanged();
 }
 
@@ -208,6 +219,7 @@ void TabModel::secondaryGoForward()
     m_secondaryBackStack.append(m_secondaryCurrentPath);
     m_secondaryCurrentPath = m_secondaryForwardStack.takeLast();
     emit secondaryCurrentPathChanged();
+    emit titleChanged();
     emit secondaryHistoryChanged();
 }
 
@@ -238,8 +250,10 @@ void TabModel::resetSecondaryTo(const QString &path)
     m_secondaryCurrentPath = path;
     m_secondaryInitialized = true;
 
-    if (pathChanged)
+    if (pathChanged) {
         emit secondaryCurrentPathChanged();
+        emit titleChanged();
+    }
     if (historyChanged)
         emit secondaryHistoryChanged();
 }

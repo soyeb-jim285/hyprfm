@@ -229,6 +229,81 @@ ApplicationWindow {
             : tabModel.activeTab.currentPath
     }
 
+    function pathDisplayName(path) {
+        if (!path)
+            return ""
+
+        if (fileOps.isTrashPath(path)) {
+            var trashPath = path.length > 9 && path.endsWith("/") ? path.slice(0, -1) : path
+            if (trashPath === unifiedTrashPath || trashPath === unifiedTrashPath.slice(0, -1))
+                return "Trash"
+            var trashIndex = trashPath.lastIndexOf("/")
+            return decodeURIComponent(trashIndex >= 0 ? trashPath.substring(trashIndex + 1) : trashPath)
+        }
+
+        if (fileOps.isRemotePath(path)) {
+            var remotePath = path.split("?")[0]
+            if (remotePath.length > 1 && remotePath.endsWith("/"))
+                remotePath = remotePath.slice(0, -1)
+            var remoteIndex = remotePath.lastIndexOf("/")
+            var remoteName = remoteIndex >= 0 ? remotePath.substring(remoteIndex + 1) : ""
+            if (remoteName !== "")
+                return decodeURIComponent(remoteName)
+            var hostMatch = path.match(/^[^:]+:\/\/([^/]+)/)
+            return hostMatch && hostMatch.length > 1 ? hostMatch[1] : path
+        }
+
+        if (path === "/")
+            return "/"
+
+        var localPath = path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path
+        var slashIndex = localPath.lastIndexOf("/")
+        return slashIndex >= 0 ? (localPath.substring(slashIndex + 1) || "/") : localPath
+    }
+
+    function paneDisplayName(pane) {
+        if (root.paneIsRecents(pane))
+            return "Recents"
+
+        return root.pathDisplayName(root.panePath(pane))
+    }
+
+    component SplitPaneHeader: Item {
+        id: splitPaneHeader
+
+        property string title: ""
+        property bool activePaneHeader: false
+
+        Layout.fillWidth: true
+        Layout.preferredHeight: 34
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.radiusMedium
+            color: Qt.rgba(Theme.mantle.r, Theme.mantle.g, Theme.mantle.b, 0.7)
+        }
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: Theme.radiusMedium
+            color: Qt.rgba(Theme.mantle.r, Theme.mantle.g, Theme.mantle.b, 0.7)
+        }
+
+        Text {
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            text: splitPaneHeader.title
+            color: splitPaneHeader.activePaneHeader ? Theme.accent : Theme.text
+            font.pointSize: Theme.fontNormal
+            font.weight: Font.DemiBold
+            elide: Text.ElideRight
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
+
     function parentDirForPath(path) {
         var slashIndex = path.lastIndexOf("/")
         return slashIndex > 0 ? path.substring(0, slashIndex) : "/"
@@ -345,6 +420,16 @@ ApplicationWindow {
         return model.data(model.index(row, 0), 258 /* FilePathRole */) || ""
     }
 
+    function isDirectoryFromModel(model, row) {
+        if (!model || row < 0)
+            return false
+
+        if (model.isDir)
+            return model.isDir(row)
+
+        return model.data(model.index(row, 0), 265 /* IsDirRole */) || false
+    }
+
     function fileViewForPane(pane) {
         if (pane === "secondary")
             return secondaryPaneLoader.item ? secondaryPaneLoader.item.fileView : null
@@ -430,6 +515,13 @@ ApplicationWindow {
         activePane = nextPane
         root.updateSelectionStatus()
         root.scheduleActivePaneFocus()
+    }
+
+    function focusNextPane() {
+        if (!splitViewEnabled())
+            return
+
+        root.setActivePane(activePane === "primary" ? "secondary" : "primary")
     }
 
     function navigatePaneTo(pane, path) {
@@ -811,6 +903,72 @@ ApplicationWindow {
             if (fp !== "") paths.push(fp)
         }
         return paths
+    }
+
+    function getSelectedItems(pane) {
+        var items = []
+        var targetPane = pane || activePane
+        var view = fileViewForPane(targetPane)
+        if (!view) return items
+
+        var subView = subViewFor(view)
+        var model = paneModel(targetPane)
+
+        if (!subView || !subView.selectedIndices || !model) return items
+
+        var indices = subView.selectedIndices
+        for (var i = 0; i < indices.length; i++) {
+            var row = indices[i]
+            var fp = filePathFromModel(model, row)
+            if (fp !== "")
+                items.push({ path: fp, isDir: isDirectoryFromModel(model, row) })
+        }
+        return items
+    }
+
+    function currentOrSelectedDirectoryPath() {
+        var items = root.getSelectedItems(root.activePane)
+        if (items.length === 1 && items[0].isDir)
+            return items[0].path
+
+        if (!root.paneIsRecents(root.activePane) && !root.paneSearchMode(root.activePane))
+            return root.panePath(root.activePane)
+
+        return ""
+    }
+
+    function selectedOrCurrentPropertiesPath() {
+        var items = root.getSelectedItems(root.activePane)
+        if (items.length === 1)
+            return items[0].path
+
+        if (!root.paneIsRecents(root.activePane) && !root.paneSearchMode(root.activePane))
+            return root.panePath(root.activePane)
+
+        return ""
+    }
+
+    function selectedOrCurrentTerminalPath() {
+        var items = root.getSelectedItems(root.activePane)
+        if (items.length === 1)
+            return items[0].isDir ? items[0].path : fileOps.parentPath(items[0].path)
+
+        if (!root.paneIsRecents(root.activePane) && !root.paneSearchMode(root.activePane))
+            return root.panePath(root.activePane)
+
+        return ""
+    }
+
+    function showContextMenuForActiveSelection() {
+        var positionSource = root.activeFileView() || contentArea
+        var mapped = positionSource.mapToItem(null, positionSource.width / 2, positionSource.height / 2)
+        var items = root.getSelectedItems(root.activePane)
+        if (items.length > 0) {
+            root.showContextMenuForPane(root.activePane, items[0].path, items[0].isDir, Qt.point(mapped.x, mapped.y))
+            return
+        }
+
+        root.showContextMenuForPane(root.activePane, "", true, Qt.point(mapped.x, mapped.y))
     }
 
     function openRenameDialogForPath(path) {
@@ -2599,6 +2757,16 @@ ApplicationWindow {
             root.navigateActivePaneTo(path)
         }
 
+        onOpenInNewTabRequested: (path) => {
+            if (path)
+                root.openPathInNewTab(path)
+        }
+
+        onSplitViewRequested: (path) => {
+            if (path)
+                root.openPathInSplitView(path)
+        }
+
         onPropertiesRequested: (path) => {
             if (path)
                 propertiesDialog.showProperties(path)
@@ -2610,9 +2778,7 @@ ApplicationWindow {
         }
 
         onCustomActionRequested: (action) => {
-            if (action === "opennewtab") {
-                root.openPathInNewTab(sidebarContextMenu.targetPath)
-            } else if (action === "emptytrash") {
+            if (action === "emptytrash") {
                 emptyTrashConfirmDialog.open()
             } else if (action === "removebookmark") {
                 if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
@@ -2658,6 +2824,16 @@ ApplicationWindow {
         onActivated: tabModel.reopenClosedTab()
     }
 
+    Shortcut {
+        sequence: config.shortcutMap["open_in_new_tab"]
+        onActivated: root.openPathInNewTab(root.currentOrSelectedDirectoryPath())
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["open_in_split"]
+        onActivated: root.openPathInSplitView(root.currentOrSelectedDirectoryPath())
+    }
+
     // Navigation
     Shortcut {
         sequence: config.shortcutMap["back"]
@@ -2677,6 +2853,19 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcutMap["parent"]
         onActivated: root.goActivePaneUp()
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["home"]
+        onActivated: root.navigateActivePaneTo(fsModel.homePath())
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["refresh"]
+        onActivated: {
+            fsModel.refresh()
+            splitFsModel.refresh()
+        }
     }
 
     // Toggle hidden files
@@ -2700,6 +2889,26 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcutMap["split_view"]
         onActivated: root.toggleSplitView()
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["focus_left_pane"]
+        onActivated: root.setActivePane("primary")
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["focus_right_pane"]
+        onActivated: root.setActivePane("secondary")
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["focus_next_pane"]
+        onActivated: root.focusNextPane()
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["focus_previous_pane"]
+        onActivated: root.focusNextPane()
     }
 
     // View mode switching
@@ -2801,6 +3010,34 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: config.shortcutMap["context_menu"]
+        onActivated: root.showContextMenuForActiveSelection()
+    }
+
+    Shortcut {
+        sequence: "Menu"
+        onActivated: root.showContextMenuForActiveSelection()
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["open_terminal"]
+        onActivated: {
+            var path = root.selectedOrCurrentTerminalPath()
+            if (root.isLocalPath(path))
+                fileOps.openInTerminal(path)
+        }
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["properties"]
+        onActivated: {
+            var path = root.selectedOrCurrentPropertiesPath()
+            if (path)
+                propertiesDialog.showProperties(path)
+        }
+    }
+
+    Shortcut {
         sequence: config.shortcutMap["rename"]
         onActivated: {
             var paths = getSelectedPaths()
@@ -2890,6 +3127,7 @@ ApplicationWindow {
                 return [
                     { text: "Open", shortcut: "Return", action: "open" },
                     { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
+                    { text: "Open in Split View", shortcut: "", action: "split_open", icon: "SquareSplitHorizontal" },
                     { separator: true },
                     { text: "Empty Trash", shortcut: "", action: "emptytrash", destructive: true }
                 ]
@@ -2897,6 +3135,7 @@ ApplicationWindow {
             return [
                 { text: "Open", shortcut: "Return", action: "open" },
                 { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
+                { text: "Open in Split View", shortcut: "", action: "split_open", icon: "SquareSplitHorizontal" },
                 { separator: true },
                 { text: "Open in Terminal", shortcut: "", action: "terminal" },
                 { text: "Properties", shortcut: "", action: "properties" }
@@ -2907,6 +3146,7 @@ ApplicationWindow {
             return [
                 { text: "Open", shortcut: "Return", action: "open" },
                 { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
+                { text: "Open in Split View", shortcut: "", action: "split_open", icon: "SquareSplitHorizontal" },
                 { separator: true },
                 { text: "Open in Terminal", shortcut: "", action: "terminal" },
                 { text: "Properties", shortcut: "", action: "properties" },
@@ -2924,6 +3164,7 @@ ApplicationWindow {
             return [
                 { text: "Open", shortcut: "Return", action: "open" },
                 { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
+                { text: "Open in Split View", shortcut: "", action: "split_open", icon: "SquareSplitHorizontal" },
                 { separator: true },
                 { text: "Open in Terminal", shortcut: "", action: "terminal" },
                 { text: "Properties", shortcut: "", action: "properties" },
@@ -3142,6 +3383,7 @@ ApplicationWindow {
                 onNavigateRequested: (targetPath) => root.navigateActivePaneTo(targetPath)
                 onConnectRemoteRequested: root.openRemoteConnectDialog()
                 onSettingsRequested: root.openSettingsPanel()
+                onKeyboardShortcutsRequested: root.openKeyboardShortcutsDialog()
                 onCloseRequested: root.close()
                 onMinimizeRequested: root.showMinimized()
                 onMaximizeRequested: root.visibility === Window.Maximized ? root.showNormal() : root.showMaximized()
@@ -3236,31 +3478,51 @@ ApplicationWindow {
                         // flashes transparent at progress ≈ 0 during close.
                         // Only the split-specific border tint fades.
                         color: Theme.containerColor(Theme.crust, 0.14)
-                        border.width: root.splitTransitionProgress
-                        border.color: root.activePane === "primary"
-                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45 * root.splitTransitionProgress)
-                            : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08 * root.splitTransitionProgress)
-                        Behavior on border.color { ColorAnimation { duration: Theme.animDuration } }
 
-                        FileViewContainer {
-                            id: primaryFileViewContainer
+                        ColumnLayout {
                             anchors.fill: parent
-                            fileModel: root.paneModel("primary")
-                            viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-                            currentPath: root.panePath("primary")
+                            spacing: 0
 
-                            onInteractionStarted: root.setActivePane("primary")
-                            onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("primary", filePath, isDirectory)
-                            onSelectionChanged: {
-                                root.setActivePane("primary")
-                                root.updateSelectionStatus()
+                            SplitPaneHeader {
+                                Layout.preferredHeight: visible ? 34 : 0
+                                visible: root.splitViewPresented
+                                title: root.paneDisplayName("primary")
+                                activePaneHeader: root.activePane === "primary"
                             }
-                            onTransferRequested: (paths, destinationPath, moveOperation) => {
-                                root.setActivePane("primary")
-                                root.beginTransfer(paths, destinationPath, moveOperation, false)
+
+                            FileViewContainer {
+                                id: primaryFileViewContainer
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                fileModel: root.paneModel("primary")
+                                viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+                                currentPath: root.panePath("primary")
+
+                                onInteractionStarted: root.setActivePane("primary")
+                                onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("primary", filePath, isDirectory)
+                                onSelectionChanged: {
+                                    root.setActivePane("primary")
+                                    root.updateSelectionStatus()
+                                }
+                                onTransferRequested: (paths, destinationPath, moveOperation) => {
+                                    root.setActivePane("primary")
+                                    root.beginTransfer(paths, destinationPath, moveOperation, false)
+                                }
+                                onContextMenuRequested: (filePath, isDirectory, position) =>
+                                    root.showContextMenuForPane("primary", filePath, isDirectory, position)
                             }
-                            onContextMenuRequested: (filePath, isDirectory, position) =>
-                                root.showContextMenuForPane("primary", filePath, isDirectory, position)
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            z: 10
+                            color: "transparent"
+                            radius: primaryPaneFrame.radius
+                            border.width: root.splitTransitionProgress
+                            border.color: root.activePane === "primary"
+                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45 * root.splitTransitionProgress)
+                                : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08 * root.splitTransitionProgress)
+                            Behavior on border.color { ColorAnimation { duration: Theme.animDuration } }
                         }
                     }
 
@@ -3296,31 +3558,49 @@ ApplicationWindow {
                             radius: Theme.radiusMedium
                             clip: true
                             color: Theme.containerColor(Theme.crust, 0.14)
-                            border.width: 1
-                            border.color: root.activePane === "secondary"
-                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
-                                : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                            Behavior on border.color { ColorAnimation { duration: Theme.animDuration } }
 
-                            FileViewContainer {
-                                id: secondaryFileViewContainer
+                            ColumnLayout {
                                 anchors.fill: parent
-                                fileModel: root.paneModel("secondary")
-                                viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-                                currentPath: root.panePath("secondary")
+                                spacing: 0
 
-                                onInteractionStarted: root.setActivePane("secondary")
-                                onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("secondary", filePath, isDirectory)
-                                onSelectionChanged: {
-                                    root.setActivePane("secondary")
-                                    root.updateSelectionStatus()
+                                SplitPaneHeader {
+                                    title: root.paneDisplayName("secondary")
+                                    activePaneHeader: root.activePane === "secondary"
                                 }
-                                onTransferRequested: (paths, destinationPath, moveOperation) => {
-                                    root.setActivePane("secondary")
-                                    root.beginTransfer(paths, destinationPath, moveOperation, false)
+
+                                FileViewContainer {
+                                    id: secondaryFileViewContainer
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    fileModel: root.paneModel("secondary")
+                                    viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+                                    currentPath: root.panePath("secondary")
+
+                                    onInteractionStarted: root.setActivePane("secondary")
+                                    onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("secondary", filePath, isDirectory)
+                                    onSelectionChanged: {
+                                        root.setActivePane("secondary")
+                                        root.updateSelectionStatus()
+                                    }
+                                    onTransferRequested: (paths, destinationPath, moveOperation) => {
+                                        root.setActivePane("secondary")
+                                        root.beginTransfer(paths, destinationPath, moveOperation, false)
+                                    }
+                                    onContextMenuRequested: (filePath, isDirectory, position) =>
+                                        root.showContextMenuForPane("secondary", filePath, isDirectory, position)
                                 }
-                                onContextMenuRequested: (filePath, isDirectory, position) =>
-                                    root.showContextMenuForPane("secondary", filePath, isDirectory, position)
+                            }
+
+                            Rectangle {
+                                anchors.fill: parent
+                                z: 10
+                                color: "transparent"
+                                radius: secondaryPaneFrame.radius
+                                border.width: 1
+                                border.color: root.activePane === "secondary"
+                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
+                                    : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                                Behavior on border.color { ColorAnimation { duration: Theme.animDuration } }
                             }
                         }
                     }

@@ -45,9 +45,16 @@ void TabListModel::connectTab(int row, TabModel *tab)
         int idx = m_tabs.indexOf(tab);
         if (idx >= 0) {
             QModelIndex mi = index(idx);
-            emit dataChanged(mi, mi, {TitleRole, PathRole});
+            emit dataChanged(mi, mi, {PathRole});
         }
         emit sessionChanged();
+    });
+    connect(tab, &TabModel::titleChanged, this, [this, tab]() {
+        int idx = m_tabs.indexOf(tab);
+        if (idx >= 0) {
+            QModelIndex mi = index(idx);
+            emit dataChanged(mi, mi, {TitleRole});
+        }
     });
     connect(tab, &TabModel::secondaryCurrentPathChanged, this, &TabListModel::sessionChanged);
     connect(tab, &TabModel::viewModeChanged, this, &TabListModel::sessionChanged);

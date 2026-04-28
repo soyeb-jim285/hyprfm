@@ -782,6 +782,7 @@ Item {
                             visible: textPreviewFlick.visible
                             flickable: textPreviewFlick
                             wheelStep: 28
+                            touchpadMultiplier: 1.35
                             minVelocity: 90
                             maxVelocity: 2600
                             kineticGain: 0.68
@@ -850,6 +851,7 @@ Item {
                                     anchors.fill: parent
                                     flickable: directoryPreviewList
                                     wheelStep: 28
+                                    touchpadMultiplier: 1.35
                                     minVelocity: 90
                                     maxVelocity: 2600
                                     kineticGain: 0.68
@@ -1134,6 +1136,7 @@ Item {
                         anchors.fill: sidebarFlick
                         flickable: sidebarFlick
                         wheelStep: 28
+                        touchpadMultiplier: 1.35
                         minVelocity: 90
                         maxVelocity: 2600
                         kineticGain: 0.68

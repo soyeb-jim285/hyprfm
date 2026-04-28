@@ -190,6 +190,13 @@ private slots:
 
         tab.navigateTo("/usr/local/bin");
         QCOMPARE(tab.title(), QString("bin"));
+
+        tab.setSplitViewEnabled(true);
+        tab.navigateSecondaryTo("/tmp");
+        QCOMPARE(tab.title(), QString("bin / tmp"));
+
+        tab.setSplitViewEnabled(false);
+        QCOMPARE(tab.title(), QString("bin"));
     }
 
     void testRemoteTabTitleAndGoUp()
@@ -318,6 +325,10 @@ private slots:
         QCOMPARE(model.data(idx, TabListModel::TitleRole).toString(), QString("tmp"));
         QCOMPARE(model.data(idx, TabListModel::PathRole).toString(), QString("/tmp"));
         QVERIFY(model.data(idx, TabListModel::TabObjectRole).value<TabModel*>() != nullptr);
+
+        model.activeTab()->setSplitViewEnabled(true);
+        model.activeTab()->navigateSecondaryTo("/usr");
+        QCOMPARE(model.data(idx, TabListModel::TitleRole).toString(), QString("tmp / usr"));
     }
 
     void testCloseTabAdjustsActiveIndex()

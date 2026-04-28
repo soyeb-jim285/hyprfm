@@ -543,7 +543,8 @@ FocusScope {
                     event.accepted = true
                     return
                 }
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                    && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
                     root.activateCurrentSelection()
                     event.accepted = true
                     return
@@ -1023,6 +1024,7 @@ FocusScope {
         flickable: listView
         wheelStep: 42
         mouseWheelMultiplier: 0.75
+        touchpadMultiplier: 1.35
         minVelocity: 135
         maxVelocity: 3900
         kineticGain: 1.01

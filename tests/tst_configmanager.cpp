@@ -93,8 +93,12 @@ private slots:
         QCOMPARE(mgr.shortcut("back"), QString("Alt+Left"));
         QCOMPARE(mgr.shortcut("forward"), QString("Alt+Right"));
         QCOMPARE(mgr.shortcut("parent"), QString("Alt+Up"));
+        QCOMPARE(mgr.shortcut("home"), QString("Alt+Home"));
+        QCOMPARE(mgr.shortcut("refresh"), QString("F5"));
         QCOMPARE(mgr.shortcut("new_tab"), QString("Ctrl+T"));
         QCOMPARE(mgr.shortcut("close_tab"), QString("Ctrl+W"));
+        QCOMPARE(mgr.shortcut("open_in_new_tab"), QString("Ctrl+Return"));
+        QCOMPARE(mgr.shortcut("open_in_split"), QString("Ctrl+Shift+Return"));
         QCOMPARE(mgr.shortcut("copy"), QString("Ctrl+C"));
         QCOMPARE(mgr.shortcut("cut"), QString("Ctrl+X"));
         QCOMPARE(mgr.shortcut("paste"), QString("Ctrl+V"));
@@ -105,7 +109,14 @@ private slots:
         QCOMPARE(mgr.shortcut("toggle_hidden"), QString("Ctrl+H"));
         QCOMPARE(mgr.shortcut("quick_preview"), QString("Space"));
         QCOMPARE(mgr.shortcut("search"), QString("Ctrl+F"));
+        QCOMPARE(mgr.shortcut("context_menu"), QString("Shift+F10"));
+        QCOMPARE(mgr.shortcut("open_terminal"), QString("Ctrl+Alt+T"));
+        QCOMPARE(mgr.shortcut("properties"), QString("Alt+Return"));
         QCOMPARE(mgr.shortcut("select_all"), QString("Ctrl+A"));
+        QCOMPARE(mgr.shortcut("focus_left_pane"), QString("Ctrl+Alt+Left"));
+        QCOMPARE(mgr.shortcut("focus_right_pane"), QString("Ctrl+Alt+Right"));
+        QCOMPARE(mgr.shortcut("focus_next_pane"), QString("F6"));
+        QCOMPARE(mgr.shortcut("focus_previous_pane"), QString("Shift+F6"));
     }
 
     void testUnknownShortcut()

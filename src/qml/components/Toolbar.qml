@@ -70,6 +70,7 @@ Rectangle {
     signal restoreTrashRequested()
     signal emptyTrashRequested()
     signal settingsRequested()
+    signal keyboardShortcutsRequested()
     signal closeRequested()
     signal minimizeRequested()
     signal maximizeRequested()
@@ -271,6 +272,13 @@ Rectangle {
                     visible: !root.searchMode && !root.isTrashView && !root.isRemoteView
                     onClicked: root.searchClicked()
                     IconSearch { anchors.centerIn: parent; size: 18; color: Theme.text }
+                }
+
+                HoverRect {
+                    width: Theme.controlSize; height: Theme.controlSize
+                    visible: !root.searchMode
+                    onClicked: root.keyboardShortcutsRequested()
+                    IconKeyboard { anchors.centerIn: parent; size: 18; color: Theme.text }
                 }
 
                 HoverRect {
