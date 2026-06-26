@@ -534,6 +534,130 @@ private slots:
         QCOMPARE(mgr.radiusMedium(), 8);
     }
 
+    // --- Sort persistence ---
+
+    void testRememberSortPerFolderDefault()
+    {
+        QTemporaryDir dir;
+        ConfigManager mgr(dir.path() + "/config.toml");
+        QCOMPARE(mgr.rememberSortPerFolder(), true);
+    }
+
+    void testParseRememberSortPerFolder()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("[general]\n"
+                "remember_sort_per_folder = false\n");
+        f.close();
+
+        ConfigManager mgr(path);
+        QCOMPARE(mgr.rememberSortPerFolder(), false);
+    }
+
+    void testSaveDefaultSort()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        ConfigManager mgr(path);
+        mgr.saveSettings(QVariantMap{
+            {"sortBy", "modified"},
+            {"sortAscending", false},
+            {"rememberSortPerFolder", false}
+        });
+
+        ConfigManager mgr2(path);
+        QCOMPARE(mgr2.sortBy(), QString("modified"));
+        QCOMPARE(mgr2.sortAscending(), false);
+        QCOMPARE(mgr2.rememberSortPerFolder(), false);
+    }
+
+    void testFolderSortFallsBackToDefault()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("[general]\n"
+                "sort_by = \"size\"\n"
+                "sort_ascending = false\n");
+        f.close();
+
+        ConfigManager mgr(path);
+        // No remembered entry → resolves to global default
+        QCOMPARE(mgr.folderSortBy(dir.path()), QString("size"));
+        QCOMPARE(mgr.folderSortAscending(dir.path()), false);
+    }
+
+    void testSetAndPersistFolderSort()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        ConfigManager mgr(path);
+        mgr.setFolderSort(dir.path(), "modified", false);
+
+        QCOMPARE(mgr.folderSortBy(dir.path()), QString("modified"));
+        QCOMPARE(mgr.folderSortAscending(dir.path()), false);
+
+        // A fresh manager reads the persisted per-folder store
+        ConfigManager mgr2(path);
+        QCOMPARE(mgr2.folderSortBy(dir.path()), QString("modified"));
+        QCOMPARE(mgr2.folderSortAscending(dir.path()), false);
+    }
+
+    void testFolderSortIgnoredWhenRememberOff()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("[general]\n"
+                "sort_by = \"name\"\n"
+                "sort_ascending = true\n"
+                "remember_sort_per_folder = false\n");
+        f.close();
+
+        ConfigManager mgr(path);
+        mgr.setFolderSort(dir.path(), "modified", false);
+        // Remember is off → always the global default
+        QCOMPARE(mgr.folderSortBy(dir.path()), QString("name"));
+        QCOMPARE(mgr.folderSortAscending(dir.path()), true);
+    }
+
+    void testFolderSortPrunesDeadPaths()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+        QString storePath = dir.path() + "/folder_sort.json";
+        QString deadPath = dir.path() + "/gone";
+
+        QFile f(storePath);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(QString("{\"%1\":{\"by\":\"size\",\"ascending\":true},"
+                        "\"%2\":{\"by\":\"modified\",\"ascending\":false}}")
+                    .arg(dir.path(), deadPath)
+                    .toUtf8());
+        f.close();
+
+        // Construction prunes the nonexistent path and rewrites the store
+        ConfigManager mgr(path);
+
+        QFile rf(storePath);
+        QVERIFY(rf.open(QIODevice::ReadOnly));
+        const QString contents = QString::fromUtf8(rf.readAll());
+        rf.close();
+
+        QVERIFY(contents.contains(dir.path()));
+        QVERIFY(!contents.contains(deadPath));
+    }
+
     // --- File watcher reload ---
 
     void testConfigFileWatcherReload()

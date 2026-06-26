@@ -17,6 +17,66 @@ Q.Dialog {
     property bool syncingFromConfig: false
     property bool pendingShortcutsDirty: false
     property string recordingAction: ""
+    property string searchQuery: ""
+
+    // Fuzzy subsequence scorer: every query char must appear in order, with
+    // bonuses for consecutive runs and matches at word boundaries (start, after
+    // a space or "+"). Returns 0 when the query doesn't match at all.
+    function fuzzyScore(query, text) {
+        if (query === "")
+            return 1
+
+        var q = query.toLowerCase()
+        var t = text.toLowerCase()
+        var qi = 0
+        var score = 0
+        var streak = 0
+        var prevMatch = -2
+
+        for (var ti = 0; ti < t.length && qi < q.length; ++ti) {
+            if (t.charAt(ti) !== q.charAt(qi))
+                continue
+
+            var bonus = 1
+            if (ti === prevMatch + 1) {
+                streak += 1
+                bonus += streak * 2
+            } else {
+                streak = 0
+            }
+            var prev = ti > 0 ? t.charAt(ti - 1) : ""
+            if (ti === 0 || prev === " " || prev === "+")
+                bonus += 3
+
+            score += bonus
+            prevMatch = ti
+            qi += 1
+        }
+
+        return qi === q.length ? score : 0
+    }
+
+    // shortcutEntries filtered + ranked by the current search query.
+    readonly property var filteredShortcuts: {
+        var query = searchQuery.trim()
+        if (query === "")
+            return shortcutEntries
+
+        var scored = []
+        for (var i = 0; i < shortcutEntries.length; ++i) {
+            var entry = shortcutEntries[i]
+            var s = Math.max(fuzzyScore(query, entry.label),
+                             fuzzyScore(query, entry.sequence))
+            if (s > 0)
+                scored.push({ entry: entry, score: s, idx: i })
+        }
+        scored.sort(function(a, b) { return b.score - a.score || a.idx - b.idx })
+
+        var out = []
+        for (var j = 0; j < scored.length; ++j)
+            out.push(scored[j].entry)
+        return out
+    }
 
     function syncShortcutDrafts() {
         syncingFromConfig = true
@@ -76,6 +136,7 @@ Q.Dialog {
 
     function openDialog() {
         recordingAction = ""
+        searchQuery = ""
         syncShortcutDrafts()
         open()
     }
@@ -200,12 +261,32 @@ Q.Dialog {
         }
     }
 
+    Q.TextField {
+        id: searchField
+        Layout.fillWidth: true
+        variant: "filled"
+        placeholder: "Search shortcuts..."
+        onTextChanged: root.searchQuery = text
+    }
+
     Item {
         Layout.fillWidth: true
-        implicitHeight: Math.min(540, shortcutsFlick.contentHeight)
+        implicitHeight: root.filteredShortcuts.length === 0
+            ? 120
+            : Math.min(540, shortcutsFlick.contentHeight)
+
+        // Empty state when the search matches nothing
+        Text {
+            anchors.centerIn: parent
+            visible: root.filteredShortcuts.length === 0
+            text: "No shortcuts match \"" + root.searchQuery + "\""
+            color: Theme.subtext
+            font.pointSize: Theme.fontNormal
+        }
 
         Flickable {
             id: shortcutsFlick
+            visible: root.filteredShortcuts.length > 0
             anchors.fill: parent
             clip: true
             contentWidth: width
@@ -254,7 +335,7 @@ Q.Dialog {
                 }
 
                 Repeater {
-                    model: root.shortcutEntries
+                    model: root.filteredShortcuts
 
                     delegate: Rectangle {
                         id: shortcutRow
@@ -284,7 +365,7 @@ Q.Dialog {
                             anchors.rightMargin: 16
                             height: 1
                             color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
-                            visible: shortcutRow.index < root.shortcutEntries.length - 1
+                            visible: shortcutRow.index < root.filteredShortcuts.length - 1
                         }
 
                         HoverHandler {

@@ -47,6 +47,13 @@ Window {
     readonly property string defaultAnimCurveTransition: "Bezier"
     readonly property bool defaultShowWindowControls: false
     readonly property string defaultWindowButtonLayout: ":minimize,maximize,close"
+    readonly property string defaultSortBy: "name"
+    readonly property bool defaultSortAscending: true
+    readonly property bool defaultRememberSortPerFolder: true
+
+    // Sort column dropdown: parallel label/value arrays.
+    readonly property var sortByLabels: ["Name", "Size", "Modified", "Type"]
+    readonly property var sortByValues: ["name", "size", "modified", "type"]
 
     property bool currentShowHidden: false
     property bool currentSidebarVisible: true
@@ -87,6 +94,10 @@ Window {
 
     property bool draftShowWindowControls: config.showWindowControls
     property string draftWindowButtonLayout: config.windowButtonLayout
+
+    property string draftSortBy: config.sortBy
+    property bool draftSortAscending: config.sortAscending
+    property bool draftRememberSortPerFolder: config.rememberSortPerFolder
 
     // Helpers to decompose the layout string for the UI
     readonly property var _layoutParts: {
@@ -244,6 +255,9 @@ Window {
         draftAnimCurveTransition = defaultAnimCurveTransition
         draftShowWindowControls = defaultShowWindowControls
         draftWindowButtonLayout = defaultWindowButtonLayout
+        draftSortBy = defaultSortBy
+        draftSortAscending = defaultSortAscending
+        draftRememberSortPerFolder = defaultRememberSortPerFolder
         applySettingsNow()
     }
 
@@ -279,6 +293,9 @@ Window {
             draftAnimCurveTransition = config.animCurveTransition
             draftShowWindowControls = config.showWindowControls
             draftWindowButtonLayout = config.windowButtonLayout
+            draftSortBy = config.sortBy
+            draftSortAscending = config.sortAscending
+            draftRememberSortPerFolder = config.rememberSortPerFolder
         } finally {
             syncingFromConfig = false
         }
@@ -336,7 +353,10 @@ Window {
             animCurveExit: draftAnimCurveExit,
             animCurveTransition: draftAnimCurveTransition,
             showWindowControls: draftShowWindowControls,
-            windowButtonLayout: draftWindowButtonLayout
+            windowButtonLayout: draftWindowButtonLayout,
+            sortBy: draftSortBy,
+            sortAscending: draftSortAscending,
+            rememberSortPerFolder: draftRememberSortPerFolder
         }
     }
 
@@ -607,6 +627,46 @@ Window {
                 onMoved: (value) => {
                     root.draftSidebarWidth = Math.round(value)
                     root.queueSettingsApply()
+                }
+            }
+
+            Text {
+                text: "Sorting"
+                color: Theme.accent
+                font.pointSize: Theme.fontSmall
+                font.bold: true
+                Layout.topMargin: 12
+                Layout.bottomMargin: 4
+            }
+
+            Q.Dropdown {
+                Layout.fillWidth: true
+                label: "Default sort"
+                model: root.sortByLabels
+                currentIndex: Math.max(0, root.sortByValues.indexOf(root.draftSortBy))
+                onSelected: (index, _) => {
+                    root.draftSortBy = root.sortByValues[index]
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Toggle {
+                Layout.fillWidth: true
+                label: "Ascending order"
+                checked: root.draftSortAscending
+                onToggled: (value) => {
+                    root.draftSortAscending = value
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Toggle {
+                Layout.fillWidth: true
+                label: "Remember sort per folder"
+                checked: root.draftRememberSortPerFolder
+                onToggled: (value) => {
+                    root.draftRememberSortPerFolder = value
+                    root.applySettingsNow()
                 }
             }
 

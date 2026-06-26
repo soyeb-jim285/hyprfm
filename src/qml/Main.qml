@@ -58,6 +58,7 @@ ApplicationWindow {
                 root.syncMillerParentModel(tabModel.activeTab.currentPath)
                 if (tabModel.activeTab.splitViewEnabled)
                     splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
+                root.applyFolderSort(tabModel.activeTab.currentPath)
                 root.applyActiveTabSort()
                 root.scheduleActivePaneFocus()
             }
@@ -76,6 +77,7 @@ ApplicationWindow {
                 root.syncMillerParentModel(tabModel.activeTab.currentPath)
                 root.setPaneRecents("primary", false)
                 root.clearPaneSearch("primary")
+                root.applyFolderSort(tabModel.activeTab.currentPath)
                 root.scheduleActivePaneFocus()
             }
         }
@@ -118,6 +120,11 @@ ApplicationWindow {
         function onConfigChanged() {
             root.sidebarVisible = config.sidebarVisible
             root.sidebarWidth = config.sidebarWidth
+            // Re-resolve sort in case the default or remember toggle changed.
+            if (tabModel.activeTab) {
+                root.applyFolderSort(tabModel.activeTab.currentPath)
+                root.applyActiveTabSort()
+            }
         }
     }
 
@@ -128,6 +135,7 @@ ApplicationWindow {
             if (tabModel.activeTab.splitViewEnabled)
                 splitFsModel.setRootPath(tabModel.activeTab.secondaryCurrentPath)
             root.syncMillerParentModel(tabModel.activeTab.currentPath)
+            root.applyFolderSort(tabModel.activeTab.currentPath)
             root.applyActiveTabSort()
         }
 
@@ -835,6 +843,30 @@ ApplicationWindow {
         fsModel.sortByColumn(tabModel.activeTab.sortBy, tabModel.activeTab.sortAscending)
         if (tabModel.activeTab.splitViewEnabled)
             splitFsModel.sortByColumn(tabModel.activeTab.sortBy, tabModel.activeTab.sortAscending)
+    }
+
+    // Resolve the sort for a folder from config (per-folder memory when enabled,
+    // otherwise the global default) and push it onto the active tab.
+    function applyFolderSort(path) {
+        if (!tabModel.activeTab || !config)
+            return
+
+        tabModel.activeTab.sortBy = config.folderSortBy(path)
+        tabModel.activeTab.sortAscending = config.folderSortAscending(path)
+    }
+
+    // Single entry point for a user-initiated sort change (context menu or
+    // detailed-view column header): update the tab, remember it for the folder,
+    // and apply it to both panes.
+    function applySortChange(column, ascending) {
+        if (tabModel.activeTab) {
+            tabModel.activeTab.sortBy = column
+            tabModel.activeTab.sortAscending = ascending
+            if (config && config.rememberSortPerFolder)
+                config.setFolderSort(tabModel.activeTab.currentPath, column, ascending)
+        }
+        if (fsModel) fsModel.sortByColumn(column, ascending)
+        if (splitFsModel) splitFsModel.sortByColumn(column, ascending)
     }
 
     function updateSelectionStatus() {
@@ -2732,14 +2764,7 @@ ApplicationWindow {
             if (tabModel.activeTab) tabModel.activeTab.viewMode = mode
         }
 
-        onSortRequested: (column, ascending) => {
-            if (tabModel.activeTab) {
-                tabModel.activeTab.sortBy = column
-                tabModel.activeTab.sortAscending = ascending
-            }
-            if (fsModel) fsModel.sortByColumn(column, ascending)
-            if (splitFsModel) splitFsModel.sortByColumn(column, ascending)
-        }
+        onSortRequested: (column, ascending) => root.applySortChange(column, ascending)
     }
 
     ContextMenu {
@@ -3510,6 +3535,10 @@ ApplicationWindow {
                                 }
                                 onContextMenuRequested: (filePath, isDirectory, position) =>
                                     root.showContextMenuForPane("primary", filePath, isDirectory, position)
+                                onSortRequested: (column, ascending) => {
+                                    root.setActivePane("primary")
+                                    root.applySortChange(column, ascending)
+                                }
                             }
                         }
 
@@ -3588,6 +3617,10 @@ ApplicationWindow {
                                     }
                                     onContextMenuRequested: (filePath, isDirectory, position) =>
                                         root.showContextMenuForPane("secondary", filePath, isDirectory, position)
+                                    onSortRequested: (column, ascending) => {
+                                        root.setActivePane("secondary")
+                                        root.applySortChange(column, ascending)
+                                    }
                                 }
                             }
 

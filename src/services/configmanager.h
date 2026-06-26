@@ -22,6 +22,7 @@ class ConfigManager : public QObject
     Q_PROPERTY(bool showHidden READ showHidden NOTIFY configChanged)
     Q_PROPERTY(QString sortBy READ sortBy NOTIFY configChanged)
     Q_PROPERTY(bool sortAscending READ sortAscending NOTIFY configChanged)
+    Q_PROPERTY(bool rememberSortPerFolder READ rememberSortPerFolder NOTIFY configChanged)
     Q_PROPERTY(QString sidebarPosition READ sidebarPosition NOTIFY configChanged)
     Q_PROPERTY(int sidebarWidth READ sidebarWidth NOTIFY configChanged)
     Q_PROPERTY(bool sidebarVisible READ sidebarVisible NOTIFY configChanged)
@@ -59,6 +60,7 @@ public:
     bool showHidden() const;
     QString sortBy() const;
     bool sortAscending() const;
+    bool rememberSortPerFolder() const;
     QString sidebarPosition() const;
     int sidebarWidth() const;
     bool sidebarVisible() const;
@@ -83,6 +85,13 @@ public:
     QVariantList customContextActions() const;
     Q_INVOKABLE QString shortcut(const QString &action) const;
     Q_INVOKABLE void saveSettings(const QVariantMap &settings);
+    // Per-folder sort memory. The getters resolve to the global default
+    // (sortBy/sortAscending) when per-folder memory is off or the folder has
+    // no stored entry.
+    Q_INVOKABLE QString folderSortBy(const QString &path) const;
+    Q_INVOKABLE bool folderSortAscending(const QString &path) const;
+    Q_INVOKABLE void setFolderSort(const QString &path, const QString &sortBy,
+                                   bool ascending);
     Q_INVOKABLE void saveShortcuts(const QVariantMap &shortcuts);
     Q_INVOKABLE void saveBookmarks(const QStringList &paths);
     Q_INVOKABLE void saveSidebarWidth(int width);
@@ -93,6 +102,12 @@ signals:
 private:
     void loadConfig();
     void setDefaults();
+    QString folderSortStorePath() const;
+    void loadFolderSort();
+    void saveFolderSort() const;
+
+    // path -> {"by": QString, "ascending": bool}
+    QMap<QString, QVariantMap> m_folderSort;
 
     QString m_configPath;
     QString m_themesDir;
@@ -107,6 +122,7 @@ private:
     bool m_showHidden;
     QString m_sortBy;
     bool m_sortAscending;
+    bool m_rememberSortPerFolder;
     QString m_sidebarPosition;
     int m_sidebarWidth;
     bool m_sidebarVisible;
