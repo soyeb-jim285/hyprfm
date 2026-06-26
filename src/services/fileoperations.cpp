@@ -20,6 +20,7 @@
 #include <QUuid>
 #include <QUrl>
 #include <algorithm>
+#include <iostream>
 #include <unistd.h>
 
 #undef signals
@@ -252,8 +253,11 @@ QString joinLocation(const QString &parentPath, const QString &name)
 GFile *gFileForLocation(const QString &path)
 {
     const QByteArray utf8 = path.toUtf8();
-    if (isUriPath(path))
+    if (isUriPath(path)) {
+        std::cout << "[gFileForLocation] Creating GFile from URI: " << path.toStdString() << std::endl;
         return g_file_new_for_uri(utf8.constData());
+    }
+    std::cout << "[gFileForLocation] Creating GFile from path: " << path.toStdString() << std::endl;
     return g_file_new_for_path(utf8.constData());
 }
 
@@ -270,19 +274,37 @@ bool gioPathExists(const QString &path)
 
 bool deleteGFileRecursive(GFile *file, QString *error, GCancellable *cancellable = nullptr)
 {
-    const GFileType type = g_file_query_file_type(
+    gchar *uriStr = g_file_get_uri(file);
+    gchar *pathStr = g_file_get_path(file);
+    std::cout << "[deleteGFileRecursive] START: URI=" << (uriStr ? uriStr : "(null)") 
+              << " Path=" << (pathStr ? pathStr : "(null)") << std::endl;
+    g_free(uriStr);
+    g_free(pathStr);
+
+    GFileType type = g_file_query_file_type(
         file, G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, cancellable);
+    
+    std::cout << "[deleteGFileRecursive] File type detected: " << (int)type 
+              << " (0=UNKNOWN, 1=REGULAR, 2=DIRECTORY, 3=SYMLINK, 4=SPECIAL, 5=SHORTCUT, 6=MOUNTABLE)" << std::endl;
+
     if (type != G_FILE_TYPE_DIRECTORY) {
+        std::cout << "[deleteGFileRecursive] Not a directory, attempting to delete as file" << std::endl;
         GError *delErr = nullptr;
         const bool ok = g_file_delete(file, cancellable, &delErr);
-        if (!ok && error)
-            *error = delErr ? QString::fromUtf8(delErr->message)
-                            : QStringLiteral("Failed to delete item");
-        if (delErr)
+        std::cout << "[deleteGFileRecursive] File deletion result: " << (ok ? "SUCCESS" : "FAILED");
+        if (delErr) {
+            std::cout << " Error: " << delErr->message;
+            if (!ok && error)
+                *error = QString::fromUtf8(delErr->message);
             g_error_free(delErr);
+        } else if (!ok && error) {
+            *error = QStringLiteral("Failed to delete item");
+        }
+        std::cout << std::endl;
         return ok;
     }
 
+    std::cout << "[deleteGFileRecursive] Attempting to enumerate directory contents" << std::endl;
     GError *enumErr = nullptr;
     GFileEnumerator *enumerator = g_file_enumerate_children(
         file,
@@ -290,39 +312,60 @@ bool deleteGFileRecursive(GFile *file, QString *error, GCancellable *cancellable
         G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS,
         cancellable,
         &enumErr);
+    
     if (!enumerator) {
-        if (error)
-            *error = enumErr ? QString::fromUtf8(enumErr->message)
-                             : QStringLiteral("Failed to enumerate directory");
-        if (enumErr)
+        std::cout << "[deleteGFileRecursive] FAILED to enumerate directory";
+        if (enumErr) {
+            std::cout << " Error: " << enumErr->message;
+            if (error)
+                *error = QString::fromUtf8(enumErr->message);
             g_error_free(enumErr);
+        } else if (error) {
+            *error = QStringLiteral("Failed to enumerate directory");
+        }
+        std::cout << std::endl;
         return false;
     }
 
+    std::cout << "[deleteGFileRecursive] Successfully created enumerator, processing children" << std::endl;
+    int childCount = 0;
     GFileInfo *childInfo = nullptr;
     while ((childInfo = g_file_enumerator_next_file(enumerator, cancellable, nullptr)) != nullptr) {
-        GFile *child = g_file_get_child(file, g_file_info_get_name(childInfo));
+        childCount++;
+        const char *childName = g_file_info_get_name(childInfo);
+        std::cout << "[deleteGFileRecursive]   Child #" << childCount << ": " << childName << std::endl;
+        
+        GFile *child = g_file_get_child(file, childName);
         g_object_unref(childInfo);
 
         const bool ok = deleteGFileRecursive(child, error, cancellable);
         g_object_unref(child);
         if (!ok) {
+            std::cout << "[deleteGFileRecursive] ERROR: Failed to delete child #" << childCount << std::endl;
             g_file_enumerator_close(enumerator, nullptr, nullptr);
             g_object_unref(enumerator);
             return false;
         }
     }
 
+    std::cout << "[deleteGFileRecursive] Processed " << childCount << " children, closing enumerator" << std::endl;
     g_file_enumerator_close(enumerator, nullptr, nullptr);
     g_object_unref(enumerator);
 
+    std::cout << "[deleteGFileRecursive] Now attempting to delete the directory itself" << std::endl;
     GError *delErr = nullptr;
     const bool ok = g_file_delete(file, cancellable, &delErr);
-    if (!ok && error)
-        *error = delErr ? QString::fromUtf8(delErr->message)
-                        : QStringLiteral("Failed to delete directory");
-    if (delErr)
+    std::cout << "[deleteGFileRecursive] Directory deletion result: " << (ok ? "SUCCESS" : "FAILED");
+    if (delErr) {
+        std::cout << " Error: " << delErr->message;
+        if (!ok && error)
+            *error = QString::fromUtf8(delErr->message);
         g_error_free(delErr);
+    } else if (!ok && error) {
+        *error = QStringLiteral("Failed to delete directory");
+    }
+    std::cout << std::endl;
+    std::cout << "[deleteGFileRecursive] END" << std::endl;
     return ok;
 }
 
@@ -541,6 +584,60 @@ QString homeTrashRootPath()
 QString homeTrashFilesPath()
 {
     return homeTrashRootPath() + "/files";
+}
+
+// Resolve a trash:///... URI to the real filesystem path under
+// ~/.local/share/Trash/files/. Returns empty if the URI isn't a trash path
+// or if it points to the trash root itself.
+QString resolveTrashUriToLocalPath(const QString &trashUri)
+{
+    const QUrl url(trashUri);
+    if (url.scheme() != QLatin1String("trash"))
+        return {};
+
+    QString path = url.path();
+    while (path.startsWith(QLatin1Char('/')))
+        path.remove(0, 1);
+
+    if (path.isEmpty())
+        return {};
+
+    // Construct the canonical path: the XDG trash spec stores files in
+    // $XDG_DATA_HOME/Trash/files/<original-base-name>, and metadata in
+    // $XDG_DATA_HOME/Trash/info/<original-base-name>.trashinfo.
+    // Nested children (e.g. trashed directories with contents) are stored
+    // as real filesystem trees underneath the top-level entry.
+    const QString filesRoot = homeTrashFilesPath();
+    return QDir::cleanPath(filesRoot + QLatin1Char('/') + path);
+}
+
+// Delete the .trashinfo metadata file that corresponds to a trashed item.
+// Only call this for the *top-level* item (the one that was originally
+// trashed), not for nested children, because only the top-level entry
+// has a matching .trashinfo file.
+void deleteTrashInfoForUri(const QString &trashUri)
+{
+    const QUrl url(trashUri);
+    if (url.scheme() != QLatin1String("trash"))
+        return;
+
+    QString path = url.path();
+    while (path.startsWith(QLatin1Char('/')))
+        path.remove(0, 1);
+
+    const int slashIdx = path.indexOf(QLatin1Char('/'));
+    const QString topLevelName = (slashIdx >= 0) ? path.left(slashIdx) : path;
+
+    if (topLevelName.isEmpty())
+        return;
+
+    const QString infoPath = QDir::cleanPath(
+        homeTrashRootPath() + QLatin1String("/info/") + topLevelName + QLatin1String(".trashinfo"));
+
+    if (QFile::exists(infoPath)) {
+        std::cout << "[deleteTrashInfo] Deleting metadata: " << infoPath.toStdString() << std::endl;
+        QFile::remove(infoPath);
+    }
 }
 
 QString existingLookupPathFor(const QString &path)
@@ -1209,6 +1306,12 @@ QString FileOperations::uniqueNameForDestination(const QString &destinationDir, 
 
 void FileOperations::deleteFiles(const QStringList &paths)
 {
+    std::cout << "\n[FileOperations::deleteFiles] STARTING deletion of " << paths.size() << " item(s)" << std::endl;
+    for (int i = 0; i < paths.size(); ++i) {
+        std::cout << "  [" << (i+1) << "/" << paths.size() << "] " << paths[i].toStdString() << std::endl;
+    }
+    std::cout << std::endl;
+    
     startSimpleOperation(
         QString("Deleting %1 item(s)...").arg(paths.size()), paths,
         [paths](ProgressReporter report) -> QString {
@@ -1216,25 +1319,81 @@ void FileOperations::deleteFiles(const QStringList &paths)
             const int total = paths.size();
             for (int i = 0; i < total; ++i) {
                 const QString normalized = normalizeLocation(paths[i]);
+                std::cout << "\n[deleteFiles] Processing item " << (i+1) << "/" << total << ": " 
+                          << normalized.toStdString() << std::endl;
                 report(i, total, locationFileName(normalized));
 
-                if (isUriPath(normalized)) {
+                if (isTrashUriPath(normalized)) {
+                    // GVFS blocks g_file_delete() on trash:// URIs with
+                    // "Items in the trash may not be modified". Resolve to
+                    // the real filesystem path and delete directly.
+                    std::cout << "[deleteFiles] Path is a trash URI, resolving to local path" << std::endl;
+                    const QString localPath = resolveTrashUriToLocalPath(normalized);
+                    if (!localPath.isEmpty()) {
+                        std::cout << "[deleteFiles] Resolved to local path: " << localPath.toStdString() << std::endl;
+                        bool ok = false;
+                        const QFileInfo info(localPath);
+                        if (!info.exists()) {
+                            std::cout << "[deleteFiles] Local path does not exist (already deleted?)" << std::endl;
+                            // Still try to clean up the .trashinfo metadata
+                            deleteTrashInfoForUri(normalized);
+                            continue;
+                        }
+                        if (info.isDir()) {
+                            std::cout << "[deleteFiles] Item is a directory, using QDir::removeRecursively()" << std::endl;
+                            ok = QDir(localPath).removeRecursively();
+                        } else {
+                            std::cout << "[deleteFiles] Item is a file, using QFile::remove()" << std::endl;
+                            ok = QFile::remove(localPath);
+                        }
+                        if (ok) {
+                            std::cout << "[deleteFiles] Local deletion succeeded, cleaning up trashinfo" << std::endl;
+                            deleteTrashInfoForUri(normalized);
+                        } else {
+                            std::cout << "[deleteFiles] Local deletion FAILED" << std::endl;
+                            lastError = QStringLiteral("Failed to permanently delete %1 from trash")
+                                .arg(locationFileName(normalized));
+                        }
+                    } else {
+                        std::cout << "[deleteFiles] Could not resolve trash URI to local path" << std::endl;
+                        lastError = QStringLiteral("Cannot resolve trash location");
+                    }
+                } else if (isUriPath(normalized)) {
+                    std::cout << "[deleteFiles] Path is a non-trash URI, using GFile deletion" << std::endl;
                     GFile *file = gFileForLocation(normalized);
                     QString err;
-                    if (!deleteGFileRecursive(file, &err) && !err.isEmpty())
+                    if (!deleteGFileRecursive(file, &err) && !err.isEmpty()) {
+                        std::cout << "[deleteFiles] GFile deletion failed: " << err.toStdString() << std::endl;
                         lastError = err;
+                    } else if (!err.isEmpty()) {
+                        std::cout << "[deleteFiles] GFile deletion reported error (but returned true): " << err.toStdString() << std::endl;
+                    } else {
+                        std::cout << "[deleteFiles] GFile deletion succeeded" << std::endl;
+                    }
                     g_object_unref(file);
                 } else {
+                    std::cout << "[deleteFiles] Path is local filesystem, using QDir/QFile" << std::endl;
                     QFileInfo info(normalized);
                     if (info.isDir()) {
-                        if (!QDir(normalized).removeRecursively())
+                        std::cout << "[deleteFiles] Item is a directory, using QDir::removeRecursively()" << std::endl;
+                        if (!QDir(normalized).removeRecursively()) {
+                            std::cout << "[deleteFiles] QDir::removeRecursively() FAILED" << std::endl;
                             lastError = QStringLiteral("Failed to delete one or more items");
+                        } else {
+                            std::cout << "[deleteFiles] QDir::removeRecursively() succeeded" << std::endl;
+                        }
                     } else {
-                        if (!QFile::remove(normalized))
+                        std::cout << "[deleteFiles] Item is a file, using QFile::remove()" << std::endl;
+                        if (!QFile::remove(normalized)) {
+                            std::cout << "[deleteFiles] QFile::remove() FAILED" << std::endl;
                             lastError = QStringLiteral("Failed to delete one or more items");
+                        } else {
+                            std::cout << "[deleteFiles] QFile::remove() succeeded" << std::endl;
+                        }
                     }
                 }
             }
+            std::cout << "\n[deleteFiles] COMPLETION - lastError: " << (lastError.isEmpty() ? "(none)" : lastError.toStdString()) << std::endl;
             return lastError;
         });
 }
@@ -1563,16 +1722,33 @@ void FileOperations::emptyTrash()
                 return err.isEmpty() ? QStringLiteral("Could not enumerate trash") : err;
             }
 
-            // Second pass: delete with progress
+            // Second pass: delete with progress, using filesystem
+            // paths instead of GIO (GVFS blocks g_file_delete on trash://)
             QString lastError;
             const int total = names.size();
             for (int i = 0; i < total; ++i) {
                 report(i, total, names[i]);
-                GFile *child = g_file_get_child(trash, names[i].toUtf8().constData());
-                QString err;
-                if (!deleteGFileRecursive(child, &err) && !err.isEmpty())
-                    lastError = err;
-                g_object_unref(child);
+
+                const QString trashUri = QStringLiteral("trash:///") + names[i];
+                const QString localPath = resolveTrashUriToLocalPath(trashUri);
+
+                if (!localPath.isEmpty() && QFileInfo::exists(localPath)) {
+                    bool ok = false;
+                    const QFileInfo info(localPath);
+                    if (info.isDir())
+                        ok = QDir(localPath).removeRecursively();
+                    else
+                        ok = QFile::remove(localPath);
+                    if (ok)
+                        deleteTrashInfoForUri(trashUri);
+                    else
+                        lastError = QStringLiteral("Failed to delete %1").arg(names[i]);
+                } else if (!localPath.isEmpty()) {
+                    // File already gone, just clean up .trashinfo
+                    deleteTrashInfoForUri(trashUri);
+                } else {
+                    lastError = QStringLiteral("Could not resolve trash path for %1").arg(names[i]);
+                }
             }
 
             g_object_unref(trash);
