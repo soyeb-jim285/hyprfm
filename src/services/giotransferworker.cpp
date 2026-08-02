@@ -190,22 +190,40 @@ void GioTransferWorker::execute(const QList<TransferItem> &items, bool moveOpera
         if (item.overwrite && !item.backupPath.isEmpty()) {
             GFile *existingTarget = gFileForLocation(item.targetPath);
             GFile *backupFile = gFileForLocation(item.backupPath);
+            bool backupReady = true;
             GFile *backupParent = g_file_get_parent(backupFile);
             if (backupParent) {
                 if (!g_file_query_exists(backupParent, nullptr)) {
                     GError *bpErr = nullptr;
-                    g_file_make_directory_with_parents(backupParent, nullptr, &bpErr);
+                    if (!g_file_make_directory_with_parents(backupParent, m_cancellable, &bpErr)
+                        && !(bpErr && g_error_matches(bpErr, G_IO_ERROR, G_IO_ERROR_EXISTS))) {
+                        success = false;
+                        errorMsg = gErrorToUserMessage(bpErr);
+                        backupReady = false;
+                    }
                     if (bpErr)
                         g_error_free(bpErr);
                 }
                 g_object_unref(backupParent);
             }
-            GError *mvErr = nullptr;
-            g_file_move(existingTarget, backupFile, G_FILE_COPY_NONE, nullptr, nullptr, nullptr, &mvErr);
-            if (mvErr)
-                g_error_free(mvErr);
+
+            if (backupReady && g_file_query_exists(existingTarget, m_cancellable)) {
+                GError *mvErr = nullptr;
+                if (!g_file_move(existingTarget, backupFile, G_FILE_COPY_NONE,
+                                 m_cancellable, nullptr, nullptr, &mvErr)) {
+                    success = false;
+                    errorMsg = tr("Could not preserve the existing destination: %1")
+                        .arg(gErrorToUserMessage(mvErr));
+                }
+                if (mvErr)
+                    g_error_free(mvErr);
+            }
             g_object_unref(existingTarget);
             g_object_unref(backupFile);
+            if (!success) {
+                g_object_unref(targetFile);
+                break;
+            }
         }
 
         // Query source file type

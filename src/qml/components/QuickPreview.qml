@@ -68,7 +68,8 @@ Item {
         if (_mime.startsWith("text/"))
             return true
         var textMimes = [
-            "application/json", "application/xml", "application/x-yaml",
+            "application/json", "application/x-ndjson", "application/jsonlines",
+            "application/xml", "application/x-yaml",
             "application/toml", "application/x-shellscript",
             "application/javascript", "application/typescript",
             "application/x-tex", "application/x-makefile",
@@ -80,7 +81,7 @@ Item {
         // Fallback: extensionless files and known text extensions not covered by MIME
         if (fileExtension === "")
             return true
-        var textExt = ["txt", "md", "json", "yaml", "yml", "toml", "ini", "cfg", "conf",
+        var textExt = ["txt", "md", "json", "jsonl", "ndjson", "yaml", "yml", "toml", "ini", "cfg", "conf",
                        "sh", "bash", "zsh", "fish", "py", "js", "ts", "tsx", "jsx",
                        "css", "html", "htm", "xml", "c", "cpp", "h", "hpp", "rs",
                        "go", "java", "tex", "rb", "lua", "vim", "log", "diff",

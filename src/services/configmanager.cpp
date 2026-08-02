@@ -202,6 +202,7 @@ void ConfigManager::setDefaults()
     m_builtinIcons = true;
     m_fontFamily.clear();
     m_defaultView = "grid";
+    m_terminal = QStringLiteral("foot");
     m_showHidden = false;
     m_sortBy = "name";
     m_sortAscending = true;
@@ -245,6 +246,7 @@ void ConfigManager::loadConfig()
         m_animCurveExit = QStringLiteral("InCubic");
         m_animCurveTransition = QStringLiteral("Bezier");
         m_showWindowControlsExplicit = false;
+        m_terminal = QStringLiteral("foot");
         m_shortcuts = s_defaultShortcuts;
 
         auto config = toml::parse_file(m_configPath.toStdString());
@@ -259,6 +261,11 @@ void ConfigManager::loadConfig()
             m_fontFamily = QString::fromStdString(*v);
         if (auto v = config["general"]["default_view"].value<std::string>())
             m_defaultView = QString::fromStdString(*v);
+        if (auto v = config["general"]["terminal"].value<std::string>()) {
+            const QString terminal = QString::fromStdString(*v).trimmed();
+            if (!terminal.isEmpty())
+                m_terminal = terminal;
+        }
         if (auto v = config["general"]["show_hidden"].value<bool>())
             m_showHidden = *v;
         if (auto v = config["general"]["sort_by"].value<std::string>())
@@ -363,6 +370,7 @@ QString ConfigManager::iconTheme() const { return m_iconTheme; }
 bool ConfigManager::builtinIcons() const { return m_builtinIcons; }
 QString ConfigManager::fontFamily() const { return m_fontFamily; }
 QString ConfigManager::defaultView() const { return m_defaultView; }
+QString ConfigManager::terminal() const { return m_terminal; }
 bool ConfigManager::showHidden() const { return m_showHidden; }
 QString ConfigManager::sortBy() const { return m_sortBy; }
 bool ConfigManager::sortAscending() const { return m_sortAscending; }
@@ -472,6 +480,12 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
     if (settings.contains("fontFamily")) {
         m_fontFamily = settings.value("fontFamily").toString().trimmed();
         general.insert_or_assign("font_family", m_fontFamily.toStdString());
+    }
+
+    if (settings.contains("terminal")) {
+        const QString terminal = settings.value("terminal").toString().trimmed();
+        m_terminal = terminal.isEmpty() ? QStringLiteral("foot") : terminal;
+        general.insert_or_assign("terminal", m_terminal.toStdString());
     }
 
     if (settings.contains("showHidden")) {

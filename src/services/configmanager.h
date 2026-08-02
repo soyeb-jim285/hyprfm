@@ -19,6 +19,7 @@ class ConfigManager : public QObject
     Q_PROPERTY(bool builtinIcons READ builtinIcons NOTIFY configChanged)
     Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY configChanged)
     Q_PROPERTY(QString defaultView READ defaultView NOTIFY configChanged)
+    Q_PROPERTY(QString terminal READ terminal NOTIFY configChanged)
     Q_PROPERTY(bool showHidden READ showHidden NOTIFY configChanged)
     Q_PROPERTY(QString sortBy READ sortBy NOTIFY configChanged)
     Q_PROPERTY(bool sortAscending READ sortAscending NOTIFY configChanged)
@@ -57,6 +58,7 @@ public:
     bool builtinIcons() const;
     QString fontFamily() const;
     QString defaultView() const;
+    QString terminal() const;
     bool showHidden() const;
     QString sortBy() const;
     bool sortAscending() const;
@@ -119,6 +121,7 @@ private:
     bool m_builtinIcons;
     QString m_fontFamily;
     QString m_defaultView;
+    QString m_terminal;
     bool m_showHidden;
     QString m_sortBy;
     bool m_sortAscending;

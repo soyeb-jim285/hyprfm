@@ -1,6 +1,7 @@
 #include "services/previewservice.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QColor>
@@ -11,6 +12,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QRawFont>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -215,6 +217,13 @@ QString ansiToHtml(const QByteArray &ansiText)
             }
         }
 
+        // Ignore unsupported or incomplete escape sequences. Without
+        // consuming this byte, indexOf() below finds the same ESC forever.
+        if (ansiText.at(index) == '\x1b') {
+            ++index;
+            continue;
+        }
+
         int nextEscape = ansiText.indexOf('\x1b', index);
         if (nextEscape < 0)
             nextEscape = ansiText.size();
@@ -230,7 +239,7 @@ QString ansiToHtml(const QByteArray &ansiText)
     return html;
 }
 
-QByteArray batPreview(const QString &path, int maxLines, QString *error)
+QByteArray batPreview(const QString &path, const QByteArray &data, int maxLines, QString *error)
 {
     if (error)
         error->clear();
@@ -247,12 +256,27 @@ QByteArray batPreview(const QString &path, int maxLines, QString *error)
     };
     if (maxLines > 0)
         args.append(QStringLiteral("--line-range=:%1").arg(maxLines));
-    args.append(QStringLiteral("--"));
+    // Read the already bounded preview through stdin. Passing the original
+    // path to bat made syntax highlighting bypass maxBytes, so one very long
+    // line (or a huge file when maxLines was disabled) could still consume a
+    // large amount of memory. --file-name keeps extension-based highlighting.
+    args.append(QStringLiteral("--file-name"));
     args.append(path);
+    args.append(QStringLiteral("--"));
+    args.append(QStringLiteral("-"));
 
     QProcess proc;
     proc.start(executable, args);
+    if (!proc.waitForStarted(2000)) {
+        if (error)
+            *error = QStringLiteral("Failed to start bat preview");
+        return {};
+    }
+    proc.write(data);
+    proc.closeWriteChannel();
     if (!proc.waitForFinished(10000)) {
+        proc.kill();
+        proc.waitForFinished(1000);
         if (error)
             *error = QStringLiteral("bat preview timed out");
         return {};
@@ -264,6 +288,63 @@ QByteArray batPreview(const QString &path, int maxLines, QString *error)
     }
 
     return proc.readAllStandardOutput();
+}
+
+QByteArray boundedProcessOutput(const QString &program, const QStringList &args,
+                                qint64 maxBytes, int timeoutMs, bool *truncated,
+                                QString *error)
+{
+    if (truncated)
+        *truncated = false;
+    if (error)
+        error->clear();
+
+    QProcess proc;
+    proc.start(program, args);
+    if (!proc.waitForStarted(2000)) {
+        if (error)
+            *error = QStringLiteral("Could not start %1").arg(program);
+        return {};
+    }
+
+    QByteArray output;
+    QElapsedTimer timer;
+    timer.start();
+    while (proc.state() != QProcess::NotRunning) {
+        if (!proc.waitForReadyRead(100))
+            proc.waitForFinished(100);
+        output += proc.readAllStandardOutput();
+        if (output.size() > maxBytes) {
+            if (truncated)
+                *truncated = true;
+            output.truncate(maxBytes);
+            proc.kill();
+            proc.waitForFinished(1000);
+            return output;
+        }
+        if (timer.elapsed() > timeoutMs) {
+            proc.kill();
+            proc.waitForFinished(1000);
+            if (error)
+                *error = QStringLiteral("Preview command timed out");
+            return {};
+        }
+    }
+
+    output += proc.readAllStandardOutput();
+    if (output.size() > maxBytes) {
+        if (truncated)
+            *truncated = true;
+        output.truncate(maxBytes);
+    }
+    if (proc.exitCode() != 0 && !(truncated && *truncated)) {
+        if (error)
+            *error = QString::fromUtf8(proc.readAllStandardError()).trimmed();
+        if (error && error->isEmpty())
+            *error = QStringLiteral("Preview command failed");
+        return {};
+    }
+    return output;
 }
 
 }
@@ -289,7 +370,19 @@ QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, i
     QVariantMap result;
     bool truncated = false;
     QString error;
-    const QByteArray data = readPathBytes(path, maxBytes, &truncated, &error);
+    const QString suffix = QFileInfo(QUrl(path).fileName()).suffix().toLower();
+    const bool recordStream = suffix == QStringLiteral("jsonl")
+        || suffix == QStringLiteral("ndjson");
+    // Keep synchronous preview work strictly bounded even if a caller asks
+    // for more. Record-oriented JSON commonly contains extremely long lines,
+    // so use an even smaller cap for that format.
+    const int byteLimit = recordStream
+        ? qMin(qBound(1, maxBytes, 65536), 16384)
+        : qBound(1, maxBytes, 65536);
+    const int lineLimit = recordStream
+        ? qMin(maxLines > 0 ? maxLines : 120, 40)
+        : qMin(maxLines > 0 ? maxLines : 120, 200);
+    const QByteArray data = readPathBytes(path, byteLimit, &truncated, &error);
 
     if (!error.isEmpty()) {
         result["content"] = QString();
@@ -307,8 +400,8 @@ QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, i
         text = decodeText(data);
 
     QStringList lines = text.split('\n');
-    if (maxLines > 0 && lines.size() > maxLines) {
-        lines = lines.mid(0, maxLines);
+    if (lines.size() > lineLimit) {
+        lines = lines.mid(0, lineLimit);
         truncated = true;
     }
 
@@ -322,10 +415,13 @@ QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, i
     result["lineCount"] = lines.size();
 
     if (!binary) {
-        const QString previewPath = localPreviewPath(path);
-        if (!previewPath.isEmpty()) {
+        // bat only needs a representative name for syntax detection because
+        // the bounded bytes are supplied over stdin. In particular, do not
+        // materialize an entire trash:// file merely to highlight its prefix.
+        const QString previewName = isTrashUri(path) ? QUrl(path).fileName() : path;
+        if (!previewName.isEmpty()) {
             QString batError;
-            const QByteArray coloredOutput = batPreview(previewPath, maxLines, &batError);
+            const QByteArray coloredOutput = batPreview(previewName, data, lineLimit, &batError);
             if (!coloredOutput.isEmpty()) {
                 result["html"] = ansiToHtml(coloredOutput);
                 result["usesBat"] = true;
@@ -341,7 +437,8 @@ QVariantMap PreviewService::loadDirectoryPreview(const QString &path, int maxEnt
     QVariantMap result;
     bool truncated = false;
     QString error;
-    const QStringList entries = listDirectoryEntries(path, maxEntries, &truncated, &error);
+    const int safeMaxEntries = maxEntries > 0 ? maxEntries : 40;
+    const QStringList entries = listDirectoryEntries(path, safeMaxEntries, &truncated, &error);
 
     result["entries"] = entries;
     result["truncated"] = truncated;
@@ -357,6 +454,7 @@ QVariantMap PreviewService::loadArchivePreview(const QString &path, int maxEntri
     result["truncated"] = false;
     result["error"] = QString();
     result["count"] = 0;
+    const int safeMaxEntries = maxEntries > 0 ? maxEntries : 200;
 
     // Determine list command based on archive type
     // Reuse the same detection as fileoperations
@@ -387,16 +485,18 @@ QVariantMap PreviewService::loadArchivePreview(const QString &path, int maxEntri
         return result;
     }
 
-    QProcess proc;
-    proc.start(program, args);
-    if (!proc.waitForFinished(10000) || proc.exitCode() != 0) {
+    bool outputTruncated = false;
+    QString processError;
+    const QByteArray rawOutput = boundedProcessOutput(
+        program, args, 2 * 1024 * 1024, 10000, &outputTruncated, &processError);
+    if (!processError.isEmpty()) {
         result["error"] = "Could not list archive contents";
         return result;
     }
 
-    const QString output = QString::fromUtf8(proc.readAllStandardOutput());
+    const QString output = QString::fromUtf8(rawOutput);
     QStringList entries;
-    bool truncated = false;
+    bool truncated = outputTruncated;
 
     if (program == "7z") {
         // 7z -slt output: "Path = filename" lines
@@ -406,7 +506,7 @@ QVariantMap PreviewService::loadArchivePreview(const QString &path, int maxEntri
             const QString entry = it.next().captured(1).trimmed();
             if (entry.isEmpty() || entry == path)
                 continue;
-            if (entries.size() >= maxEntries) { truncated = true; break; }
+            if (entries.size() >= safeMaxEntries) { truncated = true; break; }
             entries.append(entry);
         }
     } else {
@@ -415,7 +515,7 @@ QVariantMap PreviewService::loadArchivePreview(const QString &path, int maxEntri
             const QString trimmed = line.trimmed();
             if (trimmed.isEmpty())
                 continue;
-            if (entries.size() >= maxEntries) { truncated = true; break; }
+            if (entries.size() >= safeMaxEntries) { truncated = true; break; }
             entries.append(trimmed);
         }
     }
@@ -441,17 +541,42 @@ QString PreviewService::localPreviewPath(const QString &path) const
     const QString hash = QString::fromLatin1(QCryptographicHash::hash(path.toUtf8(), QCryptographicHash::Sha1).toHex());
     const QString cachedPath = QDir(cacheRoot).filePath(suffix.isEmpty() ? hash : hash + "." + suffix);
 
+    QSaveFile cacheFile(cachedPath);
+    if (!cacheFile.open(QIODevice::WriteOnly))
+        return {};
+
     QProcess proc;
     startGioCat(proc, encodedUri(path));
-    if (!proc.waitForFinished(10000) || proc.exitCode() != 0)
+    if (!proc.waitForStarted(2000))
         return {};
 
-    QFile cacheFile(cachedPath);
-    if (!cacheFile.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        return {};
+    QElapsedTimer timer;
+    timer.start();
+    while (proc.state() != QProcess::NotRunning) {
+        if (!proc.waitForReadyRead(100))
+            proc.waitForFinished(100);
+        if (timer.elapsed() > 30000) {
+            proc.kill();
+            proc.waitForFinished(1000);
+            cacheFile.cancelWriting();
+            return {};
+        }
+        const QByteArray chunk = proc.readAllStandardOutput();
+        if (!chunk.isEmpty() && cacheFile.write(chunk) != chunk.size()) {
+            proc.kill();
+            proc.waitForFinished(1000);
+            cacheFile.cancelWriting();
+            return {};
+        }
+    }
 
-    cacheFile.write(proc.readAllStandardOutput());
-    cacheFile.close();
+    const QByteArray tail = proc.readAllStandardOutput();
+    if ((!tail.isEmpty() && cacheFile.write(tail) != tail.size())
+        || proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0
+        || !cacheFile.commit()) {
+        cacheFile.cancelWriting();
+        return {};
+    }
 
     return cachedPath;
 }
@@ -573,7 +698,8 @@ QByteArray PreviewService::readPathBytes(const QString &path, qint64 maxBytes, b
         return {};
     }
 
-    const qint64 readLimit = qMax<qint64>(1, maxBytes) + 1;
+    const qint64 safeMaxBytes = qMax<qint64>(1, maxBytes);
+    const qint64 readLimit = safeMaxBytes + 1;
 
     if (isTrashUri(path)) {
         QProcess proc;
@@ -585,6 +711,9 @@ QByteArray PreviewService::readPathBytes(const QString &path, qint64 maxBytes, b
         }
 
         QByteArray data;
+        bool timedOut = false;
+        QElapsedTimer timer;
+        timer.start();
         while (proc.state() != QProcess::NotRunning) {
             if (!proc.waitForReadyRead(100))
                 proc.waitForFinished(100);
@@ -594,19 +723,32 @@ QByteArray PreviewService::readPathBytes(const QString &path, qint64 maxBytes, b
                 proc.waitForFinished(1000);
                 break;
             }
+            if (timer.elapsed() > 10000) {
+                timedOut = true;
+                proc.kill();
+                proc.waitForFinished(1000);
+                break;
+            }
         }
         data += proc.readAllStandardOutput();
 
+        if (timedOut && data.isEmpty()) {
+            if (error)
+                *error = QStringLiteral("Preview reader timed out");
+            return {};
+        }
+        if (timedOut && truncated)
+            *truncated = true;
         if (proc.exitStatus() != QProcess::NormalExit && data.isEmpty()) {
             if (error)
                 *error = QStringLiteral("Failed to read preview data");
             return {};
         }
 
-        if (data.size() > maxBytes) {
+        if (data.size() > safeMaxBytes) {
             if (truncated)
                 *truncated = true;
-            data.truncate(maxBytes);
+            data.truncate(safeMaxBytes);
         }
         return data;
     }
@@ -619,10 +761,10 @@ QByteArray PreviewService::readPathBytes(const QString &path, qint64 maxBytes, b
     }
 
     QByteArray data = file.read(readLimit);
-    if (data.size() > maxBytes) {
+    if (data.size() > safeMaxBytes) {
         if (truncated)
             *truncated = true;
-        data.truncate(maxBytes);
+        data.truncate(safeMaxBytes);
     }
     return data;
 }

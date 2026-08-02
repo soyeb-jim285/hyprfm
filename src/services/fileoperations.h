@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QByteArray>
 #include <QStringList>
 #include <QVariantList>
@@ -69,7 +70,11 @@ public:
     Q_INVOKABLE bool hasClipboardImage() const;
     Q_INVOKABLE QString pasteClipboardImage(const QString &destinationDir);
     Q_INVOKABLE void copyPathToClipboard(const QString &path);
-    Q_INVOKABLE void openInTerminal(const QString &dirPath);
+    Q_INVOKABLE void openInTerminal(const QString &dirPath,
+                                    const QString &configuredTerminal = QString());
+    static QStringList terminalCommand(
+        const QProcessEnvironment &environment = QProcessEnvironment::systemEnvironment(),
+        const QString &configuredTerminal = QString());
     Q_INVOKABLE void compressFiles(const QStringList &paths, const QString &format);
     Q_INVOKABLE void extractArchive(const QString &archivePath, const QString &destination);
     Q_INVOKABLE static bool isArchive(const QString &path);

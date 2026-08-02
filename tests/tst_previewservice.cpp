@@ -86,6 +86,77 @@ private slots:
         QCOMPARE(preview.value("content").toString(), QString());
     }
 
+    void testLargeTextPreviewIsByteBounded()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const QString path = dir.path() + "/large.txt";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(QByteArray(4096, 'a'));
+        file.write("TAIL-MUST-NOT-BE-PREVIEWED");
+        file.close();
+
+        PreviewService service;
+        const QVariantMap preview = service.loadTextPreview(path, 1024, 20);
+
+        QCOMPARE(preview.value("error").toString(), QString());
+        QVERIFY(preview.value("truncated").toBool());
+        QCOMPARE(preview.value("content").toString().size(), 1024);
+        QVERIFY(!preview.value("content").toString().contains("TAIL-MUST"));
+        if (preview.value("usesBat").toBool())
+            QVERIFY(!preview.value("html").toString().contains("TAIL-MUST"));
+    }
+
+    void testInvalidByteLimitIsClamped()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.path() + "/text.txt";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("hello");
+        file.close();
+
+        PreviewService service;
+        const QVariantMap preview = service.loadTextPreview(path, 0, 20);
+        QVERIFY(preview.value("truncated").toBool());
+        QCOMPARE(preview.value("content").toString(), QStringLiteral("h"));
+    }
+
+    void testTextPreviewHasHardSafetyCap()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.path() + "/huge.txt";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(QByteArray(256 * 1024, 'x'));
+        file.close();
+
+        PreviewService service;
+        const QVariantMap preview = service.loadTextPreview(path, 10 * 1024 * 1024, 10000);
+        QVERIFY(preview.value("truncated").toBool());
+        QCOMPARE(preview.value("content").toString().size(), 65536);
+    }
+
+    void testJsonLinesUsesSmallPreviewCap()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.path() + "/events.jsonl";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(QByteArray(128 * 1024, 'j'));
+        file.close();
+
+        PreviewService service;
+        const QVariantMap preview = service.loadTextPreview(path, 65536, 1000);
+        QVERIFY(preview.value("truncated").toBool());
+        QCOMPARE(preview.value("content").toString().size(), 16384);
+    }
+
     void testDirectoryPreview()
     {
         QTemporaryDir dir;
@@ -104,6 +175,34 @@ private slots:
 
         QVERIFY(entries.contains("Folder/"));
         QVERIFY(entries.contains("alpha.txt"));
+    }
+
+    void testArchivePreviewIsEntryBounded()
+    {
+        if (QStandardPaths::findExecutable("tar").isEmpty())
+            QSKIP("tar not found in PATH");
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        for (const QString &name : {QStringLiteral("a.txt"), QStringLiteral("b.txt"),
+                                    QStringLiteral("c.txt")}) {
+            QFile file(dir.path() + "/" + name);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(name.toUtf8());
+        }
+
+        const QString archivePath = dir.path() + "/files.tar";
+        QProcess tar;
+        tar.start("tar", {"-cf", archivePath, "-C", dir.path(),
+                          "a.txt", "b.txt", "c.txt"});
+        QVERIFY(tar.waitForFinished(5000));
+        QCOMPARE(tar.exitCode(), 0);
+
+        PreviewService service;
+        const QVariantMap preview = service.loadArchivePreview(archivePath, 2);
+        QCOMPARE(preview.value("error").toString(), QString());
+        QCOMPARE(preview.value("entries").toStringList().size(), 2);
+        QVERIFY(preview.value("truncated").toBool());
     }
 
     void testLocalPreviewPathForRegularFile()

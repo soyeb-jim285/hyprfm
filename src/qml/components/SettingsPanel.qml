@@ -50,6 +50,7 @@ Window {
     readonly property string defaultSortBy: "name"
     readonly property bool defaultSortAscending: true
     readonly property bool defaultRememberSortPerFolder: true
+    readonly property string defaultTerminal: "foot"
 
     // Sort column dropdown: parallel label/value arrays.
     readonly property var sortByLabels: ["Name", "Size", "Modified", "Type"]
@@ -72,6 +73,7 @@ Window {
     property string draftTheme: config.theme
     property string draftFontFamily: config.fontFamily
     property string draftIconTheme: config.iconTheme
+    property string draftTerminal: config.terminal
     property bool draftDarkMode: true
     property bool draftShowHidden: currentShowHidden
     property bool draftSidebarVisible: currentSidebarVisible
@@ -258,6 +260,7 @@ Window {
         draftSortBy = defaultSortBy
         draftSortAscending = defaultSortAscending
         draftRememberSortPerFolder = defaultRememberSortPerFolder
+        draftTerminal = defaultTerminal
         applySettingsNow()
     }
 
@@ -296,6 +299,7 @@ Window {
             draftSortBy = config.sortBy
             draftSortAscending = config.sortAscending
             draftRememberSortPerFolder = config.rememberSortPerFolder
+            draftTerminal = config.terminal
         } finally {
             syncingFromConfig = false
         }
@@ -336,6 +340,7 @@ Window {
             theme: draftTheme,
             fontFamily: draftFontFamily,
             iconTheme: draftIconTheme,
+            terminal: draftTerminal,
             showHidden: draftShowHidden,
             sidebarVisible: draftSidebarVisible,
             sidebarPosition: draftSidebarPosition,
@@ -920,6 +925,24 @@ Window {
                 font.pointSize: Theme.fontSmall
                 font.bold: true
                 Layout.bottomMargin: 4
+            }
+
+            Text {
+                text: "Terminal command"
+                color: Theme.text
+                font.pointSize: Theme.fontSmall
+                Layout.topMargin: 6
+            }
+
+            Q.TextField {
+                Layout.fillWidth: true
+                text: root.draftTerminal
+                placeholder: "foot"
+                onTextEdited: (value) => {
+                    root.draftTerminal = value
+                    root.queueSettingsApply()
+                }
+                onSubmitted: root.applySettingsNow()
             }
 
             RowLayout {

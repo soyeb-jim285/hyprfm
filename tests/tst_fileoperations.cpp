@@ -88,6 +88,61 @@ private slots:
         QStandardPaths::setTestModeEnabled(true);
     }
 
+    void testTerminalCommandHonorsConfiguredTerminal()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString terminal = dir.path() + "/my-terminal";
+        QFile executable(terminal);
+        QVERIFY(executable.open(QIODevice::WriteOnly));
+        executable.write("#!/bin/sh\n");
+        executable.close();
+        QVERIFY(executable.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                          | QFileDevice::ExeOwner));
+
+        QProcessEnvironment environment;
+        environment.insert("PATH", dir.path());
+        environment.insert("TERMINAL", "my-terminal --new-window");
+        const QStringList command = FileOperations::terminalCommand(environment);
+        QCOMPARE(command, QStringList({terminal, QStringLiteral("--new-window")}));
+    }
+
+    void testTerminalCommandUsesDesktopDefaultLauncher()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString launcher = dir.path() + "/xdg-terminal-exec";
+        QFile executable(launcher);
+        QVERIFY(executable.open(QIODevice::WriteOnly));
+        executable.write("#!/bin/sh\n");
+        executable.close();
+        QVERIFY(executable.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                          | QFileDevice::ExeOwner));
+
+        QProcessEnvironment environment;
+        environment.insert("PATH", dir.path());
+        QCOMPARE(FileOperations::terminalCommand(environment), QStringList({launcher}));
+    }
+
+    void testConfiguredTerminalOverridesXdgLauncher()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        for (const QString &name : {QStringLiteral("foot"), QStringLiteral("xdg-terminal-exec")}) {
+            QFile executable(dir.path() + "/" + name);
+            QVERIFY(executable.open(QIODevice::WriteOnly));
+            executable.write("#!/bin/sh\n");
+            executable.close();
+            QVERIFY(executable.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                              | QFileDevice::ExeOwner));
+        }
+
+        QProcessEnvironment environment;
+        environment.insert("PATH", dir.path());
+        QCOMPARE(FileOperations::terminalCommand(environment, "foot"),
+                 QStringList({dir.path() + "/foot"}));
+    }
+
     // --- Copy ---
 
     void testCopyFile()
@@ -268,7 +323,8 @@ private slots:
         ops.copyResolvedItems({item});
 
         QCOMPARE(spy.wait(5000), true);
-        QCOMPARE(spy.at(0).at(0).toBool(), true);
+        QVERIFY2(spy.at(0).at(0).toBool(),
+                 qPrintable(spy.at(0).at(1).toString()));
         QVERIFY(QFile::exists(dst.path() + "/renamed.txt"));
         QVERIFY(QFile::exists(src.path() + "/test.txt"));
     }
@@ -291,7 +347,8 @@ private slots:
         ops.moveResolvedItems({item});
 
         QCOMPARE(spy.wait(5000), true);
-        QCOMPARE(spy.at(0).at(0).toBool(), true);
+        QVERIFY2(spy.at(0).at(0).toBool(),
+                 qPrintable(spy.at(0).at(1).toString()));
         QVERIFY(!QFile::exists(src.path() + "/test.txt"));
         QVERIFY(QFile::exists(dst.path() + "/test.txt"));
 
@@ -299,6 +356,31 @@ private slots:
         QVERIFY(result.open(QIODevice::ReadOnly));
         QCOMPARE(QString::fromUtf8(result.readAll()), QString("new content"));
         QVERIFY(QFileInfo::exists(item.value("backupPath").toString()));
+    }
+
+    void testOverwriteStopsWhenBackupCannotBeCreated()
+    {
+        TestDir src, dst;
+        src.createFile("test.txt", "new content");
+        dst.createFile("test.txt", "old content");
+        dst.createFile("occupied-backup", "do not replace");
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::operationFinished);
+        QVariantMap item;
+        item["sourcePath"] = src.path() + "/test.txt";
+        item["targetPath"] = dst.path() + "/test.txt";
+        item["overwrite"] = true;
+        item["backupPath"] = dst.path() + "/occupied-backup";
+
+        ops.moveResolvedItems({item});
+
+        QVERIFY(spy.wait(5000));
+        QCOMPARE(spy.at(0).at(0).toBool(), false);
+        QFile original(dst.path() + "/test.txt");
+        QVERIFY(original.open(QIODevice::ReadOnly));
+        QCOMPARE(original.readAll(), QByteArray("old content"));
+        QVERIFY(QFileInfo::exists(src.path() + "/test.txt"));
     }
 
     // --- Rename ---

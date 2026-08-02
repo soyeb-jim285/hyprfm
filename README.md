@@ -226,6 +226,7 @@ theme = "catppuccin-mocha"     # filename in themes/ without .toml
 icon_theme = "Adwaita"         # system icon theme fallback
 builtin_icons = true           # use bundled SVG icons
 default_view = "grid"          # grid | detailed | miller
+terminal = "foot"              # terminal command used by Open in Terminal
 show_hidden = false
 sort_by = "name"               # name | size | modified | type
 sort_ascending = true

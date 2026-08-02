@@ -38,6 +38,34 @@ bool runningInFlatpak()
     return inSandbox;
 }
 
+QString executableFromEnvironment(const QString &program, const QProcessEnvironment &environment)
+{
+    if (program.isEmpty())
+        return {};
+
+    const QFileInfo programInfo(program);
+    if (programInfo.isAbsolute() || program.contains(QLatin1Char('/')))
+        return programInfo.isFile() && programInfo.isExecutable()
+            ? programInfo.absoluteFilePath() : QString();
+
+    const QStringList searchPaths = environment.value(QStringLiteral("PATH"))
+        .split(QDir::listSeparator(), Qt::SkipEmptyParts);
+    return QStandardPaths::findExecutable(program, searchPaths);
+}
+
+QStringList resolvedCommand(const QString &command, const QProcessEnvironment &environment)
+{
+    QStringList parts = QProcess::splitCommand(command.trimmed());
+    if (parts.isEmpty())
+        return {};
+
+    const QString executable = executableFromEnvironment(parts.first(), environment);
+    if (executable.isEmpty())
+        return {};
+    parts[0] = executable;
+    return parts;
+}
+
 bool isTrashUriPath(const QString &path)
 {
     return QUrl(path).scheme() == "trash";
@@ -1830,19 +1858,113 @@ void FileOperations::copyPathToClipboard(const QString &path)
             proc, &QProcess::deleteLater);
 }
 
-void FileOperations::openInTerminal(const QString &dirPath)
+void FileOperations::openInTerminal(const QString &dirPath, const QString &configuredTerminal)
 {
     if (isUriPath(dirPath)) {
         emit operationFinished(false, QStringLiteral("Open in Terminal is only available for local folders"));
         return;
     }
 
-    QString terminal = qEnvironmentVariable("TERMINAL", "kitty");
-    auto *proc = new QProcess(this);
-    proc->setWorkingDirectory(dirPath);
-    proc->start(terminal, {});
-    connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
-            proc, &QProcess::deleteLater);
+    const QFileInfo directory(dirPath);
+    if (!directory.exists() || !directory.isDir()) {
+        emit operationFinished(false, QStringLiteral("The terminal working folder does not exist"));
+        return;
+    }
+
+    if (runningInFlatpak()) {
+        const QString flatpakSpawn = QStandardPaths::findExecutable(QStringLiteral("flatpak-spawn"));
+        if (flatpakSpawn.isEmpty()) {
+            emit operationFinished(false, QStringLiteral("Host terminal access is unavailable"));
+            return;
+        }
+
+        QStringList hostCommand = QProcess::splitCommand(configuredTerminal.trimmed());
+        if (hostCommand.isEmpty())
+            hostCommand = QProcess::splitCommand(qEnvironmentVariable("TERMINAL").trimmed());
+        if (hostCommand.isEmpty()) {
+            // Resolve on the host, where the terminal executables actually
+            // live. The command is fixed; no path or filename is interpolated.
+            hostCommand = {
+                QStringLiteral("sh"), QStringLiteral("-lc"),
+                QStringLiteral("for t in xdg-terminal-exec x-terminal-emulator foot kitty "
+                               "alacritty wezterm ghostty konsole ptyxis kgx gnome-terminal "
+                               "xfce4-terminal qterminal mate-terminal xterm; do "
+                               "command -v \"$t\" >/dev/null 2>&1 && exec \"$t\"; done; exit 127")
+            };
+        }
+
+        QStringList args = {
+            QStringLiteral("--host"),
+            QStringLiteral("--directory=%1").arg(directory.absoluteFilePath())
+        };
+        args.append(hostCommand);
+        if (!QProcess::startDetached(flatpakSpawn, args, directory.absoluteFilePath()))
+            emit operationFinished(false, QStringLiteral("Could not start the host terminal"));
+        return;
+    }
+
+    QStringList command = terminalCommand(QProcessEnvironment::systemEnvironment(), configuredTerminal);
+    if (command.isEmpty()) {
+        emit operationFinished(false, QStringLiteral("No terminal emulator was found"));
+        return;
+    }
+
+    const QString program = command.takeFirst();
+    if (!QProcess::startDetached(program, command, directory.absoluteFilePath()))
+        emit operationFinished(false, QStringLiteral("Could not start the default terminal"));
+}
+
+QStringList FileOperations::terminalCommand(const QProcessEnvironment &environment,
+                                            const QString &configuredTerminal)
+{
+    const QStringList preferred = resolvedCommand(configuredTerminal, environment);
+    if (!preferred.isEmpty())
+        return preferred;
+
+    // An explicit user choice is authoritative and may include arguments.
+    const QStringList configured = resolvedCommand(
+        environment.value(QStringLiteral("TERMINAL")), environment);
+    if (!configured.isEmpty())
+        return configured;
+
+    // xdg-terminal-exec implements the desktop-neutral default-terminal
+    // selection proposal. Debian's alternative provides the same behavior
+    // on systems that expose x-terminal-emulator.
+    QStringList candidates = {
+        QStringLiteral("xdg-terminal-exec"),
+        QStringLiteral("x-terminal-emulator")
+    };
+
+    const QString desktop = environment.value(QStringLiteral("XDG_CURRENT_DESKTOP")).toLower();
+    if (desktop.contains(QStringLiteral("kde")))
+        candidates << QStringLiteral("konsole");
+    else if (desktop.contains(QStringLiteral("gnome")))
+        candidates << QStringLiteral("ptyxis") << QStringLiteral("kgx")
+                   << QStringLiteral("gnome-terminal");
+    else if (desktop.contains(QStringLiteral("xfce")))
+        candidates << QStringLiteral("xfce4-terminal");
+    else if (desktop.contains(QStringLiteral("lxqt")))
+        candidates << QStringLiteral("qterminal");
+    else if (desktop.contains(QStringLiteral("mate")))
+        candidates << QStringLiteral("mate-terminal");
+    else if (desktop.contains(QStringLiteral("cosmic")))
+        candidates << QStringLiteral("cosmic-term");
+
+    candidates << QStringLiteral("foot") << QStringLiteral("kitty")
+               << QStringLiteral("alacritty") << QStringLiteral("wezterm")
+               << QStringLiteral("ghostty") << QStringLiteral("konsole")
+               << QStringLiteral("ptyxis") << QStringLiteral("kgx")
+               << QStringLiteral("gnome-terminal") << QStringLiteral("xfce4-terminal")
+               << QStringLiteral("qterminal") << QStringLiteral("mate-terminal")
+               << QStringLiteral("xterm");
+    candidates.removeDuplicates();
+
+    for (const QString &candidate : std::as_const(candidates)) {
+        const QString executable = executableFromEnvironment(candidate, environment);
+        if (!executable.isEmpty())
+            return {executable};
+    }
+    return {};
 }
 
 void FileOperations::compressFiles(const QStringList &paths, const QString &format)

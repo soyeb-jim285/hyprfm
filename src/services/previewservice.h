@@ -16,8 +16,8 @@ public:
 
     bool pdfPreviewAvailable() const;
 
-    Q_INVOKABLE QVariantMap loadTextPreview(const QString &path, int maxBytes = 131072,
-                                            int maxLines = 400) const;
+    Q_INVOKABLE QVariantMap loadTextPreview(const QString &path, int maxBytes = 32768,
+                                            int maxLines = 120) const;
     Q_INVOKABLE QVariantMap loadDirectoryPreview(const QString &path, int maxEntries = 40) const;
     Q_INVOKABLE QVariantMap loadArchivePreview(const QString &path, int maxEntries = 200) const;
     Q_INVOKABLE QVariantMap loadPdfPreview(const QString &path) const;

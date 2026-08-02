@@ -27,6 +27,7 @@ private slots:
         QCOMPARE(mgr.builtinIcons(), true);
         QCOMPARE(mgr.fontFamily(), QString());
         QCOMPARE(mgr.defaultView(), QString("grid"));
+        QCOMPARE(mgr.terminal(), QString("foot"));
         QCOMPARE(mgr.showHidden(), false);
         QCOMPARE(mgr.sortBy(), QString("name"));
         QCOMPARE(mgr.sortAscending(), true);
@@ -287,6 +288,7 @@ private slots:
         f.write("[general]\n"
                 "theme = \"custom\"\n"
                 "font_family = \"Inter\"\n"
+                "terminal = \"foot --server\"\n"
                 "default_view = \"list\"\n"
                 "show_hidden = true\n"
                 "sort_by = \"size\"\n"
@@ -301,6 +303,7 @@ private slots:
         ConfigManager mgr(path);
         QCOMPARE(mgr.theme(), QString("custom"));
         QCOMPARE(mgr.fontFamily(), QString("Inter"));
+        QCOMPARE(mgr.terminal(), QString("foot --server"));
         QCOMPARE(mgr.defaultView(), QString("list"));
         QCOMPARE(mgr.showHidden(), true);
         QCOMPARE(mgr.sortBy(), QString("size"));
@@ -415,6 +418,18 @@ private slots:
         QCOMPARE(mgr.transparencyLevel(), 0.3);
         QCOMPARE(mgr.animationsEnabled(), false);
         QCOMPARE(mgr.bookmarks(), QStringList({"~/Documents"}));
+    }
+
+    void testSaveTerminalSetting()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.path() + "/config.toml";
+
+        ConfigManager mgr(path);
+        mgr.saveSettings({{"terminal", "foot --server"}});
+
+        ConfigManager reloaded(path);
+        QCOMPARE(reloaded.terminal(), QString("foot --server"));
     }
 
     void testSaveShortcuts()

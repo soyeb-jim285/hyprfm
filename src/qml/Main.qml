@@ -2731,7 +2731,7 @@ ApplicationWindow {
         }
 
         onOpenInTerminalRequested: (path) => {
-            fileOps.openInTerminal(path)
+            fileOps.openInTerminal(path, config.terminal)
         }
 
         onNewFolderRequested: (parentPath) => {
@@ -2799,7 +2799,7 @@ ApplicationWindow {
 
         onOpenInTerminalRequested: (path) => {
             if (path)
-                fileOps.openInTerminal(path)
+                fileOps.openInTerminal(path, config.terminal)
         }
 
         onCustomActionRequested: (action) => {
@@ -3049,7 +3049,7 @@ ApplicationWindow {
         onActivated: {
             var path = root.selectedOrCurrentTerminalPath()
             if (root.isLocalPath(path))
-                fileOps.openInTerminal(path)
+                fileOps.openInTerminal(path, config.terminal)
         }
     }
 
