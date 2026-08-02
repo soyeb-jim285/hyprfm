@@ -1900,7 +1900,9 @@ ApplicationWindow {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    root.paneBaseModel(root.activePane).setDefaultApp(appChooserDialog.mimeType, modelData.desktopFile)
+                                    var ok = root.paneBaseModel(root.activePane).setDefaultApp(appChooserDialog.mimeType, modelData.desktopFile)
+                                    toast.show(ok ? "Default application updated" : "Could not update the default application",
+                                               ok ? "success" : "error")
                                     appChooserDialog.close()
                                 }
                             }
@@ -2306,8 +2308,11 @@ ApplicationWindow {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
                                         if (!modelData.isDefault) {
-                                            propertiesDialog.fileModelRef.setDefaultApp(propertiesDialog.props.mimeType, modelData.desktopFile)
-                                            propertiesDialog.apps = propertiesDialog.fileModelRef.availableApps(propertiesDialog.props.mimeType)
+                                            var ok = propertiesDialog.fileModelRef.setDefaultApp(propertiesDialog.props.mimeType, modelData.desktopFile)
+                                            toast.show(ok ? "Default application updated" : "Could not update the default application",
+                                                       ok ? "success" : "error")
+                                            if (ok)
+                                                propertiesDialog.apps = propertiesDialog.fileModelRef.availableApps(propertiesDialog.props.mimeType)
                                         }
                                     }
                                 }
@@ -2687,7 +2692,9 @@ ApplicationWindow {
         onOpenInNewTabRequested: (path) => root.openPathInNewTab(path)
         onOpenWithRequested: (path, desktopFile) => fileOps.openFileWith(path, desktopFile)
         onSetDefaultAppRequested: (mimeType, desktopFile) => {
-            root.paneBaseModel(root.activePane).setDefaultApp(mimeType, desktopFile)
+            var ok = root.paneBaseModel(root.activePane).setDefaultApp(mimeType, desktopFile)
+            toast.show(ok ? "Default application updated" : "Could not update the default application",
+                       ok ? "success" : "error")
         }
         onChooseAppRequested: (path, mimeType) => {
             appChooserDialog.filePath = path
@@ -3724,6 +3731,11 @@ ApplicationWindow {
                 toast.show("Operation completed successfully", "success")
             else
                 toast.show(error || "Operation failed", "error")
+        }
+
+        function onFileOpenFinished(success, error) {
+            if (!success)
+                toast.show(error || "Could not open the file", "error")
         }
     }
 

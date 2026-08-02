@@ -143,6 +143,49 @@ private slots:
                  QStringList({dir.path() + "/foot"}));
     }
 
+    void testOpenFileUsesGioWithoutXdgTools()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString markerPath = dir.path() + "/gio-args";
+        const QString gioPath = dir.path() + "/gio";
+        QFile gio(gioPath);
+        QVERIFY(gio.open(QIODevice::WriteOnly));
+        gio.write("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$HYPRFM_GIO_MARKER\"\n");
+        gio.close();
+        QVERIFY(gio.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                   | QFileDevice::ExeOwner));
+
+        const QByteArray oldPath = qgetenv("PATH");
+        const QByteArray oldMarker = qgetenv("HYPRFM_GIO_MARKER");
+        qputenv("PATH", dir.path().toUtf8());
+        qputenv("HYPRFM_GIO_MARKER", markerPath.toUtf8());
+
+        const QString filePath = dir.path() + "/document.txt";
+        QFile file(filePath);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("hello");
+        file.close();
+
+        FileOperations ops;
+        QSignalSpy spy(&ops, &FileOperations::fileOpenFinished);
+        ops.openFile(filePath);
+        const bool completed = spy.wait(3000);
+
+        qputenv("PATH", oldPath);
+        if (oldMarker.isNull())
+            qunsetenv("HYPRFM_GIO_MARKER");
+        else
+            qputenv("HYPRFM_GIO_MARKER", oldMarker);
+
+        QVERIFY(completed);
+        QVERIFY2(spy.at(0).at(0).toBool(), qPrintable(spy.at(0).at(1).toString()));
+        QFile marker(markerPath);
+        QVERIFY(marker.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(marker.readLine()).trimmed(), QString("open"));
+        QCOMPARE(QString::fromUtf8(marker.readLine()).trimmed(), filePath);
+    }
+
     // --- Copy ---
 
     void testCopyFile()

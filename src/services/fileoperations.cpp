@@ -2,7 +2,6 @@
 #include "services/giotransferworker.h"
 #include <QBuffer>
 #include <QClipboard>
-#include <QDesktopServices>
 #include <QDir>
 #include <QDirIterator>
 #include <QThread>
@@ -1641,41 +1640,48 @@ void FileOperations::createFile(const QString &parentPath, const QString &name)
 void FileOperations::openFile(const QString &path)
 {
     const QString normalized = normalizeLocation(path);
+    if (normalized.isEmpty()) {
+        emit fileOpenFinished(false, QStringLiteral("No file was selected"));
+        return;
+    }
+    if (!isUriPath(normalized) && !QFileInfo::exists(normalized)) {
+        emit fileOpenFinished(false, QStringLiteral("The selected file no longer exists"));
+        return;
+    }
 
     auto *proc = new QProcess(this);
-    connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
-            proc, &QProcess::deleteLater);
+    connect(proc, &QProcess::errorOccurred, this,
+            [this, proc](QProcess::ProcessError error) {
+                if (error == QProcess::FailedToStart) {
+                    emit fileOpenFinished(false, QStringLiteral("Could not start the system file opener: %1")
+                                                     .arg(proc->errorString()));
+                    proc->deleteLater();
+                }
+            });
+    connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+            [this, proc](int exitCode, QProcess::ExitStatus exitStatus) {
+                if (exitStatus == QProcess::NormalExit && exitCode == 0) {
+                    emit fileOpenFinished(true, QString());
+                } else {
+                    QString error = QString::fromUtf8(proc->readAllStandardError()).trimmed();
+                    if (error.isEmpty())
+                        error = QStringLiteral("No default application could open this file");
+                    emit fileOpenFinished(false, error);
+                }
+                proc->deleteLater();
+            });
 
-    // gio:// / sftp:// / smb:// / trash:// → use `gio open` which talks
-    // to gvfs. On the host this is just `gio open <uri>`; inside a Flatpak
-    // we run it on the host so it sees the host's gvfsd mounts.
-    if (isUriPath(normalized)) {
-        const QStringList args = {QStringLiteral("open"), gioLocationArg(normalized)};
-        if (runningInFlatpak()) {
-            proc->start(QStringLiteral("flatpak-spawn"),
-                        QStringList{QStringLiteral("--host"), QStringLiteral("gio")} + args);
-        } else {
-            proc->start(QStringLiteral("gio"), args);
-        }
-        return;
-    }
-
-    // Local files. Outside a sandbox: hand off to Qt's QDesktopServices
-    // (which uses xdg-open / kde-open / gio-launch under the hood and
-    // honors the user's MIME associations). Inside a Flatpak: shell out
-    // to `flatpak-spawn --host xdg-open` so the host opens the file with
-    // the host's default app, completely bypassing the sandbox. This is
-    // the same pattern Nautilus and Dolphin use when running as Flatpaks.
+    // Use GIO for local files and URIs alike. QDesktopServices delegates to
+    // xdg-open on Linux, which breaks on minimal Wayland/Hyprland systems
+    // without xdg-utils. GIO reads the same mimeapps association that the
+    // Open With menu updates.
+    const QStringList args = {QStringLiteral("open"), gioLocationArg(normalized)};
     if (runningInFlatpak()) {
         proc->start(QStringLiteral("flatpak-spawn"),
-                    {QStringLiteral("--host"), QStringLiteral("xdg-open"), normalized});
-        return;
+                    QStringList{QStringLiteral("--host"), QStringLiteral("gio")} + args);
+    } else {
+        proc->start(QStringLiteral("gio"), args);
     }
-
-    proc->deleteLater();
-    const QUrl url = QUrl::fromLocalFile(normalized);
-    if (!QDesktopServices::openUrl(url))
-        qWarning() << "FileOperations::openFile: failed to open" << normalized;
 }
 
 bool FileOperations::pathExists(const QString &path) const

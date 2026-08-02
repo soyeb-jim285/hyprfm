@@ -90,6 +90,48 @@ private slots:
         QCOMPARE(model.rootPath(), uri);
     }
 
+    void testDefaultApplicationUsesGioWithoutXdgTools()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString markerPath = dir.path() + "/gio-args";
+        const QString gioPath = dir.path() + "/gio";
+        QFile gio(gioPath);
+        QVERIFY(gio.open(QIODevice::WriteOnly));
+        gio.write("#!/bin/sh\n"
+                  "if [ \"$#\" -eq 2 ]; then\n"
+                  "  printf '%s\\n' 'Default application for text/plain: viewer.desktop'\n"
+                  "else\n"
+                  "  printf '%s\\n' \"$@\" > \"$HYPRFM_GIO_MARKER\"\n"
+                  "fi\n");
+        gio.close();
+        QVERIFY(gio.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                   | QFileDevice::ExeOwner));
+
+        const QByteArray oldPath = qgetenv("PATH");
+        const QByteArray oldMarker = qgetenv("HYPRFM_GIO_MARKER");
+        qputenv("PATH", dir.path().toUtf8());
+        qputenv("HYPRFM_GIO_MARKER", markerPath.toUtf8());
+
+        FileSystemModel model;
+        const QString defaultApp = model.defaultApp("text/plain");
+        const bool changed = model.setDefaultApp("text/plain", "other-viewer.desktop");
+
+        qputenv("PATH", oldPath);
+        if (oldMarker.isNull())
+            qunsetenv("HYPRFM_GIO_MARKER");
+        else
+            qputenv("HYPRFM_GIO_MARKER", oldMarker);
+
+        QCOMPARE(defaultApp, QString("viewer.desktop"));
+        QVERIFY(changed);
+        QFile marker(markerPath);
+        QVERIFY(marker.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(marker.readLine()).trimmed(), QString("mime"));
+        QCOMPARE(QString::fromUtf8(marker.readLine()).trimmed(), QString("text/plain"));
+        QCOMPARE(QString::fromUtf8(marker.readLine()).trimmed(), QString("other-viewer.desktop"));
+    }
+
     // 5. Empty root path yields 0 rows
     void testEmptyRootPath()
     {

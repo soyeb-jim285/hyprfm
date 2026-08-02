@@ -1795,15 +1795,29 @@ QVariantList FileSystemModel::availableApps(const QString &mimeType) const
 
 QString FileSystemModel::defaultApp(const QString &mimeType) const
 {
-    return runHostTool(QStringLiteral("xdg-mime"),
-                       {QStringLiteral("query"), QStringLiteral("default"), mimeType},
-                       2000).trimmed();
+    const QString output = runHostTool(QStringLiteral("gio"),
+                                       {QStringLiteral("mime"), mimeType}, 2000);
+    static const QRegularExpression desktopIdRe(QStringLiteral(R"(([^\s:]+\.desktop))"));
+    const auto match = desktopIdRe.match(output);
+    return match.hasMatch() ? match.captured(1) : QString();
 }
 
-void FileSystemModel::setDefaultApp(const QString &mimeType, const QString &desktopFile)
+bool FileSystemModel::setDefaultApp(const QString &mimeType, const QString &desktopFile)
 {
-    runHostTool(QStringLiteral("xdg-mime"),
-                {QStringLiteral("default"), desktopFile, mimeType}, 2000);
+    if (mimeType.trimmed().isEmpty() || desktopFile.trimmed().isEmpty())
+        return false;
+
+    QProcess proc;
+    if (runningInFlatpak()) {
+        proc.start(QStringLiteral("flatpak-spawn"),
+                   {QStringLiteral("--host"), QStringLiteral("gio"), QStringLiteral("mime"),
+                    mimeType, desktopFile});
+    } else {
+        proc.start(QStringLiteral("gio"),
+                   {QStringLiteral("mime"), mimeType, desktopFile});
+    }
+    return proc.waitForFinished(3000)
+        && proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
 }
 
 QVariantList FileSystemModel::allInstalledApps() const

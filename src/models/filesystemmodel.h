@@ -67,7 +67,7 @@ public:
     Q_INVOKABLE QVariantMap folderItemCounts(const QStringList &paths) const;
     Q_INVOKABLE QVariantList availableApps(const QString &mimeType) const;
     Q_INVOKABLE QString defaultApp(const QString &mimeType) const;
-    Q_INVOKABLE void setDefaultApp(const QString &mimeType, const QString &desktopFile);
+    Q_INVOKABLE bool setDefaultApp(const QString &mimeType, const QString &desktopFile);
     Q_INVOKABLE QVariantList allInstalledApps() const;
     Q_INVOKABLE bool setFilePermissions(const QString &path, int ownerAccess, int groupAccess, int otherAccess);
     Q_INVOKABLE QString homePath() const;

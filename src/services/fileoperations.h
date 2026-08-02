@@ -94,6 +94,7 @@ signals:
     void activeTransfersChanged();
     void pathsChanged(const QStringList &paths);
     void operationFinished(bool success, const QString &error);
+    void fileOpenFinished(bool success, const QString &error);
 
 private:
     struct ActiveTransfer {
