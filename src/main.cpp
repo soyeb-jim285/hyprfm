@@ -434,7 +434,28 @@ int main(int argc, char *argv[])
                 sessionData = doc.object();
         }
     }
-    if (sessionData.contains("tabs"))
+    // Startup directory: "last" keeps the saved session's tabs; anything else
+    // opens Home (or the configured folder, `~` expanded) instead. A path
+    // passed on the command line always wins and is handled further down.
+    QString startupPath;
+    bool overrideStartupDir = false;
+    const QString startupDir = config->startupDir();
+    if (isPrimary && initialOpenPath.isEmpty() && startupDir != QStringLiteral("last")) {
+        const QString home = QDir::homePath();
+        if (startupDir == QStringLiteral("home")) {
+            startupPath = home;
+        } else {
+            QString p = startupDir;
+            if (p.startsWith(QLatin1Char('~')))
+                p.replace(0, 1, home);
+            QFileInfo fi(p);
+            if (fi.isDir())
+                startupPath = fi.absoluteFilePath();
+        }
+        // An invalid or missing folder falls back to the saved session.
+        overrideStartupDir = !startupPath.isEmpty();
+    }
+    if (sessionData.contains("tabs") && !overrideStartupDir)
         tabModel->restoreSession(sessionData.value("tabs").toArray(),
                                  sessionData.value("activeTab").toInt(0));
 
@@ -449,6 +470,13 @@ int main(int argc, char *argv[])
     if (!isPrimary && !initialOpenPath.isEmpty()) {
         if (auto *tab = tabModel->activeTab())
             tab->navigateTo(initialOpenPath);
+    }
+
+    // When configured to start somewhere specific, hop the default tab there
+    // instead of the session's folders (already skipped above).
+    if (overrideStartupDir) {
+        if (auto *tab = tabModel->activeTab())
+            tab->navigateTo(startupPath);
     }
 
     BookmarkModel *bookmarks = new BookmarkModel(&app);
@@ -483,6 +511,11 @@ int main(int argc, char *argv[])
     if (initialSplitViewEnabled)
         splitFsModel->setRootPath(initialSecondaryPath);
     mark("Secondary fsModel populated");
+
+    // Dedicated model for folder pickers (Settings → startup_dir), so the
+    // browsing there never disturbs the tabs' own views.
+    FileSystemModel *pickerFsModel = new FileSystemModel(&app);
+    pickerFsModel->setShowHidden(config->showHidden());
 
     FileSystemModel *millerParentModel = new FileSystemModel(&app);
     millerParentModel->setShowHidden(config->showHidden());
@@ -527,6 +560,7 @@ int main(int argc, char *argv[])
         splitFsModel->setShowHidden(config->showHidden());
         millerParentModel->setShowHidden(config->showHidden());
         millerPreviewModel->setShowHidden(config->showHidden());
+        pickerFsModel->setShowHidden(config->showHidden());
         app.setFont(resolveUiFont(config->fontFamily()));
     });
 
@@ -591,6 +625,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("dragHelper", dragHelper);
     engine.rootContext()->setContextProperty("fsModel", fsModel);
     engine.rootContext()->setContextProperty("splitFsModel", splitFsModel);
+    engine.rootContext()->setContextProperty("pickerFsModel", pickerFsModel);
     engine.rootContext()->setContextProperty("millerParentModel", millerParentModel);
     engine.rootContext()->setContextProperty("millerPreviewModel", millerPreviewModel);
     engine.rootContext()->setContextProperty("devices", devices);
