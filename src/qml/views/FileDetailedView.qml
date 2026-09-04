@@ -1017,7 +1017,7 @@ FocusScope {
                             height: root.detailIconSize
                             anchors.verticalCenter: parent.verticalCenter
 
-                            readonly property bool hasThumbnail: !fileOps.isRemotePath(detRow.filePath) && !fileOps.isSlowPath(detRow.filePath)
+                            readonly property bool hasThumbnail: !fileOps.isRemotePath(detRow.filePath)
                                 && (detRow.hasImagePreview || detRow.hasVideoPreview
                                     || detRow.hasPdfPreview)
 

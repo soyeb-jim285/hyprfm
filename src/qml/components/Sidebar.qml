@@ -39,6 +39,7 @@ Rectangle {
     Component { id: iconHardDriveOff; IconHardDriveOff { size: 18; color: Theme.muted } }
     Component { id: iconUsb; IconUsb { size: 18; color: Theme.subtext } }
     Component { id: iconUsbOff; IconUsb { size: 18; color: Theme.muted } }
+    Component { id: iconCloud; IconCloud { size: 18; color: Theme.accent } }
     Component { id: iconFolder; IconFolder { size: 18; color: Theme.subtext } }
 
     // Inverse rounded corner — top right
@@ -372,7 +373,7 @@ Rectangle {
                             Loader {
                                 width: 18; height: 18
                                 anchors.verticalCenter: parent.verticalCenter
-                                sourceComponent: iconFolder
+                                sourceComponent: fileOps.isSlowPath(model.path) ? iconCloud : iconFolder
                             }
 
                             Text {
@@ -595,6 +596,94 @@ Rectangle {
                         text: bookmarksSection.dragName
                         color: Theme.text
                         font.pointSize: Theme.fontNormal
+                    }
+                }
+            }
+        }
+
+        // Cloud Mounts section — active rclone mounts
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 2
+            visible: rcloneService.activeMounts.length > 0
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.spacing
+                Layout.rightMargin: Theme.spacing
+                height: 1
+                color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+            }
+
+            Item {
+                Layout.fillWidth: true
+                height: 24
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Theme.spacing
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Cloud Mounts"
+                    color: Theme.muted
+                    font.pointSize: Theme.fontSmall
+                    font.weight: Font.Bold
+                }
+            }
+
+            Repeater {
+                model: rcloneService.activeMounts
+                delegate: Item {
+                    Layout.fillWidth: true
+                    height: 32
+
+                    Rectangle {
+                        id: cloudDelegate
+                        width: parent.width - Theme.spacing
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        height: 32
+                        readonly property string mountPath: rcloneService.getMountPath(modelData)
+                        readonly property bool isActive: !root.isRecentsView && root.currentPath === mountPath
+
+                        color: {
+                            if (isActive) return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+                            if (cloudMouse.containsMouse) return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
+                            return "transparent"
+                        }
+                        radius: Theme.radiusSmall
+                        Behavior on color { ColorAnimation { duration: Theme.animDuration } }
+
+                        Row {
+                            anchors.left: parent.left
+                            anchors.leftMargin: Theme.spacing
+                            anchors.right: parent.right
+                            anchors.rightMargin: Theme.spacing
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: Theme.spacing
+
+                            IconCloud {
+                                width: 18; height: 18
+                                size: 18
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: cloudDelegate.isActive ? Theme.accent : Theme.subtext
+                            }
+
+                            Text {
+                                text: modelData
+                                color: cloudDelegate.isActive ? Theme.accent : Theme.text
+                                font.pointSize: Theme.fontNormal
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                                width: parent.width - 26
+                            }
+                        }
+
+                        MouseArea {
+                            id: cloudMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.bookmarkClicked(cloudDelegate.mountPath)
+                        }
                     }
                 }
             }

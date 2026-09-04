@@ -889,7 +889,7 @@ FocusScope {
                             width: root.millerIconSize + 2; height: root.millerIconSize + 2
                             anchors.verticalCenter: parent.verticalCenter
 
-                            readonly property bool hasThumbnail: !fileOps.isRemotePath(currentDelegate.filePath) && !fileOps.isSlowPath(currentDelegate.filePath)
+                            readonly property bool hasThumbnail: !fileOps.isRemotePath(currentDelegate.filePath)
                                 && (currentDelegate.hasImagePreview || currentDelegate.hasVideoPreview)
 
                             Image {

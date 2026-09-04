@@ -575,7 +575,7 @@ GridView {
             }
         }
 
-        readonly property bool hasThumbnail: !fileOps.isRemotePath(delegateItem.filePath) && !fileOps.isSlowPath(delegateItem.filePath)
+        readonly property bool hasThumbnail: !fileOps.isRemotePath(delegateItem.filePath)
             && (delegateItem.hasImagePreview || delegateItem.hasVideoPreview
                 || delegateItem.hasPdfPreview)
 

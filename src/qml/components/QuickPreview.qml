@@ -707,6 +707,13 @@ Item {
                         anchors.fill: parent
                         anchors.margins: 12
 
+                        BusyIndicator {
+                            anchors.centerIn: parent
+                            running: root.previewLoading
+                            visible: running
+                            z: 10
+                        }
+
                         Image {
                             id: visualPreview
                             anchors.fill: parent

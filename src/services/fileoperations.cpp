@@ -695,6 +695,11 @@ QStringList trashRootCandidatesForPath(const QString &path)
     QStringList roots;
 
     const QString cleanPath = QDir::cleanPath(path);
+    const QString homePath = QDir::cleanPath(QDir::homePath());
+    if (cleanPath == homePath || cleanPath.startsWith(homePath + "/")) {
+        roots.append(XdgTrash::homeRoot());
+    }
+
     if (!cleanPath.isEmpty()) {
         const QString lookupPath = existingLookupPathFor(cleanPath);
         const QString storageRoot = QDir::cleanPath(QStorageInfo(lookupPath).rootPath());

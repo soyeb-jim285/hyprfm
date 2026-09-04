@@ -551,7 +551,16 @@ ApplicationWindow {
         if (rcloneService.isRclonePath(path)) {
             var remote = rcloneService.getRemoteNameFromPath(path)
             if (!rcloneService.isMounted(remote)) {
-                pendingCloudCallbacks.push({ remote: remote, callback: callback })
+                var exists = false
+                for (var i = 0; i < pendingCloudCallbacks.length; ++i) {
+                    if (pendingCloudCallbacks[i].remote === remote) {
+                        exists = true
+                        break
+                    }
+                }
+                if (!exists)
+                    pendingCloudCallbacks.push({ remote: remote, callback: callback })
+
                 if (!rcloneService.isMounting(remote)) {
                     toast.show("Mounting cloud storage '" + remote + "'...", "info")
                     rcloneService.mountRemote(remote)
@@ -3934,6 +3943,11 @@ ApplicationWindow {
             diskUsageService.invalidatePaths(paths)
             if (propertiesDialog.visible && propertiesDialog.props.path)
                 propertiesDialog.refreshFolderDiskUsage()
+
+            for (var i = 0; i < paths.length; ++i) {
+                fsModel.invalidateRemoteCache(paths[i])
+                splitFsModel.invalidateRemoteCache(paths[i])
+            }
         }
 
         function onPasswordRequested(archivePath, destination, retry) {

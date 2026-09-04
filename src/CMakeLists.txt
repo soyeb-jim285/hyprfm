@@ -132,6 +132,7 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconVideo.qml
         qml/icons/IconMonitor.qml
         qml/icons/IconGlobe.qml
+        qml/icons/IconCloud.qml
         qml/icons/IconRocket.qml
         qml/icons/IconSettings.qml
         qml/icons/IconFilter.qml

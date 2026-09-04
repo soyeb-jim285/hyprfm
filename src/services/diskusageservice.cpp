@@ -1,4 +1,5 @@
 #include "services/diskusageservice.h"
+#include "services/cloudmounts.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -108,6 +109,8 @@ qint64 DiskUsageWorker::pathSize(const QString &path, QSet<FileId> *seenInodes,
 qint64 DiskUsageWorker::directorySize(const QString &path, QSet<FileId> *seenInodes,
                                      int *unreadableCount) const
 {
+    if (isCloudMountPath(path))
+        return 0;
     QDir dir(path);
     if (!dir.exists() || !dir.isReadable()) {
         if (unreadableCount)

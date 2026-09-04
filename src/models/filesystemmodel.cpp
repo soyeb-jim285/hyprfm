@@ -595,6 +595,7 @@ FileSystemModel::FileSystemModel(QObject *parent)
 
 FileSystemModel::~FileSystemModel()
 {
+    clearPrefetchWatchers();
     cancelRemoteReload();
     cancelLocalReload();
 }
@@ -889,13 +890,13 @@ void FileSystemModel::setRootPath(const QString &path)
         return;
 
     // Stop watching old directory
-    if (!m_rootPath.isEmpty() && !isTrashRoot() && !isRemoteRoot())
+    if (!m_rootPath.isEmpty() && !isTrashRoot() && !isRemoteRoot() && !isCloudMountPath(m_rootPath))
         m_watcher.removePath(m_rootPath);
 
     m_rootPath = normalizedPath;
 
     // Watch new directory
-    if (!m_rootPath.isEmpty() && !isTrashRoot() && !isRemoteRoot())
+    if (!m_rootPath.isEmpty() && !isTrashRoot() && !isRemoteRoot() && !isCloudMountPath(m_rootPath))
         m_watcher.addPath(m_rootPath);
 
     reload();
@@ -943,6 +944,7 @@ void FileSystemModel::sortByColumn(const QString &column, bool ascending)
 
 void FileSystemModel::refresh()
 {
+    invalidateRemoteCache(m_rootPath);
     if (isTrashRoot()) {
         reload();
         return;
@@ -1003,6 +1005,7 @@ QString FileSystemModel::fileName(int row) const
 
 void FileSystemModel::reload()
 {
+    invalidateRemoteCache(m_rootPath);
     setIsLoading(true);
     cancelRemoteReload();
     ++m_remoteReloadGeneration;
@@ -1106,6 +1109,21 @@ FileSystemModel::LocalReloadResult FileSystemModel::scanLocalEntries(
 
 void FileSystemModel::scheduleLocalReload(bool tryDiff)
 {
+    if (!m_rootPath.isEmpty() && isCloudMountPath(m_rootPath) && m_slowPathCache.contains(m_rootPath)) {
+        const auto &cached = m_slowPathCache.value(m_rootPath);
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - cached.timestamp < 120000) {
+            beginResetModel();
+            m_entries = cached.entries;
+            m_fileCount = cached.fileCount;
+            m_folderCount = cached.folderCount;
+            endResetModel();
+            emit countsChanged();
+            setIsLoading(false);
+            return;
+        }
+    }
+
     setIsLoading(true);
     const quint64 gen = ++m_localReloadGeneration;
     m_localReloadTryDiff = tryDiff;
@@ -1118,14 +1136,18 @@ void FileSystemModel::scheduleLocalReload(bool tryDiff)
         return;
     }
 
-    if (!m_localReloadWatcher) {
-        m_localReloadWatcher = new QFutureWatcher<LocalReloadResult>(this);
-        connect(m_localReloadWatcher, &QFutureWatcherBase::finished, this, [this]() {
-            if (!m_localReloadWatcher)
-                return;
-            applyLocalReload(m_localReloadWatcher->result(), m_localReloadTryDiff);
-        });
+    if (m_localReloadWatcher) {
+        m_localReloadWatcher->disconnect(this);
+        m_localReloadWatcher->deleteLater();
+        m_localReloadWatcher = nullptr;
     }
+
+    m_localReloadWatcher = new QFutureWatcher<LocalReloadResult>(this);
+    connect(m_localReloadWatcher, &QFutureWatcherBase::finished, this, [this]() {
+        if (!m_localReloadWatcher)
+            return;
+        applyLocalReload(m_localReloadWatcher->result(), m_localReloadTryDiff);
+    });
 
     auto future = QtConcurrent::run(&FileSystemModel::scanLocalEntries,
                                     gen, m_rootPath, m_showHidden, m_sortFlags);
@@ -1134,10 +1156,12 @@ void FileSystemModel::scheduleLocalReload(bool tryDiff)
 
 void FileSystemModel::cancelLocalReload()
 {
+    clearPrefetchWatchers();
     if (!m_localReloadWatcher)
         return;
     m_localReloadWatcher->disconnect(this);
-    m_localReloadWatcher->waitForFinished();
+    m_localReloadWatcher->deleteLater();
+    m_localReloadWatcher = nullptr;
     setIsLoading(false);
 }
 
@@ -1160,6 +1184,17 @@ void FileSystemModel::applyLocalReload(LocalReloadResult result, bool tryDiff)
     updateLocalCounts();
     endResetModel();
     emit countsChanged();
+
+    if (isCloudMountPath(m_rootPath)) {
+        CachedLocalDirectory cached;
+        cached.timestamp = QDateTime::currentMSecsSinceEpoch();
+        cached.entries = m_entries;
+        cached.fileCount = m_fileCount;
+        cached.folderCount = m_folderCount;
+        m_slowPathCache.insert(m_rootPath, cached);
+        prefetchSubdirectories();
+    }
+
     setIsLoading(false);
 }
 
@@ -1169,6 +1204,21 @@ void FileSystemModel::reloadRemote()
         m_fileCount = 0;
         m_folderCount = 0;
         return;
+    }
+
+    if (m_remoteDirCache.contains(m_rootPath)) {
+        const auto &cached = m_remoteDirCache.value(m_rootPath);
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - cached.timestamp < 120000) {
+            beginResetModel();
+            m_remoteEntries = cached.entries;
+            m_fileCount = cached.fileCount;
+            m_folderCount = cached.folderCount;
+            endResetModel();
+            emit countsChanged();
+            setIsLoading(false);
+            return;
+        }
     }
 
     setIsLoading(true);
@@ -1233,23 +1283,20 @@ void FileSystemModel::cancelRemoteReload()
     setIsLoading(false);
 }
 
-void FileSystemModel::applyRemoteReload(const QString &rootPath, const QByteArray &output)
+FileSystemModel::RemoteParsingResult FileSystemModel::parseRemoteOutput(const QString &rootPath, const QByteArray &output) const
 {
-    if (rootPath != m_rootPath || !isRemoteRoot())
-        return;
-
-    QList<QVariantMap> entries;
-    const QStringList lines = QString::fromUtf8(output).split('\n', Qt::SkipEmptyParts);
+    RemoteParsingResult result;
+    const QStringList lines = QString::fromUtf8(output).split(QLatin1Char(10), Qt::SkipEmptyParts);
     for (const QString &line : lines) {
         const QVariantMap entry = buildRemoteEntryFromLine(line);
         if (!entry.isEmpty())
-            entries.append(entry);
+            result.entries.append(entry);
     }
 
-    const QString afcDocumentsUri = afcDocumentsUriFor(m_rootPath);
+    const QString afcDocumentsUri = afcDocumentsUriFor(rootPath);
     if (!afcDocumentsUri.isEmpty()) {
         bool alreadyPresent = false;
-        for (const QVariantMap &entry : std::as_const(entries)) {
+        for (const QVariantMap &entry : std::as_const(result.entries)) {
             if (entry.value(QStringLiteral("filePath")).toString() == afcDocumentsUri) {
                 alreadyPresent = true;
                 break;
@@ -1271,12 +1318,12 @@ void FileSystemModel::applyRemoteReload(const QString &rootPath, const QByteArra
             entry[QStringLiteral("fileIconName")] = QStringLiteral("folder");
             entry[QStringLiteral("mimeType")] = QStringLiteral("inode/directory");
             entry[QStringLiteral("symlinkTarget")] = QString();
-            entries.prepend(entry);
+            result.entries.prepend(entry);
         }
     }
 
     QCollator collator = nameCollator();
-    std::sort(entries.begin(), entries.end(), [this, &collator](const QVariantMap &lhs, const QVariantMap &rhs) {
+    std::sort(result.entries.begin(), result.entries.end(), [this, &collator](const QVariantMap &lhs, const QVariantMap &rhs) {
         const bool lhsDir = lhs.value(QStringLiteral("isDir")).toBool();
         const bool rhsDir = rhs.value(QStringLiteral("isDir")).toBool();
         if (lhsDir != rhsDir)
@@ -1302,22 +1349,149 @@ void FileSystemModel::applyRemoteReload(const QString &rootPath, const QByteArra
         return m_sortAscending ? comparison < 0 : comparison > 0;
     });
 
-    int files = 0;
-    int folders = 0;
-    for (const auto &entry : std::as_const(entries)) {
+    for (const auto &entry : std::as_const(result.entries)) {
         if (entry.value(QStringLiteral("isDir")).toBool())
-            ++folders;
+            ++result.folderCount;
         else
-            ++files;
+            ++result.fileCount;
+    }
+
+    return result;
+}
+
+void FileSystemModel::applyRemoteParsedEntries(const QString &rootPath, const QList<QVariantMap> &entries, int fileCount, int folderCount)
+{
+    if (rootPath != m_rootPath || !isRemoteRoot())
+        return;
+
+    if (applyRemoteDiff(entries)) {
+        CachedRemoteDirectory cached;
+        cached.timestamp = QDateTime::currentMSecsSinceEpoch();
+        cached.entries = m_remoteEntries;
+        cached.fileCount = m_fileCount;
+        cached.folderCount = m_folderCount;
+        m_remoteDirCache.insert(rootPath, cached);
+        setIsLoading(false);
+        return;
     }
 
     beginResetModel();
-    m_remoteEntries = std::move(entries);
-    m_fileCount = files;
-    m_folderCount = folders;
+    m_remoteEntries = entries;
+    m_fileCount = fileCount;
+    m_folderCount = folderCount;
     endResetModel();
     emit countsChanged();
+
+    CachedRemoteDirectory cached;
+    cached.timestamp = QDateTime::currentMSecsSinceEpoch();
+    cached.entries = m_remoteEntries;
+    cached.fileCount = m_fileCount;
+    cached.folderCount = m_folderCount;
+    m_remoteDirCache.insert(rootPath, cached);
+
     setIsLoading(false);
+}
+
+void FileSystemModel::applyRemoteReload(const QString &rootPath, const QByteArray &output)
+{
+    const RemoteParsingResult res = parseRemoteOutput(rootPath, output);
+    applyRemoteParsedEntries(rootPath, res.entries, res.fileCount, res.folderCount);
+}
+
+bool FileSystemModel::applyRemoteDiff(const QList<QVariantMap> &newEntries)
+{
+    const int oldCount = m_remoteEntries.size();
+    const int newCount = newEntries.size();
+
+    auto pathAt = [](const QList<QVariantMap> &list, int row) {
+        return list.at(row).value(QStringLiteral("filePath")).toString();
+    };
+
+    if (newCount == oldCount + 1) {
+        int insertRow = 0;
+        while (insertRow < oldCount
+               && pathAt(m_remoteEntries, insertRow) == pathAt(newEntries, insertRow)) {
+            ++insertRow;
+        }
+
+        bool matches = true;
+        for (int oldRow = insertRow, newRow = insertRow + 1; oldRow < oldCount; ++oldRow, ++newRow) {
+            if (pathAt(m_remoteEntries, oldRow) != pathAt(newEntries, newRow)) {
+                matches = false;
+                break;
+            }
+        }
+
+        if (matches) {
+            beginInsertRows({}, insertRow, insertRow);
+            m_remoteEntries.insert(insertRow, newEntries.at(insertRow));
+            endInsertRows();
+
+            int files = 0, folders = 0;
+            for (const auto &entry : std::as_const(m_remoteEntries)) {
+                if (entry.value(QStringLiteral("isDir")).toBool()) ++folders; else ++files;
+            }
+            m_fileCount = files; m_folderCount = folders;
+            emit countsChanged();
+            return true;
+        }
+    }
+
+    if (newCount + 1 == oldCount) {
+        int removeRow = 0;
+        while (removeRow < newCount
+               && pathAt(m_remoteEntries, removeRow) == pathAt(newEntries, removeRow)) {
+            ++removeRow;
+        }
+
+        bool matches = true;
+        for (int oldRow = removeRow + 1, newRow = removeRow; newRow < newCount; ++oldRow, ++newRow) {
+            if (pathAt(m_remoteEntries, oldRow) != pathAt(newEntries, newRow)) {
+                matches = false;
+                break;
+            }
+        }
+
+        if (matches) {
+            beginRemoveRows({}, removeRow, removeRow);
+            m_remoteEntries.removeAt(removeRow);
+            endRemoveRows();
+
+            int files = 0, folders = 0;
+            for (const auto &entry : std::as_const(m_remoteEntries)) {
+                if (entry.value(QStringLiteral("isDir")).toBool()) ++folders; else ++files;
+            }
+            m_fileCount = files; m_folderCount = folders;
+            emit countsChanged();
+            return true;
+        }
+    }
+
+    if (newCount == oldCount) {
+        bool sameOrder = true;
+        for (int row = 0; row < newCount; ++row) {
+            if (pathAt(m_remoteEntries, row) != pathAt(newEntries, row)) {
+                sameOrder = false;
+                break;
+            }
+        }
+
+        if (sameOrder) {
+            m_remoteEntries = newEntries;
+            int files = 0, folders = 0;
+            for (const auto &entry : std::as_const(m_remoteEntries)) {
+                if (entry.value(QStringLiteral("isDir")).toBool()) ++folders; else ++files;
+            }
+            m_fileCount = files; m_folderCount = folders;
+            if (newCount > 0) {
+                emit dataChanged(index(0, 0), index(newCount - 1, 0));
+            }
+            emit countsChanged();
+            return true;
+        }
+    }
+
+    return false;
 }
 
 QList<FileSystemModel::Entry> FileSystemModel::currentLocalEntries() const
@@ -2174,4 +2348,89 @@ QVariantList FileSystemModel::pathSuggestions(const QString &input, int limit) c
     }
 
     return suggestions;
+}
+
+void FileSystemModel::invalidateRemoteCache(const QString &path)
+{
+    if (path.isEmpty()) {
+        m_remoteDirCache.clear();
+        m_slowPathCache.clear();
+    } else {
+        m_remoteDirCache.remove(path);
+        m_slowPathCache.remove(path);
+
+        const QString parentPath = QFileInfo(path).absolutePath();
+        if (!parentPath.isEmpty() && parentPath != path) {
+            m_remoteDirCache.remove(parentPath);
+            m_slowPathCache.remove(parentPath);
+        }
+    }
+}
+void FileSystemModel::clearPrefetchWatchers()
+{
+    for (auto *watcher : m_prefetchWatchers) {
+        if (!watcher) continue;
+        watcher->disconnect();
+        watcher->deleteLater();
+    }
+    m_prefetchWatchers.clear();
+}
+
+void FileSystemModel::prefetchSubdirectories()
+{
+    if (m_rootPath.isEmpty())
+        return;
+
+    static const int kMaxCacheEntries = 50;
+    if (m_slowPathCache.size() > kMaxCacheEntries) {
+        m_slowPathCache.clear();
+    }
+    if (m_remoteDirCache.size() > kMaxCacheEntries) {
+        m_remoteDirCache.clear();
+    }
+
+    if (isCloudMountPath(m_rootPath)) {
+        int prefetched = 0;
+        for (const Entry &entry : std::as_const(m_entries)) {
+            if (prefetched >= 5)
+                break;
+            if (!entry.info.isDir())
+                continue;
+
+            const QString childPath = entry.info.absoluteFilePath();
+            if (childPath.isEmpty() || m_slowPathCache.contains(childPath))
+                continue;
+
+            ++prefetched;
+            const bool showHidden = m_showHidden;
+            const QDir::SortFlags sortFlags = m_sortFlags;
+
+            auto future = QtConcurrent::run([childPath, showHidden, sortFlags]() {
+                return scanLocalEntries(0, childPath, showHidden, sortFlags);
+            });
+
+            auto *watcher = new QFutureWatcher<LocalReloadResult>(this);
+            m_prefetchWatchers.append(watcher);
+
+            connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, childPath]() {
+                m_prefetchWatchers.removeOne(watcher);
+                const LocalReloadResult res = watcher->result();
+                watcher->deleteLater();
+
+                int files = 0, folders = 0;
+                for (const Entry &e : std::as_const(res.entries)) {
+                    if (e.info.isDir()) ++folders; else ++files;
+                }
+
+                CachedLocalDirectory cached;
+                cached.timestamp = QDateTime::currentMSecsSinceEpoch();
+                cached.entries = res.entries;
+                cached.fileCount = files;
+                cached.folderCount = folders;
+                m_slowPathCache.insert(childPath, cached);
+            });
+
+            watcher->setFuture(future);
+        }
+    }
 }
