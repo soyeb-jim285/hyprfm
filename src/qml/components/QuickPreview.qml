@@ -135,6 +135,7 @@ Item {
                        "patch", "cmake", "qml", "mk", "desktop"]
         return textExt.indexOf(fileExtension) >= 0
     }
+    readonly property bool isMarkdown: ["md", "markdown", "mdown", "mkd"].indexOf(fileExtension) >= 0
     // Which loader the worker thread should run. Mirrors the is* properties
     // below; "" means metadata only (images, video, audio, fonts).
     readonly property string previewKind: {
@@ -835,14 +836,14 @@ Item {
                             interactive: true
                             boundsMovement: Flickable.StopAtBounds
                             boundsBehavior: Flickable.StopAtBounds
-                            contentWidth: Math.max(width, textArea.implicitWidth)
+                            contentWidth: root.isMarkdown ? width : Math.max(width, textArea.implicitWidth)
                             contentHeight: Math.max(height, textArea.implicitHeight)
 
                             TextEdit {
                                 id: textArea
                                 readOnly: true
                                 selectByMouse: true
-                                width: Math.max(implicitWidth, textPreviewFlick.width)
+                                width: root.isMarkdown ? textPreviewFlick.width : Math.max(implicitWidth, textPreviewFlick.width)
                                 height: Math.max(implicitHeight, textPreviewFlick.height)
                                 textFormat: textPreview.usesBat && textPreview.html !== ""
                                     ? TextEdit.RichText
@@ -855,8 +856,8 @@ Item {
                                             ? textPreview.html
                                             : textPreview.content))
                                 color: Theme.text
-                                wrapMode: TextEdit.NoWrap
-                                font.family: "monospace"
+                                wrapMode: root.isMarkdown ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
+                                font.family: root.isMarkdown ? Qt.application.font.family : "monospace"
                                 font.pointSize: Theme.fontSmall
 
                                 onCursorRectangleChanged: {
