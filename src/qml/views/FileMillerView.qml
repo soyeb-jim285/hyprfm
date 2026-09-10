@@ -1342,6 +1342,17 @@ FocusScope {
             // no-wrap treatment rather than be laid out as a document on the
             // strength of an extension alone.
             readonly property bool isMarkdown: previewColumn.textPreview.markdown === true
+            // A document's own folder, for the relative image paths a README
+            // is written against; without it Qt resolves them against the qrc:
+            // path this view was loaded from and draws a broken-image glyph
+            // for every one. Segments are encoded so spaces and '#' survive.
+            readonly property url markdownBaseUrl: {
+                if (!previewColumn.isMarkdown || previewColumn.previewFilePath === "")
+                    return ""
+                var path = previewColumn.previewFilePath
+                var dir = path.substring(0, path.lastIndexOf("/"))
+                return "file://" + dir.split("/").map(encodeURIComponent).join("/") + "/"
+            }
 
             readonly property string previewFileName: {
                 if (fileProps.name)
@@ -1768,6 +1779,7 @@ FocusScope {
                             readOnly: true
                             selectByMouse: true
                             width: previewColumn.isMarkdown ? textPreviewFlick.width : Math.max(implicitWidth, textPreviewFlick.width)
+                            baseUrl: previewColumn.markdownBaseUrl
                             height: Math.max(implicitHeight, textPreviewFlick.height)
                             textFormat: previewColumn.textPreview.usesBat && previewColumn.textPreview.html !== ""
                                 ? TextEdit.RichText

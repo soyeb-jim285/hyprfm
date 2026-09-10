@@ -140,6 +140,17 @@ Item {
     // treatment rather than be laid out as a document on the strength of an
     // extension alone.
     readonly property bool isMarkdown: textPreview.markdown === true
+    // A document's own folder, for the relative image paths a README is
+    // written against ("docs/screenshots/grid-view.png"). Without it Qt
+    // resolves them against the qrc: path this component was loaded from and
+    // draws a broken-image glyph for every one. Each segment is encoded, so a
+    // folder with a space or a '#' in its name still resolves.
+    readonly property url markdownBaseUrl: {
+        if (!root.isMarkdown || root.filePath === "")
+            return ""
+        var dir = root.filePath.substring(0, root.filePath.lastIndexOf("/"))
+        return "file://" + dir.split("/").map(encodeURIComponent).join("/") + "/"
+    }
     // Which loader the worker thread should run. Mirrors the is* properties
     // below; "" means metadata only (images, video, audio, fonts).
     readonly property string previewKind: {
@@ -848,6 +859,7 @@ Item {
                                 readOnly: true
                                 selectByMouse: true
                                 width: root.isMarkdown ? textPreviewFlick.width : Math.max(implicitWidth, textPreviewFlick.width)
+                                baseUrl: root.markdownBaseUrl
                                 height: Math.max(implicitHeight, textPreviewFlick.height)
                                 textFormat: textPreview.usesBat && textPreview.html !== ""
                                     ? TextEdit.RichText
