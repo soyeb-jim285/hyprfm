@@ -53,6 +53,36 @@ bool dirHasFiles(const QString &dir)
     return it.hasNext();
 }
 
+// unzip, tar and 7z all recreate whatever folder the archive holds, so an
+// archive that is already rooted in one ("code.zip" holding "code/") lands as
+// code/code/ inside the folder made for it. Lift a lone root folder up one
+// level: rename it aside, drop the empty folder, put it back under that name.
+// Three renames within one directory, so the tree is never half-moved, and an
+// archive with several top-level entries keeps the folder it needs.
+void hoistSingleRootFolder(const QString &destination)
+{
+    QDir dest(destination);
+    const QFileInfoList entries = dest.entryInfoList(
+        QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+    if (entries.size() != 1 || !entries.constFirst().isDir())
+        return;
+
+    const QString inner = entries.constFirst().absoluteFilePath();
+    const QString staging = destination + QStringLiteral(".hyprfm-hoist");
+    if (QFileInfo::exists(staging) || !QFile::rename(inner, staging))
+        return;
+    if (!QDir().rmdir(destination)) {
+        QFile::rename(staging, inner);
+        return;
+    }
+    if (!QFile::rename(staging, destination)) {
+        // The folder is already gone; rebuild it and put the tree back rather
+        // than leave the extraction under a name nobody asked for.
+        QDir().mkpath(destination);
+        QFile::rename(staging, inner);
+    }
+}
+
 qint64 dirTotalBytes(const QString &dir)
 {
     qint64 total = 0;
@@ -2346,6 +2376,11 @@ int FileOperations::extractArchive(const QString &archivePath, const QString &de
                 }
                 return QStringLiteral("Extraction failed");
             }
+            // A folder we made for this archive holding nothing but the
+            // archive's own root folder is one level too deep.
+            if (destinationIsOurs)
+                hoistSingleRootFolder(destination);
+
             // The archive is done with; the password goes with it. Held only
             // for as long as it is being used, the way Ark and File Roller
             // scope it to the archive you currently have open.

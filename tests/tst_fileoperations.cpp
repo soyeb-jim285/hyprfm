@@ -1291,6 +1291,69 @@ private slots:
         QVERIFY(QFile::exists(extractDir.path() + "/payload/inner.txt"));
     }
 
+    // Double-clicking an archive that already holds a single top-level folder
+    // ("code.zip" -> "code/") used to land as code/code/: the destination is
+    // named after the archive, and the tool recreates the archive's own root
+    // inside it. The root is lifted up so the folder holds the files directly.
+    void testExtractingAnAlreadyRootedArchiveDoesNotNest()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("zip")).isEmpty()
+            || QStandardPaths::findExecutable(QStringLiteral("unzip")).isEmpty())
+            QSKIP("zip/unzip not found in PATH");
+
+        TestDir archiveDir;
+        archiveDir.createDir("code");
+        archiveDir.createFile("code/inner.txt", "hello");
+        archiveDir.createFile("code/.hidden", "hidden");
+        const QString archivePath = archiveDir.path() + "/code.zip";
+        QVERIFY(runCommand("zip", {"-q", "-r", archivePath, "code"}, archiveDir.path()));
+
+        FileOperations ops;
+        const QString dest = ops.newExtractionFolder(archivePath);
+        QVERIFY(!dest.isEmpty());
+        QSignalSpy finishSpy(&ops, &FileOperations::operationFinished);
+
+        ops.extractArchive(archivePath, dest, QString());
+        QTRY_VERIFY_WITH_TIMEOUT(finishSpy.count() > 0, 10000);
+        QCOMPARE(finishSpy.at(0).at(0).toBool(), true);
+
+        QVERIFY2(!QFileInfo::exists(dest + "/code"),
+                 qPrintable(QStringLiteral("nested: %1/code").arg(dest)));
+        QVERIFY(QFile::exists(dest + "/inner.txt"));
+        QVERIFY(QFile::exists(dest + "/.hidden"));
+    }
+
+    // An archive holding several top-level entries keeps the folder made for
+    // it: there is no single root to lift, and dropping the wrapper would
+    // scatter the entries next to the archive.
+    void testExtractingAMultiRootArchiveKeepsItsFolder()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("zip")).isEmpty()
+            || QStandardPaths::findExecutable(QStringLiteral("unzip")).isEmpty())
+            QSKIP("zip/unzip not found in PATH");
+
+        TestDir archiveDir;
+        archiveDir.createDir("bundle");
+        archiveDir.createDir("bundle/one");
+        archiveDir.createFile("bundle/one/a.txt", "a");
+        archiveDir.createFile("bundle/b.txt", "b");
+        const QString archivePath = archiveDir.path() + "/bundle.zip";
+        QVERIFY(runCommand("zip", {"-q", "-r", archivePath, "one", "b.txt"},
+                           archiveDir.path() + "/bundle"));
+
+        FileOperations ops;
+        const QString dest = ops.newExtractionFolder(archivePath);
+        QVERIFY(!dest.isEmpty());
+        QSignalSpy finishSpy(&ops, &FileOperations::operationFinished);
+
+        ops.extractArchive(archivePath, dest, QString());
+        QTRY_VERIFY_WITH_TIMEOUT(finishSpy.count() > 0, 10000);
+        QCOMPARE(finishSpy.at(0).at(0).toBool(), true);
+
+        QVERIFY(QFile::exists(dest + "/b.txt"));
+        QVERIFY(QFile::exists(dest + "/one/a.txt"));
+    }
+
     // A refused extraction used to leave the destination behind: unzip creates
     // the directory entries before it discovers it cannot decrypt anything, so
     // a bare "locked/payload/" tree appeared next to the archive and looked
@@ -1334,7 +1397,9 @@ private slots:
         ops.extractArchive(archivePath, dest, QStringLiteral("testpass"));
         QTRY_VERIFY_WITH_TIMEOUT(finishSpy.count() > 0, 10000);
         QCOMPARE(finishSpy.at(0).at(0).toBool(), true);
-        QVERIFY(QFile::exists(dest + "/payload/inner.txt"));
+        // The archive's own "payload/" root is lifted out of the folder made
+        // for it, so the file lands directly in the destination.
+        QVERIFY(QFile::exists(dest + "/inner.txt"));
 
         // The archive is done with, so the password does not outlive it: held
         // only while in use, the way Ark and File Roller scope it.
