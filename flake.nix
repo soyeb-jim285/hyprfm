@@ -139,15 +139,17 @@
               pkgs.libarchive # bsdtar, the fallback for rar and odd formats
 
               # Optional, and each degrades gracefully on its own (search
-              # falls back to a directory walk, previews to plain text) while
-              # the startup dependency check names whatever is missing. These
-              # three are cheap and cover features a user would notice losing.
+              # falls back to a directory walk, previews to plain text or
+              # highlighted source) while the startup dependency check names
+              # whatever is missing. These four are cheap and cover features a
+              # user would notice losing.
               # Deliberately not here: git (+385MB) and exiftool (+127MB) --
               # this is a --prefix, so a user who has them keeps using theirs,
               # and the git-status column and metadata panel simply stay empty
               # for anyone who does not. ffmpeg is out for the same reason.
               pkgs.fd
               pkgs.bat
+              pkgs.md4c # md2html, for rendered Markdown previews
               pkgs.poppler-utils # pdftoppm, pdfinfo
             ])
 

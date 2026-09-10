@@ -29,6 +29,7 @@ optdepends=(
     'wl-clipboard: clipboard support via wl-copy and wl-paste'
     'fd: fast recursive search (falls back to a built-in walker)'
     'bat: syntax-highlighted text previews'
+    'md4c: rendered Markdown previews (via md2html)'
     'gvfs-smb: SMB/CIFS remote browsing support'
     'gvfs-mtp: Android phones (MTP) in the sidebar'
     'ffmpeg: video thumbnails and audio/video metadata (via ffprobe)'
