@@ -234,6 +234,27 @@ void DependencyChecker::populate()
         })
     });
 
+    // md4c: Markdown previews are rendered by piping the file through
+    // md2html. Debian and Ubuntu ship md4c's libraries but not its CLI, so
+    // telling those users to install a package would send them in circles —
+    // they get a build-from-source hint instead. Fedora has no md4c binary
+    // package either.
+    m_deps.append({
+        QStringLiteral("md4c"),
+        QStringLiteral("md4c (md2html)"),
+        QStringLiteral("Render Markdown files as a document instead of raw source."),
+        Kind::Tool, false, hasExecutable(QStringLiteral("md2html")),
+        {QStringLiteral("md2html")},
+        buildHints(QStringLiteral("md4c"), {
+            {QStringLiteral("debian"),   QStringLiteral("md4c's CLI is not packaged; build md2html from https://github.com/mity/md4c")},
+            {QStringLiteral("ubuntu"),   QStringLiteral("md4c's CLI is not packaged; build md2html from https://github.com/mity/md4c")},
+            {QStringLiteral("linuxmint"),QStringLiteral("md4c's CLI is not packaged; build md2html from https://github.com/mity/md4c")},
+            {QStringLiteral("pop"),      QStringLiteral("md4c's CLI is not packaged; build md2html from https://github.com/mity/md4c")},
+            {QStringLiteral("fedora"),   QStringLiteral("md4c's CLI is not packaged; build md2html from https://github.com/mity/md4c")},
+            {QStringLiteral("rhel"),     QStringLiteral("md4c's CLI is not packaged; build md2html from https://github.com/mity/md4c")},
+        })
+    });
+
     // Archive handling. Each shells out, and without the binary the matching
     // context-menu entry fails, so they belong in this list even though the
     // app runs fine otherwise.
