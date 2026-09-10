@@ -27,6 +27,11 @@ private:
             || !QStandardPaths::findExecutable("batcat").isEmpty();
     }
 
+    static bool md2htmlAvailable()
+    {
+        return !QStandardPaths::findExecutable("md2html").isEmpty();
+    }
+
     static QString findTrashEntryUri(const QString &originalPath)
     {
         QProcess proc;
@@ -134,6 +139,79 @@ private slots:
         // highlighting 1 KB of input can never need anything near 64 KB of HTML
         QVERIFY2(preview.value("html").toString().size() < 64 * 1024,
                  qPrintable(QString::number(preview.value("html").toString().size())));
+    }
+
+    // Markdown goes through md2html rather than bat, so the preview pane can
+    // show a styled document. Without md4c's CLI installed the service must
+    // still hand back the raw source via bat instead of a blank pane.
+    void testMarkdownPreviewRendersHtml()
+    {
+        if (!md2htmlAvailable())
+            QSKIP("md2html not found in PATH");
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.path() + "/README.md";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("# Title\n\nSome *emphasis* here.\n");
+        file.close();
+
+        PreviewService service;
+        const QVariantMap preview = service.loadTextPreview(path, 4096, 100);
+
+        QCOMPARE(preview.value("error").toString(), QString());
+        QCOMPARE(preview.value("isBinary").toBool(), false);
+        QCOMPARE(preview.value("markdown").toBool(), true);
+        // QML routes the RichText branch off usesBat, so it must be set too.
+        QCOMPARE(preview.value("usesBat").toBool(), true);
+        const QString html = preview.value("html").toString();
+        QVERIFY2(html.contains("<h1"), qPrintable(html.left(200)));
+        QVERIFY2(html.contains("<em>"), qPrintable(html.left(200)));
+        // Raw source must not leak through as the body.
+        QVERIFY2(!html.contains("# Title"), qPrintable(html.left(200)));
+    }
+
+    void testMarkdownTablesGetBorders()
+    {
+        if (!md2htmlAvailable())
+            QSKIP("md2html not found in PATH");
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.path() + "/table.md";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("| a | b |\n|---|---|\n| 1 | 2 |\n");
+        file.close();
+
+        PreviewService service;
+        const QVariantMap preview = service.loadTextPreview(path, 4096, 100);
+
+        // Qt only draws a bordered grid when the tag carries a border
+        // attribute; md2html emits a bare <table>.
+        QVERIFY2(preview.value("html").toString().contains("border=\"1\""),
+                 "table border attribute was not injected");
+    }
+
+    void testPlainTextIsNotTreatedAsMarkdown()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.path() + "/notes.txt";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("# not a heading here\n");
+        file.close();
+
+        PreviewService service;
+        const QVariantMap preview = service.loadTextPreview(path, 4096, 20);
+
+        QCOMPARE(preview.value("markdown").toBool(), false);
+        if (batAvailable()) {
+            QCOMPARE(preview.value("usesBat").toBool(), true);
+            QVERIFY(!preview.value("html").toString().contains("<h1"));
+        }
     }
 
     void testBinaryPreviewDetection()
