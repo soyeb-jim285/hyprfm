@@ -1337,12 +1337,11 @@ FocusScope {
                 return textExt.indexOf(ext) >= 0
             }
 
-            readonly property bool isMarkdown: {
-                var name = previewFileName
-                var dot = name.lastIndexOf(".")
-                var ext = dot >= 0 ? name.substring(dot + 1).toLowerCase() : ""
-                return ["md", "markdown", "mdown", "mkd"].indexOf(ext) >= 0
-            }
+            // The service decides what it rendered: md2html missing or failing
+            // falls back to bat, and highlighted source must keep the monospace
+            // no-wrap treatment rather than be laid out as a document on the
+            // strength of an extension alone.
+            readonly property bool isMarkdown: previewColumn.textPreview.markdown === true
 
             readonly property string previewFileName: {
                 if (fileProps.name)

@@ -135,7 +135,11 @@ Item {
                        "patch", "cmake", "qml", "mk", "desktop"]
         return textExt.indexOf(fileExtension) >= 0
     }
-    readonly property bool isMarkdown: ["md", "markdown", "mdown", "mkd"].indexOf(fileExtension) >= 0
+    // The service decides what it rendered: md2html missing or failing falls
+    // back to bat, and highlighted source must keep the monospace no-wrap
+    // treatment rather than be laid out as a document on the strength of an
+    // extension alone.
+    readonly property bool isMarkdown: textPreview.markdown === true
     // Which loader the worker thread should run. Mirrors the is* properties
     // below; "" means metadata only (images, video, audio, fonts).
     readonly property string previewKind: {
