@@ -1346,6 +1346,15 @@ FocusScope {
             // is written against; without it Qt resolves them against the qrc:
             // path this view was loaded from and draws a broken-image glyph
             // for every one. Segments are encoded so spaces and '#' survive.
+            // Qt draws a rich-text image at its native size, so a README's
+            // screenshots run far outside the column and push the text off
+            // with them. A pixel max-width shrinks anything wider than the
+            // column and leaves whatever already fits alone.
+            function fitMarkdownImages(html, limit) {
+                return html.replace(/<img\b/g,
+                                    '<img style="max-width:' + Math.max(64, Math.floor(limit)) + 'px"')
+            }
+
             readonly property url markdownBaseUrl: {
                 if (!previewColumn.isMarkdown || previewColumn.previewFilePath === "")
                     return ""
@@ -1789,7 +1798,11 @@ FocusScope {
                                 : (previewColumn.textPreview.isBinary
                                     ? "This file looks binary and cannot be previewed as text."
                                     : (previewColumn.textPreview.usesBat && previewColumn.textPreview.html !== ""
-                                        ? previewColumn.textPreview.html
+                                        ? (previewColumn.isMarkdown
+                                            ? previewColumn.fitMarkdownImages(
+                                                  previewColumn.textPreview.html,
+                                                  textPreviewFlick.width - 24)
+                                            : previewColumn.textPreview.html)
                                         : previewColumn.textPreview.content))
                             color: Theme.text
                             wrapMode: previewColumn.isMarkdown ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
