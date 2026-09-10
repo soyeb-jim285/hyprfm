@@ -56,8 +56,11 @@ hyprctl -j monitors | jq -e --arg m "$mon" 'any(.[]; .name == $m)' >/dev/null \
 	|| { echo "no such monitor: $mon" >&2; exit 1; }
 
 # wshowkeys' -o is a stub in every fork, but its layer surface lands on the
-# focused monitor — so focus the target first.
-hyprctl dispatch focusmonitor "$mon" >/dev/null
+# focused monitor — so focus the target first. Recent Hyprland (0.56) turned dispatch
+# into Lua and dropped the "focusmonitor <name>" string form, so try the old
+# spelling and fall back to the Lua one.
+hyprctl dispatch focusmonitor "$mon" >/dev/null 2>&1 \
+	|| hyprctl repl "hl.dispatch(hl.dsp.focus{ monitor = '$mon' })" >/dev/null
 
 echo "overlay on $mon — theme $theme, radius $radius"
 
