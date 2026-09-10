@@ -358,6 +358,18 @@ QByteArray markdownToHtml(const QByteArray &markdown, QString *error)
     // to get real column layout and gridlines in the preview.
     html.replace(QStringLiteral("<table>"),
                  QStringLiteral("<table border=\"1\" cellpadding=\"4\" cellspacing=\"0\">"));
+
+    // Qt resolves <img> through QQuickPixmap, which fetches http(s) URLs. A
+    // Markdown file from a download, an archive or a shared folder could
+    // therefore tell whoever wrote it that the file had been opened, and hand
+    // over the reader's IP, from nothing more than selecting it in the file
+    // list. Remote images are dropped before the HTML ever reaches the view;
+    // local ones stay, since drawing them costs no request. Covers Markdown's
+    // own image syntax and the raw <img> tags md4c passes straight through.
+    static const QRegularExpression remoteImage(
+        QStringLiteral("<img\\b[^>]*\\bsrc\\s*=\\s*[\"']?\\s*(?:[a-z][a-z0-9+.-]*:)?//[^>]*>"),
+        QRegularExpression::CaseInsensitiveOption);
+    html.remove(remoteImage);
     return html.toUtf8();
 }
 

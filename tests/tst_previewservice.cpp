@@ -79,6 +79,39 @@ private slots:
         }
     }
 
+    // Qt loads <img> through QQuickPixmap, which fetches http(s) URLs, so a
+    // Markdown file from anywhere untrusted could report back that it had been
+    // previewed and hand over the reader's IP. Remote images never reach the
+    // rendered HTML; local ones stay, since they cost no network request.
+    void testMarkdownPreviewDropsRemoteImages()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("md2html")).isEmpty())
+            QSKIP("md2html not found in PATH");
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const QString path = dir.path() + "/notes.md";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("# Title\n\n"
+                   "![tracker](http://tracker.invalid/pixel.png)\n\n"
+                   "![secure](https://tracker.invalid/pixel.png)\n\n"
+                   "<img src=\"http://tracker.invalid/raw.png\">\n\n"
+                   "<img src='//tracker.invalid/scheme-relative.png'>\n\n"
+                   "![local](diagram.png)\n");
+        file.close();
+
+        PreviewService service;
+        const QVariantMap preview = service.loadTextPreview(path, 4096, 40);
+        const QString html = preview.value("html").toString();
+
+        QCOMPARE(preview.value("markdown").toBool(), true);
+        QVERIFY2(!html.contains("tracker.invalid"), qPrintable(html));
+        QVERIFY(html.contains("diagram.png"));
+        QVERIFY(html.contains("Title"));
+    }
+
     // Runs fn on a worker thread and reports whether it returned in time.
     // A stuck thread is leaked on purpose: deleting a running QThread qFatals.
     static bool returnsWithin(int ms, std::function<void()> fn)
