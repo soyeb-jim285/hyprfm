@@ -108,6 +108,26 @@ jobs:
             dbus \
             p7zip-full
 
+      # Markdown previews shell out to `md2html`. Debian and Ubuntu package
+      # md4c's *libraries* (libmd4c0, libmd4c-dev, libmd4c-html0) but never
+      # its CLI, so there is no apt package to install here. Build the
+      # official release instead, with the checksum pinned the way the
+      # linuxdeploy downloads below are. Without this step the Markdown
+      # preview tests skip and the feature is never exercised in CI.
+      - name: Build md2html (md4c)
+        run: |
+          curl -fsSL -o md4c.tar.gz \
+            https://github.com/mity/md4c/archive/refs/tags/release-0.5.3.tar.gz
+          printf '%s  %s\n' \
+            '353c346f376b87c954a13f3415ede2d51264cc61dc5abcd38ff1d2aa0d059b9e' \
+            'md4c.tar.gz' | sha256sum -c -
+          tar xzf md4c.tar.gz
+          cmake -S md4c-release-0.5.3 -B md4c-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build md4c-build --parallel
+          sudo cmake --install md4c-build
+          md2html --version
+
       - name: Build QtWayland from source
         if: startsWith(github.ref, 'refs/tags/v')
         # aqtinstall's Linux desktop Qt 6.7.3 ships the QtWayland libs

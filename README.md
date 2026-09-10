@@ -75,7 +75,7 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 - **Detailed view** with sortable columns, image/video thumbnails, and folder item counts
 - **Miller columns** (`Ctrl+2`): parent · current · live preview, the macOS Finder favorite
 - **Image and video thumbnails** in detailed and Miller views
-- **Quick preview** (`Space`): full-screen overlay for images, video (poster frame), PDFs, text, with metadata sidebar
+- **Quick preview** (`Space`): full-screen overlay for images, video (poster frame), PDFs, text and rendered Markdown, with metadata sidebar
 - **Split pane** (`F3`): work in two directories side by side
 
 <div align="center">
@@ -118,6 +118,7 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 - **Git status overlays** in file lists (modified, staged, untracked, …)
 - **wl-clipboard** for system clipboard
 - **bat** for syntax-highlighted text previews
+- **md4c** for rendered Markdown previews (via `md2html`)
 - **ffmpeg** for video poster thumbnails
 - **Poppler** for PDF page previews
 
@@ -238,7 +239,16 @@ The result lands in the repo root as `HyprFM-<version>-x86_64.AppImage`. The scr
 | **Required (build)** | `cmake`, `ninja`, `qt6-base`, `qt6-declarative`, `qt6-svg` |
 | **Required (runtime)** | `qt6-base`, `qt6-declarative`, `qt6-svg`, `qt6-wayland`, `glib2`, `xdg-utils` |
 | **Archives** | `tar`, `gzip`, `bzip2`, `xz`, `zstd`, `zip`, `unzip`, `p7zip` (`7z`), `libarchive` (`bsdtar`). Compress and extract call these by name, so a missing one only breaks that format. |
-| **Optional** | `kwindowsystem` / `KF6WindowSystem` (native KDE blur), `wl-clipboard` (clipboard), `fd` (fast search), `bat` (syntax highlighting), `git` (git status overlays), `gvfs` (SFTP/SMB/MTP; not needed for the trash), `gvfs-smb` (SMB), `gvfs-mtp` (Android/MTP phones), `ffmpeg` (video thumbnails), `exiftool` (metadata sidebar), `udisks2` (device mounting), `poppler` / `poppler-utils` (PDF previews via `pdftoppm`) |
+| **Optional** | `kwindowsystem` / `KF6WindowSystem` (native KDE blur), `wl-clipboard` (clipboard), `fd` (fast search), `bat` (syntax highlighting), `md4c` (rendered Markdown previews via `md2html`; see the note below), `git` (git status overlays), `gvfs` (SFTP/SMB/MTP; not needed for the trash), `gvfs-smb` (SMB), `gvfs-mtp` (Android/MTP phones), `ffmpeg` (video thumbnails), `exiftool` (metadata sidebar), `udisks2` (device mounting), `poppler` / `poppler-utils` (PDF previews via `pdftoppm`) |
+
+A note on Markdown previews: `md2html` ships in the `md4c` package on Arch
+and Alpine, and in `pkgs.md4c` on Nix. Debian and Ubuntu package md4c's
+libraries but **not** its command line tool, and Fedora has no md4c binary
+package either, so on those distributions build `md2html` from
+[md4c](https://github.com/mity/md4c) if you want rendered Markdown. Without
+it, `.md` files fall back to `bat` and show as highlighted source, exactly
+as they did before. The Flatpak bundles `md2html` itself, so no extra
+install is needed there.
 
 ---
 

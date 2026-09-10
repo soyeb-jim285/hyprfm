@@ -1337,6 +1337,13 @@ FocusScope {
                 return textExt.indexOf(ext) >= 0
             }
 
+            readonly property bool isMarkdown: {
+                var name = previewFileName
+                var dot = name.lastIndexOf(".")
+                var ext = dot >= 0 ? name.substring(dot + 1).toLowerCase() : ""
+                return ["md", "markdown", "mdown", "mkd"].indexOf(ext) >= 0
+            }
+
             readonly property string previewFileName: {
                 if (fileProps.name)
                     return fileProps.name
@@ -1754,14 +1761,14 @@ FocusScope {
                         interactive: true
                         boundsMovement: Flickable.StopAtBounds
                         boundsBehavior: Flickable.StopAtBounds
-                        contentWidth: Math.max(width, textArea.implicitWidth)
+                        contentWidth: previewColumn.isMarkdown ? width : Math.max(width, textArea.implicitWidth)
                         contentHeight: Math.max(height, textArea.implicitHeight)
 
                         TextEdit {
                             id: textArea
                             readOnly: true
                             selectByMouse: true
-                            width: Math.max(implicitWidth, textPreviewFlick.width)
+                            width: previewColumn.isMarkdown ? textPreviewFlick.width : Math.max(implicitWidth, textPreviewFlick.width)
                             height: Math.max(implicitHeight, textPreviewFlick.height)
                             textFormat: previewColumn.textPreview.usesBat && previewColumn.textPreview.html !== ""
                                 ? TextEdit.RichText
@@ -1774,8 +1781,8 @@ FocusScope {
                                         ? previewColumn.textPreview.html
                                         : previewColumn.textPreview.content))
                             color: Theme.text
-                            wrapMode: TextEdit.NoWrap
-                            font.family: "monospace"
+                            wrapMode: previewColumn.isMarkdown ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
+                            font.family: previewColumn.isMarkdown ? Qt.application.font.family : "monospace"
                             font.pointSize: Theme.fontSmall - 1
 
                             onCursorRectangleChanged: {
