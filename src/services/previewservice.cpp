@@ -515,9 +515,11 @@ QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, i
     result["lineCount"] = lines.size();
 
     if (!binary && isMarkdownPath(path)) {
-        // Rendered Markdown document (md2html), not bat highlighting.
+        // Rendered Markdown document (md2html), not bat highlighting. Renders
+        // the text the cap already trimmed, so a long document costs the same
+        // as it does through bat.
         QString mdError;
-        const QByteArray html = markdownToHtml(data, &mdError);
+        const QByteArray html = markdownToHtml(plainText.toUtf8(), &mdError);
         if (!html.isEmpty()) {
             result["html"] = QString::fromUtf8(html);
             result["usesBat"] = true;   // QML routes this into its RichText branch

@@ -112,6 +112,32 @@ private slots:
         QVERIFY(html.contains("Title"));
     }
 
+    // The Markdown branch renders the text the line cap already trimmed, so a
+    // long document costs no more than it does through bat.
+    void testMarkdownPreviewHonoursTheLineCap()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("md2html")).isEmpty())
+            QSKIP("md2html not found in PATH");
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        const QString path = dir.path() + "/long.md";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        for (int line = 0; line < 400; ++line)
+            file.write(QStringLiteral("- entry %1\n").arg(line).toUtf8());
+        file.close();
+
+        PreviewService service;
+        const QVariantMap preview = service.loadTextPreview(path, 1024 * 1024, 20);
+
+        QCOMPARE(preview.value("markdown").toBool(), true);
+        const QString html = preview.value("html").toString();
+        QVERIFY(html.contains("entry 0"));
+        QVERIFY2(!html.contains("entry 300"), qPrintable(html.left(200)));
+    }
+
     // Runs fn on a worker thread and reports whether it returned in time.
     // A stuck thread is leaked on purpose: deleting a running QThread qFatals.
     static bool returnsWithin(int ms, std::function<void()> fn)
