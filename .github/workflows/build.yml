@@ -122,8 +122,14 @@ jobs:
             '353c346f376b87c954a13f3415ede2d51264cc61dc5abcd38ff1d2aa0d059b9e' \
             'md4c.tar.gz' | sha256sum -c -
           tar xzf md4c.tar.gz
+          # Link md2html statically. md4c defaults BUILD_SHARED_LIBS to ON on
+          # Linux, which leaves the binary needing libmd4c-html.so.0 from
+          # /usr/local/lib -- a directory the dynamic loader does not search,
+          # so the smoke test below fails with exit 127 unless ldconfig runs.
+          # The Flatpak builds md4c the same way, for the same reason.
           cmake -S md4c-release-0.5.3 -B md4c-build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF
           cmake --build md4c-build --parallel
           sudo cmake --install md4c-build
           md2html --version
