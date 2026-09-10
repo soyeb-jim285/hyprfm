@@ -320,7 +320,10 @@ QByteArray markdownToHtml(const QByteArray &markdown, QString *error)
     if (error)
         error->clear();
 
-    const QString executable = QStandardPaths::findExecutable(QStringLiteral("md2html"));
+    // Looked up once, the way batExecutable() does: this runs for every
+    // Markdown file the selection lands on.
+    static const QString executable =
+        QStandardPaths::findExecutable(QStringLiteral("md2html"));
     if (executable.isEmpty()) {
         if (error)
             *error = QStringLiteral("md2html not found");
