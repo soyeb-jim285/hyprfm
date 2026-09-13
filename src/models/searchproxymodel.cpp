@@ -7,6 +7,10 @@ SearchProxyModel::SearchProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
 {
     setFilterCaseSensitivity(Qt::CaseInsensitive);
+    for (auto sig : {&QAbstractItemModel::rowsInserted, &QAbstractItemModel::rowsRemoved})
+        connect(this, sig, this, &SearchProxyModel::countChanged);
+    connect(this, &QAbstractItemModel::modelReset, this, &SearchProxyModel::countChanged);
+    connect(this, &QAbstractItemModel::layoutChanged, this, &SearchProxyModel::countChanged);
 }
 
 QString SearchProxyModel::searchQuery() const { return m_searchQuery; }

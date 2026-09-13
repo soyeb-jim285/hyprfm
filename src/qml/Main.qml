@@ -851,7 +851,7 @@ ApplicationWindow {
         if (root.paneIsRecents(activePane))
             return recentFiles.count
         if (root.paneSearchMode(activePane))
-            return searchProxyForPane(activePane).rowCount()
+            return searchProxyForPane(activePane).count
 
         var model = paneBaseModel(activePane)
         return model.fileCount + model.folderCount
@@ -3861,7 +3861,7 @@ ApplicationWindow {
                     searchStatus: root.searchMode && root.searchServiceForPane(activePane).isSearching
                         ? "Searching... " + root.searchServiceForPane(activePane).resultCount + " results"
                         : (root.searchMode && root.searchProxyForPane(activePane).searchActive
-                            ? root.searchProxyForPane(activePane).rowCount() + " results"
+                            ? root.searchProxyForPane(activePane).count + " results"
                             : "")
                     selectedCount: root.currentSelectedCount
                     selectedSize: root.currentSelectedSize

@@ -11,6 +11,9 @@ class SearchProxyModel : public QSortFilterProxyModel
     Q_PROPERTY(QString dateFilter READ dateFilter WRITE setDateFilter NOTIFY dateFilterChanged)
     Q_PROPERTY(QString sizeFilter READ sizeFilter WRITE setSizeFilter NOTIFY sizeFilterChanged)
     Q_PROPERTY(bool searchActive READ searchActive NOTIFY searchActiveChanged)
+    // rowCount() is not a property, so QML bindings never re-evaluate when
+    // results arrive; bind to this instead.
+    Q_PROPERTY(int count READ count NOTIFY countChanged)
 
 public:
     explicit SearchProxyModel(QObject *parent = nullptr);
@@ -29,6 +32,7 @@ public:
 
     bool searchActive() const;
     bool isGlobPattern() const;
+    int count() const { return rowCount(); }
 
     Q_INVOKABLE void clearSearch();
     Q_INVOKABLE void switchSourceModel(QAbstractItemModel *model);
@@ -42,6 +46,7 @@ signals:
     void dateFilterChanged();
     void sizeFilterChanged();
     void searchActiveChanged();
+    void countChanged();
 
 protected:
     bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
