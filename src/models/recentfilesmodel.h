@@ -30,6 +30,7 @@ public:
         GitStatusIconRole,
         HasImagePreviewRole,
         HasVideoPreviewRole,
+        HasPdfPreviewRole,
     };
     Q_ENUM(Roles)
 

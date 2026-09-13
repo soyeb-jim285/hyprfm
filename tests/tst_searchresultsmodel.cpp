@@ -32,6 +32,14 @@ private slots:
         QVERIFY(roles.values().contains("isDir"));
         QVERIFY(roles.values().contains("isSymlink"));
         QVERIFY(roles.values().contains("fileIconName"));
+        // The grid and detailed delegates declare these as required
+        // properties; a missing one aborts delegate creation and the view
+        // shows nothing.
+        QVERIFY(roles.values().contains("gitStatus"));
+        QVERIFY(roles.values().contains("gitStatusIcon"));
+        QVERIFY(roles.values().contains("hasImagePreview"));
+        QVERIFY(roles.values().contains("hasVideoPreview"));
+        QVERIFY(roles.values().contains("hasPdfPreview"));
     }
 
     void testEmptyModel()

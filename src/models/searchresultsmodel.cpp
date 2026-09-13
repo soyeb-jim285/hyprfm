@@ -61,6 +61,10 @@ QVariant SearchResultsModel::data(const QModelIndex &index, int role) const
         QMimeDatabase db;
         return db.mimeTypeForFile(info).name().startsWith(QLatin1String("video/"));
     }
+    case HasPdfPreviewRole: {
+        QMimeDatabase db;
+        return db.mimeTypeForFile(info).name() == QLatin1String("application/pdf");
+    }
     }
     return {};
 }
@@ -83,6 +87,7 @@ QHash<int, QByteArray> SearchResultsModel::roleNames() const
         {GitStatusIconRole,   "gitStatusIcon"},
         {HasImagePreviewRole, "hasImagePreview"},
         {HasVideoPreviewRole, "hasVideoPreview"},
+        {HasPdfPreviewRole,   "hasPdfPreview"},
     };
 }
 

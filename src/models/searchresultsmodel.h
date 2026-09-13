@@ -28,6 +28,7 @@ public:
         // Whether the file should be thumbnailed as image / video.
         HasImagePreviewRole,
         HasVideoPreviewRole,
+        HasPdfPreviewRole,
     };
     Q_ENUM(Roles)
 

@@ -2,6 +2,7 @@
 // Main.qml headless. Used for behaviour that only shows with the full item
 // tree in place (event routing between overlays, toolbar, views).
 #include <QTest>
+#include <QSignalSpy>
 #include <QGuiApplication>
 #include <QDir>
 #include <QFile>
@@ -51,6 +52,8 @@ class TestMainWindow : public QObject
         TabListModel *tabModel = nullptr;
         SessionState *sessionState = nullptr;
         BookmarkModel *bookmarks = nullptr;
+        SearchService *searchService = nullptr;
+        SearchProxyModel *searchProxy = nullptr;
         QQuickWindow *window = nullptr;
 
         bool load()
@@ -85,12 +88,12 @@ class TestMainWindow : public QObject
             auto *millerParentModel = new FileSystemModel(&owner);
             auto *millerPreviewModel = new FileSystemModel(&owner);
             auto *searchResults = new SearchResultsModel(&owner);
-            auto *searchProxy = new SearchProxyModel(&owner);
+            searchProxy = new SearchProxyModel(&owner);
             searchProxy->setSourceModel(searchResults);
             auto *splitSearchResults = new SearchResultsModel(&owner);
             auto *splitSearchProxy = new SearchProxyModel(&owner);
             splitSearchProxy->setSourceModel(splitSearchResults);
-            auto *searchService = new SearchService(&owner);
+            searchService = new SearchService(&owner);
             searchService->setResultsModel(searchResults);
             auto *splitSearchService = new SearchService(&owner);
             splitSearchService->setResultsModel(splitSearchResults);
@@ -184,6 +187,49 @@ class TestMainWindow : public QObject
     };
 
 private slots:
+    // Search results land in the proxy, but the view and the status bar have
+    // to show them: the grid is bound to the proxy through paneModel() and
+    // the item count reads the proxy's rowCount().
+    void testSearchResultsReachTheGridAndStatusBar()
+    {
+        App app;
+        QVERIFY(app.load());
+
+        QTemporaryDir dir;
+        QDir().mkpath(dir.path() + "/Final Project");
+        for (const char *name : {"final_report.txt", "notfinal.md", "other.txt",
+                                 "Final Project/report.pdf", "Final Project/final.txt"}) {
+            QFile f(dir.path() + "/" + name);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("x");
+        }
+
+        app.tabModel->activeTab()->navigateTo(dir.path());
+        QTRY_COMPARE(app.tabModel->activeTab()->currentPath(), dir.path());
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSearch"));
+        QTRY_VERIFY(app.window->property("searchMode").toBool());
+        QSignalSpy finished(app.searchService, &SearchService::searchFinished);
+        QVERIFY(QMetaObject::invokeMethod(app.window, "handleSearchQuery",
+                                          Q_ARG(QVariant, QStringLiteral("final"))));
+        QTRY_VERIFY_WITH_TIMEOUT(finished.count() > 0, 10000);
+        QVERIFY(app.searchProxy->rowCount() > 0);
+
+        QQuickItem *view = app.item(QStringLiteral("primaryFileView"));
+        QVERIFY(view);
+        QObject *grid = view->property("gridViewItem").value<QObject *>();
+        QVERIFY(grid);
+        QTRY_COMPARE(grid->property("count").toInt(), app.searchProxy->rowCount());
+        // count follows the model even when every delegate fails to build
+        // (a required property the model doesn't supply), so look for the
+        // label a delegate draws.
+        QTRY_VERIFY(App::findText(view, QStringLiteral("final_report.txt")));
+
+        QQuickItem *statusBar = app.item(QStringLiteral("statusBar"));
+        QVERIFY(statusBar);
+        QTRY_COMPARE(statusBar->property("itemCount").toInt(), app.searchProxy->rowCount());
+    }
+
     // Every dropdown in Settings is fed by a list built in
     // syncFromCurrentState(). Miss one and the control renders empty with no
     // error anywhere, which is exactly how the light/dark theme pickers
