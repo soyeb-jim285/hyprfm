@@ -37,6 +37,9 @@ FocusScope {
 
     // Model bound by FileViewContainer
     property var viewModel
+    // Only the search proxy has a searchQuery; other models read undefined.
+    readonly property string highlightQuery:
+        viewModel && viewModel.searchQuery !== undefined ? viewModel.searchQuery : ""
     property string pendingFocusPath: ""
     property bool pendingFocusReveal: true
     property bool focusScheduled: false
@@ -1123,8 +1126,10 @@ FocusScope {
                         Text {
                             width: root.colName - 20
                             anchors.verticalCenter: parent.verticalCenter
-                            textFormat: Text.PlainText
-                            text: detRow.fileName
+                            textFormat: root.highlightQuery ? Text.StyledText : Text.PlainText
+                            text: root.highlightQuery
+                                ? Theme.highlightMatch(detRow.fileName, root.highlightQuery)
+                                : detRow.fileName
                             color: Theme.text
                             font.pointSize: Theme.fontSmall
                             elide: Text.ElideRight

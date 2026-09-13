@@ -128,6 +128,31 @@ QtObject {
         NumberAnimation { duration: root.animDuration; easing.type: root.animEasingEnter; easing.bezierCurve: root.animBezierCurve }
     }
 
+    // Mark up a file name for Text.StyledText with every case-insensitive
+    // occurrence of query in accent + bold. The name is HTML-escaped, so
+    // callers must switch to StyledText only when a query is set.
+    // ponytail: glob queries (* ? [ ^ $) get no highlight; matching them
+    // against the name needs the proxy's regex, which QML can't reach.
+    function highlightMatch(name, query) {
+        var esc = function(s) {
+            return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        }
+        if (!query || /[*?\[]/.test(query) || query[0] === "^" || query[query.length - 1] === "$")
+            return esc(name)
+        var lower = name.toLowerCase()
+        var q = query.toLowerCase()
+        var out = ""
+        var i = 0
+        while (true) {
+            var j = lower.indexOf(q, i)
+            if (j < 0) break
+            out += esc(name.substring(i, j))
+                + '<font color="' + accent + '"><b>' + esc(name.substring(j, j + q.length)) + '</b></font>'
+            i = j + q.length
+        }
+        return out + esc(name.substring(i))
+    }
+
     function containerColor(color, defaultAlpha) {
         var strength = transparencyEnabled ? transparencyLevel : 0
         var alpha = 1 - strength * (1 - defaultAlpha)

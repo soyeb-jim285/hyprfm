@@ -31,6 +31,11 @@ GridView {
     signal interactionStarted()
     signal transferRequested(var paths, string destinationPath, bool moveOperation)
 
+    // Only the search proxy has a searchQuery; every other model reads as
+    // undefined and the labels stay plain text.
+    readonly property string highlightQuery:
+        model && model.searchQuery !== undefined ? model.searchQuery : ""
+
     property string pendingFocusPath: ""
     property bool pendingFocusReveal: true
     property bool focusScheduled: false
@@ -707,8 +712,9 @@ GridView {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: (iconImg.visible ? iconImg : thumbImg).bottom
             anchors.topMargin: 0
-            textFormat: Text.PlainText
-            text: {
+            textFormat: root.highlightQuery ? Text.StyledText : Text.PlainText
+            text: root.highlightQuery ? Theme.highlightMatch(displayName, root.highlightQuery) : displayName
+            readonly property string displayName: {
                 var name = delegateItem.fileName
                 // If it fits in 2 lines, show as-is
                 if (measureText.lineCount <= 2) return name

@@ -9,6 +9,9 @@ FocusScope {
     Accessible.name: "Miller columns view"
 
     property var fileModel: null
+    // Only the search proxy has a searchQuery; other models read undefined.
+    readonly property string highlightQuery:
+        fileModel && fileModel.searchQuery !== undefined ? fileModel.searchQuery : ""
     property string currentPath: ""
 
     property var selectedIndices: currentColumn.selectedIndices
@@ -990,8 +993,10 @@ FocusScope {
                         Text {
                             width: parent.width - (root.millerIconSize + 2) - (currentDelegate.isDir ? (root.millerIconSize + 2) : 0) - parent.spacing * (currentDelegate.isDir ? 2 : 1) - parent.anchors.leftMargin - parent.anchors.rightMargin
                             anchors.verticalCenter: parent.verticalCenter
-                            textFormat: Text.PlainText
-                            text: currentDelegate.fileName
+                            textFormat: root.highlightQuery ? Text.StyledText : Text.PlainText
+                            text: root.highlightQuery
+                                ? Theme.highlightMatch(currentDelegate.fileName, root.highlightQuery)
+                                : currentDelegate.fileName
                             color: Theme.text
                             font.pointSize: Theme.fontSmall
                             elide: Text.ElideRight

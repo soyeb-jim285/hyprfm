@@ -177,6 +177,16 @@ class TestMainWindow : public QObject
             }
             return nullptr;
         }
+        static QQuickItem *findTextContaining(QQuickItem *parent, const QString &text)
+        {
+            for (QQuickItem *child : parent->childItems()) {
+                if (child->property("text").toString().contains(text))
+                    return child;
+                if (QQuickItem *hit = findTextContaining(child, text))
+                    return hit;
+            }
+            return nullptr;
+        }
         QPoint center(QQuickItem *it) { return it->mapToScene(QPointF(it->width() / 2, it->height() / 2)).toPoint(); }
         void wheel(const QPoint &pos, const QPoint &angle)
         {
@@ -223,11 +233,22 @@ private slots:
         // count follows the model even when every delegate fails to build
         // (a required property the model doesn't supply), so look for the
         // label a delegate draws.
-        QTRY_VERIFY(App::findText(view, QStringLiteral("final_report.txt")));
+        // The matched part of the name is marked up in accent + bold.
+        // (The grid also keeps a hidden plain-text copy for measuring, so
+        // look for the markup itself.)
+        const QString marked = QStringLiteral("<b>final</b></font>_report.txt");
+        QTRY_VERIFY(App::findTextContaining(view, marked));
+        QQuickItem *label = App::findTextContaining(view, marked);
+        QCOMPARE(label->property("textFormat").toInt(), 4 /* Text.StyledText */);
 
         QQuickItem *statusBar = app.item(QStringLiteral("statusBar"));
         QVERIFY(statusBar);
         QTRY_COMPARE(statusBar->property("itemCount").toInt(), app.searchProxy->rowCount());
+
+        if (qEnvironmentVariableIsSet("HYPRFM_TEST_GRAB")) {
+            QTest::qWait(800);   // let the add transition finish
+            app.window->grabWindow().save(qEnvironmentVariable("HYPRFM_TEST_GRAB"));
+        }
     }
 
     // Every dropdown in Settings is fed by a list built in
