@@ -11,6 +11,7 @@
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QWheelEvent>
 #include "models/bookmarkmodel.h"
@@ -381,6 +382,45 @@ private slots:
 
         QTest::keyClick(app.window, Qt::Key_Escape);
         QTRY_VERIFY2(!dialog->isVisible(), "Escape left the properties dialog open");
+    }
+
+    // The label column was a fixed 80px, so with a wide or large UI font
+    // "Disk usage" ran into its value (issue #39). Every label must end
+    // before its value starts.
+    void testPropertiesLabelsDoNotOverlapValues()
+    {
+        const QFont oldFont = QGuiApplication::font();
+        QFont big(QStringLiteral("monospace"), 16);
+        QGuiApplication::setFont(big);
+        auto restore = qScopeGuard([&] { QGuiApplication::setFont(oldFont); });
+
+        App app;
+        QVERIFY(app.load());
+        QQuickItem *dialog = app.item("propertiesDialog");
+        QVERIFY(dialog);
+        QVERIFY(QMetaObject::invokeMethod(dialog, "showProperties",
+                                          Q_ARG(QVariant, app.home.path())));
+        QTRY_VERIFY(dialog->isVisible());
+
+        for (const QString &name : {QStringLiteral("Disk usage"), QStringLiteral("Content"),
+                                     QStringLiteral("Location"), QStringLiteral("Modified")}) {
+            QQuickItem *label = App::findText(dialog, name);
+            QVERIFY2(label, qPrintable(name));
+            QQuickItem *value = nullptr;
+            for (QQuickItem *sibling : label->parentItem()->childItems())
+                if (sibling != label && sibling->property("text").isValid())
+                    value = sibling;
+            QVERIFY2(value, qPrintable(name));
+            const qreal labelEnd = label->x() + label->property("contentWidth").toReal();
+            QTRY_VERIFY2(labelEnd <= value->x(),
+                         qPrintable(QStringLiteral("%1 label ends at %2, value starts at %3")
+                                        .arg(name).arg(labelEnd).arg(value->x())));
+        }
+
+        if (qEnvironmentVariableIsSet("HYPRFM_TEST_GRAB")) {
+            QTest::qWait(500);
+            app.window->grabWindow().save(qEnvironmentVariable("HYPRFM_TEST_GRAB"));
+        }
     }
 
     // Re-opening the menu while it is already visible and laid out must

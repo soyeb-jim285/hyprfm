@@ -2101,7 +2101,7 @@ ApplicationWindow {
 
         Item {
             id: propsBox
-            width: 420
+            width: Math.min(Math.round(420 * Theme.uiScale), parent.width - 32)
             height: propsOuterCol.height
             anchors.centerIn: parent
             opacity: 0; scale: 0.88; transformOrigin: Item.Center
@@ -2185,14 +2185,34 @@ ApplicationWindow {
                     id: generalTab
                     width: tabSlider.width; spacing: 0
 
+                    // Label column fits the widest label in the current font (#39)
+                    FontMetrics { id: propLabelMetrics; font.pointSize: Theme.fontSmall }
+                    property real labelWidth: {
+                        var labels = ["Kind", "Location", "Deleted", "Link target", "Created", "Modified",
+                                      "Accessed", "Size", "Disk usage", "Content", "Capacity", "Usage"]
+                        var keys = propertiesDialog._metadataKeys
+                        for (var i = 0; i < keys.length; ++i)
+                            labels.push(keys[i].label)
+                        var w = 80
+                        for (var j = 0; j < labels.length; ++j)
+                            w = Math.max(w, Math.ceil(propLabelMetrics.advanceWidth(labels[j])))
+                        return w
+                    }
+
                     // helper component for a property row
                     component PropRow: Item {
                         property string label
                         property string value
                         property bool show: true
-                        width: parent.width; height: show ? 28 : 0; visible: show
-                        Text { text: label; color: Theme.subtext; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: 80 }
-                        Text { text: value; color: Theme.text; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.leftMargin: 88; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideMiddle }
+                        width: parent.width; height: show ? Math.max(28, propValue.implicitHeight + 10) : 0; visible: show
+                        Text { text: label; color: Theme.subtext; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.baseline: propValue.baseline; width: Math.max(generalTab.labelWidth, implicitWidth) }
+                        Text {
+                            id: propValue
+                            text: value; color: Theme.text; font.pointSize: Theme.fontSmall
+                            anchors.left: parent.left; anchors.leftMargin: Math.max(generalTab.labelWidth, propLabelMetrics.advanceWidth(label)) + 8
+                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere; maximumLineCount: 3; elide: Text.ElideRight
+                        }
                     }
 
                     Item { width: 1; height: 8 }
@@ -2283,9 +2303,9 @@ ApplicationWindow {
                         // Usage bar
                         Item {
                             width: parent.width; height: 28
-                            Text { text: "Usage"; color: Theme.subtext; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: 80 }
+                            Text { text: "Usage"; color: Theme.subtext; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: generalTab.labelWidth }
                             Column {
-                                anchors.left: parent.left; anchors.leftMargin: 88
+                                anchors.left: parent.left; anchors.leftMargin: generalTab.labelWidth + 8
                                 anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: 4
 
                                 // Bar
