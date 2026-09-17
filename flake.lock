@@ -2,11 +2,11 @@
   "nodes": {
     "nixpkgs": {
       "locked": {
-        "lastModified": 1787498568,
-        "narHash": "sha256-9i/VTdusq/+NM/tz+J1Re+ojkMB8MBf0QshnYfzHz30=",
+        "lastModified": 1789546076,
+        "narHash": "sha256-zVxLZiSnmaaPLwnhj7pwmqe3axBg/C6nG5JZsJMh2g4=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "56c02bc00adcf003215cc4bd996d6efaf4cff188",
+        "rev": "b1b875982b17dabde9b4a37f3e229e74913e6db3",
         "type": "github"
       },
       "original": {
@@ -19,34 +19,34 @@
     "quill": {
       "flake": false,
       "locked": {
-        "lastModified": 1787841127,
-        "narHash": "sha256-OhtKC8pL2tABEpvIo+DJUlXXz7wuVvxGA84FRW8aVaY=",
+        "lastModified": 1788143022,
+        "narHash": "sha256-aZsx5A3aD3ihwGhm1YkVISlrsw/c3Qxs7bLKe1pH9+w=",
         "owner": "soyeb-jim285",
         "repo": "quill",
-        "rev": "ad1785f108ea47b8950cbebcd6dd557ce84e4879",
+        "rev": "7af227e897acaaafd3f56980ef9c3b3347aeeba7",
         "type": "github"
       },
       "original": {
         "owner": "soyeb-jim285",
         "repo": "quill",
-        "rev": "ad1785f108ea47b8950cbebcd6dd557ce84e4879",
+        "rev": "7af227e897acaaafd3f56980ef9c3b3347aeeba7",
         "type": "github"
       }
     },
     "quill-icons": {
       "flake": false,
       "locked": {
-        "lastModified": 1776191081,
-        "narHash": "sha256-ezwie0hSHNT0m65dgTgwwh16vfb/vAshcNaccQChnzM=",
+        "lastModified": 1787955508,
+        "narHash": "sha256-NFUw1NlCAh48O7rpHyjU33C3DAhhSaGFDjLzi3DKJEk=",
         "owner": "soyeb-jim285",
         "repo": "quill-icons",
-        "rev": "10db5facf6a560e60d2693ccd1909267ef436002",
+        "rev": "69b653672ece8652cfef52c1c228abe9e2c4fce0",
         "type": "github"
       },
       "original": {
         "owner": "soyeb-jim285",
         "repo": "quill-icons",
-        "rev": "10db5facf6a560e60d2693ccd1909267ef436002",
+        "rev": "69b653672ece8652cfef52c1c228abe9e2c4fce0",
         "type": "github"
       }
     },
