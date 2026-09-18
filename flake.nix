@@ -13,11 +13,11 @@
     # commit. Keep these revs in sync with `git ls-tree main src/qml/Quill
     # src/qml/icons` whenever the submodules are bumped.
     quill-icons = {
-      url = "github:soyeb-jim285/quill-icons/10db5facf6a560e60d2693ccd1909267ef436002";
+      url = "github:soyeb-jim285/quill-icons/69b653672ece8652cfef52c1c228abe9e2c4fce0";
       flake = false;
     };
     quill = {
-      url = "github:soyeb-jim285/quill/ad1785f108ea47b8950cbebcd6dd557ce84e4879";
+      url = "github:soyeb-jim285/quill/7af227e897acaaafd3f56980ef9c3b3347aeeba7";
       flake = false;
     };
   };
