@@ -297,6 +297,37 @@ jobs:
           path: HyprFM-${{ github.ref_name }}-x86_64.AppImage
           if-no-files-found: error
 
+  # The flake can't fetch git submodules, so it pins Quill and quill-icons by
+  # hand. Bumping a submodule without bumping the pin broke the nix build once
+  # (#46); the sync step catches that in seconds, the build catches the rest.
+  nix:
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check flake pins match submodules
+        run: |
+          fail=0
+          for pair in quill:src/qml/Quill quill-icons:src/qml/icons; do
+            repo=${pair%%:*}; path=${pair#*:}
+            pinned=$(grep -oP "github:soyeb-jim285/${repo}/\K[0-9a-f]{40}" flake.nix)
+            actual=$(git ls-tree HEAD "$path" | awk '{print $3}')
+            if [ -z "$pinned" ] || [ "$pinned" != "$actual" ]; then
+              echo "::error file=flake.nix::$repo is pinned to '${pinned}' but $path is at $actual"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: Build flake
+        run: nix build .#hyprfm --print-build-logs
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
