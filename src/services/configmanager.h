@@ -19,6 +19,7 @@ class ConfigManager : public QObject
     Q_PROPERTY(QString iconTheme READ iconTheme NOTIFY configChanged)
     Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY configChanged)
     Q_PROPERTY(QString defaultView READ defaultView NOTIFY configChanged)
+    Q_PROPERTY(QString startupDir READ startupDir NOTIFY configChanged)
     Q_PROPERTY(bool showHidden READ showHidden NOTIFY configChanged)
     Q_PROPERTY(bool rightClickToEditPath READ rightClickToEditPath NOTIFY configChanged)
     Q_PROPERTY(bool dependencyStartupCheck READ dependencyStartupCheck NOTIFY configChanged)
@@ -73,6 +74,8 @@ public:
     QString iconTheme() const;
     QString fontFamily() const;
     QString defaultView() const;
+    // "last" (wherever the previous session was), "home", or an absolute path.
+    QString startupDir() const;
     bool showHidden() const;
     // Right click on the address bar starts path editing (Ctrl+L behaviour).
     // Clicking a breadcrumb segment still navigates.
@@ -165,6 +168,7 @@ private:
     QString m_iconTheme;
     QString m_fontFamily;
     QString m_defaultView;
+    QString m_startupDir;
     bool m_showHidden;
     bool m_rightClickToEditPath;
     bool m_dependencyStartupCheck;

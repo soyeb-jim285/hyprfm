@@ -58,6 +58,19 @@ Window {
     // Sort column dropdown: parallel label/value arrays.
     readonly property var sortByLabels: ["Name", "Size", "Modified", "Type"]
     readonly property var sortByValues: ["name", "size", "modified", "type"]
+    readonly property var startupDirLabels: ["Last folder", "Home folder", "Custom folder"]
+    readonly property var startupDirValues: ["last", "home", ""]
+    // Map between the config value ("last"/"home"/an absolute path) and the
+    // dropdown: a path is the "Custom folder" entry, and its text lives in
+    // draftStartupDirCustom while switching folders.
+    function startupDirCustomOf(value) {
+        return (value !== "last" && value !== "home") ? value : ""
+    }
+    function startupDirIndexOf(value) {
+        if (value === "last") return 0
+        if (value === "home") return 1
+        return 2
+    }
 
     property bool currentShowHidden: false
     property bool currentSidebarVisible: true
@@ -85,6 +98,10 @@ Window {
     readonly property var quickAccessNames: ["Home", "Recents", "Trash", "Network", "Pictures", "Downloads"]
     property var draftHiddenQuickAccess: config.hiddenQuickAccess
     property string draftSidebarPosition: config.sidebarPosition
+    // "last" (saved session), "home", or an absolute path from "Custom folder".
+    property string draftStartupDir: config.startupDir
+    property string draftStartupDirCustom: root.startupDirCustomOf(config.startupDir)
+    readonly property int startupDirIndex: root.startupDirIndexOf(root.draftStartupDir)
     property int draftSidebarWidth: currentSidebarWidth
     property int draftRadiusSmall: config.radiusSmall
     property int draftRadiusMedium: config.radiusMedium
@@ -267,6 +284,8 @@ Window {
         draftSidebarVisible = true
         draftHiddenQuickAccess = []
         draftSidebarPosition = defaultSidebarPosition
+        draftStartupDir = "last"
+        draftStartupDirCustom = ""
         draftSidebarWidth = defaultSidebarWidth
         draftRadiusSmall = defaultRadiusSmall
         draftRadiusMedium = defaultRadiusMedium
@@ -312,6 +331,8 @@ Window {
             draftSidebarVisible = currentSidebarVisible
             draftHiddenQuickAccess = config.hiddenQuickAccess
             draftSidebarPosition = config.sidebarPosition
+            draftStartupDir = config.startupDir
+            draftStartupDirCustom = root.startupDirCustomOf(config.startupDir)
             draftSidebarWidth = currentSidebarWidth
             draftRadiusSmall = config.radiusSmall
             draftRadiusMedium = Math.max(config.radiusMedium, draftRadiusSmall)
@@ -383,6 +404,7 @@ Window {
             sidebarVisible: draftSidebarVisible,
             hiddenQuickAccess: draftHiddenQuickAccess,
             sidebarPosition: draftSidebarPosition,
+            startupDir: draftStartupDir,
             sidebarWidth: draftSidebarWidth,
             radiusSmall: draftRadiusSmall,
             radiusMedium: draftRadiusMedium,
@@ -434,6 +456,9 @@ Window {
     }
 
     onClosing: {
+        // Never leave a child dialog "open" behind a closed window: reopening
+        // Settings must not resurrect the folder picker.
+        startupPicker.visible = false
         root.flushPendingChanges()
         root.closed()
     }
@@ -449,10 +474,11 @@ Window {
         onTriggered: root.applyPendingSettings()
     }
 
-    // Close on Escape
+    // Close on Escape. A child dialog owns the Escape shortcut while open, so
+    // Settings stays put and only the dialog closes.
     Shortcut {
         sequence: "Escape"
-        enabled: root.visible
+        enabled: root.visible && !startupPicker.visible
         onActivated: root.closePanel()
     }
 
@@ -659,6 +685,95 @@ Window {
         ColumnLayout {
             width: pageLoader.width
             spacing: 6
+
+            Text {
+                text: "Startup"
+                color: Theme.accent
+                font.pointSize: Theme.fontSmall
+                font.bold: true
+                Layout.bottomMargin: 4
+            }
+
+            Q.Dropdown {
+                Layout.fillWidth: true
+                label: "Open on start"
+                model: root.startupDirLabels
+                currentIndex: root.startupDirIndex
+                onSelected: (index, _) => {
+                    if (index !== 2) {
+                        root.draftStartupDir = root.startupDirValues[index]
+                        root.applySettingsNow()
+                        return
+                    }
+                    // A bare path means "Custom folder". Apply right away when one is
+                    // already configured; until then an empty value keeps the
+                    // previous behaviour ("last") and the row invites picking.
+                    root.draftStartupDir = root.draftStartupDirCustom.trim()
+                    if (root.draftStartupDir !== "")
+                        root.applySettingsNow()
+                }
+            }
+
+            RowLayout {
+                visible: root.startupDirIndex === 2
+                Layout.fillWidth: true
+                spacing: Q.Theme.spacingMd
+
+                Text {
+                    text: "Custom folder directory"
+                    color: Theme.subtext
+                    font.pixelSize: Q.Theme.fontSize
+                    Layout.preferredWidth: 140
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 34
+                    Layout.minimumWidth: 120
+                    radius: Q.Theme.radius
+                    border.color: Q.Theme.surface1
+                    color: Q.Theme.surface0
+                    clip: true
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacing
+                        anchors.rightMargin: Theme.spacing
+                        text: root.draftStartupDirCustom !== ""
+                            ? root.draftStartupDirCustom : "No folder selected yet"
+                        color: root.draftStartupDirCustom !== "" ? Theme.text : Theme.muted
+                        font.pixelSize: Q.Theme.fontSize
+                        elide: Text.ElideLeft
+                    }
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: 38
+                    Layout.preferredHeight: 34
+                    Layout.leftMargin: -6
+                    radius: Q.Theme.radius
+                    color: mouse.containsMouse ? Qt.lighter(Q.Theme.primary, 1.15) : Q.Theme.primary
+
+                    IconFolder {
+                        anchors.centerIn: parent
+                        size: 16
+                        color: Q.Theme.backgroundDeep
+                    }
+
+                    MouseArea {
+                        id: mouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            startupPicker.startingFolder = root.draftStartupDirCustom
+                            startupPicker.open()
+                        }
+                    }
+                }
+            }
 
             Text {
                 text: "Browsing"
@@ -1309,6 +1424,16 @@ Window {
                 }
 
             }
+        }
+    }
+
+    FolderPickerDialog {
+        id: startupPicker
+        anchors.fill: parent
+        onFolderPicked: (path) => {
+            root.draftStartupDirCustom = path
+            root.draftStartupDir = path
+            root.applySettingsNow()
         }
     }
 }

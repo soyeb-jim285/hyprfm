@@ -166,6 +166,7 @@ list(APPEND hyprfm_qml_module_args
         qml/components/KeyboardShortcutsDialog.qml
         qml/components/MissingDependenciesDialog.qml
         qml/components/SettingsPanel.qml
+        qml/components/FolderPickerDialog.qml
 )
 
 qt_add_qml_module(hyprfm ${hyprfm_qml_module_args})

@@ -278,6 +278,7 @@ void ConfigManager::setDefaults()
     m_iconTheme = "Adwaita";
     m_fontFamily.clear();
     m_defaultView = "grid";
+    m_startupDir = "last";
     m_showHidden = false;
     m_rightClickToEditPath = true;
     m_sortBy = "name";
@@ -345,6 +346,10 @@ void ConfigManager::loadConfig()
             m_fontFamily = QString::fromStdString(*v);
         if (auto v = config["general"]["default_view"].value<std::string>())
             m_defaultView = QString::fromStdString(*v);
+        if (auto v = config["general"]["startup_dir"].value<std::string>()) {
+            const QString value = QString::fromStdString(*v).trimmed();
+            m_startupDir = value.isEmpty() ? QStringLiteral("last") : value;
+        }
         if (auto v = config["general"]["show_hidden"].value<bool>())
             m_showHidden = *v;
         if (auto v = config["general"]["right_click_to_edit_path"].value<bool>())
@@ -598,6 +603,11 @@ remember_sort_per_folder = true
 # Warn at startup when a tool HyprFM uses (gvfs, ffmpeg, bat, pdftoppm…) is missing.
 dependency_startup_check = true
 
+# Folder opened at startup when no path is passed on the command line:
+# "last" = wherever the previous session was, "home" = your home folder, or an
+# absolute path (a leading ~ is expanded). A command line path always wins.
+startup_dir = "last"
+
 [sidebar]
 # "left" | "right"
 position = "left"
@@ -824,6 +834,7 @@ QString ConfigManager::darkTheme() const { return m_darkTheme; }
 QString ConfigManager::iconTheme() const { return m_iconTheme; }
 QString ConfigManager::fontFamily() const { return m_fontFamily; }
 QString ConfigManager::defaultView() const { return m_defaultView; }
+QString ConfigManager::startupDir() const { return m_startupDir; }
 bool ConfigManager::showHidden() const { return m_showHidden; }
 
 bool ConfigManager::rightClickToEditPath() const { return m_rightClickToEditPath; }
@@ -959,6 +970,12 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
     if (settings.contains("fontFamily")) {
         m_fontFamily = settings.value("fontFamily").toString().trimmed();
         general.insert_or_assign("font_family", m_fontFamily.toStdString());
+    }
+
+    if (settings.contains("startupDir")) {
+        const QString value = settings.value("startupDir").toString().trimmed();
+        m_startupDir = value.isEmpty() ? QStringLiteral("last") : value;
+        general.insert_or_assign("startup_dir", m_startupDir.toStdString());
     }
 
     if (settings.contains("showHidden")) {
