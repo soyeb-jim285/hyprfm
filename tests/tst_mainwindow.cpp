@@ -349,6 +349,8 @@ private slots:
     {
         App app;
         QVERIFY(app.load());
+        // Built on first use; switch its Loader on as the app would.
+        QVERIFY(app.item("contextMenuLoader")->setProperty("active", true));
         QQuickItem *menu = app.item("contextMenu");
         QVERIFY(menu);
         const int base = menu->property("menuWidth").toInt();
@@ -435,6 +437,8 @@ private slots:
     {
         App app;
         QVERIFY(app.load());
+        // Built on first use; switch its Loader on as the app would.
+        QVERIFY(app.item("contextMenuLoader")->setProperty("active", true));
         QQuickItem *menu = app.item("contextMenu");
         QVERIFY(menu);
         QQuickItem *container = app.item("contextMenuContainer");
@@ -469,6 +473,8 @@ private slots:
     {
         App app;
         QVERIFY(app.load());
+        // Built on first use; switch its Loader on as the app would.
+        QVERIFY(app.item("contextMenuLoader")->setProperty("active", true));
         QQuickItem *menu = app.item("contextMenu");
         QVERIFY(menu);
         QQuickItem *container = app.item("contextMenuContainer");
@@ -504,6 +510,8 @@ private slots:
     {
         App app;
         QVERIFY(app.load());
+        // Built on first use; switch its Loader on as the app would.
+        QVERIFY(app.item("archivePasswordDialogLoader")->setProperty("active", true));
         QQuickItem *dialog = app.item("archivePasswordDialog");
         QVERIFY(dialog);
 
@@ -549,6 +557,8 @@ private slots:
         QVERIFY(zip.waitForFinished(20000));
         QCOMPARE(zip.exitCode(), 0);
 
+        // Built on first use; switch its Loader on as the app would.
+        QVERIFY(app.item("archivePasswordDialogLoader")->setProperty("active", true));
         QQuickItem *dialog = app.item("archivePasswordDialog");
         QVERIFY(dialog);
 

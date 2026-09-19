@@ -346,8 +346,9 @@ ApplicationWindow {
     }
 
     function openRemoteConnectDialog() {
-        remoteConnectDialog.resetForm()
-        remoteConnectDialog.open()
+        remoteConnectDialogLoader.active = true
+        root.remoteConnectDialog.resetForm()
+        root.remoteConnectDialog.open()
     }
 
     function showQuickPreview(path) {
@@ -360,6 +361,11 @@ ApplicationWindow {
         preview.forceActiveFocus()
     }
 
+    function openMissingDependenciesDialog() {
+        missingDependenciesDialogLoader.active = true
+        root.missingDependenciesDialog.openDialog()
+    }
+
     function openSettingsPanel() {
         settingsPanelLoader.active = true
         if (root.settingsPanel.visible)
@@ -369,7 +375,8 @@ ApplicationWindow {
     }
 
     function openKeyboardShortcutsDialog() {
-        shortcutsDialog.openDialog()
+        shortcutsDialogLoader.active = true
+        root.shortcutsDialog.openDialog()
     }
 
     function paneIsRecents(pane) {
@@ -508,10 +515,10 @@ ApplicationWindow {
     function shouldFocusActivePane() {
         return root.active
             && !root.searchMode
-            && !bulkRenameDialog.visible
-            && !remoteConnectDialog.visible
+            && !(root.bulkRenameDialog && root.bulkRenameDialog.visible)
+            && !(root.remoteConnectDialog && root.remoteConnectDialog.visible)
             && !(root.settingsPanel && root.settingsPanel.visible)
-            && !shortcutsDialog.visible
+            && !(root.shortcutsDialog && root.shortcutsDialog.visible)
             && !renameDialog.visible
             && sidebarPanel.renamingBookmarkIndex < 0
             && !newFolderDialog.visible
@@ -1066,7 +1073,8 @@ ApplicationWindow {
         if (!paths || paths.length < 2)
             return
 
-        bulkRenameDialog.openForPaths(paths)
+        bulkRenameDialogLoader.active = true
+        root.bulkRenameDialog.openForPaths(paths)
     }
 
     function toggleRenameWorkflow(paths) {
@@ -1075,8 +1083,8 @@ ApplicationWindow {
             return
         }
 
-        if (bulkRenameDialog.visible) {
-            bulkRenameDialog.reject()
+        if (root.bulkRenameDialog && root.bulkRenameDialog.visible) {
+            root.bulkRenameDialog.reject()
             return
         }
 
@@ -1101,7 +1109,7 @@ ApplicationWindow {
             return
         }
 
-        if (renameDialog.visible || bulkRenameDialog.visible || newFileDialog.visible)
+        if (renameDialog.visible || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || newFileDialog.visible)
             return
 
         showNewFolderDialog(parentPath)
@@ -1122,7 +1130,7 @@ ApplicationWindow {
             return
         }
 
-        if (renameDialog.visible || bulkRenameDialog.visible || newFolderDialog.visible)
+        if (renameDialog.visible || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || newFolderDialog.visible)
             return
 
         showNewFileDialog(parentPath)
@@ -1271,22 +1279,50 @@ ApplicationWindow {
         }
     }
 
-    BulkRenameDialog {
-        id: bulkRenameDialog
-        onRenameApplied: (paths) => root.handleBulkRenameApplied(paths)
+    // Dialogs and menus below are built the first time they open.
+    Loader {
+        id: bulkRenameDialogLoader
+        objectName: "bulkRenameDialogLoader"
+        anchors.fill: parent
+        z: 1000
+        active: false
+        sourceComponent: Component {
+            BulkRenameDialog {
+                onRenameApplied: (paths) => root.handleBulkRenameApplied(paths)
+            }
+        }
     }
+    readonly property var bulkRenameDialog: bulkRenameDialogLoader.item
 
-    ArchivePasswordDialog {
-        id: archivePasswordDialog
-        objectName: "archivePasswordDialog"
-        onConfirmed: (password) => root.handleArchivePasswordConfirmed(password)
-        onRejected: root.passwordDialogContext = null
+    Loader {
+        id: archivePasswordDialogLoader
+        objectName: "archivePasswordDialogLoader"
+        anchors.fill: parent
+        z: 1000
+        active: false
+        sourceComponent: Component {
+            ArchivePasswordDialog {
+                objectName: "archivePasswordDialog"
+                onConfirmed: (password) => root.handleArchivePasswordConfirmed(password)
+                onRejected: root.passwordDialogContext = null
+            }
+        }
     }
+    readonly property var archivePasswordDialog: archivePasswordDialogLoader.item
 
-    RemoteConnectDialog {
-        id: remoteConnectDialog
-        onConnected: (uri) => root.navigateActivePaneTo(uri)
+    Loader {
+        id: remoteConnectDialogLoader
+        objectName: "remoteConnectDialogLoader"
+        anchors.fill: parent
+        z: 1000
+        active: false
+        sourceComponent: Component {
+            RemoteConnectDialog {
+                onConnected: (uri) => root.navigateActivePaneTo(uri)
+            }
+        }
     }
+    readonly property var remoteConnectDialog: remoteConnectDialogLoader.item
 
     // Created the first time it opens: building it (and its dropdowns,
     // sliders and pages) at startup cost more than any other hidden piece of
@@ -1303,22 +1339,40 @@ ApplicationWindow {
                 currentSidebarWidth: root.sidebarWidth
                 onRemoteConnectRequested: root.openRemoteConnectDialog()
                 onKeyboardShortcutsRequested: root.openKeyboardShortcutsDialog()
-                onDependenciesRequested: missingDependenciesDialog.openDialog()
+                onDependenciesRequested: root.openMissingDependenciesDialog()
                 onClosed: root.scheduleActivePaneFocus()
             }
         }
     }
     readonly property var settingsPanel: settingsPanelLoader.item
 
-    Components.KeyboardShortcutsDialog {
-        id: shortcutsDialog
-        onClosed: root.scheduleActivePaneFocus()
+    Loader {
+        id: shortcutsDialogLoader
+        objectName: "shortcutsDialogLoader"
+        anchors.fill: parent
+        z: 1001
+        active: false
+        sourceComponent: Component {
+            Components.KeyboardShortcutsDialog {
+                onClosed: root.scheduleActivePaneFocus()
+            }
+        }
     }
+    readonly property var shortcutsDialog: shortcutsDialogLoader.item
 
-    Components.MissingDependenciesDialog {
-        id: missingDependenciesDialog
-        onClosed: root.scheduleActivePaneFocus()
+    Loader {
+        id: missingDependenciesDialogLoader
+        objectName: "missingDependenciesDialogLoader"
+        anchors.fill: parent
+        z: 1002
+        active: false
+        sourceComponent: Component {
+            Components.MissingDependenciesDialog {
+                onClosed: root.scheduleActivePaneFocus()
+            }
+        }
     }
+    readonly property var missingDependenciesDialog: missingDependenciesDialogLoader.item
 
     // Nag on startup only when a *required* tool is missing — those actually
     // break file operations. Optional backends (iPhone/AFC, ffmpeg, ...) stay
@@ -1329,7 +1383,7 @@ ApplicationWindow {
         repeat: false
         onTriggered: {
             if (config.dependencyStartupCheck && dependencies && dependencies.hasMissingRequired)
-                missingDependenciesDialog.openDialog()
+                root.openMissingDependenciesDialog()
         }
     }
 
@@ -2771,180 +2825,198 @@ ApplicationWindow {
     }
 
     // ── Context Menu ────────────────────────────────────────────────────────
-    ContextMenu {
-        id: contextMenu
-        objectName: "contextMenu"
-        blurSource: mainContent
+    Loader {
+        id: contextMenuLoader
+        objectName: "contextMenuLoader"
+        anchors.fill: parent
+        z: 9999
+        active: false
+        sourceComponent: Component {
+            ContextMenu {
+                objectName: "contextMenu"
+                blurSource: mainContent
 
-        fileModel: root.paneBaseModel(root.activePane)
-        splitViewEnabled: root.splitViewEnabled()
-        isTrashView: root.isTrashView
-        currentViewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-        currentSortBy: tabModel.activeTab ? tabModel.activeTab.sortBy : "name"
-        currentSortAscending: tabModel.activeTab ? tabModel.activeTab.sortAscending : true
+                fileModel: root.paneBaseModel(root.activePane)
+                splitViewEnabled: root.splitViewEnabled()
+                isTrashView: root.isTrashView
+                currentViewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
+                currentSortBy: tabModel.activeTab ? tabModel.activeTab.sortBy : "name"
+                currentSortAscending: tabModel.activeTab ? tabModel.activeTab.sortAscending : true
 
-        onOpenRequested: (path, isDir) => {
-            if (isDir)
-                root.navigateActivePaneTo(path)
-            else
-                fileOps.openFile(path)
-        }
-        onOpenInNewTabRequested: (path) => root.openPathInNewTab(path)
-        onOpenWithRequested: (path, desktopFile) => fileOps.openFileWith(path, desktopFile)
-        onSetDefaultAppRequested: (mimeType, desktopFile) => {
-            root.paneBaseModel(root.activePane).setDefaultApp(mimeType, desktopFile)
-        }
-        onChooseAppRequested: (path, mimeType) => {
-            appChooserDialog.filePath = path
-            appChooserDialog.mimeType = mimeType
-            appChooserDialog.open()
-        }
-
-        onCutRequested: (paths) => clipboard.cut(paths)
-
-        onCopyRequested: (paths) => clipboard.copy(paths)
-
-        onPasteRequested: (destPath) => {
-            root.pasteIntoDirectory(destPath)
-        }
-
-        onCopyPathRequested: (path) => fileOps.copyPathToClipboard(path)
-
-        onRenameRequested: (path) => root.openRenameDialogForPath(path)
-        onBulkRenameRequested: (paths) => root.openBulkRenameDialog(paths)
-
-        onTrashRequested: (paths) => {
-            var hasRemotePath = false
-            for (var i = 0; i < paths.length; ++i) {
-                if (fileOps.isRemotePath(paths[i])) {
-                    hasRemotePath = true
-                    break
+                onOpenRequested: (path, isDir) => {
+                    if (isDir)
+                        root.navigateActivePaneTo(path)
+                    else
+                        fileOps.openFile(path)
                 }
+                onOpenInNewTabRequested: (path) => root.openPathInNewTab(path)
+                onOpenWithRequested: (path, desktopFile) => fileOps.openFileWith(path, desktopFile)
+                onSetDefaultAppRequested: (mimeType, desktopFile) => {
+                    root.paneBaseModel(root.activePane).setDefaultApp(mimeType, desktopFile)
+                }
+                onChooseAppRequested: (path, mimeType) => {
+                    appChooserDialog.filePath = path
+                    appChooserDialog.mimeType = mimeType
+                    appChooserDialog.open()
+                }
+
+                onCutRequested: (paths) => clipboard.cut(paths)
+
+                onCopyRequested: (paths) => clipboard.copy(paths)
+
+                onPasteRequested: (destPath) => {
+                    root.pasteIntoDirectory(destPath)
+                }
+
+                onCopyPathRequested: (path) => fileOps.copyPathToClipboard(path)
+
+                onRenameRequested: (path) => root.openRenameDialogForPath(path)
+                onBulkRenameRequested: (paths) => root.openBulkRenameDialog(paths)
+
+                onTrashRequested: (paths) => {
+                    var hasRemotePath = false
+                    for (var i = 0; i < paths.length; ++i) {
+                        if (fileOps.isRemotePath(paths[i])) {
+                            hasRemotePath = true
+                            break
+                        }
+                    }
+
+                    if (hasRemotePath)
+                        fileOps.trashFiles(paths)
+                    else
+                        undoManager.trashFiles(paths)
+                }
+                onRestoreRequested: (paths) => fileOps.restoreFromTrash(paths)
+                onEmptyTrashRequested: emptyTrashConfirmDialog.open()
+
+                onDeleteRequested: (paths) => {
+                    deleteConfirmPaths = paths
+                    deleteConfirmDialog.open()
+                }
+
+                onOpenInTerminalRequested: (path) => {
+                    fileOps.openInTerminal(path)
+                }
+
+                onNewFolderRequested: (parentPath) => {
+                    root.showNewFolderDialog(parentPath)
+                }
+
+                onNewFileRequested: (parentPath) => {
+                    root.showNewFileDialog(parentPath)
+                }
+
+                onSelectAllRequested: {
+                    var view = root.activeFileView()
+                    if (view) view.selectAll()
+                }
+
+                onPropertiesRequested: (path) => {
+                    propertiesDialog.showProperties(path)
+                }
+
+                onSplitViewRequested: (path) => {
+                    root.openPathInSplitView(path)
+                }
+
+                onCustomActionRequested: (action) => {
+                    if (action === "close_split")
+                        root.toggleSplitView()
+                }
+
+                onViewModeRequested: (mode) => {
+                    if (tabModel.activeTab) tabModel.activeTab.viewMode = mode
+                }
+
+                onSortRequested: (column, ascending) => root.applySortChange(column, ascending)
             }
-
-            if (hasRemotePath)
-                fileOps.trashFiles(paths)
-            else
-                undoManager.trashFiles(paths)
         }
-        onRestoreRequested: (paths) => fileOps.restoreFromTrash(paths)
-        onEmptyTrashRequested: emptyTrashConfirmDialog.open()
-
-        onDeleteRequested: (paths) => {
-            deleteConfirmPaths = paths
-            deleteConfirmDialog.open()
-        }
-
-        onOpenInTerminalRequested: (path) => {
-            fileOps.openInTerminal(path)
-        }
-
-        onNewFolderRequested: (parentPath) => {
-            root.showNewFolderDialog(parentPath)
-        }
-
-        onNewFileRequested: (parentPath) => {
-            root.showNewFileDialog(parentPath)
-        }
-
-        onSelectAllRequested: {
-            var view = root.activeFileView()
-            if (view) view.selectAll()
-        }
-
-        onPropertiesRequested: (path) => {
-            propertiesDialog.showProperties(path)
-        }
-
-        onSplitViewRequested: (path) => {
-            root.openPathInSplitView(path)
-        }
-
-        onCustomActionRequested: (action) => {
-            if (action === "close_split")
-                root.toggleSplitView()
-        }
-
-        onViewModeRequested: (mode) => {
-            if (tabModel.activeTab) tabModel.activeTab.viewMode = mode
-        }
-
-        onSortRequested: (column, ascending) => root.applySortChange(column, ascending)
     }
+    readonly property var contextMenu: contextMenuLoader.item
 
-    ContextMenu {
-        id: sidebarContextMenu
-        menuWidth: 220
+    Loader {
+        id: sidebarContextMenuLoader
+        objectName: "sidebarContextMenuLoader"
+        anchors.fill: parent
+        z: 9999
+        active: false
+        sourceComponent: Component {
+            ContextMenu {
+                menuWidth: 220
 
-        property var sidebarItem: ({})
+                property var sidebarItem: ({})
 
-        onOpenRequested: (path) => {
-            if (sidebarItem.isRecents) {
-                root.setPaneRecents(root.activePane, true)
-                return
-            }
+                onOpenRequested: (path) => {
+                    if (sidebarItem.isRecents) {
+                        root.setPaneRecents(root.activePane, true)
+                        return
+                    }
 
-            root.navigateActivePaneTo(path)
-        }
+                    root.navigateActivePaneTo(path)
+                }
 
-        onOpenInNewTabRequested: (path) => {
-            if (path)
-                root.openPathInNewTab(path)
-        }
+                onOpenInNewTabRequested: (path) => {
+                    if (path)
+                        root.openPathInNewTab(path)
+                }
 
-        onSplitViewRequested: (path) => {
-            if (path)
-                root.openPathInSplitView(path)
-        }
+                onSplitViewRequested: (path) => {
+                    if (path)
+                        root.openPathInSplitView(path)
+                }
 
-        onPropertiesRequested: (path) => {
-            if (path)
-                propertiesDialog.showProperties(path)
-        }
+                onPropertiesRequested: (path) => {
+                    if (path)
+                        propertiesDialog.showProperties(path)
+                }
 
-        onOpenInTerminalRequested: (path) => {
-            if (path)
-                fileOps.openInTerminal(path)
-        }
+                onOpenInTerminalRequested: (path) => {
+                    if (path)
+                        fileOps.openInTerminal(path)
+                }
 
-        onCustomActionRequested: (action) => {
-            if (action === "emptytrash") {
-                emptyTrashConfirmDialog.open()
-            } else if (action === "renamebookmark") {
-                if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
-                    sidebarPanel.startBookmarkRename(sidebarItem.index)
-            } else if (action === "removebookmark") {
-                if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
-                    bookmarks.removeBookmark(sidebarItem.index)
-            } else if (action === "hidequickaccess") {
-                if (sidebarItem.kind === "quickAccess" && sidebarItem.name) {
-                    var hidden = config.hiddenQuickAccess.slice()
-                    if (hidden.indexOf(sidebarItem.name) < 0) {
-                        hidden.push(sidebarItem.name)
-                        config.saveSettings({ hiddenQuickAccess: hidden })
-                        toast.show(sidebarItem.name + " hidden — restore it in Settings → Layout", "info")
+                onCustomActionRequested: (action) => {
+                    if (action === "emptytrash") {
+                        emptyTrashConfirmDialog.open()
+                    } else if (action === "renamebookmark") {
+                        if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
+                            sidebarPanel.startBookmarkRename(sidebarItem.index)
+                    } else if (action === "removebookmark") {
+                        if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
+                            bookmarks.removeBookmark(sidebarItem.index)
+                    } else if (action === "hidequickaccess") {
+                        if (sidebarItem.kind === "quickAccess" && sidebarItem.name) {
+                            var hidden = config.hiddenQuickAccess.slice()
+                            if (hidden.indexOf(sidebarItem.name) < 0) {
+                                hidden.push(sidebarItem.name)
+                                config.saveSettings({ hiddenQuickAccess: hidden })
+                                toast.show(sidebarItem.name + " hidden — restore it in Settings → Layout", "info")
+                            }
+                        }
+                    } else if (action === "mountdevice") {
+                        if (sidebarItem.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable) {
+                            toast.show(runtimeFeatures.installHint("deviceMount"), "info")
+                        } else if (sidebarItem.kind === "device" && sidebarItem.index >= 0) {
+                            devices.mount(sidebarItem.index)
+                        }
+                    } else if (action === "unmountdevice") {
+                        if (sidebarItem.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable) {
+                            toast.show(runtimeFeatures.installHint("deviceMount"), "info")
+                        } else if (sidebarItem.kind === "device" && sidebarItem.index >= 0) {
+                            devices.unmount(sidebarItem.index)
+                        }
                     }
                 }
-            } else if (action === "mountdevice") {
-                if (sidebarItem.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable) {
-                    toast.show(runtimeFeatures.installHint("deviceMount"), "info")
-                } else if (sidebarItem.kind === "device" && sidebarItem.index >= 0) {
-                    devices.mount(sidebarItem.index)
-                }
-            } else if (action === "unmountdevice") {
-                if (sidebarItem.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable) {
-                    toast.show(runtimeFeatures.installHint("deviceMount"), "info")
-                } else if (sidebarItem.kind === "device" && sidebarItem.index >= 0) {
-                    devices.unmount(sidebarItem.index)
+
+                onVisibleChanged: {
+                    if (!visible)
+                        sidebarItem = ({})
                 }
             }
         }
-
-        onVisibleChanged: {
-            if (!visible)
-                sidebarItem = ({})
-        }
     }
+    readonly property var sidebarContextMenu: sidebarContextMenuLoader.item
 
     // ── Keyboard Shortcuts ──────────────────────────────────────────────────
 
@@ -3291,9 +3363,9 @@ ApplicationWindow {
         sequence: "Escape"
         enabled: root.searchMode
                  && !(root.quickPreview && root.quickPreview.active)
-                 && !bulkRenameDialog.visible
+                 && !(root.bulkRenameDialog && root.bulkRenameDialog.visible)
                  && !(root.settingsPanel && root.settingsPanel.visible)
-                 && !shortcutsDialog.visible
+                 && !(root.shortcutsDialog && root.shortcutsDialog.visible)
                  && !renameDialog.visible
                  && !newFolderDialog.visible
                  && !newFileDialog.visible
@@ -3419,9 +3491,9 @@ ApplicationWindow {
             if (success) {
                 // Whatever password got us here was the right one, so the
                 // prompt (still open while it was being proved) is done.
-                if (archivePasswordDialog.visible) {
+                if (root.archivePasswordDialog && root.archivePasswordDialog.visible) {
                     root.passwordDialogContext = null
-                    archivePasswordDialog.succeeded()
+                    root.archivePasswordDialog.succeeded()
                 }
                 if (pane)
                     root.navigatePaneTo(pane, dest)
@@ -3435,10 +3507,11 @@ ApplicationWindow {
     // user just gave (report into the dialog already up, without closing it).
     function askArchivePassword(path, dest, retry) {
         root.passwordDialogContext = { path: path, dest: dest }
-        if (retry && archivePasswordDialog.visible)
-            archivePasswordDialog.failed()
+        archivePasswordDialogLoader.active = true
+        if (retry && root.archivePasswordDialog.visible)
+            root.archivePasswordDialog.failed()
         else
-            archivePasswordDialog.openFor(path)
+            root.archivePasswordDialog.openFor(path)
     }
 
     function handleArchivePasswordConfirmed(password) {
@@ -3461,12 +3534,14 @@ ApplicationWindow {
         root.setActivePane(pane)
 
         var currentDir = panePath(pane)
-        contextMenu.targetPath = filePath !== "" ? filePath : currentDir
-        contextMenu.targetIsDir = filePath !== "" ? isDirectory : true
-        contextMenu.isEmptySpace = (filePath === "")
+        contextMenuLoader.active = true
+        const menu = root.contextMenu
+        menu.targetPath = filePath !== "" ? filePath : currentDir
+        menu.targetIsDir = filePath !== "" ? isDirectory : true
+        menu.isEmptySpace = (filePath === "")
         var sel = getSelectedPaths(pane)
-        contextMenu.selectedPaths = (sel.length > 1) ? sel : (filePath !== "" ? [filePath] : [])
-        contextMenu.popup(position.x, position.y)
+        menu.selectedPaths = (sel.length > 1) ? sel : (filePath !== "" ? [filePath] : [])
+        menu.popup(position.x, position.y)
     }
 
     function openPathInSplitView(path) {
@@ -3543,14 +3618,16 @@ ApplicationWindow {
                             root.scheduleActivePaneFocus()
                     }
                     onSidebarContextMenuRequested: (item, position) => {
-                        sidebarContextMenu.sidebarItem = item
-                        sidebarContextMenu.contextData = item
-                        sidebarContextMenu.customItems = root.sidebarMenuItems(item)
-                        sidebarContextMenu.targetPath = item.path || ""
-                        sidebarContextMenu.targetIsDir = !!item.path
-                        sidebarContextMenu.isEmptySpace = false
-                        sidebarContextMenu.selectedPaths = item.path ? [item.path] : []
-                        sidebarContextMenu.popup(position.x, position.y)
+                        sidebarContextMenuLoader.active = true
+                        const menu = root.sidebarContextMenu
+                        menu.sidebarItem = item
+                        menu.contextData = item
+                        menu.customItems = root.sidebarMenuItems(item)
+                        menu.targetPath = item.path || ""
+                        menu.targetIsDir = !!item.path
+                        menu.isEmptySpace = false
+                        menu.selectedPaths = item.path ? [item.path] : []
+                        menu.popup(position.x, position.y)
                     }
                     onRecentsClicked: {
                         root.setPaneRecents(root.activePane, true)
@@ -3954,7 +4031,8 @@ ApplicationWindow {
                 }
                 onUnlockSucceeded: {
                     root.passwordDialogContext = null
-                    archivePasswordDialog.succeeded()
+                    if (root.archivePasswordDialog)
+                        root.archivePasswordDialog.succeeded()
                 }
                 onClosed: {
                     quickPreviewItem.active = false
