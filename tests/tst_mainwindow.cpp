@@ -101,6 +101,7 @@ class TestMainWindow : public QObject
             splitSearchService->setResultsModel(splitSearchResults);
             auto *previewService = new PreviewService(&owner);
             auto *metadataExtractor = new MetadataExtractor(&owner);
+            previewService->setMetadataExtractor(metadataExtractor);   // as main.cpp does
             auto *diskUsageService = new DiskUsageService(&owner);
             auto *remoteAccessService = new RemoteAccessService(&owner);
             auto *rcloneService = new RcloneService(&owner);
@@ -731,6 +732,24 @@ private slots:
         QCOMPARE(started.count(), 0);   // still inside the debounce
         QTRY_VERIFY(started.count() >= 1);
         QCOMPARE(app.searchProxy->property("searchQuery").toString(), QStringLiteral("main"));
+    }
+
+    // Properties metadata comes from the preview service's workers now, not
+    // from exiftool/ffprobe run on the GUI thread: it has to arrive.
+    void testPropertiesMetadataArrivesAsynchronously()
+    {
+        App app;
+        QVERIFY(app.load());
+        const QString png = app.home.path() + "/pixel.png";
+        QImage image(3, 2, QImage::Format_RGB32);
+        image.fill(Qt::blue);
+        QVERIFY(image.save(png));
+
+        QObject *root = app.window->contentItem()->parent();
+        QVERIFY(QMetaObject::invokeMethod(root, "showPropertiesFor", Q_ARG(QVariant, png)));
+        QQuickItem *dialog = app.item("propertiesDialog");
+        QVERIFY(dialog);
+        QTRY_VERIFY(!dialog->property("_metadataKeys").toList().isEmpty());
     }
 
     void testWheelOverTabStripScrollsTabsInTheFullWindow()

@@ -2141,6 +2141,25 @@ ApplicationWindow {
                 property string folderDiskUsageText: ""
                 property bool folderDiskUsagePending: false
                 property int folderDiskUsageRequestId: -1
+                // One per window: the preview service drops a requester's
+                // older work, and windows share the service.
+                readonly property string metadataRequester: "properties@" + root
+
+                Connections {
+                    target: previewService
+                    function onPreviewReady(requester, path, data) {
+                        if (requester !== propertiesDialog.metadataRequester
+                                || path !== propertiesDialog.props.path)
+                            return
+                        const md = data.metadata || ({})
+                        const result = []
+                        for (const key of Object.keys(md)) {
+                            if (md[key] !== "")
+                                result.push({ label: key, value: String(md[key]) })
+                        }
+                        propertiesDialog._metadataKeys = result
+                    }
+                }
 
                 // A remote location outside the current listing is answered
                 // with a placeholder first; the rest arrives from gio later.
@@ -2190,15 +2209,15 @@ ApplicationWindow {
                     else
                         apps = []
 
-                    // Extract rich metadata
-                    var md = (fileOps.isRemotePath(path) || fileOps.isSlowPath(path)) ? ({}) : metadataExtractor.extract(path)
-                    var keys = Object.keys(md)
-                    var result = []
-                    for (var i = 0; i < keys.length; ++i) {
-                        if (md[keys[i]] !== "")
-                            result.push({ label: keys[i], value: String(md[keys[i]]) })
-                    }
-                    _metadataKeys = result
+                    // Rich metadata (exiftool/ffprobe, ~120 ms each and up
+                    // to a 5 s timeout) comes from the preview service's
+                    // worker pool; it used to run here on the GUI thread,
+                    // which every window now shares.
+                    _metadataKeys = []
+                    if (fileOps.isRemotePath(path) || fileOps.isSlowPath(path))
+                        previewService.cancelPreview(metadataRequester)
+                    else
+                        previewService.requestPreview(metadataRequester, path, "")
                     _metadataHint = (fileOps.isRemotePath(path) || fileOps.isSlowPath(path)) ? "" : metadataExtractor.missingDepsHint(props.mimeType || "")
 
                     visible = true
@@ -2210,6 +2229,7 @@ ApplicationWindow {
                 }
                 function close() {
                     cancelFolderDiskUsageRequest()
+                    previewService.cancelPreview(metadataRequester)
                     propsCloseAnim.start()
                 }
 
