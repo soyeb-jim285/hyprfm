@@ -827,14 +827,15 @@ int main(int argc, char *argv[])
 
     // First-frame checkpoint: one-shot hook on the root window's
     // frameSwapped signal, for the timing log and the renderer choice.
+    // SingleShotConnection disconnects at the first emission, on the render
+    // thread. Disconnecting from inside the queued slot instead was too late:
+    // frames swapped before the first delivery each queued another call,
+    // which then ran against the deleted connection.
     if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
-        auto *conn = new QMetaObject::Connection;
-        *conn = QObject::connect(win, &QQuickWindow::frameSwapped, win, [conn, mark, &renderer]() {
+        QObject::connect(win, &QQuickWindow::frameSwapped, win, [mark, &renderer]() {
             mark("first frame swapped");
             renderer.firstFramePainted();
-            QObject::disconnect(*conn);
-            delete conn;
-        }, Qt::QueuedConnection);
+        }, static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
     }
 
     auto applyWindowEffects = [config](QQuickWindow *window) {
