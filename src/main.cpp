@@ -63,6 +63,7 @@
 #include <signal.h>
 #include <QCryptographicHash>
 #include <QThreadPool>
+#include <QProcess>
 #include <QtQml/qqmlextensionplugin.h>
 
 Q_IMPORT_QML_PLUGIN(QuillPlugin)
@@ -143,13 +144,9 @@ bool hasHardwareVulkanDevice()
     return found;
 }
 
-// Every place the Vulkan loader looks for driver manifests, with each
-// manifest's mtime: installing, removing or upgrading a driver changes it.
-QByteArray vulkanDriverFingerprint()
+// The driver manifests in every place the Vulkan loader looks for them.
+QFileInfoList vulkanDriverManifests()
 {
-    QByteArray data;
-    for (const char *var : {"VK_ICD_FILENAMES", "VK_DRIVER_FILES", "VK_ADD_DRIVER_FILES"})
-        data += qgetenv(var) + '|';
     const auto dirsFrom = [](const char *var, const QString &fallback) {
         const QString value = qEnvironmentVariable(var);
         return (value.isEmpty() ? fallback : value).split(QLatin1Char(':'), Qt::SkipEmptyParts);
@@ -158,14 +155,60 @@ QByteArray vulkanDriverFingerprint()
     roots << QStringLiteral("/etc");
     roots << dirsFrom("XDG_DATA_HOME", QDir::homePath() + QStringLiteral("/.local/share"));
     roots << dirsFrom("XDG_DATA_DIRS", QStringLiteral("/usr/local/share:/usr/share"));
-    for (const QString &root : std::as_const(roots)) {
-        const QDir dir(root + QStringLiteral("/vulkan/icd.d"));
-        const QFileInfoList entries = dir.entryInfoList(QDir::Files, QDir::Name);
-        for (const QFileInfo &entry : entries)
-            data += entry.absoluteFilePath().toUtf8() + ':'
-                + QByteArray::number(entry.lastModified().toMSecsSinceEpoch()) + '|';
-    }
+    QFileInfoList manifests;
+    for (const QString &root : std::as_const(roots))
+        manifests += QDir(root + QStringLiteral("/vulkan/icd.d")).entryInfoList(QDir::Files, QDir::Name);
+    return manifests;
+}
+
+// Variables through which the user already chose the Vulkan drivers.
+constexpr const char *kVulkanDriverVars[] = {
+    "VK_ICD_FILENAMES", "VK_DRIVER_FILES", "VK_ADD_DRIVER_FILES", "VK_LOADER_DRIVERS_SELECT"};
+
+// Each manifest with its mtime: installing, removing or upgrading a driver
+// changes it.
+QByteArray vulkanDriverFingerprint()
+{
+    QByteArray data;
+    for (const char *var : kVulkanDriverVars)
+        data += qgetenv(var) + '|';
+    for (const QFileInfo &manifest : vulkanDriverManifests())
+        data += manifest.absoluteFilePath().toUtf8() + ':'
+            + QByteArray::number(manifest.lastModified().toMSecsSinceEpoch()) + '|';
     return QCryptographicHash::hash(data, QCryptographicHash::Sha1).toHex();
+}
+
+// The Vulkan loader opens every installed driver when an instance is
+// created, whether or not it has hardware to drive: with the NVIDIA driver
+// installed beside RADV and no NVIDIA card active, instance creation took
+// 46 ms against 19 ms for RADV alone. When exactly one manifest drives real
+// hardware, launches name it in VK_DRIVER_FILES. Each manifest is tried in a
+// child process (hyprfm --vulkan-probe with only that driver visible), so
+// this process never changes its environment while threads are running.
+QString soleHardwareVulkanDriver()
+{
+    for (const char *var : kVulkanDriverVars)
+        if (!qEnvironmentVariableIsEmpty(var))
+            return {};
+    QString sole;
+    for (const QFileInfo &manifest : vulkanDriverManifests()) {
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert(QStringLiteral("VK_DRIVER_FILES"), manifest.absoluteFilePath());
+        QProcess probe;
+        probe.setProcessEnvironment(env);
+        probe.start(QCoreApplication::applicationFilePath(), {QStringLiteral("--vulkan-probe")});
+        if (!probe.waitForFinished(5000)) {
+            probe.kill();
+            probe.waitForFinished();
+            return {};
+        }
+        if (probe.exitStatus() != QProcess::NormalExit || probe.exitCode() != 0)
+            continue;
+        if (!sole.isEmpty())
+            return {}; // several drivers with hardware: leave the choice to the loader
+        sole = manifest.absoluteFilePath();
+    }
+    return sole;
 }
 
 class RendererChoice
@@ -186,14 +229,15 @@ public:
             return;
         }
 
+        // "<fingerprint> vulkan|opengl [driver manifest]"
         QFile cache(m_dir + QStringLiteral("/renderer"));
         const QList<QByteArray> fields = cache.open(QIODevice::ReadOnly)
             ? cache.readAll().trimmed().split(' ') : QList<QByteArray>();
-        if (fields.size() != 2 || fields.first() != m_fingerprint) {
+        if (fields.size() < 2 || fields.first() != m_fingerprint) {
             m_probeAfterFirstFrame = true;
             return;
         }
-        if (fields.last() != "vulkan")
+        if (fields.at(1) != "vulkan")
             return;
 
         QDir().mkpath(m_dir);
@@ -203,6 +247,13 @@ public:
         marker.close();
         m_vulkan = true;
         QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
+        // Safe here: the renderer is chosen before QGuiApplication exists,
+        // while this is the only thread. Taken back after the first frame so
+        // that nothing launched from the file manager inherits it.
+        if (fields.size() == 3 && QFileInfo::exists(QString::fromUtf8(fields.at(2)))) {
+            qputenv("VK_DRIVER_FILES", fields.at(2));
+            m_pinnedDriver = true;
+        }
 #endif
     }
 
@@ -219,10 +270,16 @@ public:
     {
         if (m_vulkan)
             QFile::remove(markerPath(QCoreApplication::applicationPid()));
+        if (m_pinnedDriver) {
+            // The instance exists by now, and later windows share it.
+            qunsetenv("VK_DRIVER_FILES");
+            m_pinnedDriver = false;
+        }
         if (m_probeAfterFirstFrame) {
             m_probeAfterFirstFrame = false;
             QThreadPool::globalInstance()->start([dir = m_dir, fingerprint = m_fingerprint] {
-                store(dir, fingerprint, hasHardwareVulkanDevice());
+                const bool vulkan = hasHardwareVulkanDevice();
+                store(dir, fingerprint, vulkan, vulkan ? soleHardwareVulkanDriver() : QString());
             });
         }
     }
@@ -250,21 +307,26 @@ private:
         return failed;
     }
 
-    void store(bool vulkan) const { store(m_dir, m_fingerprint, vulkan); }
+    void store(bool vulkan) const { store(m_dir, m_fingerprint, vulkan, {}); }
 
-    static void store(const QString &dir, const QByteArray &fingerprint, bool vulkan)
+    static void store(const QString &dir, const QByteArray &fingerprint, bool vulkan,
+                      const QString &driver)
     {
         QDir().mkpath(dir);
         QSaveFile file(dir + QStringLiteral("/renderer"));
         if (!file.open(QIODevice::WriteOnly))
             return;
-        file.write(fingerprint + (vulkan ? " vulkan\n" : " opengl\n"));
+        QByteArray line = fingerprint + (vulkan ? " vulkan" : " opengl");
+        if (!driver.isEmpty() && !driver.contains(QLatin1Char(' ')))
+            line += ' ' + driver.toUtf8();
+        file.write(line + '\n');
         file.commit();
     }
 
     QString m_dir;
     QByteArray m_fingerprint;
     bool m_vulkan = false;
+    bool m_pinnedDriver = false;
     bool m_probeAfterFirstFrame = false;
 };
 
@@ -404,6 +466,9 @@ int main(int argc, char *argv[])
             printf("hyprfm %s\n", HYPRFM_VERSION);
             return 0;
         }
+        // Internal: run by soleHardwareVulkanDriver() with one driver visible.
+        if (a == "--vulkan-probe")
+            return hasHardwareVulkanDevice() ? 0 : 1;
     }
 
     // Suppress noisy warnings:
@@ -472,6 +537,10 @@ int main(int argc, char *argv[])
             initialOpenPath = fi.absoluteFilePath();
     }
 
+    // Before QGuiApplication: it may set VK_DRIVER_FILES, which is only safe
+    // while this is the only thread.
+    RendererChoice renderer;
+
     QGuiApplication app(argc, argv);
     app.setApplicationName("HyprFM");
     app.setOrganizationName("hyprfm");
@@ -531,7 +600,6 @@ int main(int argc, char *argv[])
     }
 
     QQuickStyle::setStyle("Basic");
-    RendererChoice renderer;
 
     // Use native text rendering (FreeType/fontconfig) for crisp fonts matching GTK apps
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
