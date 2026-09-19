@@ -716,6 +716,23 @@ private slots:
         QTRY_VERIFY(item->isVisible());
     }
 
+    // Typing debounces the recursive search: a burst of keystrokes starts one
+    // search, for the last query, once typing pauses.
+    void testSearchTypingStartsOneDebouncedSearch()
+    {
+        App app;
+        QVERIFY(app.load());
+        QObject *root = app.window->contentItem()->parent();
+        QSignalSpy started(app.searchService, &SearchService::isSearchingChanged);
+        QVERIFY(QMetaObject::invokeMethod(root, "handleSearchQuery", Q_ARG(QVariant, QStringLiteral("ma"))));
+        QVERIFY(QMetaObject::invokeMethod(root, "handleSearchQuery", Q_ARG(QVariant, QStringLiteral("mai"))));
+        QVERIFY(QMetaObject::invokeMethod(root, "handleSearchQuery", Q_ARG(QVariant, QStringLiteral("main"))));
+        QTest::qWait(300);
+        QCOMPARE(started.count(), 0);   // still inside the debounce
+        QTRY_VERIFY(started.count() >= 1);
+        QCOMPARE(app.searchProxy->property("searchQuery").toString(), QStringLiteral("main"));
+    }
+
     void testWheelOverTabStripScrollsTabsInTheFullWindow()
     {
         App app;

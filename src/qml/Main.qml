@@ -210,8 +210,17 @@ ApplicationWindow {
     property int sidebarResizeStartWidth: 0
 
     // ── Search state ──────────────────────────────────────────────────────────
-    property var debounceTimer: null
     property string debouncePane: "primary"
+    property string debounceQuery: ""
+
+    // One declared timer for the recursive-search debounce. It used to be a
+    // Timer compiled from a string with Qt.createQmlObject on every keystroke,
+    // and the last one of each search was never destroyed.
+    Timer {
+        id: searchDebounce
+        interval: 500
+        onTriggered: root.triggerRecursiveSearch(root.debouncePane, root.debounceQuery)
+    }
     property string activePane: "primary"
     readonly property bool searchMode: paneSearchMode(activePane)
     property real splitTransitionProgress: splitViewEnabled() ? 1 : 0
@@ -442,10 +451,8 @@ ApplicationWindow {
     }
 
     function clearPaneDebounce(pane) {
-        if (debounceTimer && debouncePane === pane) {
-            debounceTimer.destroy()
-            debounceTimer = null
-        }
+        if (searchDebounce.running && debouncePane === pane)
+            searchDebounce.stop()
     }
 
     function clearPaneSearch(pane) {
@@ -1218,8 +1225,7 @@ ApplicationWindow {
         var service = searchServiceForPane(pane)
 
         proxy.searchQuery = query
-        if (debounceTimer) debounceTimer.destroy()
-        debounceTimer = null
+        searchDebounce.stop()
 
         if (query === "") {
             service.cancelSearch()
@@ -1228,14 +1234,8 @@ ApplicationWindow {
         }
 
         debouncePane = pane
-        debounceTimer = Qt.createQmlObject(
-            'import QtQuick; Timer { interval: 500; running: true; repeat: false }',
-            root
-        )
-        debounceTimer.triggered.connect(function() {
-            root.triggerRecursiveSearch(pane, query)
-            debounceTimer = null
-        })
+        debounceQuery = query
+        searchDebounce.restart()
     }
 
     function triggerRecursiveSearch(pane, query) {
