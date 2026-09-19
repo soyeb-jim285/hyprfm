@@ -12,6 +12,7 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QScopeGuard>
+#include <functional>
 #include <QTemporaryDir>
 #include <QWheelEvent>
 #include "models/bookmarkmodel.h"
@@ -649,6 +650,41 @@ private slots:
         QVERIFY(preview);
         QVERIFY(preview->property("active").toBool());
         QCOMPARE(preview->property("filePath").toString(), file.fileName());
+    }
+
+    // The cut and paste badges only build their icon while they show; cutting
+    // a file still has to put the scissors on it.
+    void testCutFileShowsItsScissorsBadge()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto scissors = [&]() {
+            QList<QQuickItem *> found;
+            std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+                if (QByteArray(item->metaObject()->className()).startsWith("IconScissors")
+                    && item->isVisible())
+                    found.append(item);
+                for (QQuickItem *child : item->childItems())
+                    walk(child);
+            };
+            walk(app.window->contentItem());
+            return found.size();
+        };
+        QFile file(app.home.path() + "/cut-me.txt");
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        QObject *root = app.window->contentItem()->parent();
+        QVERIFY(QMetaObject::invokeMethod(root, "navigateActivePaneTo",
+                                          Q_ARG(QVariant, app.home.path())));
+        QTRY_VERIFY(App::findText(app.window->contentItem(), QStringLiteral("cut-me.txt")));
+        QCOMPARE(scissors(), 0);
+
+        auto *clipboard = qvariant_cast<QObject *>(
+            app.engine.rootContext()->contextProperty("clipboard"));
+        QVERIFY(clipboard);
+        QVERIFY(QMetaObject::invokeMethod(clipboard, "cut",
+                                          Q_ARG(QStringList, QStringList{file.fileName()})));
+        QTRY_COMPARE(scissors(), 1);
     }
 
     void testWheelOverTabStripScrollsTabsInTheFullWindow()

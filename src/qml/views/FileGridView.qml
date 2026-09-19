@@ -638,10 +638,18 @@ GridView {
             Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
             Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
 
-            IconScissors {
-                anchors.centerIn: parent
-                size: 13
-                color: Theme.warning
+            // Built only while its badge shows; every delegate used to carry one,
+            // and the spinner painted its canvas even while hidden.
+            Loader {
+                anchors.fill: parent
+                active: parent.visible
+                sourceComponent: Component {
+                    IconScissors {
+                        anchors.centerIn: parent
+                        size: 13
+                        color: Theme.warning
+                    }
+                }
             }
         }
 
@@ -661,11 +669,17 @@ GridView {
             Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
             Behavior on scale { NumberAnimation { duration: Theme.animDurationFast; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
 
-            Q.Spinner {
-                anchors.centerIn: parent
-                size: "small"
-                color: Theme.accent
-                running: delegateItem.isPastePending
+            Loader {
+                anchors.fill: parent
+                active: parent.visible
+                sourceComponent: Component {
+                    Q.Spinner {
+                        anchors.centerIn: parent
+                        size: "small"
+                        color: Theme.accent
+                        running: delegateItem.isPastePending
+                    }
+                }
             }
         }
 
