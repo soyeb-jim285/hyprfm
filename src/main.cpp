@@ -211,6 +211,19 @@ QString soleHardwareVulkanDriver()
     return sole;
 }
 
+// A GPU driver (Mesa, NVIDIA's DRM module, virtio-gpu) exposes a render node.
+// Without one there is no hardware to render with: Qt's OpenGL path would
+// fall to llvmpipe, Mesa's software rasteriser, which measured 332 ms to the
+// window, 320 MB PSS and 2.0 s of CPU at startup, against 194 ms, 73 MB and
+// 0.3 s for Qt Quick's own software renderer. HyprFM uses no shader effects,
+// so it renders the same.
+bool hasGpuRenderNode()
+{
+    return !QDir(QStringLiteral("/dev/dri"))
+                .entryList({QStringLiteral("renderD*")}, QDir::System)
+                .isEmpty();
+}
+
 class RendererChoice
 {
 public:
@@ -218,11 +231,14 @@ public:
         : m_dir(QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
                 + QStringLiteral("/hyprfm"))
     {
-#if QT_CONFIG(vulkan)
         if (!qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND")
             || !qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND"))
             return;
-
+        if (!hasGpuRenderNode()) {
+            QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
+            return;
+        }
+#if QT_CONFIG(vulkan)
         m_fingerprint = vulkanDriverFingerprint();
         if (previousVulkanLaunchNeverPainted()) {
             store(false);
