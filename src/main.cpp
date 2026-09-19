@@ -61,6 +61,9 @@
 #include <functional>
 #include <QUrl>
 #include <dlfcn.h>
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
 #include <signal.h>
 #include <QCryptographicHash>
 #include <QThreadPool>
@@ -984,8 +987,20 @@ int main(int argc, char *argv[])
         });
 
         windows.append(w);
-        QObject::connect(w, &QObject::destroyed, &app, [&windows, &sessionWindow, &lastActiveWindow, w]() {
+        QObject::connect(w, &QObject::destroyed, &app, [&windows, &sessionWindow, &lastActiveWindow, w, &app, &engine]() {
             windows.removeAll(w);
+            // A closed window frees a whole window's worth of objects at once,
+            // but the JS heap only shrinks on the engine's next collection and
+            // glibc keeps what is freed: each open/close cycle left ~13 MB
+            // behind, 112 -> 202 MB after eight. Collecting and trimming once
+            // things settle keeps it at ~1.5 MB (the collection costs ~30 ms,
+            // so not during the close itself).
+            QTimer::singleShot(1000, &app, [&engine]() {
+                engine.collectGarbage();
+#ifdef __GLIBC__
+                malloc_trim(0);
+#endif
+            });
             if (sessionWindow == w) sessionWindow = nullptr;
             if (lastActiveWindow == w) lastActiveWindow = nullptr;
         });
