@@ -203,6 +203,15 @@ public:
 #endif
     }
 
+    // Only a launch that dies (a driver crash) or never paints and gets
+    // killed should count against Vulkan. Anything that returns from main
+    // without a frame -- a QML load error, say -- is not Vulkan's fault.
+    ~RendererChoice()
+    {
+        if (m_vulkan)
+            QFile::remove(markerPath(QCoreApplication::applicationPid()));
+    }
+
     void firstFramePainted()
     {
         if (m_vulkan)
