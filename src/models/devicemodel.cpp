@@ -39,7 +39,7 @@ DeviceModel::DeviceModel(QObject *parent, bool deferInitialRefresh)
 {
     m_refreshTimer.setSingleShot(true);
     m_refreshTimer.setInterval(600);
-    connect(&m_refreshTimer, &QTimer::timeout, this, &DeviceModel::refresh);
+    connect(&m_refreshTimer, &QTimer::timeout, this, &DeviceModel::refreshAsync);
 
     // g_volume_monitor_get() is a round of synchronous D-Bus calls to the
     // gvfs monitors (7 ms warm, far more when they have to be started, as on
@@ -403,21 +403,46 @@ void DeviceModel::scheduleRefresh()
     m_refreshTimer.start();
 }
 
-void DeviceModel::refresh()
+// Ask UDisks2 for everything it knows about. Returns a{oa{sa{sv}}}:
+//   { object_path → { interface_name → { property_name → value } } }
+static QDBusMessage managedObjectsCall()
 {
-    m_refreshTimer.stop();
-    beginResetModel();
-    clearDevices();
-
-    // Ask UDisks2 for everything it knows about. Returns a{oa{sa{sv}}}:
-    //   { object_path → { interface_name → { property_name → value } } }
-    const QDBusMessage call = QDBusMessage::createMethodCall(
+    return QDBusMessage::createMethodCall(
         QStringLiteral("org.freedesktop.UDisks2"),
         QStringLiteral("/org/freedesktop/UDisks2"),
         QStringLiteral("org.freedesktop.DBus.ObjectManager"),
         QStringLiteral("GetManagedObjects"));
+}
 
-    const QDBusMessage reply = QDBusConnection::systemBus().call(call, QDBus::Block, 3000);
+void DeviceModel::refresh()
+{
+    m_refreshTimer.stop();
+    ++m_refreshGeneration;
+    applyUDisksReply(QDBusConnection::systemBus().call(managedObjectsCall(), QDBus::Block, 3000));
+}
+
+// The scheduled refresh (the first one after startup, and every device
+// event) does not wait on UDisks: a slow or restarting udisksd used to hold
+// the GUI thread for up to the 3 s timeout. A reply that arrives after a
+// newer refresh started is dropped.
+void DeviceModel::refreshAsync()
+{
+    m_refreshTimer.stop();
+    const quint64 generation = ++m_refreshGeneration;
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::systemBus().asyncCall(managedObjectsCall(), 3000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation]() {
+        watcher->deleteLater();
+        if (generation == m_refreshGeneration)
+            applyUDisksReply(watcher->reply());
+    });
+}
+
+void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
+{
+    beginResetModel();
+    clearDevices();
+
     QHash<QString, DriveInfo> drives;
     QHash<QString, BlockInfo> blocks;
 

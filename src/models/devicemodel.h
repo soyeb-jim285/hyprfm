@@ -29,6 +29,8 @@ struct DeviceEntry {
     GMount *gioMount = nullptr;
 };
 
+class QDBusMessage;
+
 class DeviceModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -58,6 +60,7 @@ public:
 
 public slots:
     void refresh();
+    void refreshAsync();
     void scheduleRefresh();
 
 signals:
@@ -65,6 +68,7 @@ signals:
     void mountError(const QString &message);
 
 private:
+    void applyUDisksReply(const QDBusMessage &reply);
     void clearDevices();
     void setupGioMonitor();
     void setupUDisks2();
@@ -72,5 +76,6 @@ private:
 
     QList<DeviceEntry> m_devices;
     GVolumeMonitor *m_volumeMonitor = nullptr;
+    quint64 m_refreshGeneration = 0;
     QTimer m_refreshTimer;
 };
