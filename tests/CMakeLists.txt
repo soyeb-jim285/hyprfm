@@ -341,3 +341,10 @@ add_executable(tst_xdgtrash tst_xdgtrash.cpp
 target_include_directories(tst_xdgtrash PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_xdgtrash PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME tst_xdgtrash COMMAND tst_xdgtrash)
+
+add_executable(tst_recentfilesmodel tst_recentfilesmodel.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/recentfilesmodel.cpp
+)
+target_include_directories(tst_recentfilesmodel PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_recentfilesmodel PRIVATE Qt6::Test Qt6::Core Qt6::Concurrent)
+add_test(NAME tst_recentfilesmodel COMMAND tst_recentfilesmodel)

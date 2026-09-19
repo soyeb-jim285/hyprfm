@@ -5,6 +5,9 @@
 #include <QJsonObject>
 #include <QLocale>
 #include <QMimeDatabase>
+#include <QFutureWatcher>
+#include <QSet>
+#include <QtConcurrent>
 
 RecentFilesModel::RecentFilesModel(const QString &storagePath, QObject *parent)
     : QAbstractListModel(parent)
@@ -184,9 +187,41 @@ void RecentFilesModel::load()
         auto obj = val.toObject();
         QString path = obj["path"].toString();
         QDateTime time = QDateTime::fromString(obj["time"].toString(), Qt::ISODate);
-        if (!path.isEmpty() && QFileInfo::exists(path))
+        if (!path.isEmpty())
             m_entries.append({path, time});
     }
+    dropMissingInBackground();
+}
+
+// Recent files can live on any disk, and checking that one still exists is
+// a stat on it: a spun-down drive or an unreachable network mount held up
+// the whole launch, since this model is built before the window. Load the
+// list as saved and drop the missing entries once a worker has looked.
+void RecentFilesModel::dropMissingInBackground()
+{
+    QStringList paths;
+    for (const RecentEntry &entry : std::as_const(m_entries))
+        paths.append(entry.path);
+    if (paths.isEmpty())
+        return;
+
+    auto *watcher = new QFutureWatcher<QSet<QString>>(this);
+    connect(watcher, &QFutureWatcher<QSet<QString>>::finished, this, [this, watcher]() {
+        const QSet<QString> missing = watcher->future().takeResult();
+        watcher->deleteLater();
+        if (missing.isEmpty())
+            return;
+        beginResetModel();
+        m_entries.removeIf([&](const RecentEntry &entry) { return missing.contains(entry.path); });
+        endResetModel();
+    });
+    watcher->setFuture(QtConcurrent::run([paths]() {
+        QSet<QString> missing;
+        for (const QString &path : paths)
+            if (!QFileInfo::exists(path))
+                missing.insert(path);
+        return missing;
+    }));
 }
 
 void RecentFilesModel::save() const

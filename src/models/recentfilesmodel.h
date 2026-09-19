@@ -48,6 +48,7 @@ signals:
 
 private:
     void load();
+    void dropMissingInBackground();
     void save() const;
 
     struct RecentEntry {

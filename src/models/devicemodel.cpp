@@ -41,12 +41,24 @@ DeviceModel::DeviceModel(QObject *parent, bool deferInitialRefresh)
     m_refreshTimer.setInterval(600);
     connect(&m_refreshTimer, &QTimer::timeout, this, &DeviceModel::refresh);
 
-    setupGioMonitor();
-    setupUDisks2();
-    if (deferInitialRefresh)
+    // g_volume_monitor_get() is a round of synchronous D-Bus calls to the
+    // gvfs monitors (7 ms warm, far more when they have to be started, as on
+    // the first launch after login), and this model is built before the
+    // window. When deferred, connect on the first event-loop turn instead:
+    // the GUI thread is idle then, waiting on the render thread's first
+    // frame, and the monitor's initial events still land before the
+    // scheduled refresh rather than triggering a second one.
+    if (deferInitialRefresh) {
+        QTimer::singleShot(0, this, [this]() {
+            setupGioMonitor();
+            setupUDisks2();
+        });
         scheduleRefresh();
-    else
+    } else {
+        setupGioMonitor();
+        setupUDisks2();
         refresh();
+    }
 }
 
 DeviceModel::~DeviceModel()
