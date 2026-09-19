@@ -1,4 +1,5 @@
 #include <QTest>
+#include <QElapsedTimer>
 #include <QStorageInfo>
 #include <QSignalSpy>
 #include <QLocale>
@@ -19,6 +20,29 @@ class TestFileSystemModel : public QObject
     Q_OBJECT
 
 private slots:
+    // Properties of a remote location outside the listing used to wait on
+    // `gio info` (up to 8 s) on the GUI thread. They now answer at once with a
+    // pending placeholder and deliver the rest through remotePropertiesReady.
+    void testRemotePropertiesDoNotBlock()
+    {
+        FileSystemModel model;
+        QSignalSpy ready(&model, &FileSystemModel::remotePropertiesReady);
+        const QString uri = QStringLiteral("sftp://127.0.0.1:1/nowhere/file.txt");
+        QElapsedTimer t;
+        t.start();
+        const QVariantMap props = model.fileProperties(uri);
+        QVERIFY2(t.elapsed() < 200, qPrintable(QString::number(t.elapsed())));
+        QVERIFY(props.value("pending").toBool());
+        QCOMPARE(props.value("name").toString(), QStringLiteral("file.txt"));
+
+        model.fileProperties(uri);   // a second ask while pending starts nothing new
+        QTRY_COMPARE_WITH_TIMEOUT(ready.count(), 1, 10000);
+        QCOMPARE(ready.at(0).at(0).toString(), uri);
+        QVERIFY(!ready.at(0).at(1).toMap().value("pending").toBool());
+        QTest::qWait(200);
+        QCOMPARE(ready.count(), 1);
+    }
+
     void initTestCase()
     {
         QStandardPaths::setTestModeEnabled(true);

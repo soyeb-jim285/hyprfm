@@ -10,6 +10,7 @@
 #include <QList>
 #include <QProcess>
 #include <QString>
+#include <QSet>
 #include <QVariantList>
 #include <QVariantMap>
 #include <limits>
@@ -111,6 +112,9 @@ signals:
     void countsChanged();
     void isLoadingChanged();
     void watchedDirectoryChanged(const QString &path);
+    // The full properties of a remote location fileProperties() answered
+    // with a pending placeholder.
+    void remotePropertiesReady(const QString &path, const QVariantMap &properties);
 
 private:
     static constexpr qint64 kNoTime = std::numeric_limits<qint64>::min();
@@ -204,6 +208,7 @@ private:
     bool m_showHidden = false;
     QList<Entry> m_entries;
     QList<QVariantMap> m_remoteEntries;
+    QSet<QString> m_remotePropertiesPending;
     QList<QVariantMap> m_trashEntries;
     int m_fileCount = 0;
     int m_folderCount = 0;

@@ -2142,6 +2142,20 @@ ApplicationWindow {
                 property bool folderDiskUsagePending: false
                 property int folderDiskUsageRequestId: -1
 
+                // A remote location outside the current listing is answered
+                // with a placeholder first; the rest arrives from gio later.
+                Connections {
+                    target: propertiesDialog.fileModelRef
+                    ignoreUnknownSignals: true
+                    function onRemotePropertiesReady(path, properties) {
+                        if (propertiesDialog.props.path !== path)
+                            return
+                        propertiesDialog.props = properties
+                        if (!properties.isDir && properties.mimeType)
+                            propertiesDialog.apps = propertiesDialog.fileModelRef.availableApps(properties.mimeType)
+                    }
+                }
+
                 function cancelFolderDiskUsageRequest() {
                     if (folderDiskUsageRequestId >= 0)
                         diskUsageService.cancelRequest(folderDiskUsageRequestId)
