@@ -350,11 +350,22 @@ ApplicationWindow {
         remoteConnectDialog.open()
     }
 
+    function showQuickPreview(path) {
+        quickPreviewLoader.active = true
+        const preview = root.quickPreview
+        preview.fileModel = root.paneBaseModel(activePane)
+        preview.filePath = path
+        preview.directoryFiles = getDirectoryFiles()
+        preview.active = true
+        preview.forceActiveFocus()
+    }
+
     function openSettingsPanel() {
-        if (settingsPanel.visible)
-            settingsPanel.closePanel()
+        settingsPanelLoader.active = true
+        if (root.settingsPanel.visible)
+            root.settingsPanel.closePanel()
         else
-            settingsPanel.openPanel()
+            root.settingsPanel.openPanel()
     }
 
     function openKeyboardShortcutsDialog() {
@@ -499,7 +510,7 @@ ApplicationWindow {
             && !root.searchMode
             && !bulkRenameDialog.visible
             && !remoteConnectDialog.visible
-            && !settingsPanel.visible
+            && !(root.settingsPanel && root.settingsPanel.visible)
             && !shortcutsDialog.visible
             && !renameDialog.visible
             && sidebarPanel.renamingBookmarkIndex < 0
@@ -508,7 +519,7 @@ ApplicationWindow {
             && !conflictDialog.visible
             && !deleteConfirmDialog.visible
             && !emptyTrashConfirmDialog.visible
-            && !quickPreview.active
+            && !(root.quickPreview && root.quickPreview.active)
     }
 
     function scheduleActivePaneFocus() {
@@ -1277,18 +1288,27 @@ ApplicationWindow {
         onConnected: (uri) => root.navigateActivePaneTo(uri)
     }
 
-    Components.SettingsPanel {
-        id: settingsPanel
-        objectName: "settingsPanel"
-        transientParent: root
-        currentShowHidden: fsModel.showHidden
-        currentSidebarVisible: root.sidebarVisible
-        currentSidebarWidth: root.sidebarWidth
-        onRemoteConnectRequested: root.openRemoteConnectDialog()
-        onKeyboardShortcutsRequested: root.openKeyboardShortcutsDialog()
-        onDependenciesRequested: missingDependenciesDialog.openDialog()
-        onClosed: root.scheduleActivePaneFocus()
+    // Created the first time it opens: building it (and its dropdowns,
+    // sliders and pages) at startup cost more than any other hidden piece of
+    // the UI. Theme binds to config on its own, so nothing needs it earlier.
+    Loader {
+        id: settingsPanelLoader
+        active: false
+        sourceComponent: Component {
+            Components.SettingsPanel {
+                objectName: "settingsPanel"
+                transientParent: root
+                currentShowHidden: fsModel.showHidden
+                currentSidebarVisible: root.sidebarVisible
+                currentSidebarWidth: root.sidebarWidth
+                onRemoteConnectRequested: root.openRemoteConnectDialog()
+                onKeyboardShortcutsRequested: root.openKeyboardShortcutsDialog()
+                onDependenciesRequested: missingDependenciesDialog.openDialog()
+                onClosed: root.scheduleActivePaneFocus()
+            }
+        }
     }
+    readonly property var settingsPanel: settingsPanelLoader.item
 
     Components.KeyboardShortcutsDialog {
         id: shortcutsDialog
@@ -3238,17 +3258,13 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcutMap["quick_preview"]
         onActivated: {
-            if (quickPreview.active) {
-                quickPreview.active = false
+            if (root.quickPreview && root.quickPreview.active) {
+                root.quickPreview.active = false
                 return
             }
             var paths = getSelectedPaths()
             if (paths.length === 0) return
-            quickPreview.fileModel = root.paneBaseModel(activePane)
-            quickPreview.filePath = paths[0]
-            quickPreview.directoryFiles = getDirectoryFiles()
-            quickPreview.active = true
-            quickPreview.forceActiveFocus()
+            root.showQuickPreview(paths[0])
         }
     }
 
@@ -3274,9 +3290,9 @@ ApplicationWindow {
     Shortcut {
         sequence: "Escape"
         enabled: root.searchMode
-                 && !quickPreview.active
+                 && !(root.quickPreview && root.quickPreview.active)
                  && !bulkRenameDialog.visible
-                 && !settingsPanel.visible
+                 && !(root.settingsPanel && root.settingsPanel.visible)
                  && !shortcutsDialog.visible
                  && !renameDialog.visible
                  && !newFolderDialog.visible
@@ -3437,8 +3453,8 @@ ApplicationWindow {
         // Only when the preview is actually on screen: the dialog also opens
         // from an extraction, where reloading would run a preview nobody asked
         // for, on whatever file the closed overlay was last pointed at.
-        if (quickPreview.active)
-            quickPreview.reloadAfterUnlock()
+        if (root.quickPreview && root.quickPreview.active)
+            root.quickPreview.reloadAfterUnlock()
     }
 
     function showContextMenuForPane(pane, filePath, isDirectory, position) {
@@ -3915,30 +3931,39 @@ ApplicationWindow {
     }
 
     // ── Quick Preview overlay (on top of everything) ─────────────────────────
-    QuickPreview {
-        id: quickPreview
+    // Created the first time Space is pressed, not at startup.
+    Loader {
+        id: quickPreviewLoader
         anchors.fill: parent
         z: 100
-        onOpenRequested: (path, isDirectory) => {
-            if (isDirectory) {
-                root.navigateActivePaneTo(path)
-            } else {
-                fileOps.openFile(path)
-                recentFiles.addRecent(path)
+        active: false
+        sourceComponent: Component {
+            QuickPreview {
+                id: quickPreviewItem
+                objectName: "quickPreview"
+                onOpenRequested: (path, isDirectory) => {
+                    if (isDirectory) {
+                        root.navigateActivePaneTo(path)
+                    } else {
+                        fileOps.openFile(path)
+                        recentFiles.addRecent(path)
+                    }
+                }
+                onUnlockArchiveRequested: (path, retry) => {
+                    root.askArchivePassword(path, "", retry)
+                }
+                onUnlockSucceeded: {
+                    root.passwordDialogContext = null
+                    archivePasswordDialog.succeeded()
+                }
+                onClosed: {
+                    quickPreviewItem.active = false
+                    root.scheduleActivePaneFocus()
+                }
             }
         }
-        onUnlockArchiveRequested: (path, retry) => {
-            root.askArchivePassword(path, "", retry)
-        }
-        onUnlockSucceeded: {
-            root.passwordDialogContext = null
-            archivePasswordDialog.succeeded()
-        }
-        onClosed: {
-            quickPreview.active = false
-            root.scheduleActivePaneFocus()
-        }
     }
+    readonly property var quickPreview: quickPreviewLoader.item
 
     // ── Toast notifications ──────────────────────────────────────────────────
     Toast {

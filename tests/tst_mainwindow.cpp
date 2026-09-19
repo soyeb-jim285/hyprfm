@@ -260,9 +260,10 @@ private slots:
     {
         App app;
         QVERIFY(app.load());
+        // The panel is only created the first time it opens.
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
         QObject *panel = app.window->findChild<QObject *>(QStringLiteral("settingsPanel"));
         QVERIFY(panel);
-        QVERIFY(QMetaObject::invokeMethod(panel, "openPanel"));
 
         for (const char *list : {"themeOptions", "lightThemeOptions", "darkThemeOptions",
                                  "iconThemeOptions", "fontOptions"}) {
@@ -290,9 +291,10 @@ private slots:
     {
         App app;
         QVERIFY(app.load());
+        // The panel is only created the first time it opens.
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
         QObject *panel = app.window->findChild<QObject *>(QStringLiteral("settingsPanel"));
         QVERIFY(panel);
-        QVERIFY(QMetaObject::invokeMethod(panel, "openPanel"));
 
         const int minHeight = panel->property("minimumHeight").toInt();
         QVERIFY(minHeight > 0);
@@ -308,9 +310,10 @@ private slots:
     {
         App app;
         QVERIFY(app.load());
+        // The panel is only created the first time it opens.
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
         QObject *panel = app.window->findChild<QObject *>(QStringLiteral("settingsPanel"));
         QVERIFY(panel);
-        QVERIFY(QMetaObject::invokeMethod(panel, "openPanel"));
 
         QObject *dropdown = app.window->findChild<QObject *>(QStringLiteral("themeDropdown"));
         QVERIFY(dropdown);
@@ -616,6 +619,28 @@ private slots:
                                                  : focused->objectName())));
     }
 
+    // Quick preview is created the first time Space is pressed rather than at
+    // startup; the first press has to build it and show the file.
+    void testQuickPreviewIsCreatedOnFirstUse()
+    {
+        App app;
+        QVERIFY(app.load());
+        QVERIFY(!App::findItem(app.window->contentItem(), QStringLiteral("quickPreview")));
+
+        QFile file(app.home.path() + "/note.txt");
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("hello\n");
+        file.close();
+
+        QObject *root = app.window->contentItem()->parent();
+        QVERIFY(QMetaObject::invokeMethod(root, "showQuickPreview",
+                                          Q_ARG(QVariant, file.fileName())));
+        QQuickItem *preview = App::findItem(app.window->contentItem(), QStringLiteral("quickPreview"));
+        QVERIFY(preview);
+        QVERIFY(preview->property("active").toBool());
+        QCOMPARE(preview->property("filePath").toString(), file.fileName());
+    }
+
     void testWheelOverTabStripScrollsTabsInTheFullWindow()
     {
         App app;
@@ -703,9 +728,10 @@ private slots:
     {
         App app;
         QVERIFY(app.load());
+        // The panel is only created the first time it opens.
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
         QObject *panel = app.window->findChild<QObject *>(QStringLiteral("settingsPanel"));
         QVERIFY(panel);
-        QVERIFY(QMetaObject::invokeMethod(panel, "openPanel"));
         QVERIFY(QMetaObject::invokeMethod(panel, "showSection", Q_ARG(QVariant, 1)));
 
         auto slider = [&](const char *name) {
