@@ -1191,7 +1191,6 @@ private slots:
         FileOperations ops;
         QVERIFY(FileOperations::isArchive(archivePath));
         QVERIFY(FileOperations::isArchive(archiveDir.path() + "/payload" + extension.toUpper()));
-        QCOMPARE(ops.archiveRootFolder(archivePath), QString("payload"));
 
         QSignalSpy spy(&ops, &FileOperations::operationFinished);
         ops.extractArchive(archivePath, extractDir.path());

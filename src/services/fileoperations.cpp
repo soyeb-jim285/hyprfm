@@ -1015,28 +1015,6 @@ QStringList archiveEntriesFromOutput(const QString &program, const QString &outp
     return entries;
 }
 
-QString commonArchiveRootFolder(const QStringList &entries)
-{
-    QString root;
-    for (QString entry : entries) {
-        while (entry.startsWith('/'))
-            entry.remove(0, 1);
-        if (entry.isEmpty())
-            continue;
-
-        const QString top = entry.section('/', 0, 0);
-        if (top.isEmpty())
-            return {};
-
-        if (root.isEmpty())
-            root = top;
-        else if (top != root)
-            return {};
-    }
-
-    return root;
-}
-
 QStringList nameParts(const QString &name)
 {
     const int dotIndex = name.lastIndexOf('.');
@@ -2428,26 +2406,6 @@ QString FileOperations::newExtractionFolder(const QString &archivePath)
     }
     m_ownedExtractionDirs.insert(dir);
     return dir;
-}
-
-QString FileOperations::archiveRootFolder(const QString &archivePath)
-{
-    QString program;
-    QStringList args;
-    if (!archiveListCommand(archivePath, QString(), &program, &args))
-        return {};
-
-    QProcess proc;
-    proc.start(program, args);
-    if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
-        return {};
-
-    const QString output = QString::fromUtf8(proc.readAllStandardOutput());
-    const QStringList entries = archiveEntriesFromOutput(program, output);
-    if (entries.isEmpty())
-        return {};
-
-    return commonArchiveRootFolder(entries);
 }
 
 QString FileOperations::archivePassword(const QString &archivePath) const
