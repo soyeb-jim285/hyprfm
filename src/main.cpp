@@ -59,8 +59,202 @@
 #include <QEvent>
 #include <functional>
 #include <QUrl>
+#include <dlfcn.h>
+#include <signal.h>
+#include <QCryptographicHash>
+#include <QThreadPool>
 
 namespace {
+
+// Renderer choice: Vulkan when the machine has a hardware Vulkan device,
+// OpenGL otherwise. On Mesa the OpenGL driver maps libLLVM for its shader
+// compiler while RADV/ANV do not: ~47 MB less PSS and a slightly faster
+// first frame on a Radeon iGPU. QSG_RHI_BACKEND / QT_QUICK_BACKEND still win.
+//
+// Qt has no fallback of its own -- a window asked for Vulkan on a machine
+// without it never appears -- so it has to be probed, and the probe costs
+// ~50 ms (it loads every installed Vulkan driver, which Qt then does again).
+// So it never runs on the startup path: the answer is cached in
+// ~/.cache/hyprfm/renderer, keyed on the installed Vulkan driver manifests,
+// and a launch without a valid answer uses OpenGL and probes on a worker
+// thread after its first frame. Each Vulkan launch leaves a per-pid marker
+// until it paints; a marker whose process is gone means Vulkan launched and
+// never drew, and every later launch stays on OpenGL until the drivers change.
+
+// The loader is reached through dlopen with hand-declared structs rather than
+// <vulkan/vulkan.h>, so building HyprFM needs neither the Vulkan headers nor
+// libvulkan; the Vulkan ABI is frozen. A CPU-only device (lavapipe) does not
+// count: OpenGL on the real GPU beats Vulkan on the CPU.
+bool hasHardwareVulkanDevice()
+{
+    void *lib = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
+    if (!lib)
+        return false;
+
+    struct AppInfo { int sType; const void *next; const char *app; uint32_t appVer;
+                     const char *engine; uint32_t engineVer; uint32_t apiVersion; };
+    struct CreateInfo { int sType; const void *next; uint32_t flags; const AppInfo *app;
+                        uint32_t layers; const char *const *layerNames;
+                        uint32_t exts; const char *const *extNames; };
+    using Instance = void *;
+    using Device = void *;
+    using GetProc = void *(*)(Instance, const char *);
+    using Create = int (*)(const CreateInfo *, const void *, Instance *);
+    using Destroy = void (*)(Instance, const void *);
+    using Enumerate = int (*)(Instance, uint32_t *, Device *);
+    using GetProps = void (*)(Device, void *);
+
+    bool found = false;
+    auto getProc = reinterpret_cast<GetProc>(dlsym(lib, "vkGetInstanceProcAddr"));
+    auto create = getProc ? reinterpret_cast<Create>(getProc(nullptr, "vkCreateInstance")) : nullptr;
+    const AppInfo app{0 /* APPLICATION_INFO */, nullptr, "hyprfm", 0, nullptr, 0,
+                      (1u << 22) | (1u << 12) /* 1.1 */};
+    const CreateInfo info{1 /* INSTANCE_CREATE_INFO */, nullptr, 0, &app, 0, nullptr, 0, nullptr};
+    Instance instance = nullptr;
+    if (create && create(&info, nullptr, &instance) == 0) {
+        auto destroy = reinterpret_cast<Destroy>(getProc(instance, "vkDestroyInstance"));
+        auto enumerate = reinterpret_cast<Enumerate>(getProc(instance, "vkEnumeratePhysicalDevices"));
+        auto props = reinterpret_cast<GetProps>(getProc(instance, "vkGetPhysicalDeviceProperties"));
+        uint32_t count = 0;
+        if (enumerate && props && enumerate(instance, &count, nullptr) == 0 && count > 0) {
+            QList<Device> devices(count);
+            enumerate(instance, &count, devices.data());
+            for (Device device : std::as_const(devices)) {
+                // VkPhysicalDeviceProperties is ~830 bytes; deviceType is the
+                // fifth uint32 (after apiVersion, driverVersion, vendorID,
+                // deviceID). 4 = VK_PHYSICAL_DEVICE_TYPE_CPU.
+                alignas(8) unsigned char buffer[2048] = {};
+                props(device, buffer);
+                uint32_t deviceType = 0;
+                memcpy(&deviceType, buffer + 16, sizeof deviceType);
+                if (deviceType != 4) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (destroy)
+            destroy(instance, nullptr);
+    }
+    dlclose(lib);
+    return found;
+}
+
+// Every place the Vulkan loader looks for driver manifests, with each
+// manifest's mtime: installing, removing or upgrading a driver changes it.
+QByteArray vulkanDriverFingerprint()
+{
+    QByteArray data;
+    for (const char *var : {"VK_ICD_FILENAMES", "VK_DRIVER_FILES", "VK_ADD_DRIVER_FILES"})
+        data += qgetenv(var) + '|';
+    const auto dirsFrom = [](const char *var, const QString &fallback) {
+        const QString value = qEnvironmentVariable(var);
+        return (value.isEmpty() ? fallback : value).split(QLatin1Char(':'), Qt::SkipEmptyParts);
+    };
+    QStringList roots = dirsFrom("XDG_CONFIG_DIRS", QStringLiteral("/etc/xdg"));
+    roots << QStringLiteral("/etc");
+    roots << dirsFrom("XDG_DATA_HOME", QDir::homePath() + QStringLiteral("/.local/share"));
+    roots << dirsFrom("XDG_DATA_DIRS", QStringLiteral("/usr/local/share:/usr/share"));
+    for (const QString &root : std::as_const(roots)) {
+        const QDir dir(root + QStringLiteral("/vulkan/icd.d"));
+        const QFileInfoList entries = dir.entryInfoList(QDir::Files, QDir::Name);
+        for (const QFileInfo &entry : entries)
+            data += entry.absoluteFilePath().toUtf8() + ':'
+                + QByteArray::number(entry.lastModified().toMSecsSinceEpoch()) + '|';
+    }
+    return QCryptographicHash::hash(data, QCryptographicHash::Sha1).toHex();
+}
+
+class RendererChoice
+{
+public:
+    RendererChoice()
+        : m_dir(QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
+                + QStringLiteral("/hyprfm"))
+    {
+#if QT_CONFIG(vulkan)
+        if (!qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND")
+            || !qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND"))
+            return;
+
+        m_fingerprint = vulkanDriverFingerprint();
+        if (previousVulkanLaunchNeverPainted()) {
+            store(false);
+            return;
+        }
+
+        QFile cache(m_dir + QStringLiteral("/renderer"));
+        const QList<QByteArray> fields = cache.open(QIODevice::ReadOnly)
+            ? cache.readAll().trimmed().split(' ') : QList<QByteArray>();
+        if (fields.size() != 2 || fields.first() != m_fingerprint) {
+            m_probeAfterFirstFrame = true;
+            return;
+        }
+        if (fields.last() != "vulkan")
+            return;
+
+        QDir().mkpath(m_dir);
+        QFile marker(markerPath(QCoreApplication::applicationPid()));
+        if (!marker.open(QIODevice::WriteOnly))
+            return; // without the safety net, stay on OpenGL
+        marker.close();
+        m_vulkan = true;
+        QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
+#endif
+    }
+
+    void firstFramePainted()
+    {
+        if (m_vulkan)
+            QFile::remove(markerPath(QCoreApplication::applicationPid()));
+        if (m_probeAfterFirstFrame) {
+            m_probeAfterFirstFrame = false;
+            QThreadPool::globalInstance()->start([dir = m_dir, fingerprint = m_fingerprint] {
+                store(dir, fingerprint, hasHardwareVulkanDevice());
+            });
+        }
+    }
+
+private:
+    QString markerPath(qint64 pid) const
+    {
+        return m_dir + QStringLiteral("/renderer.pending.") + QString::number(pid);
+    }
+
+    // A marker left by a process that no longer exists: that launch asked for
+    // Vulkan and died before its first frame.
+    bool previousVulkanLaunchNeverPainted() const
+    {
+        bool failed = false;
+        const QStringList markers = QDir(m_dir).entryList({QStringLiteral("renderer.pending.*")},
+                                                          QDir::Files);
+        for (const QString &name : markers) {
+            const pid_t pid = name.section(QLatin1Char('.'), -1).toInt();
+            if (pid > 0 && kill(pid, 0) == 0)
+                continue; // still starting up
+            QFile::remove(m_dir + QLatin1Char('/') + name);
+            failed = true;
+        }
+        return failed;
+    }
+
+    void store(bool vulkan) const { store(m_dir, m_fingerprint, vulkan); }
+
+    static void store(const QString &dir, const QByteArray &fingerprint, bool vulkan)
+    {
+        QDir().mkpath(dir);
+        QSaveFile file(dir + QStringLiteral("/renderer"));
+        if (!file.open(QIODevice::WriteOnly))
+            return;
+        file.write(fingerprint + (vulkan ? " vulkan\n" : " opengl\n"));
+        file.commit();
+    }
+
+    QString m_dir;
+    QByteArray m_fingerprint;
+    bool m_vulkan = false;
+    bool m_probeAfterFirstFrame = false;
+};
 
 // Printed by --help. Qt's QCommandLineParser would need a constructed
 // QCoreApplication, and both --help and --version have to answer before the
@@ -325,6 +519,7 @@ int main(int argc, char *argv[])
     }
 
     QQuickStyle::setStyle("Basic");
+    RendererChoice renderer;
 
     // Use native text rendering (FreeType/fontconfig) for crisp fonts matching GTK apps
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
@@ -631,16 +826,15 @@ int main(int argc, char *argv[])
         return -1;
 
     // First-frame checkpoint: one-shot hook on the root window's
-    // frameSwapped signal so we know when the compositor has painted us.
-    if (timingEnabled) {
-        if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
-            auto *conn = new QMetaObject::Connection;
-            *conn = QObject::connect(win, &QQuickWindow::frameSwapped, win, [conn, mark]() {
-                mark("first frame swapped");
-                QObject::disconnect(*conn);
-                delete conn;
-            }, Qt::QueuedConnection);
-        }
+    // frameSwapped signal, for the timing log and the renderer choice.
+    if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+        auto *conn = new QMetaObject::Connection;
+        *conn = QObject::connect(win, &QQuickWindow::frameSwapped, win, [conn, mark, &renderer]() {
+            mark("first frame swapped");
+            renderer.firstFramePainted();
+            QObject::disconnect(*conn);
+            delete conn;
+        }, Qt::QueuedConnection);
     }
 
     auto applyWindowEffects = [config](QQuickWindow *window) {
