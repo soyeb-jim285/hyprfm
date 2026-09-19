@@ -17,9 +17,6 @@ add_subdirectory(src)
 # Install themes
 install(DIRECTORY themes/ DESTINATION share/hyprfm/themes FILES_MATCHING PATTERN "*.toml")
 
-# Install QML sources (Quill module + icons needed at runtime)
-install(DIRECTORY src/qml/ DESTINATION share/hyprfm/src/qml)
-
 # Install the generated HyprFM QML module: qmldir + qml/ tree + qmltypes.
 # The qmldir keeps Qt's `prefer :/HyprFM/`, so at runtime the module resolves
 # to the qmlcachegen-compiled qrc payload and nothing is recompiled on launch

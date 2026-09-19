@@ -83,10 +83,6 @@ package() {
     install -Dm644 "build/src/HyprFM/hyprfm.qmltypes" \
         "${pkgdir}/usr/share/hyprfm/HyprFM/hyprfm.qmltypes" 2>/dev/null || true
 
-    # Install QML sources for Quill module
-    install -dm755 "${pkgdir}/usr/share/hyprfm/src"
-    cp -r "${pkgname}/src/qml" "${pkgdir}/usr/share/hyprfm/src/qml"
-
     # Install desktop entry, icon and AppStream metainfo
     install -Dm644 "${pkgname}/dist/io.github.soyeb_jim285.HyprFM.desktop" \
         "${pkgdir}/usr/share/applications/io.github.soyeb_jim285.HyprFM.desktop"
