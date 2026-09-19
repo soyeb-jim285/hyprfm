@@ -6,6 +6,7 @@
 #include <QPainter>
 #include <QDir>
 #include <QFile>
+#include <QCache>
 #include <QHash>
 #include <QImage>
 #include <QIcon>
@@ -96,8 +97,7 @@ public:
                 + iconName + QLatin1Char('\x1f')
                 + QString::number(sz) + QLatin1Char('\x1f')
                 + tintKey;
-            const auto cached = m_cache.constFind(cacheKey);
-            if (cached != m_cache.constEnd()) {
+            if (const QImage *cached = m_cache.object(cacheKey)) {
                 if (size)
                     *size = cached->size();
                 return *cached;
@@ -174,9 +174,7 @@ private:
     void remember(const QString &key, const QImage &image)
     {
         QMutexLocker locker(&m_cacheMutex);
-        if (m_cache.size() > 512)
-            m_cache.clear();
-        m_cache.insert(key, image);
+        m_cache.insert(key, new QImage(image), qMax<qsizetype>(1, image.sizeInBytes()));
     }
 
     void rebuildSearchDirs()
@@ -275,6 +273,11 @@ private:
     QStringList m_searchDirs;
     QStringList m_primaryDirs;
     QStringList m_fallbackDirs;
-    QHash<QString, QImage> m_cache;
+    // Bounded by bytes, not entries: the grid asks for icons at the size it
+    // draws them, up to 640px (1.6 MB each), and every size the window
+    // passes through while it settles. 512 entries at that size was
+    // hundreds of MB that were never freed. ponytail: 24 MB, about fifteen
+    // 640px icons; QML's own pixmap cache keeps what is on screen anyway.
+    QCache<QString, QImage> m_cache{24 * 1024 * 1024};
     QMutex m_cacheMutex;
 };
