@@ -63,6 +63,9 @@
 #include <signal.h>
 #include <QCryptographicHash>
 #include <QThreadPool>
+#include <QtQml/qqmlextensionplugin.h>
+
+Q_IMPORT_QML_PLUGIN(QuillPlugin)
 
 namespace {
 
@@ -758,15 +761,13 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
 
-    // Prefer the installed data layout, but keep source-tree fallbacks for dev builds.
-    if (!dataDir.isEmpty()) {
-        engine.addImportPath(dataDir);                           // HyprFM module
-        engine.addImportPath(QDir(dataDir).filePath("src/qml")); // Quill module
-    }
+    // HyprFM and Quill are both compiled in. These paths only serve the
+    // on-disk fallback copy of the HyprFM module (see engine.load below). No
+    // source-tree path: an installed binary preferred it over its own install
+    // whenever the build tree it was built in still existed.
+    if (!dataDir.isEmpty())
+        engine.addImportPath(dataDir);
     engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR));
-    engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR "/src/qml"));
-    engine.addImportPath(QStringLiteral(HYPRFM_SOURCE_DIR));
-    engine.addImportPath(QStringLiteral(HYPRFM_SOURCE_DIR "/src/qml"));
 
     // Set icon theme so QIcon::fromTheme() works (e.g. for drag pixmaps)
     QIcon::setThemeName(config->iconTheme());

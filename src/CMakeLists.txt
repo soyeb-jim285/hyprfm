@@ -170,10 +170,55 @@ list(APPEND hyprfm_qml_module_args
 
 qt_add_qml_module(hyprfm ${hyprfm_qml_module_args})
 
-# Make Quill module discoverable at runtime
-set_target_properties(hyprfm PROPERTIES
-    QT_QML_IMPORT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/qml"
+# Quill (the src/qml/Quill submodule) is compiled in as its own QML module,
+# like HyprFM, rather than found on disk through import paths. From disk it
+# was parsed at runtime, cached by path (so an AppImage, mounted somewhere new
+# each launch, recompiled it every time), and resolved through import paths
+# that included the build tree, which an installed binary preferred over its
+# own install whenever that tree still existed.
+qt_add_library(quill STATIC)
+set_source_files_properties(qml/Quill/Theme.qml qml/Quill/components/Format.qml
+    PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# /qt/qml is on the engine's default import path, so the compiled module is
+# found without any qmldir on disk.
+set(quill_qml_module_args
+    URI Quill
+    VERSION 1.0
+    RESOURCE_PREFIX /qt/qml
+    OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Quill
 )
+if(NOT HYPRFM_ENABLE_QML_CACHEGEN)
+    list(APPEND quill_qml_module_args NO_CACHEGEN)
+endif()
+qt_add_qml_module(quill ${quill_qml_module_args}
+    QML_FILES
+        qml/Quill/Theme.qml
+        qml/Quill/components/Format.qml
+        qml/Quill/components/Button.qml
+        qml/Quill/components/IconButton.qml
+        qml/Quill/components/Toggle.qml
+        qml/Quill/components/Slider.qml
+        qml/Quill/components/TextField.qml
+        qml/Quill/components/Dropdown.qml
+        qml/Quill/components/Checkbox.qml
+        qml/Quill/components/RadioButton.qml
+        qml/Quill/components/RadioGroup.qml
+        qml/Quill/components/Card.qml
+        qml/Quill/components/Dialog.qml
+        qml/Quill/components/Separator.qml
+        qml/Quill/components/Tabs.qml
+        qml/Quill/components/Collapsible.qml
+        qml/Quill/components/ScrollableList.qml
+        qml/Quill/components/Tooltip.qml
+        qml/Quill/components/Badge.qml
+        qml/Quill/components/ProgressBar.qml
+        qml/Quill/components/Spinner.qml
+        qml/Quill/components/Icon.qml
+        qml/Quill/components/Avatar.qml
+        qml/Quill/components/Label.qml
+)
+target_link_libraries(quill PRIVATE Qt6::Quick)
+target_link_libraries(hyprfm PRIVATE quillplugin)
 
 target_link_libraries(hyprfm PRIVATE
     Qt6::Core
