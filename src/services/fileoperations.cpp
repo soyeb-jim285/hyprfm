@@ -1915,13 +1915,31 @@ void FileOperations::openInEditor(const QString &path)
     }
 }
 
+// Asked every time the context menu is built, so it only looks at the
+// offered types. It used to decode the whole clipboard image through Qt and
+// then, failing that, download it again with wl-paste: two blocking
+// processes on the GUI thread per right-click.
 bool FileOperations::hasClipboardImage() const
 {
-    const QClipboard *clipboard = QGuiApplication::clipboard();
-    if (!clipboardImage(clipboard).isNull())
-        return true;
+    if (const QMimeData *mime = QGuiApplication::clipboard()->mimeData()) {
+        const QStringList formats = mime->formats();
+        if (!formats.isEmpty())   // hasImage() is a format check too, no transfer
+            return mime->hasImage()
+                || std::any_of(formats.cbegin(), formats.cend(), [](const QString &format) {
+                       return format.startsWith(QLatin1String("image/"));
+                   });
+    }
 
-    return !clipboardImageData().isEmpty();
+    // Qt sees no offer at all (the compositor only hands the clipboard to a
+    // focused client): ask wl-paste for the types, still not the data.
+    const QString wlPastePath = QStandardPaths::findExecutable(QStringLiteral("wl-paste"));
+    if (wlPastePath.isEmpty())
+        return false;
+    QProcess listProcess;
+    listProcess.start(wlPastePath, {QStringLiteral("--list-types")});
+    if (!listProcess.waitForFinished(1000) || listProcess.exitCode() != 0)
+        return false;
+    return QString::fromUtf8(listProcess.readAllStandardOutput()).contains(QLatin1String("image/"));
 }
 
 QString FileOperations::pasteClipboardImage(const QString &destinationDir)

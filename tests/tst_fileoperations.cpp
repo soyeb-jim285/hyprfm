@@ -1,4 +1,5 @@
 #include <QTest>
+#include <QScopeGuard>
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QTemporaryDir>
@@ -760,6 +761,25 @@ private slots:
         QVERIFY(dir.exists("new_file.txt"));
         QFileInfo info(dir.path() + "/new_file.txt");
         QCOMPARE(info.size(), 0LL); // empty file
+    }
+
+    // Asked on every right-click: answer from the offered types, without
+    // fetching the image or running wl-paste when Qt can see the clipboard.
+    void testHasClipboardImageReadsOfferedTypesOnly()
+    {
+        QClipboard *clipboard = QGuiApplication::clipboard();
+        const QByteArray originalPath = qgetenv("PATH");
+        qputenv("PATH", "/nonexistent");   // any wl-paste use would fail the test
+        auto restore = qScopeGuard([&] { qputenv("PATH", originalPath); clipboard->clear(); });
+
+        FileOperations ops;
+        QImage image(8, 8, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::red);
+        clipboard->setImage(image);
+        QVERIFY(ops.hasClipboardImage());
+
+        clipboard->setText(QStringLiteral("just text"));
+        QVERIFY(!ops.hasClipboardImage());
     }
 
     void testPasteClipboardImage()
