@@ -379,11 +379,11 @@ private slots:
     {
         App app;
         QVERIFY(app.load());
+        // Built the first time it opens.
+        QVERIFY(QMetaObject::invokeMethod(app.window->contentItem()->parent(), "showPropertiesFor",
+                                          Q_ARG(QVariant, app.home.path())));
         QQuickItem *dialog = app.item("propertiesDialog");
         QVERIFY(dialog);
-
-        QVERIFY(QMetaObject::invokeMethod(dialog, "showProperties",
-                                          Q_ARG(QVariant, app.home.path())));
         QTRY_VERIFY(dialog->isVisible());
 
         QTest::keyClick(app.window, Qt::Key_Escape);
@@ -402,10 +402,11 @@ private slots:
 
         App app;
         QVERIFY(app.load());
+        // Built the first time it opens.
+        QVERIFY(QMetaObject::invokeMethod(app.window->contentItem()->parent(), "showPropertiesFor",
+                                          Q_ARG(QVariant, app.home.path())));
         QQuickItem *dialog = app.item("propertiesDialog");
         QVERIFY(dialog);
-        QVERIFY(QMetaObject::invokeMethod(dialog, "showProperties",
-                                          Q_ARG(QVariant, app.home.path())));
         QTRY_VERIFY(dialog->isVisible());
 
         for (const QString &name : {QStringLiteral("Disk usage"), QStringLiteral("Content"),
@@ -685,6 +686,34 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(clipboard, "cut",
                                           Q_ARG(QStringList, QStringList{file.fileName()})));
         QTRY_COMPARE(scissors(), 1);
+    }
+
+    // The confirmation, conflict and app-chooser dialogs are built the first
+    // time they open; each has to come up from a cold start.
+    void testLazyDialogsOpen_data()
+    {
+        QTest::addColumn<QString>("dialog");
+        QTest::newRow("delete") << "deleteConfirmDialog";
+        QTest::newRow("empty trash") << "emptyTrashConfirmDialog";
+        QTest::newRow("conflict") << "conflictDialog";
+        QTest::newRow("app chooser") << "appChooserDialog";
+    }
+
+    void testLazyDialogsOpen()
+    {
+        QFETCH(QString, dialog);
+        App app;
+        QVERIFY(app.load());
+        QObject *root = app.window->contentItem()->parent();
+        QQuickItem *loader = app.item(dialog + "Loader");
+        QVERIFY(loader);
+        QCOMPARE(root->property(dialog.toUtf8()).value<QObject *>(), nullptr);
+
+        QVERIFY(QMetaObject::invokeMethod(root, "openDialog",
+                                          Q_ARG(QVariant, QVariant::fromValue<QObject *>(loader))));
+        auto *item = root->property(dialog.toUtf8()).value<QQuickItem *>();
+        QVERIFY(item);
+        QTRY_VERIFY(item->isVisible());
     }
 
     void testWheelOverTabStripScrollsTabsInTheFullWindow()

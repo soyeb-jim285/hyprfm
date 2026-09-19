@@ -361,6 +361,23 @@ ApplicationWindow {
         preview.forceActiveFocus()
     }
 
+    // The dialogs below (properties, rename, new folder/file, app chooser,
+    // transfer conflict, delete and empty-trash confirmations) are built the
+    // first time they open, like the ones above. A never-built one is closed.
+    function isShown(dialog) {
+        return dialog !== null && dialog.visible
+    }
+
+    function openDialog(loader) {
+        loader.active = true
+        loader.item.open()
+    }
+
+    function showPropertiesFor(path) {
+        propertiesDialogLoader.active = true
+        root.propertiesDialog.showProperties(path)
+    }
+
     function openMissingDependenciesDialog() {
         missingDependenciesDialogLoader.active = true
         root.missingDependenciesDialog.openDialog()
@@ -519,13 +536,13 @@ ApplicationWindow {
             && !(root.remoteConnectDialog && root.remoteConnectDialog.visible)
             && !(root.settingsPanel && root.settingsPanel.visible)
             && !(root.shortcutsDialog && root.shortcutsDialog.visible)
-            && !renameDialog.visible
+            && !root.isShown(root.renameDialog)
             && sidebarPanel.renamingBookmarkIndex < 0
-            && !newFolderDialog.visible
-            && !newFileDialog.visible
-            && !conflictDialog.visible
-            && !deleteConfirmDialog.visible
-            && !emptyTrashConfirmDialog.visible
+            && !root.isShown(root.newFolderDialog)
+            && !root.isShown(root.newFileDialog)
+            && !root.isShown(root.conflictDialog)
+            && !root.isShown(root.deleteConfirmDialog)
+            && !root.isShown(root.emptyTrashConfirmDialog)
             && !(root.quickPreview && root.quickPreview.active)
     }
 
@@ -656,21 +673,23 @@ ApplicationWindow {
             var moveOperation = transferMoveOperation
             var clearClipboard = transferClearClipboardOnSuccess
             resetTransferConflictState()
-            conflictDialog.close()
+            if (root.conflictDialog)
+                root.conflictDialog.close()
             executeTransferOperation(items, moveOperation, clearClipboard)
             return
         }
 
         transferConflictIndex = index
         var item = transferConflictItems[index]
-        conflictRenameField.text = fileOps.uniqueNameForDestination(
+        conflictDialogLoader.active = true
+        root.conflictDialog.renameField.text = fileOps.uniqueNameForDestination(
             transferDestinationPath,
             item.sourceName,
             reservedTargetNames()
         )
-        conflictErrorText.text = ""
-        conflictDialog.currentItem = item
-        conflictDialog.open()
+        root.conflictDialog.errorText.text = ""
+        root.conflictDialog.currentItem = item
+        root.conflictDialog.open()
     }
 
     function beginTransfer(paths, destinationPath, moveOperation, clearClipboardOnSuccess) {
@@ -724,22 +743,22 @@ ApplicationWindow {
         var item = transferConflictItems[transferConflictIndex]
         if (action === "overwrite") {
             if (item.samePath) {
-                conflictErrorText.text = "Cannot overwrite an item with itself"
+                root.conflictDialog.errorText.text = "Cannot overwrite an item with itself"
                 return
             }
 
             transferReservedTargets[item.targetPath] = true
             transferResolvedItems = transferResolvedItems.concat([{ sourcePath: item.sourcePath, targetPath: item.targetPath, overwrite: true }])
         } else if (action === "rename") {
-            var name = conflictRenameField.text.trim()
+            var name = root.conflictDialog.renameField.text.trim()
             if (name === "" || name === "." || name === ".." || name.indexOf("/") >= 0) {
-                conflictErrorText.text = "Enter a valid file name"
+                root.conflictDialog.errorText.text = "Enter a valid file name"
                 return
             }
 
             var targetPath = transferDestinationPath + "/" + name
             if (transferReservedTargets[targetPath] || fileOps.pathExists(targetPath) || targetPath === item.sourcePath) {
-                conflictErrorText.text = "That name already exists"
+                root.conflictDialog.errorText.text = "That name already exists"
                 return
             }
 
@@ -755,19 +774,19 @@ ApplicationWindow {
 
         transferConflictIndex = nextIndex
         var nextItem = transferConflictItems[nextIndex]
-        conflictDialog.currentItem = nextItem
-        conflictRenameField.text = fileOps.uniqueNameForDestination(
+        root.conflictDialog.currentItem = nextItem
+        root.conflictDialog.renameField.text = fileOps.uniqueNameForDestination(
             transferDestinationPath,
             nextItem.sourceName,
             reservedTargetNames()
         )
-        conflictErrorText.text = ""
-        conflictRenameField.forceActiveFocus()
+        root.conflictDialog.errorText.text = ""
+        root.conflictDialog.renameField.forceActiveFocus()
     }
 
     function cancelTransferConflicts() {
-        if (conflictDialog.visible)
-            conflictDialog.close()
+        if (root.isShown(root.conflictDialog))
+            root.conflictDialog.close()
         else {
             resetTransferConflictState()
             scheduleActivePaneFocus()
@@ -1065,8 +1084,9 @@ ApplicationWindow {
             return
 
         root.renameTargetPath = path
-        renameField.text = path.substring(path.lastIndexOf("/") + 1)
-        renameDialog.open()
+        renameDialogLoader.active = true
+        root.renameDialog.field.text = path.substring(path.lastIndexOf("/") + 1)
+        root.renameDialog.open()
     }
 
     function openBulkRenameDialog(paths) {
@@ -1078,8 +1098,8 @@ ApplicationWindow {
     }
 
     function toggleRenameWorkflow(paths) {
-        if (renameDialog.visible) {
-            renameDialog.reject()
+        if (root.isShown(root.renameDialog)) {
+            root.renameDialog.reject()
             return
         }
 
@@ -1088,7 +1108,7 @@ ApplicationWindow {
             return
         }
 
-        if (newFolderDialog.visible || newFileDialog.visible)
+        if (root.isShown(root.newFolderDialog) || root.isShown(root.newFileDialog))
             return
 
         openRenameWorkflow(paths)
@@ -1099,17 +1119,18 @@ ApplicationWindow {
             return
 
         root.newItemParentPath = parentPath
-        newFolderField.text = ""
-        newFolderDialog.open()
+        newFolderDialogLoader.active = true
+        root.newFolderDialog.field.text = ""
+        root.newFolderDialog.open()
     }
 
     function toggleNewFolderDialog(parentPath) {
-        if (newFolderDialog.visible) {
-            newFolderDialog.reject()
+        if (root.isShown(root.newFolderDialog)) {
+            root.newFolderDialog.reject()
             return
         }
 
-        if (renameDialog.visible || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || newFileDialog.visible)
+        if (root.isShown(root.renameDialog) || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || root.isShown(root.newFileDialog))
             return
 
         showNewFolderDialog(parentPath)
@@ -1120,17 +1141,18 @@ ApplicationWindow {
             return
 
         root.newItemParentPath = parentPath
-        newFileField.text = ""
-        newFileDialog.open()
+        newFileDialogLoader.active = true
+        root.newFileDialog.field.text = ""
+        root.newFileDialog.open()
     }
 
     function toggleNewFileDialog(parentPath) {
-        if (newFileDialog.visible) {
-            newFileDialog.reject()
+        if (root.isShown(root.newFileDialog)) {
+            root.newFileDialog.reject()
             return
         }
 
-        if (renameDialog.visible || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || newFolderDialog.visible)
+        if (root.isShown(root.renameDialog) || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || root.isShown(root.newFolderDialog))
             return
 
         showNewFileDialog(parentPath)
@@ -1271,10 +1293,10 @@ ApplicationWindow {
                 root.currentSelectedSize = result.sizeText || ""
             }
 
-            if (requestId === propertiesDialog.folderDiskUsageRequestId) {
-                propertiesDialog.folderDiskUsageRequestId = -1
-                propertiesDialog.folderDiskUsagePending = false
-                propertiesDialog.folderDiskUsageText = result.sizeTextVerbose || result.sizeText || ""
+            if (root.propertiesDialog && requestId === root.propertiesDialog.folderDiskUsageRequestId) {
+                root.propertiesDialog.folderDiskUsageRequestId = -1
+                root.propertiesDialog.folderDiskUsagePending = false
+                root.propertiesDialog.folderDiskUsageText = result.sizeTextVerbose || result.sizeText || ""
             }
         }
     }
@@ -1390,1439 +1412,1525 @@ ApplicationWindow {
     // ── Rename dialog ───────────────────────────────────────────────────────
     property string renameTargetPath: ""
 
-    Item {
-        id: renameDialog
-        objectName: "renameDialog"
+    Loader {
+        id: renameDialogLoader
+        objectName: "renameDialogLoader"
         anchors.fill: parent
-        visible: false
         z: 1000
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Rename"
-
-        function open() {
-            renameErrorText.text = ""
-            visible = true
-            renameBox.opacity = 0
-            renameBox.scale = 0.88
-            renameBox.yOffset = -8
-            renameOpenAnim.start()
-            Qt.callLater(function() {
-                renameField.inputItem.forceActiveFocus()
-                renameField.inputItem.selectAll()
-            })
-            renameField.forceActiveFocus()
-        }
-        function accept() {
-            var name = renameField.text.trim()
-            if (renameTargetPath === "" || name === "") return
-            var parentDir = fileOps.parentPath(renameTargetPath)
-            var targetPath = parentDir + "/" + name
-            if (fileOps.pathExists(targetPath)) {
-                renameErrorText.text = "\"" + name + "\" already exists"
-                return
-            }
-
-            if (fileOps.isRemotePath(renameTargetPath)) {
-                var result = fileOps.renameResolvedItems([{ sourcePath: renameTargetPath, targetPath: targetPath }])
-                if (!result.success) {
-                    renameErrorText.text = result.error || "Rename failed"
-                    return
-                }
-                fsModel.refresh()
-                splitFsModel.refresh()
-            } else {
-                undoManager.rename(renameTargetPath, name)
-            }
-            renameCloseAnim.start()
-        }
-        function reject() { renameCloseAnim.start() }
-
-        ParallelAnimation {
-            id: renameOpenAnim
-            NumberAnimation {
-                target: renameBox; property: "opacity"
-                from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
-            }
-            NumberAnimation {
-                target: renameBox; property: "scale"
-                from: 0.88; to: 1; duration: Theme.animDurationSlow
-                easing.type: Easing.OutBack
-                easing.overshoot: 0.8
-            }
-            NumberAnimation {
-                target: renameBox; property: "yOffset"
-                from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
-            }
-        }
-        SequentialAnimation {
-            id: renameCloseAnim
-            ParallelAnimation {
-                NumberAnimation {
-                    target: renameBox; property: "opacity"
-                    to: 0; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-                NumberAnimation {
-                    target: renameBox; property: "scale"
-                    to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-                NumberAnimation {
-                    target: renameBox; property: "yOffset"
-                    to: -4; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-            }
-            ScriptAction { script: { renameDialog.visible = false; root.scheduleActivePaneFocus() } }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: renameDialog.reject()
-        }
-
-        Item {
-            id: renameBox
-            width: 340
-            height: renameCard.implicitHeight
-            anchors.centerIn: parent
-
-            opacity: 0
-            scale: 0.88
-            transformOrigin: Item.Center
-
-            property real yOffset: 0
-            transform: Translate { y: renameBox.yOffset }
-
-            Q.Card {
-                id: renameCard
+        active: false
+        sourceComponent: Component {
+            Item {
+                id: renameDialog
+                property alias field: renameField
+                objectName: "renameDialog"
                 anchors.fill: parent
-                title: "Rename"
-                padding: 20
-                color: Theme.mantle
-                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                visible: false
+                z: 1000
+                Accessible.role: Accessible.Dialog
+                Accessible.name: "Rename"
 
-                Q.TextField {
-                    id: renameField
-                    Layout.fillWidth: true
-                    autoFocus: true
-                    variant: "filled"
-                    placeholder: "Enter new name"
-                    onTextChanged: renameErrorText.text = ""
-                    Keys.onReturnPressed: renameDialog.accept()
-                    Keys.onEscapePressed: renameDialog.reject()
+                function open() {
+                    renameErrorText.text = ""
+                    visible = true
+                    renameBox.opacity = 0
+                    renameBox.scale = 0.88
+                    renameBox.yOffset = -8
+                    renameOpenAnim.start()
+                    Qt.callLater(function() {
+                        renameField.inputItem.forceActiveFocus()
+                        renameField.inputItem.selectAll()
+                    })
+                    renameField.forceActiveFocus()
                 }
-
-                Text {
-                    id: renameErrorText
-                    Layout.fillWidth: true
-                    visible: text !== ""
-                    color: Theme.error
-                    font.pointSize: Theme.fontSmall
-                    wrapMode: Text.WordWrap
-                }
-
-                RowLayout {
-                    Layout.alignment: Qt.AlignRight
-                    spacing: 12
-
-                    Q.Button {
-                        id: cancelRenameButton
-                        text: "Cancel"
-                        variant: "ghost"
-                        size: "small"
-                        KeyNavigation.left: confirmRenameButton
-                        KeyNavigation.right: confirmRenameButton
-                        KeyNavigation.tab: confirmRenameButton
-                        KeyNavigation.backtab: confirmRenameButton
-                        Keys.onLeftPressed: confirmRenameButton.forceActiveFocus()
-                        Keys.onRightPressed: confirmRenameButton.forceActiveFocus()
-                        Keys.onEscapePressed: renameDialog.reject()
-                        onClicked: renameDialog.reject()
+                function accept() {
+                    var name = renameField.text.trim()
+                    if (renameTargetPath === "" || name === "") return
+                    var parentDir = fileOps.parentPath(renameTargetPath)
+                    var targetPath = parentDir + "/" + name
+                    if (fileOps.pathExists(targetPath)) {
+                        renameErrorText.text = "\"" + name + "\" already exists"
+                        return
                     }
 
-                    Q.Button {
-                        id: confirmRenameButton
-                        text: "Rename"
-                        variant: "primary"
-                        size: "small"
-                        KeyNavigation.left: cancelRenameButton
-                        KeyNavigation.right: cancelRenameButton
-                        KeyNavigation.tab: cancelRenameButton
-                        KeyNavigation.backtab: cancelRenameButton
-                        Keys.onLeftPressed: cancelRenameButton.forceActiveFocus()
-                        Keys.onRightPressed: cancelRenameButton.forceActiveFocus()
-                        Keys.onEscapePressed: renameDialog.reject()
-                        onClicked: renameDialog.accept()
+                    if (fileOps.isRemotePath(renameTargetPath)) {
+                        var result = fileOps.renameResolvedItems([{ sourcePath: renameTargetPath, targetPath: targetPath }])
+                        if (!result.success) {
+                            renameErrorText.text = result.error || "Rename failed"
+                            return
+                        }
+                        fsModel.refresh()
+                        splitFsModel.refresh()
+                    } else {
+                        undoManager.rename(renameTargetPath, name)
+                    }
+                    renameCloseAnim.start()
+                }
+                function reject() { renameCloseAnim.start() }
+
+                ParallelAnimation {
+                    id: renameOpenAnim
+                    NumberAnimation {
+                        target: renameBox; property: "opacity"
+                        from: 0; to: 1; duration: Theme.animDurationFast
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+                    }
+                    NumberAnimation {
+                        target: renameBox; property: "scale"
+                        from: 0.88; to: 1; duration: Theme.animDurationSlow
+                        easing.type: Easing.OutBack
+                        easing.overshoot: 0.8
+                    }
+                    NumberAnimation {
+                        target: renameBox; property: "yOffset"
+                        from: -8; to: 0; duration: Theme.animDuration
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+                    }
+                }
+                SequentialAnimation {
+                    id: renameCloseAnim
+                    ParallelAnimation {
+                        NumberAnimation {
+                            target: renameBox; property: "opacity"
+                            to: 0; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                        NumberAnimation {
+                            target: renameBox; property: "scale"
+                            to: 0.92; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                        NumberAnimation {
+                            target: renameBox; property: "yOffset"
+                            to: -4; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                    }
+                    ScriptAction { script: { renameDialog.visible = false; root.scheduleActivePaneFocus() } }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: renameDialog.reject()
+                }
+
+                Item {
+                    id: renameBox
+                    width: 340
+                    height: renameCard.implicitHeight
+                    anchors.centerIn: parent
+
+                    opacity: 0
+                    scale: 0.88
+                    transformOrigin: Item.Center
+
+                    property real yOffset: 0
+                    transform: Translate { y: renameBox.yOffset }
+
+                    Q.Card {
+                        id: renameCard
+                        anchors.fill: parent
+                        title: "Rename"
+                        padding: 20
+                        color: Theme.mantle
+                        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+
+                        Q.TextField {
+                            id: renameField
+                            Layout.fillWidth: true
+                            autoFocus: true
+                            variant: "filled"
+                            placeholder: "Enter new name"
+                            onTextChanged: renameErrorText.text = ""
+                            Keys.onReturnPressed: renameDialog.accept()
+                            Keys.onEscapePressed: renameDialog.reject()
+                        }
+
+                        Text {
+                            id: renameErrorText
+                            Layout.fillWidth: true
+                            visible: text !== ""
+                            color: Theme.error
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
+
+                        RowLayout {
+                            Layout.alignment: Qt.AlignRight
+                            spacing: 12
+
+                            Q.Button {
+                                id: cancelRenameButton
+                                text: "Cancel"
+                                variant: "ghost"
+                                size: "small"
+                                KeyNavigation.left: confirmRenameButton
+                                KeyNavigation.right: confirmRenameButton
+                                KeyNavigation.tab: confirmRenameButton
+                                KeyNavigation.backtab: confirmRenameButton
+                                Keys.onLeftPressed: confirmRenameButton.forceActiveFocus()
+                                Keys.onRightPressed: confirmRenameButton.forceActiveFocus()
+                                Keys.onEscapePressed: renameDialog.reject()
+                                onClicked: renameDialog.reject()
+                            }
+
+                            Q.Button {
+                                id: confirmRenameButton
+                                text: "Rename"
+                                variant: "primary"
+                                size: "small"
+                                KeyNavigation.left: cancelRenameButton
+                                KeyNavigation.right: cancelRenameButton
+                                KeyNavigation.tab: cancelRenameButton
+                                KeyNavigation.backtab: cancelRenameButton
+                                Keys.onLeftPressed: cancelRenameButton.forceActiveFocus()
+                                Keys.onRightPressed: cancelRenameButton.forceActiveFocus()
+                                Keys.onEscapePressed: renameDialog.reject()
+                                onClicked: renameDialog.accept()
+                            }
+                        }
                     }
                 }
             }
         }
     }
+    readonly property var renameDialog: renameDialogLoader.item
 
     // ── New Folder dialog ───────────────────────────────────────────────────
     property string newItemParentPath: ""
 
-    Item {
-        id: newFolderDialog
-        objectName: "newFolderDialog"
+    Loader {
+        id: newFolderDialogLoader
+        objectName: "newFolderDialogLoader"
         anchors.fill: parent
-        visible: false
         z: 1000
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "New folder"
-
-        function open() {
-            newFolderErrorText.text = ""
-            visible = true
-            folderBox.opacity = 0
-            folderBox.scale = 0.88
-            folderBox.yOffset = -8
-            folderOpenAnim.start()
-            Qt.callLater(function() { newFolderField.inputItem.forceActiveFocus() })
-            newFolderField.forceActiveFocus()
-        }
-        function accept() {
-            var name = newFolderField.text.trim()
-            if (newItemParentPath === "" || name === "") return
-            var createdPath = newItemParentPath + "/" + name
-            if (fileOps.pathExists(createdPath)) {
-                newFolderErrorText.text = "\"" + name + "\" already exists"
-                return
-            }
-            if (fileOps.isRemotePath(newItemParentPath)) {
-                fileOps.createFolder(newItemParentPath, name)
-                fsModel.refresh()
-                splitFsModel.refresh()
-            } else {
-                undoManager.createFolder(newItemParentPath, name)
-            }
-            if (fileOps.pathExists(createdPath))
-                root.focusPathInPane(root.activePane, createdPath, true)
-            folderCloseAnim.start()
-        }
-        function reject() { folderCloseAnim.start() }
-
-        ParallelAnimation {
-            id: folderOpenAnim
-            NumberAnimation {
-                target: folderBox; property: "opacity"
-                from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
-            }
-            NumberAnimation {
-                target: folderBox; property: "scale"
-                from: 0.88; to: 1; duration: Theme.animDurationSlow
-                easing.type: Easing.OutBack
-                easing.overshoot: 0.8
-            }
-            NumberAnimation {
-                target: folderBox; property: "yOffset"
-                from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
-            }
-        }
-        SequentialAnimation {
-            id: folderCloseAnim
-            ParallelAnimation {
-                NumberAnimation {
-                    target: folderBox; property: "opacity"
-                    to: 0; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-                NumberAnimation {
-                    target: folderBox; property: "scale"
-                    to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-                NumberAnimation {
-                    target: folderBox; property: "yOffset"
-                    to: -4; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-            }
-            ScriptAction { script: { newFolderDialog.visible = false; root.scheduleActivePaneFocus() } }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: newFolderDialog.reject()
-        }
-
-        Item {
-            id: folderBox
-            width: 340
-            height: folderCard.implicitHeight
-            anchors.centerIn: parent
-
-            opacity: 0
-            scale: 0.88
-            transformOrigin: Item.Center
-
-            property real yOffset: 0
-            transform: Translate { y: folderBox.yOffset }
-
-            Q.Card {
-                id: folderCard
+        active: false
+        sourceComponent: Component {
+            Item {
+                id: newFolderDialog
+                property alias field: newFolderField
+                objectName: "newFolderDialog"
                 anchors.fill: parent
-                title: "New Folder"
-                padding: 20
-                color: Theme.mantle
-                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                visible: false
+                z: 1000
+                Accessible.role: Accessible.Dialog
+                Accessible.name: "New folder"
 
-                Q.TextField {
-                    id: newFolderField
-                    Layout.fillWidth: true
-                    autoFocus: true
-                    variant: "filled"
-                    placeholder: "Folder name"
-                    onTextChanged: newFolderErrorText.text = ""
-                    Keys.onReturnPressed: newFolderDialog.accept()
-                    Keys.onEscapePressed: newFolderDialog.reject()
+                function open() {
+                    newFolderErrorText.text = ""
+                    visible = true
+                    folderBox.opacity = 0
+                    folderBox.scale = 0.88
+                    folderBox.yOffset = -8
+                    folderOpenAnim.start()
+                    Qt.callLater(function() { newFolderField.inputItem.forceActiveFocus() })
+                    newFolderField.forceActiveFocus()
                 }
-
-                Text {
-                    id: newFolderErrorText
-                    Layout.fillWidth: true
-                    visible: text !== ""
-                    color: Theme.error
-                    font.pointSize: Theme.fontSmall
-                    wrapMode: Text.WordWrap
-                }
-
-                RowLayout {
-                    Layout.alignment: Qt.AlignRight
-                    spacing: 12
-
-                    Q.Button {
-                        id: cancelNewFolderButton
-                        text: "Cancel"
-                        variant: "ghost"
-                        size: "small"
-                        KeyNavigation.left: confirmNewFolderButton
-                        KeyNavigation.right: confirmNewFolderButton
-                        KeyNavigation.tab: confirmNewFolderButton
-                        KeyNavigation.backtab: confirmNewFolderButton
-                        Keys.onLeftPressed: confirmNewFolderButton.forceActiveFocus()
-                        Keys.onRightPressed: confirmNewFolderButton.forceActiveFocus()
-                        Keys.onEscapePressed: newFolderDialog.reject()
-                        onClicked: newFolderDialog.reject()
+                function accept() {
+                    var name = newFolderField.text.trim()
+                    if (newItemParentPath === "" || name === "") return
+                    var createdPath = newItemParentPath + "/" + name
+                    if (fileOps.pathExists(createdPath)) {
+                        newFolderErrorText.text = "\"" + name + "\" already exists"
+                        return
                     }
+                    if (fileOps.isRemotePath(newItemParentPath)) {
+                        fileOps.createFolder(newItemParentPath, name)
+                        fsModel.refresh()
+                        splitFsModel.refresh()
+                    } else {
+                        undoManager.createFolder(newItemParentPath, name)
+                    }
+                    if (fileOps.pathExists(createdPath))
+                        root.focusPathInPane(root.activePane, createdPath, true)
+                    folderCloseAnim.start()
+                }
+                function reject() { folderCloseAnim.start() }
 
-                    Q.Button {
-                        id: confirmNewFolderButton
-                        text: "Create"
-                        variant: "primary"
-                        size: "small"
-                        KeyNavigation.left: cancelNewFolderButton
-                        KeyNavigation.right: cancelNewFolderButton
-                        KeyNavigation.tab: cancelNewFolderButton
-                        KeyNavigation.backtab: cancelNewFolderButton
-                        Keys.onLeftPressed: cancelNewFolderButton.forceActiveFocus()
-                        Keys.onRightPressed: cancelNewFolderButton.forceActiveFocus()
-                        Keys.onEscapePressed: newFolderDialog.reject()
-                        onClicked: newFolderDialog.accept()
+                ParallelAnimation {
+                    id: folderOpenAnim
+                    NumberAnimation {
+                        target: folderBox; property: "opacity"
+                        from: 0; to: 1; duration: Theme.animDurationFast
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+                    }
+                    NumberAnimation {
+                        target: folderBox; property: "scale"
+                        from: 0.88; to: 1; duration: Theme.animDurationSlow
+                        easing.type: Easing.OutBack
+                        easing.overshoot: 0.8
+                    }
+                    NumberAnimation {
+                        target: folderBox; property: "yOffset"
+                        from: -8; to: 0; duration: Theme.animDuration
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+                    }
+                }
+                SequentialAnimation {
+                    id: folderCloseAnim
+                    ParallelAnimation {
+                        NumberAnimation {
+                            target: folderBox; property: "opacity"
+                            to: 0; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                        NumberAnimation {
+                            target: folderBox; property: "scale"
+                            to: 0.92; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                        NumberAnimation {
+                            target: folderBox; property: "yOffset"
+                            to: -4; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                    }
+                    ScriptAction { script: { newFolderDialog.visible = false; root.scheduleActivePaneFocus() } }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: newFolderDialog.reject()
+                }
+
+                Item {
+                    id: folderBox
+                    width: 340
+                    height: folderCard.implicitHeight
+                    anchors.centerIn: parent
+
+                    opacity: 0
+                    scale: 0.88
+                    transformOrigin: Item.Center
+
+                    property real yOffset: 0
+                    transform: Translate { y: folderBox.yOffset }
+
+                    Q.Card {
+                        id: folderCard
+                        anchors.fill: parent
+                        title: "New Folder"
+                        padding: 20
+                        color: Theme.mantle
+                        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+
+                        Q.TextField {
+                            id: newFolderField
+                            Layout.fillWidth: true
+                            autoFocus: true
+                            variant: "filled"
+                            placeholder: "Folder name"
+                            onTextChanged: newFolderErrorText.text = ""
+                            Keys.onReturnPressed: newFolderDialog.accept()
+                            Keys.onEscapePressed: newFolderDialog.reject()
+                        }
+
+                        Text {
+                            id: newFolderErrorText
+                            Layout.fillWidth: true
+                            visible: text !== ""
+                            color: Theme.error
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
+
+                        RowLayout {
+                            Layout.alignment: Qt.AlignRight
+                            spacing: 12
+
+                            Q.Button {
+                                id: cancelNewFolderButton
+                                text: "Cancel"
+                                variant: "ghost"
+                                size: "small"
+                                KeyNavigation.left: confirmNewFolderButton
+                                KeyNavigation.right: confirmNewFolderButton
+                                KeyNavigation.tab: confirmNewFolderButton
+                                KeyNavigation.backtab: confirmNewFolderButton
+                                Keys.onLeftPressed: confirmNewFolderButton.forceActiveFocus()
+                                Keys.onRightPressed: confirmNewFolderButton.forceActiveFocus()
+                                Keys.onEscapePressed: newFolderDialog.reject()
+                                onClicked: newFolderDialog.reject()
+                            }
+
+                            Q.Button {
+                                id: confirmNewFolderButton
+                                text: "Create"
+                                variant: "primary"
+                                size: "small"
+                                KeyNavigation.left: cancelNewFolderButton
+                                KeyNavigation.right: cancelNewFolderButton
+                                KeyNavigation.tab: cancelNewFolderButton
+                                KeyNavigation.backtab: cancelNewFolderButton
+                                Keys.onLeftPressed: cancelNewFolderButton.forceActiveFocus()
+                                Keys.onRightPressed: cancelNewFolderButton.forceActiveFocus()
+                                Keys.onEscapePressed: newFolderDialog.reject()
+                                onClicked: newFolderDialog.accept()
+                            }
+                        }
                     }
                 }
             }
         }
     }
+    readonly property var newFolderDialog: newFolderDialogLoader.item
 
     // ── New File dialog ─────────────────────────────────────────────────────
-    Item {
-        id: newFileDialog
-        objectName: "newFileDialog"
+    Loader {
+        id: newFileDialogLoader
+        objectName: "newFileDialogLoader"
         anchors.fill: parent
-        visible: false
         z: 1000
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "New file"
-
-        function open() {
-            newFileErrorText.text = ""
-            visible = true
-            fileBox.opacity = 0
-            fileBox.scale = 0.88
-            fileBox.yOffset = -8
-            fileOpenAnim.start()
-            Qt.callLater(function() { newFileField.inputItem.forceActiveFocus() })
-            newFileField.forceActiveFocus()
-        }
-        function accept() {
-            var name = newFileField.text.trim()
-            if (newItemParentPath === "" || name === "") return
-            var createdPath = newItemParentPath + "/" + name
-            if (fileOps.pathExists(createdPath)) {
-                newFileErrorText.text = "\"" + name + "\" already exists"
-                return
-            }
-            if (fileOps.isRemotePath(newItemParentPath)) {
-                fileOps.createFile(newItemParentPath, name)
-                fsModel.refresh()
-                splitFsModel.refresh()
-            } else {
-                undoManager.createFile(newItemParentPath, name)
-            }
-            if (fileOps.pathExists(createdPath))
-                root.focusPathInPane(root.activePane, createdPath, true)
-            fileCloseAnim.start()
-        }
-        function reject() { fileCloseAnim.start() }
-
-        ParallelAnimation {
-            id: fileOpenAnim
-            NumberAnimation {
-                target: fileBox; property: "opacity"
-                from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
-            }
-            NumberAnimation {
-                target: fileBox; property: "scale"
-                from: 0.88; to: 1; duration: Theme.animDurationSlow
-                easing.type: Easing.OutBack
-                easing.overshoot: 0.8
-            }
-            NumberAnimation {
-                target: fileBox; property: "yOffset"
-                from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
-            }
-        }
-        SequentialAnimation {
-            id: fileCloseAnim
-            ParallelAnimation {
-                NumberAnimation {
-                    target: fileBox; property: "opacity"
-                    to: 0; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-                NumberAnimation {
-                    target: fileBox; property: "scale"
-                    to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-                NumberAnimation {
-                    target: fileBox; property: "yOffset"
-                    to: -4; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-            }
-            ScriptAction { script: { newFileDialog.visible = false; root.scheduleActivePaneFocus() } }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: newFileDialog.reject()
-        }
-
-        Item {
-            id: fileBox
-            width: 340
-            height: fileCard.implicitHeight
-            anchors.centerIn: parent
-
-            opacity: 0
-            scale: 0.88
-            transformOrigin: Item.Center
-
-            property real yOffset: 0
-            transform: Translate { y: fileBox.yOffset }
-
-            Q.Card {
-                id: fileCard
+        active: false
+        sourceComponent: Component {
+            Item {
+                id: newFileDialog
+                property alias field: newFileField
+                objectName: "newFileDialog"
                 anchors.fill: parent
-                title: "New File"
-                color: Theme.mantle
-                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                padding: 20
+                visible: false
+                z: 1000
+                Accessible.role: Accessible.Dialog
+                Accessible.name: "New file"
 
-                Q.TextField {
-                    id: newFileField
-                    Layout.fillWidth: true
-                    autoFocus: true
-                    variant: "filled"
-                    placeholder: "File name"
-                    onTextChanged: newFileErrorText.text = ""
-                    Keys.onReturnPressed: newFileDialog.accept()
-                    Keys.onEscapePressed: newFileDialog.reject()
+                function open() {
+                    newFileErrorText.text = ""
+                    visible = true
+                    fileBox.opacity = 0
+                    fileBox.scale = 0.88
+                    fileBox.yOffset = -8
+                    fileOpenAnim.start()
+                    Qt.callLater(function() { newFileField.inputItem.forceActiveFocus() })
+                    newFileField.forceActiveFocus()
                 }
-
-                Text {
-                    id: newFileErrorText
-                    Layout.fillWidth: true
-                    visible: text !== ""
-                    color: Theme.error
-                    font.pointSize: Theme.fontSmall
-                    wrapMode: Text.WordWrap
-                }
-
-                RowLayout {
-                    Layout.alignment: Qt.AlignRight
-                    spacing: 12
-
-                    Q.Button {
-                        id: cancelNewFileButton
-                        text: "Cancel"
-                        variant: "ghost"
-                        size: "small"
-                        KeyNavigation.left: confirmNewFileButton
-                        KeyNavigation.right: confirmNewFileButton
-                        KeyNavigation.tab: confirmNewFileButton
-                        KeyNavigation.backtab: confirmNewFileButton
-                        Keys.onLeftPressed: confirmNewFileButton.forceActiveFocus()
-                        Keys.onRightPressed: confirmNewFileButton.forceActiveFocus()
-                        Keys.onEscapePressed: newFileDialog.reject()
-                        onClicked: newFileDialog.reject()
+                function accept() {
+                    var name = newFileField.text.trim()
+                    if (newItemParentPath === "" || name === "") return
+                    var createdPath = newItemParentPath + "/" + name
+                    if (fileOps.pathExists(createdPath)) {
+                        newFileErrorText.text = "\"" + name + "\" already exists"
+                        return
                     }
+                    if (fileOps.isRemotePath(newItemParentPath)) {
+                        fileOps.createFile(newItemParentPath, name)
+                        fsModel.refresh()
+                        splitFsModel.refresh()
+                    } else {
+                        undoManager.createFile(newItemParentPath, name)
+                    }
+                    if (fileOps.pathExists(createdPath))
+                        root.focusPathInPane(root.activePane, createdPath, true)
+                    fileCloseAnim.start()
+                }
+                function reject() { fileCloseAnim.start() }
 
-                    Q.Button {
-                        id: confirmNewFileButton
-                        text: "Create"
-                        variant: "primary"
-                        size: "small"
-                        KeyNavigation.left: cancelNewFileButton
-                        KeyNavigation.right: cancelNewFileButton
-                        KeyNavigation.tab: cancelNewFileButton
-                        KeyNavigation.backtab: cancelNewFileButton
-                        Keys.onLeftPressed: cancelNewFileButton.forceActiveFocus()
-                        Keys.onRightPressed: cancelNewFileButton.forceActiveFocus()
-                        Keys.onEscapePressed: newFileDialog.reject()
-                        onClicked: newFileDialog.accept()
+                ParallelAnimation {
+                    id: fileOpenAnim
+                    NumberAnimation {
+                        target: fileBox; property: "opacity"
+                        from: 0; to: 1; duration: Theme.animDurationFast
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+                    }
+                    NumberAnimation {
+                        target: fileBox; property: "scale"
+                        from: 0.88; to: 1; duration: Theme.animDurationSlow
+                        easing.type: Easing.OutBack
+                        easing.overshoot: 0.8
+                    }
+                    NumberAnimation {
+                        target: fileBox; property: "yOffset"
+                        from: -8; to: 0; duration: Theme.animDuration
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+                    }
+                }
+                SequentialAnimation {
+                    id: fileCloseAnim
+                    ParallelAnimation {
+                        NumberAnimation {
+                            target: fileBox; property: "opacity"
+                            to: 0; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                        NumberAnimation {
+                            target: fileBox; property: "scale"
+                            to: 0.92; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                        NumberAnimation {
+                            target: fileBox; property: "yOffset"
+                            to: -4; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                    }
+                    ScriptAction { script: { newFileDialog.visible = false; root.scheduleActivePaneFocus() } }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: newFileDialog.reject()
+                }
+
+                Item {
+                    id: fileBox
+                    width: 340
+                    height: fileCard.implicitHeight
+                    anchors.centerIn: parent
+
+                    opacity: 0
+                    scale: 0.88
+                    transformOrigin: Item.Center
+
+                    property real yOffset: 0
+                    transform: Translate { y: fileBox.yOffset }
+
+                    Q.Card {
+                        id: fileCard
+                        anchors.fill: parent
+                        title: "New File"
+                        color: Theme.mantle
+                        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                        padding: 20
+
+                        Q.TextField {
+                            id: newFileField
+                            Layout.fillWidth: true
+                            autoFocus: true
+                            variant: "filled"
+                            placeholder: "File name"
+                            onTextChanged: newFileErrorText.text = ""
+                            Keys.onReturnPressed: newFileDialog.accept()
+                            Keys.onEscapePressed: newFileDialog.reject()
+                        }
+
+                        Text {
+                            id: newFileErrorText
+                            Layout.fillWidth: true
+                            visible: text !== ""
+                            color: Theme.error
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
+
+                        RowLayout {
+                            Layout.alignment: Qt.AlignRight
+                            spacing: 12
+
+                            Q.Button {
+                                id: cancelNewFileButton
+                                text: "Cancel"
+                                variant: "ghost"
+                                size: "small"
+                                KeyNavigation.left: confirmNewFileButton
+                                KeyNavigation.right: confirmNewFileButton
+                                KeyNavigation.tab: confirmNewFileButton
+                                KeyNavigation.backtab: confirmNewFileButton
+                                Keys.onLeftPressed: confirmNewFileButton.forceActiveFocus()
+                                Keys.onRightPressed: confirmNewFileButton.forceActiveFocus()
+                                Keys.onEscapePressed: newFileDialog.reject()
+                                onClicked: newFileDialog.reject()
+                            }
+
+                            Q.Button {
+                                id: confirmNewFileButton
+                                text: "Create"
+                                variant: "primary"
+                                size: "small"
+                                KeyNavigation.left: cancelNewFileButton
+                                KeyNavigation.right: cancelNewFileButton
+                                KeyNavigation.tab: cancelNewFileButton
+                                KeyNavigation.backtab: cancelNewFileButton
+                                Keys.onLeftPressed: cancelNewFileButton.forceActiveFocus()
+                                Keys.onRightPressed: cancelNewFileButton.forceActiveFocus()
+                                Keys.onEscapePressed: newFileDialog.reject()
+                                onClicked: newFileDialog.accept()
+                            }
+                        }
                     }
                 }
             }
         }
     }
+    readonly property var newFileDialog: newFileDialogLoader.item
 
     // ── App Chooser dialog ──────────────────────────────────────────────────
-    Q.Dialog {
-        id: appChooserDialog
+    Loader {
+        id: appChooserDialogLoader
+        objectName: "appChooserDialogLoader"
         anchors.fill: parent
-        title: "Choose Application"
-        dialogWidth: 400
         z: 1100
-
-        property string filePath: ""
-        property string mimeType: ""
-        property var allApps: []
-        property string searchText: ""
-
-        onOpened: {
-            appSearchField.text = ""
-            appChooserDialog.searchText = ""
-            appChooserDialog.allApps = root.paneBaseModel(root.activePane).allInstalledApps()
-            appSearchField.inputItem.forceActiveFocus()
-        }
-
-        onClosed: {
-            appChooserDialog.allApps = []
-            if (propertiesDialog.visible && propertiesDialog.props.mimeType)
-                propertiesDialog.apps = propertiesDialog.fileModelRef.availableApps(propertiesDialog.props.mimeType)
-        }
-
-        initialFocusItem: appSearchField.inputItem
-
-        Q.TextField {
-            id: appSearchField
-            Layout.fillWidth: true
-            placeholder: "Search applications\u2026"
-            variant: "filled"
-            onTextEdited: (text) => appChooserDialog.searchText = text
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(360, Math.max(36, appListView.contentHeight))
-            color: "transparent"
-            clip: true
-
-            ListView {
-                id: appListView
+        active: false
+        sourceComponent: Component {
+            Q.Dialog {
+                id: appChooserDialog
                 anchors.fill: parent
-                model: {
-                    var query = appChooserDialog.searchText.toLowerCase()
-                    if (query === "")
-                        return appChooserDialog.allApps
-                    return appChooserDialog.allApps.filter(function(app) {
-                        return app.name.toLowerCase().indexOf(query) >= 0
-                    })
-                }
-                delegate: Rectangle {
-                    required property var modelData
-                    required property int index
-                    width: appListView.width
-                    height: 40
-                    radius: Theme.radiusSmall
-                    color: delegateHover.hovered
-                        ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
-                        : "transparent"
+                title: "Choose Application"
+                dialogWidth: 400
+                z: 1100
 
-                    HoverHandler {
-                        id: delegateHover
-                    }
+                property string filePath: ""
+                property string mimeType: ""
+                property var allApps: []
+                property string searchText: ""
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
-                        spacing: 10
-
-                        Image {
-                            id: appChooserIcon
-                            source: modelData.iconName
-                                ? ("image://icon/" + modelData.iconName + "?theme=" + config.iconTheme)
-                                : ""
-                            sourceSize: Qt.size(22, 22)
-                            Layout.preferredWidth: 22
-                            Layout.preferredHeight: 22
-                            Layout.alignment: Qt.AlignVCenter
-                            visible: modelData.iconName && status === Image.Ready
-                        }
-
-                        Text {
-                            textFormat: Text.PlainText
-                            text: modelData.name
-                            color: Theme.text
-                            font.pointSize: Theme.fontNormal
-                            Layout.fillWidth: true
-                            Layout.alignment: Qt.AlignVCenter
-                            elide: Text.ElideRight
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    fileOps.openFileWith(appChooserDialog.filePath, modelData.desktopFile)
-                                    appChooserDialog.close()
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            id: setDefaultBtn
-                            Layout.preferredWidth: setDefaultLabel.implicitWidth + 16
-                            Layout.preferredHeight: 24
-                            Layout.alignment: Qt.AlignVCenter
-                            radius: Theme.radiusSmall
-                            color: setDefaultMa.containsMouse
-                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
-                                : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
-                            visible: delegateHover.hovered && appChooserDialog.mimeType !== ""
-
-                            Text {
-                                id: setDefaultLabel
-                                anchors.centerIn: parent
-                                text: "Set Default"
-                                color: Theme.accent
-                                font.pointSize: Theme.fontSmall
-                                font.weight: Font.DemiBold
-                            }
-
-                            MouseArea {
-                                id: setDefaultMa
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.paneBaseModel(root.activePane).setDefaultApp(appChooserDialog.mimeType, modelData.desktopFile)
-                                    appChooserDialog.close()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Text {
-            visible: appListView.count === 0
-            text: "No applications found"
-            color: Theme.muted
-            font.pointSize: Theme.fontSmall
-            Layout.alignment: Qt.AlignHCenter
-        }
-    }
-
-    // ── Properties dialog ──────────────────────────────────────────────────
-    Item {
-        id: propertiesDialog
-        objectName: "propertiesDialog"
-        anchors.fill: parent
-        visible: false
-        z: 1000
-        focus: visible
-        Keys.onPressed: (event) => {
-            if (event.key === Qt.Key_Escape) {
-                propertiesDialog.close()
-                event.accepted = true
-            }
-        }
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "File properties"
-
-        property var props: ({})
-        property var apps: []
-        property var fileModelRef: fsModel
-        property int currentTab: 0  // 0=General, 1=Permissions, 2=Open With
-        property string folderDiskUsageText: ""
-        property bool folderDiskUsagePending: false
-        property int folderDiskUsageRequestId: -1
-
-        function cancelFolderDiskUsageRequest() {
-            if (folderDiskUsageRequestId >= 0)
-                diskUsageService.cancelRequest(folderDiskUsageRequestId)
-            folderDiskUsageRequestId = -1
-        }
-
-        function refreshFolderDiskUsage() {
-            cancelFolderDiskUsageRequest()
-
-            if (!props.isDir || props.isTrashItem || !root.isLocalPath(props.path)) {
-                folderDiskUsageText = ""
-                folderDiskUsagePending = false
-                return
-            }
-
-            folderDiskUsagePending = true
-            folderDiskUsageText = "Calculating..."
-            folderDiskUsageRequestId = diskUsageService.requestSize([props.path])
-        }
-
-        property var _metadataKeys: []
-        property string _metadataHint: ""
-
-        function showProperties(path) {
-            fileModelRef = root.paneBaseModel(root.activePane) || fsModel
-            props = fileModelRef.fileProperties(path)
-            currentTab = 0
-            propsTabs.currentIndex = 0
-            refreshFolderDiskUsage()
-            if (!props.isDir && props.mimeType)
-                apps = fileModelRef.availableApps(props.mimeType)
-            else
-                apps = []
-
-            // Extract rich metadata
-            var md = (fileOps.isRemotePath(path) || fileOps.isSlowPath(path)) ? ({}) : metadataExtractor.extract(path)
-            var keys = Object.keys(md)
-            var result = []
-            for (var i = 0; i < keys.length; ++i) {
-                if (md[keys[i]] !== "")
-                    result.push({ label: keys[i], value: String(md[keys[i]]) })
-            }
-            _metadataKeys = result
-            _metadataHint = (fileOps.isRemotePath(path) || fileOps.isSlowPath(path)) ? "" : metadataExtractor.missingDepsHint(props.mimeType || "")
-
-            visible = true
-            propertiesDialog.forceActiveFocus()
-            propsBox.opacity = 0
-            propsBox.scale = 0.88
-            propsBox.yOffset = -8
-            propsOpenAnim.start()
-        }
-        function close() {
-            cancelFolderDiskUsageRequest()
-            propsCloseAnim.start()
-        }
-
-        ParallelAnimation {
-            id: propsOpenAnim
-            NumberAnimation {
-                target: propsBox; property: "opacity"
-                from: 0; to: 1; duration: Theme.animDurationFast
-                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
-            }
-            NumberAnimation {
-                target: propsBox; property: "scale"
-                from: 0.88; to: 1; duration: Theme.animDurationSlow
-                easing.type: Easing.OutBack
-                easing.overshoot: 0.8
-            }
-            NumberAnimation {
-                target: propsBox; property: "yOffset"
-                from: -8; to: 0; duration: Theme.animDuration
-                easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
-            }
-        }
-        SequentialAnimation {
-            id: propsCloseAnim
-            ParallelAnimation {
-                NumberAnimation {
-                    target: propsBox; property: "opacity"
-                    to: 0; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-                NumberAnimation {
-                    target: propsBox; property: "scale"
-                    to: 0.92; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-                NumberAnimation {
-                    target: propsBox; property: "yOffset"
-                    to: -4; duration: Theme.animDurationFast
-                    easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
-                }
-            }
-            ScriptAction { script: { propertiesDialog.visible = false; root.scheduleActivePaneFocus() } }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: propertiesDialog.close()
-        }
-
-        Item {
-            id: propsBox
-            width: Math.min(Math.round(420 * Theme.uiScale), parent.width - 32)
-            height: propsOuterCol.height
-            anchors.centerIn: parent
-            opacity: 0; scale: 0.88; transformOrigin: Item.Center
-            property real yOffset: 0
-            transform: Translate { y: propsBox.yOffset }
-
-            // Access dropdown options
-            property var accessOptions: ["None", "Read only", "Read & Write", "Read, Write & Execute"]
-
-            Rectangle {
-                anchors.fill: parent
-                color: Theme.mantle
-                radius: Theme.radiusMedium
-                border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                border.width: 1
-            }
-
-            Column {
-                id: propsOuterCol
-                width: parent.width
-                spacing: 0
-
-                // ── Hero: icon + name + kind + size ──
-                Item {
-                    width: parent.width; height: 88
-                    Rectangle {
-                        id: propsIconBg; width: 52; height: 52; radius: Theme.radiusMedium
-                        color: Theme.surface
-                        anchors.left: parent.left; anchors.leftMargin: 24; anchors.verticalCenter: parent.verticalCenter
-                        Image {
-                            anchors.centerIn: parent; width: 32; height: 32
-                            source: propertiesDialog.props.iconName
-                                ? ("image://icon/" + propertiesDialog.props.iconName + "?theme=" + config.iconTheme)
-                                : ""
-                            sourceSize: Qt.size(32, 32); smooth: true
-                        }
-                    }
-                    Column {
-                        anchors.left: propsIconBg.right; anchors.leftMargin: 14
-                        anchors.right: parent.right; anchors.rightMargin: 24
-                        anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                        Text {
-                            textFormat: Text.PlainText
-                            text: propertiesDialog.props.name || ""; color: Theme.text
-                            font.pixelSize: 15; font.weight: Font.DemiBold
-                            elide: Text.ElideMiddle; width: parent.width
-                        }
-                        Text {
-                            text: { var p = propertiesDialog.props; return !p.mimeDescription ? "" : p.isDir ? "Folder" : p.mimeDescription }
-                            color: Theme.subtext; font.pointSize: Theme.fontSmall; elide: Text.ElideRight; width: parent.width
-                        }
-                    }
+                onOpened: {
+                    appSearchField.text = ""
+                    appChooserDialog.searchText = ""
+                    appChooserDialog.allApps = root.paneBaseModel(root.activePane).allInstalledApps()
+                    appSearchField.inputItem.forceActiveFocus()
                 }
 
-                // ── Tab bar ──
-                Q.Tabs {
-                    id: propsTabs
-                    width: parent.width
-                    model: propertiesDialog.props.canEditPermissions === false ? ["General"] : ["General", "Permissions"]
-                    currentIndex: propertiesDialog.currentTab
-                    onTabChanged: (index) => propertiesDialog.currentTab = index
+                onClosed: {
+                    appChooserDialog.allApps = []
+                    if (root.isShown(root.propertiesDialog) && root.propertiesDialog.props.mimeType)
+                        root.propertiesDialog.apps = root.propertiesDialog.fileModelRef.availableApps(root.propertiesDialog.props.mimeType)
                 }
 
-                // ── Tab content slider ──
-                Item {
-                    id: tabSlider
-                    width: parent.width
-                    height: propertiesDialog.currentTab === 0 ? generalTab.height : permissionsTab.height
+                initialFocusItem: appSearchField.inputItem
+
+                Q.TextField {
+                    id: appSearchField
+                    Layout.fillWidth: true
+                    placeholder: "Search applications\u2026"
+                    variant: "filled"
+                    onTextEdited: (text) => appChooserDialog.searchText = text
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(360, Math.max(36, appListView.contentHeight))
+                    color: "transparent"
                     clip: true
-                    Behavior on height { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
 
-                    Row {
-                        id: tabSliderRow
-                        x: -propertiesDialog.currentTab * tabSlider.width
-                        Behavior on x { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
-
-                // ══════════════════════════════════════════════
-                // TAB 0: General
-                // ══════════════════════════════════════════════
-                Column {
-                    id: generalTab
-                    width: tabSlider.width; spacing: 0
-
-                    // Label column fits the widest label in the current font (#39)
-                    FontMetrics { id: propLabelMetrics; font.pointSize: Theme.fontSmall }
-                    property real labelWidth: {
-                        var labels = ["Kind", "Location", "Deleted", "Link target", "Created", "Modified",
-                                      "Accessed", "Size", "Disk usage", "Content", "Capacity", "Usage"]
-                        var keys = propertiesDialog._metadataKeys
-                        for (var i = 0; i < keys.length; ++i)
-                            labels.push(keys[i].label)
-                        var w = 80
-                        for (var j = 0; j < labels.length; ++j)
-                            w = Math.max(w, Math.ceil(propLabelMetrics.advanceWidth(labels[j])))
-                        return w
-                    }
-
-                    // helper component for a property row
-                    component PropRow: Item {
-                        property string label
-                        property string value
-                        property bool show: true
-                        width: parent.width; height: show ? Math.max(28, propValue.implicitHeight + 10) : 0; visible: show
-                        Text { text: label; color: Theme.subtext; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.baseline: propValue.baseline; width: Math.max(generalTab.labelWidth, implicitWidth) }
-                        Text {
-                            id: propValue
-                            text: value; color: Theme.text; font.pointSize: Theme.fontSmall
-                            anchors.left: parent.left; anchors.leftMargin: Math.max(generalTab.labelWidth, propLabelMetrics.advanceWidth(label)) + 8
-                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere; maximumLineCount: 3; elide: Text.ElideRight
+                    ListView {
+                        id: appListView
+                        anchors.fill: parent
+                        model: {
+                            var query = appChooserDialog.searchText.toLowerCase()
+                            if (query === "")
+                                return appChooserDialog.allApps
+                            return appChooserDialog.allApps.filter(function(app) {
+                                return app.name.toLowerCase().indexOf(query) >= 0
+                            })
                         }
-                    }
+                        delegate: Rectangle {
+                            required property var modelData
+                            required property int index
+                            width: appListView.width
+                            height: 40
+                            radius: Theme.radiusSmall
+                            color: delegateHover.hovered
+                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
+                                : "transparent"
 
-                    Item { width: 1; height: 8 }
-
-                    // Info rows
-                    Column {
-                        anchors.left: parent.left; anchors.right: parent.right
-                        anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
-
-                        PropRow { label: "Kind"; value: { var p = propertiesDialog.props; return p.isDir ? "Folder" : (p.mimeDescription || "") } }
-                        PropRow { label: "Location"; value: propertiesDialog.props.parentDir || "" }
-                        PropRow { label: "Deleted"; value: propertiesDialog.props.deleted || ""; show: (propertiesDialog.props.deleted || "") !== "" }
-                        PropRow { label: "Link target"; value: propertiesDialog.props.symlinkTarget || ""; show: propertiesDialog.props.isSymlink || false }
-                    }
-
-                    // Separator
-                    Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
-
-                    // Timestamps
-                    Column {
-                        anchors.left: parent.left; anchors.right: parent.right
-                        anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
-
-                        PropRow { label: "Created"; value: propertiesDialog.props.created || "" }
-                        PropRow { label: "Modified"; value: propertiesDialog.props.modified || "" }
-                        PropRow { label: "Accessed"; value: propertiesDialog.props.accessed || "" }
-                    }
-
-                    Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
-
-                    // Size section
-                    Column {
-                        anchors.left: parent.left; anchors.right: parent.right
-                        anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
-
-                        PropRow {
-                            label: "Size"
-                            value: propertiesDialog.props.sizeText || ""
-                            show: !(propertiesDialog.props.isDir || false)
-                        }
-                        PropRow {
-                            label: "Disk usage"
-                            value: propertiesDialog.folderDiskUsageText
-                            show: propertiesDialog.props.isDir || false
-                        }
-                        PropRow { label: "Content"; value: propertiesDialog.props.contentText || ""; show: propertiesDialog.props.isDir || false }
-                    }
-
-                    // Rich metadata (images, audio, video, PDF)
-                    Q.Separator {
-                        visible: propertiesDialog._metadataKeys.length > 0
-                        width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter
-                    }
-                    Column {
-                        visible: propertiesDialog._metadataKeys.length > 0
-                        anchors.left: parent.left; anchors.right: parent.right
-                        anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
-
-                        Repeater {
-                            model: propertiesDialog._metadataKeys
-                            delegate: PropRow { label: modelData.label; value: modelData.value }
-                        }
-
-                        Text {
-                            visible: propertiesDialog._metadataHint !== ""
-                            width: parent.width
-                            text: propertiesDialog._metadataHint
-                            color: Theme.muted
-                            font.pointSize: Theme.fontSmall
-                            font.italic: true
-                            wrapMode: Text.WordWrap
-                            topPadding: 4; bottomPadding: 4
-                        }
-                    }
-
-                    Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
-
-                    // Disk usage
-                    Column {
-                        anchors.left: parent.left; anchors.right: parent.right
-                        anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 4
-                        visible: propertiesDialog.props.diskTotal !== undefined
-
-                        Item { width: 1; height: 4 }
-
-                        PropRow { label: "Capacity"; value: propertiesDialog.props.diskTotal || "" }
-
-                        // Usage bar
-                        Item {
-                            width: parent.width; height: 28
-                            Text { text: "Usage"; color: Theme.subtext; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: generalTab.labelWidth }
-                            Column {
-                                anchors.left: parent.left; anchors.leftMargin: generalTab.labelWidth + 8
-                                anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: 4
-
-                                // Bar
-                                Rectangle {
-                                    width: parent.width; height: 6; radius: 3
-                                    color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-                                    Rectangle {
-                                        width: parent.width * (propertiesDialog.props.diskUsedPercent || 0)
-                                        height: parent.height; radius: 3
-                                        color: (propertiesDialog.props.diskUsedPercent || 0) > 0.9 ? "#e74c3c" : Theme.accent
-                                    }
-                                }
-
-                                // Label
-                                Text {
-                                    text: (propertiesDialog.props.diskUsed || "") + " used (" + (propertiesDialog.props.diskUsedPctText || "") + ")  |  " +
-                                          (propertiesDialog.props.diskFree || "") + " free (" + (propertiesDialog.props.diskFreePctText || "") + ")"
-                                    color: Theme.subtext; font.pixelSize: 10
-                                }
+                            HoverHandler {
+                                id: delegateHover
                             }
-                        }
 
-                        Item { width: 1; height: 4 }
-                    }
-
-                    // Open With (files only)
-                    Q.Collapsible {
-                        visible: !(propertiesDialog.props.isDir) && propertiesDialog.apps.length > 0
-                        title: {
-                            var apps = propertiesDialog.apps
-                            for (var i = 0; i < apps.length; i++)
-                                if (apps[i].isDefault) return "Open with: " + apps[i].name
-                            return apps.length > 0 ? "Open with: " + apps[0].name : "Open with"
-                        }
-                        width: parent.width
-
-                        Repeater {
-                            model: propertiesDialog.apps
-                            delegate: Rectangle {
-                                width: parent ? parent.width : 0; height: 30; radius: Theme.radiusSmall
-                                color: owItemMa.containsMouse
-                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
-                                    : "transparent"
-                                Layout.fillWidth: true
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 10
 
                                 Image {
-                                    id: owAppIcon
+                                    id: appChooserIcon
                                     source: modelData.iconName
                                         ? ("image://icon/" + modelData.iconName + "?theme=" + config.iconTheme)
                                         : ""
-                                    sourceSize: Qt.size(18, 18)
-                                    width: 18; height: 18
-                                    anchors.left: parent.left; anchors.leftMargin: 10
-                                    anchors.verticalCenter: parent.verticalCenter
+                                    sourceSize: Qt.size(22, 22)
+                                    Layout.preferredWidth: 22
+                                    Layout.preferredHeight: 22
+                                    Layout.alignment: Qt.AlignVCenter
                                     visible: modelData.iconName && status === Image.Ready
                                 }
 
                                 Text {
                                     textFormat: Text.PlainText
                                     text: modelData.name
-                                    color: modelData.isDefault ? Theme.accent : Theme.text
-                                    font.pointSize: Theme.fontSmall
-                                    font.weight: modelData.isDefault ? Font.DemiBold : Font.Normal
-                                    anchors.left: owAppIcon.visible ? owAppIcon.right : parent.left
-                                    anchors.leftMargin: owAppIcon.visible ? 8 : 10
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    anchors.right: owItemBadge.left; anchors.rightMargin: 4
+                                    color: Theme.text
+                                    font.pointSize: Theme.fontNormal
+                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignVCenter
                                     elide: Text.ElideRight
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            fileOps.openFileWith(appChooserDialog.filePath, modelData.desktopFile)
+                                            appChooserDialog.close()
+                                        }
+                                    }
                                 }
 
-                                IconCheck {
-                                    id: owItemBadge
-                                    visible: modelData.isDefault
-                                    size: 14; color: Theme.accent
-                                    anchors.right: parent.right; anchors.rightMargin: 10
-                                    anchors.verticalCenter: parent.verticalCenter
+                                Rectangle {
+                                    id: setDefaultBtn
+                                    Layout.preferredWidth: setDefaultLabel.implicitWidth + 16
+                                    Layout.preferredHeight: 24
+                                    Layout.alignment: Qt.AlignVCenter
+                                    radius: Theme.radiusSmall
+                                    color: setDefaultMa.containsMouse
+                                        ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
+                                        : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
+                                    visible: delegateHover.hovered && appChooserDialog.mimeType !== ""
+
+                                    Text {
+                                        id: setDefaultLabel
+                                        anchors.centerIn: parent
+                                        text: "Set Default"
+                                        color: Theme.accent
+                                        font.pointSize: Theme.fontSmall
+                                        font.weight: Font.DemiBold
+                                    }
+
+                                    MouseArea {
+                                        id: setDefaultMa
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.paneBaseModel(root.activePane).setDefaultApp(appChooserDialog.mimeType, modelData.desktopFile)
+                                            appChooserDialog.close()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    visible: appListView.count === 0
+                    text: "No applications found"
+                    color: Theme.muted
+                    font.pointSize: Theme.fontSmall
+                    Layout.alignment: Qt.AlignHCenter
+                }
+            }
+        }
+    }
+    readonly property var appChooserDialog: appChooserDialogLoader.item
+
+    // ── Properties dialog ──────────────────────────────────────────────────
+    Loader {
+        id: propertiesDialogLoader
+        objectName: "propertiesDialogLoader"
+        anchors.fill: parent
+        z: 1000
+        active: false
+        sourceComponent: Component {
+            Item {
+                id: propertiesDialog
+                objectName: "propertiesDialog"
+                anchors.fill: parent
+                visible: false
+                z: 1000
+                focus: visible
+                Keys.onPressed: (event) => {
+                    if (event.key === Qt.Key_Escape) {
+                        propertiesDialog.close()
+                        event.accepted = true
+                    }
+                }
+                Accessible.role: Accessible.Dialog
+                Accessible.name: "File properties"
+
+                property var props: ({})
+                property var apps: []
+                property var fileModelRef: fsModel
+                property int currentTab: 0  // 0=General, 1=Permissions, 2=Open With
+                property string folderDiskUsageText: ""
+                property bool folderDiskUsagePending: false
+                property int folderDiskUsageRequestId: -1
+
+                function cancelFolderDiskUsageRequest() {
+                    if (folderDiskUsageRequestId >= 0)
+                        diskUsageService.cancelRequest(folderDiskUsageRequestId)
+                    folderDiskUsageRequestId = -1
+                }
+
+                function refreshFolderDiskUsage() {
+                    cancelFolderDiskUsageRequest()
+
+                    if (!props.isDir || props.isTrashItem || !root.isLocalPath(props.path)) {
+                        folderDiskUsageText = ""
+                        folderDiskUsagePending = false
+                        return
+                    }
+
+                    folderDiskUsagePending = true
+                    folderDiskUsageText = "Calculating..."
+                    folderDiskUsageRequestId = diskUsageService.requestSize([props.path])
+                }
+
+                property var _metadataKeys: []
+                property string _metadataHint: ""
+
+                function showProperties(path) {
+                    fileModelRef = root.paneBaseModel(root.activePane) || fsModel
+                    props = fileModelRef.fileProperties(path)
+                    currentTab = 0
+                    propsTabs.currentIndex = 0
+                    refreshFolderDiskUsage()
+                    if (!props.isDir && props.mimeType)
+                        apps = fileModelRef.availableApps(props.mimeType)
+                    else
+                        apps = []
+
+                    // Extract rich metadata
+                    var md = (fileOps.isRemotePath(path) || fileOps.isSlowPath(path)) ? ({}) : metadataExtractor.extract(path)
+                    var keys = Object.keys(md)
+                    var result = []
+                    for (var i = 0; i < keys.length; ++i) {
+                        if (md[keys[i]] !== "")
+                            result.push({ label: keys[i], value: String(md[keys[i]]) })
+                    }
+                    _metadataKeys = result
+                    _metadataHint = (fileOps.isRemotePath(path) || fileOps.isSlowPath(path)) ? "" : metadataExtractor.missingDepsHint(props.mimeType || "")
+
+                    visible = true
+                    propertiesDialog.forceActiveFocus()
+                    propsBox.opacity = 0
+                    propsBox.scale = 0.88
+                    propsBox.yOffset = -8
+                    propsOpenAnim.start()
+                }
+                function close() {
+                    cancelFolderDiskUsageRequest()
+                    propsCloseAnim.start()
+                }
+
+                ParallelAnimation {
+                    id: propsOpenAnim
+                    NumberAnimation {
+                        target: propsBox; property: "opacity"
+                        from: 0; to: 1; duration: Theme.animDurationFast
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+                    }
+                    NumberAnimation {
+                        target: propsBox; property: "scale"
+                        from: 0.88; to: 1; duration: Theme.animDurationSlow
+                        easing.type: Easing.OutBack
+                        easing.overshoot: 0.8
+                    }
+                    NumberAnimation {
+                        target: propsBox; property: "yOffset"
+                        from: -8; to: 0; duration: Theme.animDuration
+                        easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve
+                    }
+                }
+                SequentialAnimation {
+                    id: propsCloseAnim
+                    ParallelAnimation {
+                        NumberAnimation {
+                            target: propsBox; property: "opacity"
+                            to: 0; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                        NumberAnimation {
+                            target: propsBox; property: "scale"
+                            to: 0.92; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                        NumberAnimation {
+                            target: propsBox; property: "yOffset"
+                            to: -4; duration: Theme.animDurationFast
+                            easing.type: Theme.animEasingExit; easing.bezierCurve: Theme.animBezierCurve
+                        }
+                    }
+                    ScriptAction { script: { propertiesDialog.visible = false; root.scheduleActivePaneFocus() } }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: propertiesDialog.close()
+                }
+
+                Item {
+                    id: propsBox
+                    width: Math.min(Math.round(420 * Theme.uiScale), parent.width - 32)
+                    height: propsOuterCol.height
+                    anchors.centerIn: parent
+                    opacity: 0; scale: 0.88; transformOrigin: Item.Center
+                    property real yOffset: 0
+                    transform: Translate { y: propsBox.yOffset }
+
+                    // Access dropdown options
+                    property var accessOptions: ["None", "Read only", "Read & Write", "Read, Write & Execute"]
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: Theme.mantle
+                        radius: Theme.radiusMedium
+                        border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                        border.width: 1
+                    }
+
+                    Column {
+                        id: propsOuterCol
+                        width: parent.width
+                        spacing: 0
+
+                        // ── Hero: icon + name + kind + size ──
+                        Item {
+                            width: parent.width; height: 88
+                            Rectangle {
+                                id: propsIconBg; width: 52; height: 52; radius: Theme.radiusMedium
+                                color: Theme.surface
+                                anchors.left: parent.left; anchors.leftMargin: 24; anchors.verticalCenter: parent.verticalCenter
+                                Image {
+                                    anchors.centerIn: parent; width: 32; height: 32
+                                    source: propertiesDialog.props.iconName
+                                        ? ("image://icon/" + propertiesDialog.props.iconName + "?theme=" + config.iconTheme)
+                                        : ""
+                                    sourceSize: Qt.size(32, 32); smooth: true
+                                }
+                            }
+                            Column {
+                                anchors.left: propsIconBg.right; anchors.leftMargin: 14
+                                anchors.right: parent.right; anchors.rightMargin: 24
+                                anchors.verticalCenter: parent.verticalCenter; spacing: 2
+                                Text {
+                                    textFormat: Text.PlainText
+                                    text: propertiesDialog.props.name || ""; color: Theme.text
+                                    font.pixelSize: 15; font.weight: Font.DemiBold
+                                    elide: Text.ElideMiddle; width: parent.width
+                                }
+                                Text {
+                                    text: { var p = propertiesDialog.props; return !p.mimeDescription ? "" : p.isDir ? "Folder" : p.mimeDescription }
+                                    color: Theme.subtext; font.pointSize: Theme.fontSmall; elide: Text.ElideRight; width: parent.width
+                                }
+                            }
+                        }
+
+                        // ── Tab bar ──
+                        Q.Tabs {
+                            id: propsTabs
+                            width: parent.width
+                            model: propertiesDialog.props.canEditPermissions === false ? ["General"] : ["General", "Permissions"]
+                            currentIndex: propertiesDialog.currentTab
+                            onTabChanged: (index) => propertiesDialog.currentTab = index
+                        }
+
+                        // ── Tab content slider ──
+                        Item {
+                            id: tabSlider
+                            width: parent.width
+                            height: propertiesDialog.currentTab === 0 ? generalTab.height : permissionsTab.height
+                            clip: true
+                            Behavior on height { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
+
+                            Row {
+                                id: tabSliderRow
+                                x: -propertiesDialog.currentTab * tabSlider.width
+                                Behavior on x { NumberAnimation { duration: Theme.animDurationSlow; easing.type: Theme.animEasingEnter; easing.bezierCurve: Theme.animBezierCurve } }
+
+                        // ══════════════════════════════════════════════
+                        // TAB 0: General
+                        // ══════════════════════════════════════════════
+                        Column {
+                            id: generalTab
+                            width: tabSlider.width; spacing: 0
+
+                            // Label column fits the widest label in the current font (#39)
+                            FontMetrics { id: propLabelMetrics; font.pointSize: Theme.fontSmall }
+                            property real labelWidth: {
+                                var labels = ["Kind", "Location", "Deleted", "Link target", "Created", "Modified",
+                                              "Accessed", "Size", "Disk usage", "Content", "Capacity", "Usage"]
+                                var keys = propertiesDialog._metadataKeys
+                                for (var i = 0; i < keys.length; ++i)
+                                    labels.push(keys[i].label)
+                                var w = 80
+                                for (var j = 0; j < labels.length; ++j)
+                                    w = Math.max(w, Math.ceil(propLabelMetrics.advanceWidth(labels[j])))
+                                return w
+                            }
+
+                            // helper component for a property row
+                            component PropRow: Item {
+                                property string label
+                                property string value
+                                property bool show: true
+                                width: parent.width; height: show ? Math.max(28, propValue.implicitHeight + 10) : 0; visible: show
+                                Text { text: label; color: Theme.subtext; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.baseline: propValue.baseline; width: Math.max(generalTab.labelWidth, implicitWidth) }
+                                Text {
+                                    id: propValue
+                                    text: value; color: Theme.text; font.pointSize: Theme.fontSmall
+                                    anchors.left: parent.left; anchors.leftMargin: Math.max(generalTab.labelWidth, propLabelMetrics.advanceWidth(label)) + 8
+                                    anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere; maximumLineCount: 3; elide: Text.ElideRight
+                                }
+                            }
+
+                            Item { width: 1; height: 8 }
+
+                            // Info rows
+                            Column {
+                                anchors.left: parent.left; anchors.right: parent.right
+                                anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
+
+                                PropRow { label: "Kind"; value: { var p = propertiesDialog.props; return p.isDir ? "Folder" : (p.mimeDescription || "") } }
+                                PropRow { label: "Location"; value: propertiesDialog.props.parentDir || "" }
+                                PropRow { label: "Deleted"; value: propertiesDialog.props.deleted || ""; show: (propertiesDialog.props.deleted || "") !== "" }
+                                PropRow { label: "Link target"; value: propertiesDialog.props.symlinkTarget || ""; show: propertiesDialog.props.isSymlink || false }
+                            }
+
+                            // Separator
+                            Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
+
+                            // Timestamps
+                            Column {
+                                anchors.left: parent.left; anchors.right: parent.right
+                                anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
+
+                                PropRow { label: "Created"; value: propertiesDialog.props.created || "" }
+                                PropRow { label: "Modified"; value: propertiesDialog.props.modified || "" }
+                                PropRow { label: "Accessed"; value: propertiesDialog.props.accessed || "" }
+                            }
+
+                            Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
+
+                            // Size section
+                            Column {
+                                anchors.left: parent.left; anchors.right: parent.right
+                                anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
+
+                                PropRow {
+                                    label: "Size"
+                                    value: propertiesDialog.props.sizeText || ""
+                                    show: !(propertiesDialog.props.isDir || false)
+                                }
+                                PropRow {
+                                    label: "Disk usage"
+                                    value: propertiesDialog.folderDiskUsageText
+                                    show: propertiesDialog.props.isDir || false
+                                }
+                                PropRow { label: "Content"; value: propertiesDialog.props.contentText || ""; show: propertiesDialog.props.isDir || false }
+                            }
+
+                            // Rich metadata (images, audio, video, PDF)
+                            Q.Separator {
+                                visible: propertiesDialog._metadataKeys.length > 0
+                                width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter
+                            }
+                            Column {
+                                visible: propertiesDialog._metadataKeys.length > 0
+                                anchors.left: parent.left; anchors.right: parent.right
+                                anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 0
+
+                                Repeater {
+                                    model: propertiesDialog._metadataKeys
+                                    delegate: PropRow { label: modelData.label; value: modelData.value }
                                 }
 
-                                MouseArea {
-                                    id: owItemMa; anchors.fill: parent; hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (!modelData.isDefault) {
-                                            propertiesDialog.fileModelRef.setDefaultApp(propertiesDialog.props.mimeType, modelData.desktopFile)
-                                            propertiesDialog.apps = propertiesDialog.fileModelRef.availableApps(propertiesDialog.props.mimeType)
+                                Text {
+                                    visible: propertiesDialog._metadataHint !== ""
+                                    width: parent.width
+                                    text: propertiesDialog._metadataHint
+                                    color: Theme.muted
+                                    font.pointSize: Theme.fontSmall
+                                    font.italic: true
+                                    wrapMode: Text.WordWrap
+                                    topPadding: 4; bottomPadding: 4
+                                }
+                            }
+
+                            Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
+
+                            // Disk usage
+                            Column {
+                                anchors.left: parent.left; anchors.right: parent.right
+                                anchors.leftMargin: 24; anchors.rightMargin: 24; spacing: 4
+                                visible: propertiesDialog.props.diskTotal !== undefined
+
+                                Item { width: 1; height: 4 }
+
+                                PropRow { label: "Capacity"; value: propertiesDialog.props.diskTotal || "" }
+
+                                // Usage bar
+                                Item {
+                                    width: parent.width; height: 28
+                                    Text { text: "Usage"; color: Theme.subtext; font.pointSize: Theme.fontSmall; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; width: generalTab.labelWidth }
+                                    Column {
+                                        anchors.left: parent.left; anchors.leftMargin: generalTab.labelWidth + 8
+                                        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: 4
+
+                                        // Bar
+                                        Rectangle {
+                                            width: parent.width; height: 6; radius: 3
+                                            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                                            Rectangle {
+                                                width: parent.width * (propertiesDialog.props.diskUsedPercent || 0)
+                                                height: parent.height; radius: 3
+                                                color: (propertiesDialog.props.diskUsedPercent || 0) > 0.9 ? "#e74c3c" : Theme.accent
+                                            }
+                                        }
+
+                                        // Label
+                                        Text {
+                                            text: (propertiesDialog.props.diskUsed || "") + " used (" + (propertiesDialog.props.diskUsedPctText || "") + ")  |  " +
+                                                  (propertiesDialog.props.diskFree || "") + " free (" + (propertiesDialog.props.diskFreePctText || "") + ")"
+                                            color: Theme.subtext; font.pixelSize: 10
+                                        }
+                                    }
+                                }
+
+                                Item { width: 1; height: 4 }
+                            }
+
+                            // Open With (files only)
+                            Q.Collapsible {
+                                visible: !(propertiesDialog.props.isDir) && propertiesDialog.apps.length > 0
+                                title: {
+                                    var apps = propertiesDialog.apps
+                                    for (var i = 0; i < apps.length; i++)
+                                        if (apps[i].isDefault) return "Open with: " + apps[i].name
+                                    return apps.length > 0 ? "Open with: " + apps[0].name : "Open with"
+                                }
+                                width: parent.width
+
+                                Repeater {
+                                    model: propertiesDialog.apps
+                                    delegate: Rectangle {
+                                        width: parent ? parent.width : 0; height: 30; radius: Theme.radiusSmall
+                                        color: owItemMa.containsMouse
+                                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
+                                            : "transparent"
+                                        Layout.fillWidth: true
+
+                                        Image {
+                                            id: owAppIcon
+                                            source: modelData.iconName
+                                                ? ("image://icon/" + modelData.iconName + "?theme=" + config.iconTheme)
+                                                : ""
+                                            sourceSize: Qt.size(18, 18)
+                                            width: 18; height: 18
+                                            anchors.left: parent.left; anchors.leftMargin: 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            visible: modelData.iconName && status === Image.Ready
+                                        }
+
+                                        Text {
+                                            textFormat: Text.PlainText
+                                            text: modelData.name
+                                            color: modelData.isDefault ? Theme.accent : Theme.text
+                                            font.pointSize: Theme.fontSmall
+                                            font.weight: modelData.isDefault ? Font.DemiBold : Font.Normal
+                                            anchors.left: owAppIcon.visible ? owAppIcon.right : parent.left
+                                            anchors.leftMargin: owAppIcon.visible ? 8 : 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            anchors.right: owItemBadge.left; anchors.rightMargin: 4
+                                            elide: Text.ElideRight
+                                        }
+
+                                        IconCheck {
+                                            id: owItemBadge
+                                            visible: modelData.isDefault
+                                            size: 14; color: Theme.accent
+                                            anchors.right: parent.right; anchors.rightMargin: 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+
+                                        MouseArea {
+                                            id: owItemMa; anchors.fill: parent; hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (!modelData.isDefault) {
+                                                    propertiesDialog.fileModelRef.setDefaultApp(propertiesDialog.props.mimeType, modelData.desktopFile)
+                                                    propertiesDialog.apps = propertiesDialog.fileModelRef.availableApps(propertiesDialog.props.mimeType)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // "Other Application..." button
+                                Rectangle {
+                                    width: parent ? parent.width : 0; height: 30; radius: Theme.radiusSmall
+                                    color: otherAppMa.containsMouse
+                                        ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
+                                        : "transparent"
+                                    Layout.fillWidth: true
+
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 10
+                                        spacing: 6
+
+                                        Loader {
+                                            source: "icons/IconSearch.qml"
+                                            width: 14; height: 14
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            onLoaded: {
+                                                item.size = 14
+                                                item.color = Qt.binding(() => Theme.muted)
+                                            }
+                                        }
+
+                                        Text {
+                                            text: "Other Application\u2026"
+                                            color: Theme.muted
+                                            font.pointSize: Theme.fontSmall
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: otherAppMa; anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            appChooserDialogLoader.active = true
+                                            root.appChooserDialog.filePath = propertiesDialog.props.path || ""
+                                            root.appChooserDialog.mimeType = propertiesDialog.props.mimeType || ""
+                                            root.appChooserDialog.open()
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // "Other Application..." button
-                        Rectangle {
-                            width: parent ? parent.width : 0; height: 30; radius: Theme.radiusSmall
-                            color: otherAppMa.containsMouse
-                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.1)
-                                : "transparent"
-                            Layout.fillWidth: true
+                        // ══════════════════════════════════════════════
+                        // TAB 1: Permissions
+                        // ══════════════════════════════════════════════
+                        Column {
+                            id: permissionsTab
+                            width: tabSlider.width; spacing: 0
 
-                            Row {
-                                anchors.fill: parent
-                                anchors.leftMargin: 10
-                                spacing: 6
+                            Item { width: 1; height: 12 }
 
-                                Loader {
-                                    source: "icons/IconSearch.qml"
-                                    width: 14; height: 14
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    onLoaded: {
-                                        item.size = 14
-                                        item.color = Qt.binding(() => Theme.muted)
+                            // Helper component for permission group
+                            component PermGroup: Column {
+                                property string groupLabel
+                                property string userName
+                                property int accessIdx: 0
+                                signal accessChanged(int newIdx)
+                                width: parent.width; spacing: 4
+
+                                // Group header
+                                Text {
+                                    text: groupLabel
+                                    color: Theme.text; font.pointSize: Theme.fontSmall; font.weight: Font.DemiBold
+                                    leftPadding: 24
+                                }
+
+                                // User name (if any)
+                                Text {
+                                    text: userName; visible: userName !== ""
+                                    color: Theme.subtext; font.pointSize: Theme.fontSmall
+                                    leftPadding: 36
+                                }
+
+                                // Access selector row
+                                Item {
+                                    width: parent.width; height: 34
+                                    Text {
+                                        text: "Access"
+                                        color: Theme.subtext; font.pointSize: Theme.fontSmall
+                                        anchors.left: parent.left; anchors.leftMargin: 36
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    Q.Dropdown {
+                                        model: propsBox.accessOptions
+                                        currentIndex: accessIdx
+                                        label: ""
+                                        anchors.left: parent.left; anchors.leftMargin: 100
+                                        anchors.right: parent.right; anchors.rightMargin: 24
+                                        onSelected: (index, value) => accessChanged(index)
                                     }
                                 }
 
-                                Text {
-                                    text: "Other Application\u2026"
-                                    color: Theme.muted
-                                    font.pointSize: Theme.fontSmall
-                                    anchors.verticalCenter: parent.verticalCenter
+                                Item { width: 1; height: 4 }
+                            }
+
+                            PermGroup {
+                                groupLabel: "Owner"
+                                userName: propertiesDialog.props.owner || ""
+                                accessIdx: propertiesDialog.props.ownerAccess || 0
+                                onAccessChanged: (idx) => {
+                                    propertiesDialog.fileModelRef.setFilePermissions(propertiesDialog.props.path, idx, propertiesDialog.props.groupAccess || 0, propertiesDialog.props.otherAccess || 0)
+                                    propertiesDialog.props = propertiesDialog.fileModelRef.fileProperties(propertiesDialog.props.path)
                                 }
                             }
 
-                            MouseArea {
-                                id: otherAppMa; anchors.fill: parent; hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    appChooserDialog.filePath = propertiesDialog.props.path || ""
-                                    appChooserDialog.mimeType = propertiesDialog.props.mimeType || ""
-                                    appChooserDialog.open()
+                            Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
+
+                            PermGroup {
+                                groupLabel: "Group"
+                                userName: propertiesDialog.props.group || ""
+                                accessIdx: propertiesDialog.props.groupAccess || 0
+                                onAccessChanged: (idx) => {
+                                    propertiesDialog.fileModelRef.setFilePermissions(propertiesDialog.props.path, propertiesDialog.props.ownerAccess || 0, idx, propertiesDialog.props.otherAccess || 0)
+                                    propertiesDialog.props = propertiesDialog.fileModelRef.fileProperties(propertiesDialog.props.path)
                                 }
                             }
-                        }
-                    }
-                }
 
-                // ══════════════════════════════════════════════
-                // TAB 1: Permissions
-                // ══════════════════════════════════════════════
-                Column {
-                    id: permissionsTab
-                    width: tabSlider.width; spacing: 0
+                            Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
 
-                    Item { width: 1; height: 12 }
+                            PermGroup {
+                                groupLabel: "Others"
+                                userName: ""
+                                accessIdx: propertiesDialog.props.otherAccess || 0
+                                onAccessChanged: (idx) => {
+                                    propertiesDialog.fileModelRef.setFilePermissions(propertiesDialog.props.path, propertiesDialog.props.ownerAccess || 0, propertiesDialog.props.groupAccess || 0, idx)
+                                    propertiesDialog.props = propertiesDialog.fileModelRef.fileProperties(propertiesDialog.props.path)
+                                }
+                            }
 
-                    // Helper component for permission group
-                    component PermGroup: Column {
-                        property string groupLabel
-                        property string userName
-                        property int accessIdx: 0
-                        signal accessChanged(int newIdx)
-                        width: parent.width; spacing: 4
-
-                        // Group header
-                        Text {
-                            text: groupLabel
-                            color: Theme.text; font.pointSize: Theme.fontSmall; font.weight: Font.DemiBold
-                            leftPadding: 24
+                            Item { width: 1; height: 8 }
                         }
 
-                        // User name (if any)
-                        Text {
-                            text: userName; visible: userName !== ""
-                            color: Theme.subtext; font.pointSize: Theme.fontSmall
-                            leftPadding: 36
-                        }
+                            } // Row (tabSliderRow)
+                        } // Item (tabSlider)
 
-                        // Access selector row
+                        // ── Close button ──
                         Item {
-                            width: parent.width; height: 34
-                            Text {
-                                text: "Access"
-                                color: Theme.subtext; font.pointSize: Theme.fontSmall
-                                anchors.left: parent.left; anchors.leftMargin: 36
+                            width: parent.width; height: 48
+                            Q.Button {
+                                text: "Close"
+                                variant: "primary"
+                                size: "small"
+                                anchors.right: parent.right; anchors.rightMargin: 20
                                 anchors.verticalCenter: parent.verticalCenter
-                            }
-                            Q.Dropdown {
-                                model: propsBox.accessOptions
-                                currentIndex: accessIdx
-                                label: ""
-                                anchors.left: parent.left; anchors.leftMargin: 100
-                                anchors.right: parent.right; anchors.rightMargin: 24
-                                onSelected: (index, value) => accessChanged(index)
+                                onClicked: propertiesDialog.close()
                             }
                         }
-
-                        Item { width: 1; height: 4 }
                     }
+                }
+            }
+        }
+    }
+    readonly property var propertiesDialog: propertiesDialogLoader.item
 
-                    PermGroup {
-                        groupLabel: "Owner"
-                        userName: propertiesDialog.props.owner || ""
-                        accessIdx: propertiesDialog.props.ownerAccess || 0
-                        onAccessChanged: (idx) => {
-                            propertiesDialog.fileModelRef.setFilePermissions(propertiesDialog.props.path, idx, propertiesDialog.props.groupAccess || 0, propertiesDialog.props.otherAccess || 0)
-                            propertiesDialog.props = propertiesDialog.fileModelRef.fileProperties(propertiesDialog.props.path)
-                        }
-                    }
+    Loader {
+        id: conflictDialogLoader
+        objectName: "conflictDialogLoader"
+        anchors.fill: parent
+        z: 9998
+        active: false
+        sourceComponent: Component {
+            Q.Dialog {
+                id: conflictDialog
+                property alias errorText: conflictErrorText
+                property alias renameField: conflictRenameField
+                anchors.fill: parent
+                z: 9998
+                dialogWidth: 460
+                title: root.transferMoveOperation ? "Move Conflict" : "Copy Conflict"
+                initialFocusItem: conflictRenameField
 
-                    Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
+                property var currentItem: ({})
 
-                    PermGroup {
-                        groupLabel: "Group"
-                        userName: propertiesDialog.props.group || ""
-                        accessIdx: propertiesDialog.props.groupAccess || 0
-                        onAccessChanged: (idx) => {
-                            propertiesDialog.fileModelRef.setFilePermissions(propertiesDialog.props.path, propertiesDialog.props.ownerAccess || 0, idx, propertiesDialog.props.otherAccess || 0)
-                            propertiesDialog.props = propertiesDialog.fileModelRef.fileProperties(propertiesDialog.props.path)
-                        }
-                    }
-
-                    Q.Separator { width: parent.width - 48; anchors.horizontalCenter: parent.horizontalCenter }
-
-                    PermGroup {
-                        groupLabel: "Others"
-                        userName: ""
-                        accessIdx: propertiesDialog.props.otherAccess || 0
-                        onAccessChanged: (idx) => {
-                            propertiesDialog.fileModelRef.setFilePermissions(propertiesDialog.props.path, propertiesDialog.props.ownerAccess || 0, propertiesDialog.props.groupAccess || 0, idx)
-                            propertiesDialog.props = propertiesDialog.fileModelRef.fileProperties(propertiesDialog.props.path)
-                        }
-                    }
-
-                    Item { width: 1; height: 8 }
+                onRejected: {
+                    root.resetTransferConflictState()
+                    root.scheduleActivePaneFocus()
                 }
 
-                    } // Row (tabSliderRow)
-                } // Item (tabSlider)
+                Text {
+                    Layout.fillWidth: true
+                    text: conflictDialog.currentItem.samePath
+                        ? "\"" + (conflictDialog.currentItem.sourceName || "") + "\" is already in this folder."
+                        : "\"" + (conflictDialog.currentItem.sourceName || "") + "\" already exists in the destination."
+                    color: Theme.text
+                    font.pointSize: Theme.fontNormal
+                    wrapMode: Text.WordWrap
+                }
 
-                // ── Close button ──
-                Item {
-                    width: parent.width; height: 48
+                Text {
+                    Layout.fillWidth: true
+                    text: root.transferMoveOperation
+                        ? "Choose whether to skip it, replace the existing item, or keep both with a new name."
+                        : "Choose whether to skip it, overwrite the existing item, or keep both with a new name."
+                    color: Theme.subtext
+                    font.pointSize: Theme.fontNormal
+                    wrapMode: Text.WordWrap
+                }
+
+                Q.TextField {
+                    id: conflictRenameField
+                    Layout.fillWidth: true
+                    autoFocus: true
+                    variant: "filled"
+                    placeholder: "New name"
+                    Keys.onReturnPressed: root.resolveTransferConflict("rename")
+                    Keys.onEscapePressed: conflictDialog.reject()
+                }
+
+                Text {
+                    id: conflictErrorText
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    color: Theme.error
+                    font.pointSize: Theme.fontSmall
+                    wrapMode: Text.WordWrap
+                }
+
+                RowLayout {
+                    Layout.alignment: Qt.AlignRight
+                    spacing: 12
+
                     Q.Button {
-                        text: "Close"
+                        id: cancelConflictButton
+                        text: "Cancel"
+                        variant: "ghost"
+                        size: "small"
+                        onClicked: conflictDialog.reject()
+                    }
+
+                    Q.Button {
+                        id: skipConflictButton
+                        text: "Skip"
+                        variant: "ghost"
+                        size: "small"
+                        onClicked: root.resolveTransferConflict("skip")
+                    }
+
+                    Q.Button {
+                        id: overwriteConflictButton
+                        text: root.transferMoveOperation ? "Replace" : "Overwrite"
+                        variant: "danger"
+                        size: "small"
+                        enabled: !(conflictDialog.currentItem.samePath || false)
+                        onClicked: root.resolveTransferConflict("overwrite")
+                    }
+
+                    Q.Button {
+                        id: renameConflictButton
+                        text: "Rename"
                         variant: "primary"
                         size: "small"
-                        anchors.right: parent.right; anchors.rightMargin: 20
-                        anchors.verticalCenter: parent.verticalCenter
-                        onClicked: propertiesDialog.close()
+                        onClicked: root.resolveTransferConflict("rename")
                     }
                 }
             }
         }
     }
-
-    Q.Dialog {
-        id: conflictDialog
-        anchors.fill: parent
-        z: 9998
-        dialogWidth: 460
-        title: root.transferMoveOperation ? "Move Conflict" : "Copy Conflict"
-        initialFocusItem: conflictRenameField
-
-        property var currentItem: ({})
-
-        onRejected: {
-            root.resetTransferConflictState()
-            root.scheduleActivePaneFocus()
-        }
-
-        Text {
-            Layout.fillWidth: true
-            text: conflictDialog.currentItem.samePath
-                ? "\"" + (conflictDialog.currentItem.sourceName || "") + "\" is already in this folder."
-                : "\"" + (conflictDialog.currentItem.sourceName || "") + "\" already exists in the destination."
-            color: Theme.text
-            font.pointSize: Theme.fontNormal
-            wrapMode: Text.WordWrap
-        }
-
-        Text {
-            Layout.fillWidth: true
-            text: root.transferMoveOperation
-                ? "Choose whether to skip it, replace the existing item, or keep both with a new name."
-                : "Choose whether to skip it, overwrite the existing item, or keep both with a new name."
-            color: Theme.subtext
-            font.pointSize: Theme.fontNormal
-            wrapMode: Text.WordWrap
-        }
-
-        Q.TextField {
-            id: conflictRenameField
-            Layout.fillWidth: true
-            autoFocus: true
-            variant: "filled"
-            placeholder: "New name"
-            Keys.onReturnPressed: root.resolveTransferConflict("rename")
-            Keys.onEscapePressed: conflictDialog.reject()
-        }
-
-        Text {
-            id: conflictErrorText
-            Layout.fillWidth: true
-            visible: text !== ""
-            color: Theme.error
-            font.pointSize: Theme.fontSmall
-            wrapMode: Text.WordWrap
-        }
-
-        RowLayout {
-            Layout.alignment: Qt.AlignRight
-            spacing: 12
-
-            Q.Button {
-                id: cancelConflictButton
-                text: "Cancel"
-                variant: "ghost"
-                size: "small"
-                onClicked: conflictDialog.reject()
-            }
-
-            Q.Button {
-                id: skipConflictButton
-                text: "Skip"
-                variant: "ghost"
-                size: "small"
-                onClicked: root.resolveTransferConflict("skip")
-            }
-
-            Q.Button {
-                id: overwriteConflictButton
-                text: root.transferMoveOperation ? "Replace" : "Overwrite"
-                variant: "danger"
-                size: "small"
-                enabled: !(conflictDialog.currentItem.samePath || false)
-                onClicked: root.resolveTransferConflict("overwrite")
-            }
-
-            Q.Button {
-                id: renameConflictButton
-                text: "Rename"
-                variant: "primary"
-                size: "small"
-                onClicked: root.resolveTransferConflict("rename")
-            }
-        }
-    }
+    readonly property var conflictDialog: conflictDialogLoader.item
 
     // ── Permanent Delete Confirmation Dialog ───────────────────────────────
-    Q.Dialog {
-        id: deleteConfirmDialog
+    Loader {
+        id: deleteConfirmDialogLoader
+        objectName: "deleteConfirmDialogLoader"
         anchors.fill: parent
         z: 9998
-        dialogWidth: 360
-        title: "Permanently Delete?"
-        initialFocusItem: cancelDeleteButton
-        onAccepted: fileOps.deleteFiles(root.deleteConfirmPaths)
+        active: false
+        sourceComponent: Component {
+            Q.Dialog {
+                id: deleteConfirmDialog
+                anchors.fill: parent
+                z: 9998
+                dialogWidth: 360
+                title: "Permanently Delete?"
+                initialFocusItem: cancelDeleteButton
+                onAccepted: fileOps.deleteFiles(root.deleteConfirmPaths)
 
-        Text {
-            Layout.fillWidth: true
-            textFormat: Text.PlainText
-            text: root.deleteConfirmPaths.length === 1
-                ? "\"" + root.deleteConfirmPaths[0].substring(root.deleteConfirmPaths[0].lastIndexOf("/") + 1) + "\" will be permanently deleted. This cannot be undone."
-                : root.deleteConfirmPaths.length + " items will be permanently deleted. This cannot be undone."
-            color: Theme.subtext
-            font.pointSize: Theme.fontNormal
-            wrapMode: Text.WordWrap
-        }
+                Text {
+                    Layout.fillWidth: true
+                    textFormat: Text.PlainText
+                    text: root.deleteConfirmPaths.length === 1
+                        ? "\"" + root.deleteConfirmPaths[0].substring(root.deleteConfirmPaths[0].lastIndexOf("/") + 1) + "\" will be permanently deleted. This cannot be undone."
+                        : root.deleteConfirmPaths.length + " items will be permanently deleted. This cannot be undone."
+                    color: Theme.subtext
+                    font.pointSize: Theme.fontNormal
+                    wrapMode: Text.WordWrap
+                }
 
-        RowLayout {
-            Layout.alignment: Qt.AlignRight
-            spacing: 12
+                RowLayout {
+                    Layout.alignment: Qt.AlignRight
+                    spacing: 12
 
-            Q.Button {
-                id: cancelDeleteButton
-                text: "Cancel"
-                variant: "ghost"
-                size: "small"
-                KeyNavigation.left: confirmDeleteButton
-                KeyNavigation.right: confirmDeleteButton
-                KeyNavigation.tab: confirmDeleteButton
-                KeyNavigation.backtab: confirmDeleteButton
-                Keys.onLeftPressed: confirmDeleteButton.forceActiveFocus()
-                Keys.onRightPressed: confirmDeleteButton.forceActiveFocus()
-                onClicked: deleteConfirmDialog.reject()
-            }
+                    Q.Button {
+                        id: cancelDeleteButton
+                        text: "Cancel"
+                        variant: "ghost"
+                        size: "small"
+                        KeyNavigation.left: confirmDeleteButton
+                        KeyNavigation.right: confirmDeleteButton
+                        KeyNavigation.tab: confirmDeleteButton
+                        KeyNavigation.backtab: confirmDeleteButton
+                        Keys.onLeftPressed: confirmDeleteButton.forceActiveFocus()
+                        Keys.onRightPressed: confirmDeleteButton.forceActiveFocus()
+                        onClicked: deleteConfirmDialog.reject()
+                    }
 
-            Q.Button {
-                id: confirmDeleteButton
-                text: "Delete"
-                variant: "danger"
-                size: "small"
-                KeyNavigation.left: cancelDeleteButton
-                KeyNavigation.right: cancelDeleteButton
-                KeyNavigation.tab: cancelDeleteButton
-                KeyNavigation.backtab: cancelDeleteButton
-                Keys.onLeftPressed: cancelDeleteButton.forceActiveFocus()
-                Keys.onRightPressed: cancelDeleteButton.forceActiveFocus()
-                onClicked: deleteConfirmDialog.accept()
+                    Q.Button {
+                        id: confirmDeleteButton
+                        text: "Delete"
+                        variant: "danger"
+                        size: "small"
+                        KeyNavigation.left: cancelDeleteButton
+                        KeyNavigation.right: cancelDeleteButton
+                        KeyNavigation.tab: cancelDeleteButton
+                        KeyNavigation.backtab: cancelDeleteButton
+                        Keys.onLeftPressed: cancelDeleteButton.forceActiveFocus()
+                        Keys.onRightPressed: cancelDeleteButton.forceActiveFocus()
+                        onClicked: deleteConfirmDialog.accept()
+                    }
+                }
             }
         }
     }
+    readonly property var deleteConfirmDialog: deleteConfirmDialogLoader.item
 
     // ── Empty Trash Confirmation Dialog ──────────────────────────────────────
-    Q.Dialog {
-        id: emptyTrashConfirmDialog
+    Loader {
+        id: emptyTrashConfirmDialogLoader
+        objectName: "emptyTrashConfirmDialogLoader"
         anchors.fill: parent
         z: 9998
-        dialogWidth: 360
-        title: "Empty Trash?"
-        initialFocusItem: cancelEmptyTrashButton
-        onAccepted: fileOps.emptyTrash()
+        active: false
+        sourceComponent: Component {
+            Q.Dialog {
+                id: emptyTrashConfirmDialog
+                anchors.fill: parent
+                z: 9998
+                dialogWidth: 360
+                title: "Empty Trash?"
+                initialFocusItem: cancelEmptyTrashButton
+                onAccepted: fileOps.emptyTrash()
 
-        Text {
-            Layout.fillWidth: true
-            text: "All items in the Trash will be permanently deleted. This cannot be undone."
-            color: Theme.subtext
-            font.pointSize: Theme.fontNormal
-            wrapMode: Text.WordWrap
-        }
+                Text {
+                    Layout.fillWidth: true
+                    text: "All items in the Trash will be permanently deleted. This cannot be undone."
+                    color: Theme.subtext
+                    font.pointSize: Theme.fontNormal
+                    wrapMode: Text.WordWrap
+                }
 
-        RowLayout {
-            Layout.alignment: Qt.AlignRight
-            spacing: 12
+                RowLayout {
+                    Layout.alignment: Qt.AlignRight
+                    spacing: 12
 
-            Q.Button {
-                id: cancelEmptyTrashButton
-                text: "Cancel"
-                variant: "ghost"
-                size: "small"
-                KeyNavigation.left: confirmEmptyTrashButton
-                KeyNavigation.right: confirmEmptyTrashButton
-                KeyNavigation.tab: confirmEmptyTrashButton
-                KeyNavigation.backtab: confirmEmptyTrashButton
-                Keys.onLeftPressed: confirmEmptyTrashButton.forceActiveFocus()
-                Keys.onRightPressed: confirmEmptyTrashButton.forceActiveFocus()
-                onClicked: emptyTrashConfirmDialog.reject()
-            }
+                    Q.Button {
+                        id: cancelEmptyTrashButton
+                        text: "Cancel"
+                        variant: "ghost"
+                        size: "small"
+                        KeyNavigation.left: confirmEmptyTrashButton
+                        KeyNavigation.right: confirmEmptyTrashButton
+                        KeyNavigation.tab: confirmEmptyTrashButton
+                        KeyNavigation.backtab: confirmEmptyTrashButton
+                        Keys.onLeftPressed: confirmEmptyTrashButton.forceActiveFocus()
+                        Keys.onRightPressed: confirmEmptyTrashButton.forceActiveFocus()
+                        onClicked: emptyTrashConfirmDialog.reject()
+                    }
 
-            Q.Button {
-                id: confirmEmptyTrashButton
-                text: "Empty Trash"
-                variant: "danger"
-                size: "small"
-                KeyNavigation.left: cancelEmptyTrashButton
-                KeyNavigation.right: cancelEmptyTrashButton
-                KeyNavigation.tab: cancelEmptyTrashButton
-                KeyNavigation.backtab: cancelEmptyTrashButton
-                Keys.onLeftPressed: cancelEmptyTrashButton.forceActiveFocus()
-                Keys.onRightPressed: cancelEmptyTrashButton.forceActiveFocus()
-                onClicked: emptyTrashConfirmDialog.accept()
+                    Q.Button {
+                        id: confirmEmptyTrashButton
+                        text: "Empty Trash"
+                        variant: "danger"
+                        size: "small"
+                        KeyNavigation.left: cancelEmptyTrashButton
+                        KeyNavigation.right: cancelEmptyTrashButton
+                        KeyNavigation.tab: cancelEmptyTrashButton
+                        KeyNavigation.backtab: cancelEmptyTrashButton
+                        Keys.onLeftPressed: cancelEmptyTrashButton.forceActiveFocus()
+                        Keys.onRightPressed: cancelEmptyTrashButton.forceActiveFocus()
+                        onClicked: emptyTrashConfirmDialog.accept()
+                    }
+                }
             }
         }
     }
+    readonly property var emptyTrashConfirmDialog: emptyTrashConfirmDialogLoader.item
 
     // ── Context Menu ────────────────────────────────────────────────────────
     Loader {
@@ -2855,9 +2963,10 @@ ApplicationWindow {
                     root.paneBaseModel(root.activePane).setDefaultApp(mimeType, desktopFile)
                 }
                 onChooseAppRequested: (path, mimeType) => {
-                    appChooserDialog.filePath = path
-                    appChooserDialog.mimeType = mimeType
-                    appChooserDialog.open()
+                    appChooserDialogLoader.active = true
+                    root.appChooserDialog.filePath = path
+                    root.appChooserDialog.mimeType = mimeType
+                    root.appChooserDialog.open()
                 }
 
                 onCutRequested: (paths) => clipboard.cut(paths)
@@ -2888,11 +2997,11 @@ ApplicationWindow {
                         undoManager.trashFiles(paths)
                 }
                 onRestoreRequested: (paths) => fileOps.restoreFromTrash(paths)
-                onEmptyTrashRequested: emptyTrashConfirmDialog.open()
+                onEmptyTrashRequested: root.openDialog(emptyTrashConfirmDialogLoader)
 
                 onDeleteRequested: (paths) => {
                     deleteConfirmPaths = paths
-                    deleteConfirmDialog.open()
+                    root.openDialog(deleteConfirmDialogLoader)
                 }
 
                 onOpenInTerminalRequested: (path) => {
@@ -2913,7 +3022,7 @@ ApplicationWindow {
                 }
 
                 onPropertiesRequested: (path) => {
-                    propertiesDialog.showProperties(path)
+                    root.showPropertiesFor(path)
                 }
 
                 onSplitViewRequested: (path) => {
@@ -2968,7 +3077,7 @@ ApplicationWindow {
 
                 onPropertiesRequested: (path) => {
                     if (path)
-                        propertiesDialog.showProperties(path)
+                        root.showPropertiesFor(path)
                 }
 
                 onOpenInTerminalRequested: (path) => {
@@ -2978,7 +3087,7 @@ ApplicationWindow {
 
                 onCustomActionRequested: (action) => {
                     if (action === "emptytrash") {
-                        emptyTrashConfirmDialog.open()
+                        root.openDialog(emptyTrashConfirmDialogLoader)
                     } else if (action === "renamebookmark") {
                         if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
                             sidebarPanel.startBookmarkRename(sidebarItem.index)
@@ -3227,7 +3336,7 @@ ApplicationWindow {
             if (paths.length === 0) return
             if (root.isTrashView) {
                 deleteConfirmPaths = paths
-                deleteConfirmDialog.open()
+                root.openDialog(deleteConfirmDialogLoader)
             } else {
                 var hasRemotePath = false
                 for (var i = 0; i < paths.length; ++i) {
@@ -3251,7 +3360,7 @@ ApplicationWindow {
             var paths = getSelectedPaths()
             if (paths.length > 0) {
                 deleteConfirmPaths = paths
-                deleteConfirmDialog.open()
+                root.openDialog(deleteConfirmDialogLoader)
             }
         }
     }
@@ -3298,7 +3407,7 @@ ApplicationWindow {
         onActivated: {
             var path = root.selectedOrCurrentPropertiesPath()
             if (path)
-                propertiesDialog.showProperties(path)
+                root.showPropertiesFor(path)
         }
     }
 
@@ -3366,11 +3475,11 @@ ApplicationWindow {
                  && !(root.bulkRenameDialog && root.bulkRenameDialog.visible)
                  && !(root.settingsPanel && root.settingsPanel.visible)
                  && !(root.shortcutsDialog && root.shortcutsDialog.visible)
-                 && !renameDialog.visible
-                 && !newFolderDialog.visible
-                 && !newFileDialog.visible
-                 && !deleteConfirmDialog.visible
-                 && !emptyTrashConfirmDialog.visible
+                 && !root.isShown(root.renameDialog)
+                 && !root.isShown(root.newFolderDialog)
+                 && !root.isShown(root.newFileDialog)
+                 && !root.isShown(root.deleteConfirmDialog)
+                 && !root.isShown(root.emptyTrashConfirmDialog)
         onActivated: root.closeSearch()
     }
 
@@ -3742,7 +3851,7 @@ ApplicationWindow {
                     if (paths.length > 0)
                         fileOps.restoreFromTrash(paths)
                 }
-                onEmptyTrashRequested: emptyTrashConfirmDialog.open()
+                onEmptyTrashRequested: root.openDialog(emptyTrashConfirmDialogLoader)
                 onSplitViewToggled: root.toggleSplitView()
                 onHomeClicked: {
                     root.navigateActivePaneTo(fsModel.homePath())
@@ -4055,8 +4164,8 @@ ApplicationWindow {
         target: fileOps
         function onPathsChanged(paths) {
             diskUsageService.invalidatePaths(paths)
-            if (propertiesDialog.visible && propertiesDialog.props.path)
-                propertiesDialog.refreshFolderDiskUsage()
+            if (root.isShown(root.propertiesDialog) && root.propertiesDialog.props.path)
+                root.propertiesDialog.refreshFolderDiskUsage()
         }
 
         function onPasswordRequested(archivePath, destination, retry) {
@@ -4075,9 +4184,9 @@ ApplicationWindow {
                 root._operationCallbacks = pending
                 waiting(success, error)
             }
-            if (propertiesDialog.visible && propertiesDialog.props.path) {
-                propertiesDialog.props = propertiesDialog.fileModelRef.fileProperties(propertiesDialog.props.path)
-                propertiesDialog.refreshFolderDiskUsage()
+            if (root.isShown(root.propertiesDialog) && root.propertiesDialog.props.path) {
+                root.propertiesDialog.props = root.propertiesDialog.fileModelRef.fileProperties(root.propertiesDialog.props.path)
+                root.propertiesDialog.refreshFolderDiskUsage()
             }
             if (error === "password required")
                 return  // the password dialog handles it
