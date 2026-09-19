@@ -1146,7 +1146,11 @@ void FileSystemModel::scheduleLocalReload(bool tryDiff)
         connect(m_localReloadWatcher, &QFutureWatcherBase::finished, this, [this]() {
             if (!m_localReloadWatcher)
                 return;
-            applyLocalReload(m_localReloadWatcher->result(), m_localReloadTryDiff);
+            // takeResult, not result(): result() hands back a copy and the
+            // future keeps its own until the next scan, so the entry list
+            // was held twice and the first write to m_entries detached it
+            // into a second full copy (2.4 MB per 10k files).
+            applyLocalReload(m_localReloadWatcher->future().takeResult(), m_localReloadTryDiff);
         });
     }
 
