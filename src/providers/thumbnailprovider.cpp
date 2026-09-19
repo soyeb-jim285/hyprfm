@@ -219,6 +219,22 @@ static bool isCacheableLocalPath(const QString &path)
     return !path.startsWith(cacheRoot);
 }
 
+static bool isSlowPath(const QString &path)
+{
+    static const QString prefix = QDir::homePath() + QStringLiteral("/.local/share/hyprfm/mounts/");
+    return path.startsWith(prefix);
+}
+
+static QThreadPool *slowThumbnailPool()
+{
+    static QThreadPool *pool = []() {
+        auto *p = new QThreadPool;
+        p->setMaxThreadCount(1);
+        return p;
+    }();
+    return pool;
+}
+
 static QThreadPool *thumbnailPool()
 {
     static QThreadPool *pool = []() {
@@ -238,7 +254,11 @@ ThumbnailResponse::ThumbnailResponse(const QString &id, const QSize &requestedSi
     , m_requestedSize(requestedSize)
 {
     setAutoDelete(false);
-    thumbnailPool()->start(this);
+    if (isSlowPath(m_id)) {
+        slowThumbnailPool()->start(this);
+    } else {
+        thumbnailPool()->start(this);
+    }
 }
 
 void ThumbnailResponse::run()

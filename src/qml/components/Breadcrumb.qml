@@ -81,6 +81,7 @@ Item {
     property int suggestionIndex: -1
 
     // Icon components for breadcrumb context
+    Component { id: bcIconCloud; IconCloud { size: 18; color: Theme.accent } }
     Component { id: bcIconHome; IconHome { size: 18; color: Theme.text } }
     Component { id: bcIconClock; IconClock { size: 18; color: Theme.text } }
     Component { id: bcIconTrash; IconTrash { size: 18; color: Theme.text } }
@@ -150,6 +151,7 @@ Item {
                 width: 18; height: 18
                 anchors.verticalCenter: parent.verticalCenter
                 sourceComponent: {
+                    if (fileOps.isSlowPath(root.path)) return bcIconCloud
                     if (fileOps.isRemotePath(root.path)) return bcIconMonitor
                     if (segmentsRepeater.count === 0) return bcIconFolder
                     var firstLabel = segmentsRepeater.model[0] ? segmentsRepeater.model[0].label : ""

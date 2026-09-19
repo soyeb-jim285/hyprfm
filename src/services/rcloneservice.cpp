@@ -174,24 +174,28 @@ void RcloneService::startRcloneMountProcess(const QString &remoteName, const QSt
     emit activeMountsChanged();
 
     connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, remoteName, proc](int exitCode, QProcess::ExitStatus) {
+            [this, remoteName, mountPath, proc](int exitCode, QProcess::ExitStatus) {
         const QString err = QString::fromUtf8(proc->readAllStandardError()).trimmed();
         m_processes.remove(remoteName);
         emit activeMountsChanged();
 
         if (!m_mountSuccessEmitted.value(remoteName)) {
+            if (QDir(mountPath).exists())
+                QDir(mountPath).removeRecursively();
             emit mountFinished(remoteName, false, err.isEmpty() ? QStringLiteral("rclone mount exited unexpectedly.") : err);
         }
         m_mountSuccessEmitted.remove(remoteName);
         proc->deleteLater();
     });
 
-    connect(proc, &QProcess::errorOccurred, this, [this, remoteName, proc](QProcess::ProcessError) {
+    connect(proc, &QProcess::errorOccurred, this, [this, remoteName, mountPath, proc](QProcess::ProcessError) {
         const QString err = proc->errorString();
         m_processes.remove(remoteName);
         emit activeMountsChanged();
 
         if (!m_mountSuccessEmitted.value(remoteName)) {
+            if (QDir(mountPath).exists())
+                QDir(mountPath).removeRecursively();
             emit mountFinished(remoteName, false, err);
         }
         m_mountSuccessEmitted.remove(remoteName);
@@ -203,10 +207,17 @@ void RcloneService::startRcloneMountProcess(const QString &remoteName, const QSt
         remoteName + QStringLiteral(":"),
         mountPath,
         QStringLiteral("--vfs-cache-mode"),
-        QStringLiteral("writes"),
+        QStringLiteral("full"),
+        QStringLiteral("--dir-cache-time"),
+        QStringLiteral("24h"),
+        QStringLiteral("--attr-timeout"),
+        QStringLiteral("24h"),
         QStringLiteral("--vfs-cache-max-age"),
-        QStringLiteral("72h"),
+        QStringLiteral("168h"),
+        QStringLiteral("--vfs-read-ahead"),
+        QStringLiteral("128M"),
         QStringLiteral("--no-checksum"),
+        QStringLiteral("--vfs-fast-fingerprint"),
         QStringLiteral("--vfs-read-chunk-size"),
         QStringLiteral("1M"),
         QStringLiteral("--vfs-read-chunk-size-limit"),

@@ -91,6 +91,7 @@ public:
     Q_INVOKABLE QString homePath() const;
     Q_INVOKABLE QString standardPath(const QString &key) const;
     Q_INVOKABLE QVariantList pathSuggestions(const QString &input, int limit = 8) const;
+    Q_INVOKABLE void invalidateRemoteCache(const QString &path = QString());
 
     // Tests need a predictable "rowCount is correct right after setRootPath()"
     // guarantee, so expose a switch that runs local scans on the calling
@@ -149,6 +150,17 @@ private:
     void reloadTrash();
     void cancelRemoteReload();
     void applyRemoteReload(const QString &rootPath, const QByteArray &output);
+    bool applyRemoteDiff(const QList<QVariantMap> &newEntries);
+    struct RemoteParsingResult {
+        QList<QVariantMap> entries;
+        int fileCount = 0;
+        int folderCount = 0;
+    };
+    RemoteParsingResult parseRemoteOutput(const QString &rootPath, const QByteArray &output) const;
+    void applyRemoteParsedEntries(const QString &rootPath, const QList<QVariantMap> &entries, int fileCount, int folderCount);
+    void prefetchSubdirectories();
+    void clearPrefetchWatchers();
+    QList<QFutureWatcher<LocalReloadResult>*> m_prefetchWatchers;
     // Local scans go through a QtConcurrent future so the GUI thread never
     // blocks on QDir::entryInfoList. Generation counter ensures stale
     // results (user navigated away mid-scan) are discarded.
@@ -168,6 +180,25 @@ private:
     QVariantMap trashFileProperties(const QString &path) const;
     const QVariantMap *findTrashEntry(const QString &path) const;
     void setIsLoading(bool loading);
+
+    struct CachedRemoteDirectory {
+        qint64 timestamp = 0;
+        QList<QVariantMap> entries;
+        int fileCount = 0;
+        int folderCount = 0;
+    };
+
+    struct CachedLocalDirectory {
+        qint64 timestamp = 0;
+        QList<Entry> entries;
+        int fileCount = 0;
+        int folderCount = 0;
+    };
+
+
+
+    mutable QHash<QString, CachedRemoteDirectory> m_remoteDirCache;
+    mutable QHash<QString, CachedLocalDirectory> m_slowPathCache;
 
     // QStorageInfo for rootPath, or an invalid one where reporting a disk
     // would mislead.
