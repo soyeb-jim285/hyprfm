@@ -7,6 +7,7 @@
 #include <QDebug>
 #include <QFuture>
 #include <QMimeDatabase>
+#include <QMutex>
 #include <QStorageInfo>
 #include <QProcess>
 #include <QRegularExpression>
@@ -367,6 +368,28 @@ PreviewKind previewKindForEntry(const QString &localPath, bool isDir,
     if (mimeName == QLatin1String("application/pdf"))
         return PreviewKind::Pdf;
     return PreviewKind::None;
+}
+
+// QFileInfo::owner()/group() resolve the id through NSS on every call:
+// ~250 us each with systemd-userdb, which made them 80% of the cost of
+// filling in a row. A directory holds a handful of distinct ids, so resolve
+// each once. ponytail: never invalidated; a renamed user or group keeps its
+// old name until restart.
+QString cachedIdName(const QFileInfo &info, bool group)
+{
+    static QMutex mutex;
+    static QHash<quint64, QString> names;
+    const quint64 key = (quint64(group) << 32) | (group ? info.groupId() : info.ownerId());
+    {
+        QMutexLocker locker(&mutex);
+        const auto it = names.constFind(key);
+        if (it != names.constEnd())
+            return *it;
+    }
+    const QString name = group ? info.group() : info.owner();
+    QMutexLocker locker(&mutex);
+    names.insert(key, name);
+    return name;
 }
 
 // Build a cached permission string (e.g. "rwxr-xr-x") from QFileInfo.
@@ -1351,10 +1374,16 @@ void FileSystemModel::ensurePopulated(const Entry &entry) const
         return;
     const bool isDir = entry.info.isDir();
     const QString absPath = entry.info.absoluteFilePath();
-    entry.iconName = iconNameForEntry(absPath, isDir);
-    entry.fileType = fileTypeForEntry(absPath, isDir);
+    // One MIME lookup feeds the icon, the type column and the preview kind;
+    // each used to run its own, and MatchDefault stats the file every time.
+    if (!isDir && entry.mimeType.isEmpty())
+        entry.mimeType = mimeTypeForFile(absPath).name();
+    const QString &mimeName = entry.mimeType;
+    const QLocale locale;
+    entry.iconName = iconNameForEntry(absPath, isDir, mimeName);
+    entry.fileType = fileTypeForEntry(absPath, isDir, mimeName);
     entry.sizeText = isDir ? QString() : formattedSize(entry.info.size());
-    entry.modifiedText = QLocale().toString(entry.info.lastModified(), QLocale::ShortFormat);
+    entry.modifiedText = locale.toString(entry.info.lastModified(), QLocale::ShortFormat);
 
     const bool isRemote = isCloudMountPath(absPath);
 
@@ -1369,13 +1398,13 @@ void FileSystemModel::ensurePopulated(const Entry &entry) const
         entry.accessedText = QString();
     } else {
         entry.permissionsText = permissionsString(entry.info);
-        entry.owner = entry.info.owner();
-        entry.group = entry.info.group();
-        entry.createdText = QLocale().toString(entry.info.birthTime(), QLocale::ShortFormat);
-        entry.accessedText = QLocale().toString(entry.info.lastRead(), QLocale::ShortFormat);
+        entry.owner = cachedIdName(entry.info, false);
+        entry.group = cachedIdName(entry.info, true);
+        entry.createdText = locale.toString(entry.info.birthTime(), QLocale::ShortFormat);
+        entry.accessedText = locale.toString(entry.info.lastRead(), QLocale::ShortFormat);
     }
 
-    const PreviewKind kind = previewKindForEntry(absPath, isDir);
+    const PreviewKind kind = previewKindForEntry(absPath, isDir, mimeName);
     entry.hasImagePreview = kind == PreviewKind::Image;
     entry.hasVideoPreview = kind == PreviewKind::Video;
     entry.hasPdfPreview = kind == PreviewKind::Pdf;
@@ -1672,8 +1701,8 @@ QVariantMap FileSystemModel::fileProperties(const QString &path) const
         props["accessed"] = QLocale().toString(info.lastRead(), QLocale::LongFormat);
 
         // Ownership
-        props["owner"] = info.owner();
-        props["group"] = info.group();
+        props["owner"] = cachedIdName(info, false);
+        props["group"] = cachedIdName(info, true);
 
         // Permissions string
         auto p = info.permissions();
