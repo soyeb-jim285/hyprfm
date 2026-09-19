@@ -744,73 +744,79 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
     }
 
     const Entry &entry = m_entries.at(index.row());
-    const QFileInfo &info = entry.info;
 
     switch (role) {
-    // Path / filename / size / dir / symlink / modified come straight from
-    // QFileInfo's own stat cache, so they don't need the lazy populate path.
+    // Path / filename / size / dir / symlink / modified are kept on the row
+    // from the scan, so they don't need the lazy populate path.
     case FileNameRole:
-        return info.fileName();
+        return entry.name;
     case FilePathRole:
-        return info.absoluteFilePath();
+        return entryPath(entry);
     case FileSizeRole:
-        return info.isDir() ? QVariant(-1) : QVariant(info.size());
+        if (entry.isDir)
+            return QVariant(-1);
+        ensureStat(entry);
+        return QVariant(entry.size);
     case FileModifiedRole:
-        return info.lastModified();
+        ensureStat(entry);
+        return entry.modifiedMs == kNoTime ? QDateTime()
+                                           : QDateTime::fromMSecsSinceEpoch(entry.modifiedMs);
     case IsDirRole:
-        return info.isDir();
+        return entry.isDir;
     case IsSymlinkRole:
-        return info.isSymLink();
+        return entry.isSymLink;
     case FileSizeTextRole:
         ensurePopulated(entry);
-        return entry.sizeText;
+        return detailsOf(entry).sizeText;
     case FileTypeRole:
         ensurePopulated(entry);
-        return entry.fileType;
+        return detailsOf(entry).fileType;
     case FileModifiedTextRole:
         ensurePopulated(entry);
-        return entry.modifiedText;
+        return detailsOf(entry).modifiedText;
     case FilePermissionsRole:
         ensurePopulated(entry);
-        return entry.permissionsText;
+        return detailsOf(entry).permissionsText;
     case FileOwnerRole:
         ensurePopulated(entry);
-        return entry.owner;
+        return detailsOf(entry).owner;
     case FileGroupRole:
         ensurePopulated(entry);
-        return entry.group;
+        return detailsOf(entry).group;
     case FileCreatedTextRole:
         ensurePopulated(entry);
-        return entry.createdText;
+        return detailsOf(entry).createdText;
     case FileAccessedTextRole:
         ensurePopulated(entry);
-        return entry.accessedText;
+        return detailsOf(entry).accessedText;
     case FileExtensionRole:
-        return info.isDir() ? QString() : info.suffix();
-    case MimeTypeRole:
-        if (entry.mimeType.isEmpty())
-            entry.mimeType = mimeTypeForFile(info).name();
-        return entry.mimeType;
+        return entry.isDir ? QString() : QFileInfo(entry.name).suffix();
+    case MimeTypeRole: {
+        Details &details = detailsOf(entry);
+        if (details.mimeType.isEmpty())
+            details.mimeType = mimeTypeForFile(entryPath(entry)).name();
+        return details.mimeType;
+    }
     case SymlinkTargetRole:
-        return info.isSymLink() ? info.symLinkTarget() : QString();
+        return entry.isSymLink ? QFileInfo(entryPath(entry)).symLinkTarget() : QString();
     case FileIconNameRole:
         ensurePopulated(entry);
-        return entry.iconName;
+        return detailsOf(entry).iconName;
     case HasImagePreviewRole:
         ensurePopulated(entry);
-        return entry.hasImagePreview;
+        return detailsOf(entry).hasImagePreview;
     case HasVideoPreviewRole:
         ensurePopulated(entry);
-        return entry.hasVideoPreview;
+        return detailsOf(entry).hasVideoPreview;
     case HasPdfPreviewRole:
         ensurePopulated(entry);
-        return entry.hasPdfPreview;
+        return detailsOf(entry).hasPdfPreview;
     case GitStatusRole:
-        return m_gitService ? m_gitService->statusForPath(info.absoluteFilePath()) : QString();
+        return m_gitService ? m_gitService->statusForPath(entryPath(entry)) : QString();
     case GitStatusIconRole: {
         if (!m_gitService)
             return QString();
-        const QString st = m_gitService->statusForPath(info.absoluteFilePath());
+        const QString st = m_gitService->statusForPath(entryPath(entry));
         if (st == "modified")   return QStringLiteral("git-modified");
         if (st == "staged")     return QStringLiteral("git-staged");
         if (st == "untracked")  return QStringLiteral("git-untracked");
@@ -916,6 +922,9 @@ void FileSystemModel::setRootPath(const QString &path)
         m_watcher.removePath(m_rootPath);
 
     m_rootPath = normalizedPath;
+    m_entryPrefix = QDir(m_rootPath).absolutePath();
+    if (!m_entryPrefix.endsWith(QLatin1Char('/')))
+        m_entryPrefix += QLatin1Char('/');
 
     // Watch new directory
     if (!m_rootPath.isEmpty() && !isTrashRoot() && !isRemoteRoot())
@@ -993,7 +1002,7 @@ QString FileSystemModel::filePath(int row) const
     if (isRemoteRoot())
         return m_remoteEntries.at(row).value(QStringLiteral("filePath")).toString();
 
-    return m_entries.at(row).info.absoluteFilePath();
+    return entryPath(m_entries.at(row));
 }
 
 bool FileSystemModel::isDir(int row) const
@@ -1007,7 +1016,7 @@ bool FileSystemModel::isDir(int row) const
     if (isRemoteRoot())
         return m_remoteEntries.at(row).value(QStringLiteral("isDir")).toBool();
 
-    return m_entries.at(row).info.isDir();
+    return m_entries.at(row).isDir;
 }
 
 QString FileSystemModel::fileName(int row) const
@@ -1021,7 +1030,7 @@ QString FileSystemModel::fileName(int row) const
     if (isRemoteRoot())
         return m_remoteEntries.at(row).value(QStringLiteral("fileName")).toString();
 
-    return m_entries.at(row).info.fileName();
+    return m_entries.at(row).name;
 }
 
 void FileSystemModel::reload()
@@ -1119,11 +1128,10 @@ FileSystemModel::LocalReloadResult FileSystemModel::scanLocalEntries(
     QFileInfoList infos = dir.entryInfoList(filters, sortFlags);
     applyNaturalNameOrder(infos, sortFlags);
     result.entries.reserve(infos.size());
-    for (const QFileInfo &info : infos) {
-        Entry e;
-        e.info = info;
-        result.entries.append(std::move(e));
-    }
+    const int sortBy = sortFlags & QDir::SortByMask;
+    const bool statted = sortBy == QDir::Size || sortBy == QDir::Time;
+    for (const QFileInfo &info : std::as_const(infos))
+        result.entries.append(entryFromInfo(info, statted));
     return result;
 }
 
@@ -1364,30 +1372,74 @@ QList<FileSystemModel::Entry> FileSystemModel::currentLocalEntries() const
     applyNaturalNameOrder(infos, m_sortFlags);
     QList<Entry> entries;
     entries.reserve(infos.size());
-    for (const QFileInfo &info : infos) {
-        Entry e;
-        e.info = info;
-        entries.append(std::move(e));
-    }
+    const int sortBy = m_sortFlags & QDir::SortByMask;
+    const bool statted = sortBy == QDir::Size || sortBy == QDir::Time;
+    for (const QFileInfo &info : std::as_const(infos))
+        entries.append(entryFromInfo(info, statted));
     return entries;
+}
+
+FileSystemModel::Entry FileSystemModel::entryFromInfo(const QFileInfo &info, bool statted)
+{
+    Entry entry;
+    entry.name = info.fileName();
+    entry.isDir = info.isDir();
+    entry.isSymLink = info.isSymLink();
+    if (statted) {
+        entry.size = entry.isDir ? 0 : info.size();
+        const QDateTime modified = info.lastModified();
+        entry.modifiedMs = modified.isValid() ? modified.toMSecsSinceEpoch() : kNoTime;
+        entry.statted = true;
+    }
+    return entry;
+}
+
+void FileSystemModel::ensureStat(const Entry &entry, const QFileInfo &info) const
+{
+    if (entry.statted)
+        return;
+    entry.size = entry.isDir ? 0 : info.size();
+    const QDateTime modified = info.lastModified();
+    entry.modifiedMs = modified.isValid() ? modified.toMSecsSinceEpoch() : kNoTime;
+    entry.statted = true;
+}
+
+void FileSystemModel::ensureStat(const Entry &entry) const
+{
+    if (!entry.statted)
+        ensureStat(entry, QFileInfo(entryPath(entry)));
+}
+
+FileSystemModel::Details &FileSystemModel::detailsOf(const Entry &entry) const
+{
+    if (!entry.details)
+        entry.details = std::make_shared<Details>();
+    return *entry.details;
 }
 
 void FileSystemModel::ensurePopulated(const Entry &entry) const
 {
-    if (entry.populated)
+    Details &details = detailsOf(entry);
+    if (details.populated)
         return;
-    const bool isDir = entry.info.isDir();
-    const QString absPath = entry.info.absoluteFilePath();
+    const bool isDir = entry.isDir;
+    const QString absPath = entryPath(entry);
     // One MIME lookup feeds the icon, the type column and the preview kind;
     // each used to run its own, and MatchDefault stats the file every time.
-    if (!isDir && entry.mimeType.isEmpty())
-        entry.mimeType = mimeTypeForFile(absPath).name();
-    const QString &mimeName = entry.mimeType;
+    if (!isDir && details.mimeType.isEmpty())
+        details.mimeType = mimeTypeForFile(absPath).name();
+    const QString &mimeName = details.mimeType;
     const QLocale locale;
-    entry.iconName = iconNameForEntry(absPath, isDir, mimeName);
-    entry.fileType = fileTypeForEntry(absPath, isDir, mimeName);
-    entry.sizeText = isDir ? QString() : formattedSize(entry.info.size());
-    entry.modifiedText = locale.toString(entry.info.lastModified(), QLocale::ShortFormat);
+    // One stat for the columns the row does not carry, only for rows that
+    // are actually shown.
+    const QFileInfo info(absPath);
+    ensureStat(entry, info);
+    details.iconName = iconNameForEntry(absPath, isDir, mimeName);
+    details.fileType = fileTypeForEntry(absPath, isDir, mimeName);
+    details.sizeText = isDir ? QString() : formattedSize(entry.size);
+    details.modifiedText = entry.modifiedMs == kNoTime
+        ? QString()
+        : locale.toString(QDateTime::fromMSecsSinceEpoch(entry.modifiedMs), QLocale::ShortFormat);
 
     const bool isRemote = isCloudMountPath(absPath);
 
@@ -1395,24 +1447,24 @@ void FileSystemModel::ensurePopulated(const Entry &entry) const
         // A FUSE mount reports the mounting user for every entry and stats
         // cost a round trip, so none of this is worth fetching. Leave it
         // blank the way trash entries do rather than invent plausible values.
-        entry.permissionsText = QString();
-        entry.owner = QString();
-        entry.group = QString();
-        entry.createdText = QString();
-        entry.accessedText = QString();
+        details.permissionsText = QString();
+        details.owner = QString();
+        details.group = QString();
+        details.createdText = QString();
+        details.accessedText = QString();
     } else {
-        entry.permissionsText = permissionsString(entry.info);
-        entry.owner = cachedIdName(entry.info, false);
-        entry.group = cachedIdName(entry.info, true);
-        entry.createdText = locale.toString(entry.info.birthTime(), QLocale::ShortFormat);
-        entry.accessedText = locale.toString(entry.info.lastRead(), QLocale::ShortFormat);
+        details.permissionsText = permissionsString(info);
+        details.owner = cachedIdName(info, false);
+        details.group = cachedIdName(info, true);
+        details.createdText = locale.toString(info.birthTime(), QLocale::ShortFormat);
+        details.accessedText = locale.toString(info.lastRead(), QLocale::ShortFormat);
     }
 
     const PreviewKind kind = previewKindForEntry(absPath, isDir, mimeName);
-    entry.hasImagePreview = kind == PreviewKind::Image;
-    entry.hasVideoPreview = kind == PreviewKind::Video;
-    entry.hasPdfPreview = kind == PreviewKind::Pdf;
-    entry.populated = true;
+    details.hasImagePreview = kind == PreviewKind::Image;
+    details.hasVideoPreview = kind == PreviewKind::Video;
+    details.hasPdfPreview = kind == PreviewKind::Pdf;
+    details.populated = true;
 }
 
 void FileSystemModel::updateLocalCounts()
@@ -1420,7 +1472,7 @@ void FileSystemModel::updateLocalCounts()
     int files = 0;
     int folders = 0;
     for (const Entry &entry : m_entries) {
-        if (entry.info.isDir())
+        if (entry.isDir)
             ++folders;
         else
             ++files;
@@ -1434,8 +1486,9 @@ bool FileSystemModel::applyLocalDiff(const QList<Entry> &newEntries)
     const int oldCount = m_entries.size();
     const int newCount = newEntries.size();
 
-    auto pathAt = [](const QList<Entry> &list, int row) {
-        return list.at(row).info.absoluteFilePath();
+    // Both lists are listings of m_rootPath, so the name identifies a row.
+    auto pathAt = [](const QList<Entry> &list, int row) -> const QString & {
+        return list.at(row).name;
     };
 
     if (newCount == oldCount + 1) {

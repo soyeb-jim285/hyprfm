@@ -12,6 +12,8 @@
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
+#include <limits>
+#include <memory>
 
 class GitStatusService;
 
@@ -111,27 +113,51 @@ signals:
     void watchedDirectoryChanged(const QString &path);
 
 private:
+    static constexpr qint64 kNoTime = std::numeric_limits<qint64>::min();
+
     // Lazy per-row display cache. QMimeDatabase / QLocale / permission-string
     // work is deferred until data() actually asks for it, so navigation into
     // a directory with thousands of files doesn't pay for rows the view will
     // never render. First access populates all derived fields together.
-    struct Entry {
-        QFileInfo info;
-        mutable QString iconName;
-        mutable QString fileType;
-        mutable QString sizeText;
-        mutable QString modifiedText;
-        mutable QString permissionsText;
-        mutable QString owner;
-        mutable QString group;
-        mutable QString createdText;
-        mutable QString accessedText;
-        mutable QString mimeType;   // filled on first MimeTypeRole read only
-        mutable bool hasImagePreview = false;
-        mutable bool hasVideoPreview = false;
-        mutable bool hasPdfPreview = false;
-        mutable bool populated = false;
+    struct Details {
+        QString iconName;
+        QString fileType;
+        QString sizeText;
+        QString modifiedText;
+        QString permissionsText;
+        QString owner;
+        QString group;
+        QString createdText;
+        QString accessedText;
+        QString mimeType;   // also filled alone by a MimeTypeRole read
+        bool hasImagePreview = false;
+        bool hasVideoPreview = false;
+        bool hasPdfPreview = false;
+        bool populated = false;
     };
+
+    // One row of a local listing: only what every row needs, ~100 bytes.
+    // It used to hold a QFileInfo (~900 bytes with its cached paths and
+    // metadata) plus the display strings inline, ~12 MB per 10,000 files.
+    // The directory is m_entryPrefix; the strings live in Details, allocated
+    // the first time a row is shown.
+    // size and modifiedMs need a stat, which the scan only has for free when
+    // QDir sorted by size or time; otherwise the first read of either stats
+    // that one file (see ensureStat), so the scan never stats every entry.
+    struct Entry {
+        QString name;
+        mutable qint64 size = 0;            // 0 for directories
+        mutable qint64 modifiedMs = kNoTime;
+        bool isDir = false;
+        bool isSymLink = false;
+        mutable bool statted = false;
+        mutable std::shared_ptr<Details> details;
+    };
+    static Entry entryFromInfo(const QFileInfo &info, bool statted);
+    void ensureStat(const Entry &entry, const QFileInfo &info) const;
+    void ensureStat(const Entry &entry) const;
+    QString entryPath(const Entry &entry) const { return m_entryPrefix + entry.name; }
+    Details &detailsOf(const Entry &entry) const;
 
     // Packaged so the worker can carry its own generation number back to
     // the handler, letting us drop results from scans the user has already
@@ -174,6 +200,7 @@ private:
     QStorageInfo rootStorage() const;
 
     QString m_rootPath;
+    QString m_entryPrefix;  // m_rootPath as an absolute path ending in '/'
     bool m_showHidden = false;
     QList<Entry> m_entries;
     QList<QVariantMap> m_remoteEntries;
