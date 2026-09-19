@@ -701,17 +701,31 @@ private slots:
             return qvariant_cast<QQuickItem *>(container->property(alias));
         };
         QQuickItem *grid = subView("gridViewItem");
-        QQuickItem *detailed = subView("detailedViewItem");
-        QQuickItem *miller = subView("millerViewItem");
-        QVERIFY(grid && detailed && miller);
+        QVERIFY(grid);
+        // The other views are only built the first time they are shown.
+        QVERIFY(!subView("detailedViewItem") && !subView("millerViewItem"));
 
         app.sessionState->setGridColumns(4);
         app.sessionState->setRowHeightDetailed(40);
         app.sessionState->setRowHeightMiller(48);
-
         QTRY_COMPARE(grid->property("columnCount").toInt(), 4);
+
+        // A view built later has to start at the saved zoom, and must not
+        // write its own default back over it.
+        app.tabModel->activeTab()->setViewMode(QStringLiteral("detailed"));
+        QTRY_VERIFY(subView("detailedViewItem"));
+        QQuickItem *detailed = subView("detailedViewItem");
         QTRY_COMPARE(detailed->property("rowHeight").toInt(), 40);
+        app.tabModel->activeTab()->setViewMode(QStringLiteral("miller"));
+        QTRY_VERIFY(subView("millerViewItem"));
+        QQuickItem *miller = subView("millerViewItem");
         QTRY_COMPARE(miller->property("rowHeight").toInt(), 48);
+        QCOMPARE(app.sessionState->rowHeightDetailed(), 40);
+        QCOMPARE(app.sessionState->rowHeightMiller(), 48);
+
+        // Once built, a hidden view keeps following the saved zoom.
+        app.sessionState->setRowHeightDetailed(36);
+        QTRY_COMPARE(detailed->property("rowHeight").toInt(), 36);
 
         // A view clamps what it accepts and the mirror writes the clamped
         // value back, so session.json never keeps something unusable.

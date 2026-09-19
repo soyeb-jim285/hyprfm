@@ -9,60 +9,6 @@ Item {
     property var fileModel: null
     property string currentPath: ""
 
-    // Zoom state persisted in session.json. The views own their value; these
-    // mirror it up so the session save always sees the latest, and apply the
-    // remembered value once at startup (0 = none saved, keep the default).
-    // zoomRestored suppresses the mirror while the initial value settles,
-    // otherwise the first default 7/28/28 would overwrite the restored values.
-    property int gridColumns: gridView.columnCount
-    property int rowHeightDetailed: detailedView.rowHeight
-    property int rowHeightMiller: millerView.rowHeight
-    property bool zoomRestored: false
-
-    onGridColumnsChanged: if (root.zoomRestored) sessionState.gridColumns = root.gridColumns
-    onRowHeightDetailedChanged: if (root.zoomRestored) sessionState.rowHeightDetailed = root.rowHeightDetailed
-    onRowHeightMillerChanged: if (root.zoomRestored) sessionState.rowHeightMiller = root.rowHeightMiller
-
-    // Push sessionState into the views, clamped to what each one accepts.
-    // Values of 0 mean "nothing saved", so the view keeps its own default.
-    function applyZoomFromSession() {
-        if (sessionState.gridColumns > 0)
-            gridView.columnCount = Math.max(gridView.minColumns,
-                Math.min(gridView.maxColumns, sessionState.gridColumns))
-        if (sessionState.rowHeightDetailed > 0)
-            detailedView.rowHeight = Math.max(detailedView.minRowHeight,
-                Math.min(detailedView.maxRowHeight, sessionState.rowHeightDetailed))
-        if (sessionState.rowHeightMiller > 0)
-            millerView.rowHeight = Math.max(millerView.minRowHeight,
-                Math.min(millerView.maxRowHeight, sessionState.rowHeightMiller))
-    }
-
-    // The settings panel writes the icon size straight into sessionState, so
-    // after the initial restore the views follow it as well as feed it. This
-    // cannot ping-pong with the mirrors above: assigning a value a view
-    // already holds emits nothing, and the clamp is idempotent. It also keeps
-    // both split panes at the same zoom, which is what the single saved value
-    // always meant anyway.
-    Connections {
-        target: sessionState
-        enabled: root.zoomRestored
-        function onGridColumnsChanged() { root.applyZoomFromSession() }
-        function onRowHeightDetailedChanged() { root.applyZoomFromSession() }
-        function onRowHeightMillerChanged() { root.applyZoomFromSession() }
-    }
-
-    Component.onCompleted: {
-        applyZoomFromSession()
-        root.zoomRestored = true
-        // The views clamp what they accept, so push back what they actually
-        // took. Without this an out-of-range or negative value in session.json
-        // is displayed correctly but never corrected on disk, and survives
-        // every restart.
-        sessionState.gridColumns = gridView.columnCount
-        sessionState.rowHeightDetailed = detailedView.rowHeight
-        sessionState.rowHeightMiller = millerView.rowHeight
-    }
-
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
     signal selectionChanged()
@@ -70,63 +16,149 @@ Item {
     signal transferRequested(var paths, string destinationPath, bool moveOperation)
     signal sortRequested(string column, bool ascending)
 
+    // Each view is built the first time it is shown and kept after that, so
+    // switching back is instant. Building all three at startup cost the time
+    // of two views nobody was looking at. Null until built.
+    readonly property var gridViewItem: gridLoader.item
+    readonly property var detailedViewItem: detailedLoader.item
+    readonly property var millerViewItem: millerLoader.item
+
+    function clamp(value, lo, hi) {
+        return Math.max(lo, Math.min(hi, value))
+    }
+
+    // Zoom is persisted in sessionState. A view takes the saved value when it
+    // is built and writes back what it actually accepted, since views clamp:
+    // an out-of-range or negative value in session.json would otherwise be
+    // shown corrected but never fixed on disk. Values of 0 mean "nothing
+    // saved", so the view keeps its own default. After that the views follow
+    // sessionState (the settings panel writes it directly) and feed it; this
+    // cannot ping-pong, because assigning a value a view already holds emits
+    // nothing and the clamp is idempotent. It also keeps both split panes at
+    // the same zoom, which is what the single saved value always meant.
+    function applyZoom() {
+        const grid = root.gridViewItem
+        const detailed = root.detailedViewItem
+        const miller = root.millerViewItem
+        if (grid && sessionState.gridColumns > 0)
+            grid.columnCount = clamp(sessionState.gridColumns, grid.minColumns, grid.maxColumns)
+        if (detailed && sessionState.rowHeightDetailed > 0)
+            detailed.rowHeight = clamp(sessionState.rowHeightDetailed,
+                                       detailed.minRowHeight, detailed.maxRowHeight)
+        if (miller && sessionState.rowHeightMiller > 0)
+            miller.rowHeight = clamp(sessionState.rowHeightMiller,
+                                     miller.minRowHeight, miller.maxRowHeight)
+    }
+
+    Connections {
+        target: sessionState
+        function onGridColumnsChanged() { root.applyZoom() }
+        function onRowHeightDetailedChanged() { root.applyZoom() }
+        function onRowHeightMillerChanged() { root.applyZoom() }
+    }
+
+    function activeView() {
+        if (viewMode === "grid") return gridViewItem
+        if (viewMode === "miller") return millerViewItem
+        return detailedViewItem
+    }
+
     function selectAll() {
-        if (viewMode === "grid") gridView.selectAll()
-        else if (viewMode === "miller") millerView.selectAll()
-        else detailedView.selectAll()
+        const view = activeView()
+        if (view)
+            view.selectAll()
     }
 
+    // Only a shown view has a model, and focusPath ignores a view without
+    // one, so this only ever reaches the view on screen.
     function focusPath(path, reveal) {
-        gridView.focusPath(path, reveal)
-        detailedView.focusPath(path, reveal)
-        millerView.focusPath(path, reveal)
+        const view = activeView()
+        if (view)
+            view.focusPath(path, reveal)
     }
 
-    // Expose sub-views so main.qml can access selection state
-    property alias gridViewItem: gridView
-    property alias detailedViewItem: detailedView
-    property alias millerViewItem: millerView
-
-    FileGridView {
-        id: gridView
+    Loader {
+        id: gridLoader
         anchors.fill: parent
-        visible: root.viewMode === "grid"
-        model: visible ? root.fileModel : null
-        currentPath: root.currentPath
+        active: root.viewMode === "grid" || item !== null
+        sourceComponent: Component {
+            FileGridView {
+                property bool zoomReady: false
+                visible: root.viewMode === "grid"
+                model: visible ? root.fileModel : null
+                currentPath: root.currentPath
 
-        onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
-        onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
-        onSelectedIndicesChanged: root.selectionChanged()
-        onInteractionStarted: root.interactionStarted()
-        onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
+                onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
+                onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
+                onSelectedIndicesChanged: root.selectionChanged()
+                onInteractionStarted: root.interactionStarted()
+                onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
+                onColumnCountChanged: if (zoomReady) sessionState.gridColumns = columnCount
+
+                Component.onCompleted: {
+                    if (sessionState.gridColumns > 0)
+                        columnCount = root.clamp(sessionState.gridColumns, minColumns, maxColumns)
+                    sessionState.gridColumns = columnCount
+                    zoomReady = true
+                }
+            }
+        }
     }
 
-    FileDetailedView {
-        id: detailedView
+    Loader {
+        id: detailedLoader
         anchors.fill: parent
-        visible: root.viewMode === "detailed"
-        viewModel: visible ? root.fileModel : null
-        currentPath: root.currentPath
+        active: root.viewMode === "detailed" || item !== null
+        sourceComponent: Component {
+            FileDetailedView {
+                property bool zoomReady: false
+                visible: root.viewMode === "detailed"
+                viewModel: visible ? root.fileModel : null
+                currentPath: root.currentPath
 
-        onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
-        onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
-        onSortRequested: (col, asc) => root.sortRequested(col, asc)
-        onSelectedIndicesChanged: root.selectionChanged()
-        onInteractionStarted: root.interactionStarted()
-        onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
+                onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
+                onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
+                onSortRequested: (col, asc) => root.sortRequested(col, asc)
+                onSelectedIndicesChanged: root.selectionChanged()
+                onInteractionStarted: root.interactionStarted()
+                onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
+                onRowHeightChanged: if (zoomReady) sessionState.rowHeightDetailed = rowHeight
+
+                Component.onCompleted: {
+                    if (sessionState.rowHeightDetailed > 0)
+                        rowHeight = root.clamp(sessionState.rowHeightDetailed, minRowHeight, maxRowHeight)
+                    sessionState.rowHeightDetailed = rowHeight
+                    zoomReady = true
+                }
+            }
+        }
     }
 
-    FileMillerView {
-        id: millerView
+    Loader {
+        id: millerLoader
         anchors.fill: parent
-        visible: root.viewMode === "miller"
-        fileModel: visible ? root.fileModel : null
-        currentPath: root.currentPath
+        active: root.viewMode === "miller" || item !== null
+        sourceComponent: Component {
+            FileMillerView {
+                property bool zoomReady: false
+                visible: root.viewMode === "miller"
+                fileModel: visible ? root.fileModel : null
+                currentPath: root.currentPath
 
-        onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
-        onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
-        onSelectionChanged: root.selectionChanged()
-        onInteractionStarted: root.interactionStarted()
-        onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
+                onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
+                onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
+                onSelectionChanged: root.selectionChanged()
+                onInteractionStarted: root.interactionStarted()
+                onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
+                onRowHeightChanged: if (zoomReady) sessionState.rowHeightMiller = rowHeight
+
+                Component.onCompleted: {
+                    if (sessionState.rowHeightMiller > 0)
+                        rowHeight = root.clamp(sessionState.rowHeightMiller, minRowHeight, maxRowHeight)
+                    sessionState.rowHeightMiller = rowHeight
+                    zoomReady = true
+                }
+            }
+        }
     }
 }
