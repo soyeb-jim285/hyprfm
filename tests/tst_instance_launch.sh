@@ -91,24 +91,47 @@ wait_for 10 more_tabs_than "$tabs_before"
 check "handoff added a tab to the primary" \
       "$(more_tabs_than "$tabs_before" && echo yes || echo no)" "yes"
 
-# --- 3. bare relaunch opens an independent window --------------------------
-spawn; second=$SPAWNED
-check "bare relaunch stays alive as a second window" "$(yesno "$second")" "yes"
+# --- 3. bare relaunch opens another window in the same process ------------
+# Windows are counted through Hyprland when it is the compositor; elsewhere the
+# window checks are skipped and only the handoff itself is checked.
+hypr_sig=${HYPRLAND_INSTANCE_SIGNATURE:-}
+[ -n "$hypr_sig" ] && [ -S "$XDG_RUNTIME_DIR/hypr/$hypr_sig/.socket.sock" ] \
+    || hypr_sig=$(ls -t "$XDG_RUNTIME_DIR/hypr" 2>/dev/null | head -1)
+windows_of() {
+    [ -n "$hypr_sig" ] && command -v hyprctl >/dev/null || { echo "?"; return; }
+    HYPRLAND_INSTANCE_SIGNATURE=$hypr_sig hyprctl -j clients 2>/dev/null \
+        | grep -o "\"pid\": $1," | wc -l
+}
+more_windows_than() { [ "$(windows_of "$primary")" != "?" ] && [ "$(windows_of "$primary")" -gt "$1" ]; }
+check_windows() {   # label, before
+    if [ "$(windows_of "$primary")" = "?" ]; then
+        echo "SKIP: $1 (no hyprctl)"
+    else
+        wait_for 10 more_windows_than "$2"
+        check "$1" "$(more_windows_than "$2" && echo yes || echo no)" "yes"
+    fi
+}
 
-# --- 4. secondary windows never write the shared session -------------------
+windows_before=$(windows_of "$primary")
+"$HYPRFM" >/dev/null 2>&1
+check "bare relaunch hands off and exits 0" "$?" "0"
+check_windows "bare relaunch opened a window in the primary" "$windows_before"
+
+# --- 4. extra windows never write the shared session ------------------------
 # Checked by content, not mtime: the primary legitimately saves whenever its
-# geometry changes, and a tiling compositor resizes it when a third window
-# appears. What must never happen is the secondary's own tab landing in the
-# file, so give it a path the primary does not have.
-spawn -n /usr; third=$SPAWNED
-check "--new-window <path> opens its own window" "$(yesno "$third")" "yes"
-kill "$third"; sleep 1
-check "secondary window's tab is not in session.json" \
+# first window's geometry changes. What must never happen is another window's
+# tab landing in the file, so give it a path the first window does not have.
+windows_before=$(windows_of "$primary")
+"$HYPRFM" -n /usr >/dev/null 2>&1
+check "--new-window <path> hands off and exits 0" "$?" "0"
+check_windows "--new-window opened a window in the primary" "$windows_before"
+sleep 1
+check "extra window's tab is not in session.json" \
       "$(grep -c '"/usr"' "$SESSION")" "0"
 
 # --- 5. stale socket from a crashed instance is recovered ------------------
-kill -9 "$primary" "$second" 2>/dev/null
-wait "$primary" "$second" 2>/dev/null   # reap quietly, no "Killed" job notices
+kill -9 "$primary" 2>/dev/null
+wait "$primary" 2>/dev/null   # reap quietly, no "Killed" job notices
 sleep 1
 check "crash leaves a stale socket behind" "$(socket_up && echo yes || echo no)" "yes"
 spawn; revived=$SPAWNED

@@ -1,6 +1,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQmlComponent>
 #include <QQuickStyle>
 #include <QStandardPaths>
 #include <QDir>
@@ -346,6 +347,16 @@ private:
     bool m_probeAfterFirstFrame = false;
 };
 
+// What one main window owns. Everything the windows share (config, file
+// operations, clipboard, devices, ...) lives on the engine's root context.
+struct AppWindow : public QObject
+{
+    using QObject::QObject;
+    TabListModel *tabModel = nullptr;
+    SessionState *sessionState = nullptr;
+    QQuickWindow *window = nullptr;
+};
+
 // Printed by --help. Qt's QCommandLineParser would need a constructed
 // QCoreApplication, and both --help and --version have to answer before the
 // Wayland check below — `hyprfm --help` over SSH should still work.
@@ -574,15 +585,14 @@ int main(int argc, char *argv[])
     };
     mark("QGuiApplication ready");
 
-    // Launching HyprFM again opens another independent window, the way every
-    // other file manager behaves. The one exception is `hyprfm <path>` while
-    // an instance is already running: that forwards the path over a per-uid
-    // unix socket so the running window gains a tab, which is what desktop
-    // launchers and `xdg-open` rely on. `--new-window` opts out of even that.
+    // One process serves every window. Launching HyprFM while it runs hands
+    // the request to it over a per-uid unix socket: `hyprfm <path>` adds a tab
+    // to the window last used (what desktop launchers and `xdg-open` rely on),
+    // and a bare launch or `--new-window` opens another window.
     //
     // The process that manages to listen on the socket is the "primary" one:
-    // it answers those handoffs and owns the saved session (tabs + geometry).
-    // Extra windows are ordinary processes that share nothing with it.
+    // it answers those handoffs and owns the saved session (tabs + geometry)
+    // of its first window.
     const QString hyprfmSocketName = QStringLiteral("hyprfm-%1").arg(static_cast<uint>(getuid()));
     QLocalServer *ipcServer = nullptr;
     bool isPrimary = false;
@@ -591,14 +601,20 @@ int main(int argc, char *argv[])
         probe.connectToServer(hyprfmSocketName);
         const bool instanceRunning = probe.waitForConnected(150);
 
-        if (instanceRunning && !newWindow && !initialOpenPath.isEmpty()) {
+        if (instanceRunning) {
+            // A path opens as a tab in the running instance; a bare launch or
+            // --new-window asks it for another window. Either way this process
+            // is done. If the handoff cannot be written, fall through and run
+            // as a window of its own, as every launch used to.
             QJsonObject msg;
             msg.insert(QStringLiteral("path"), initialOpenPath);
+            if (newWindow || initialOpenPath.isEmpty())
+                msg.insert(QStringLiteral("newWindow"), true);
             QByteArray payload = QJsonDocument(msg).toJson(QJsonDocument::Compact);
             payload.append('\n');
             probe.write(payload);
-            probe.waitForBytesWritten(500);
-            return 0;
+            if (probe.waitForBytesWritten(500))
+                return 0;
         }
 
         if (!instanceRunning) {
@@ -713,12 +729,6 @@ int main(int argc, char *argv[])
     theme->loadTheme(config->theme(), themeDirs);
     mark("ThemeLoader loaded");
 
-    TabListModel *tabModel = new TabListModel(&app);
-    tabModel->setDefaultViewMode(config->defaultView());
-    QObject::connect(config, &ConfigManager::configChanged, tabModel, [=]() {
-        tabModel->setDefaultViewMode(config->defaultView());
-    });
-
     // Restore session (tabs + window geometry)
     const QString sessionPath = configDir + "/session.json";
     QJsonObject sessionData;
@@ -731,23 +741,8 @@ int main(int argc, char *argv[])
                 sessionData = doc.object();
         }
     }
-    if (sessionData.contains("tabs"))
-        tabModel->restoreSession(sessionData.value("tabs").toArray(),
-                                 sessionData.value("activeTab").toInt(0));
 
-    // Session-scoped view state (zoom per view). 0 keeps built-in defaults.
-    SessionState *sessionState = new SessionState(&app);
-    sessionState->setGridColumns(sessionData.value("gridColumns").toInt());
-    sessionState->setRowHeightDetailed(sessionData.value("rowHeightDetailed").toInt());
-    sessionState->setRowHeightMiller(sessionData.value("rowHeightMiller").toInt());
-
-    // A secondary window has no session to restore, so point its single tab
-    // straight at the requested path instead of opening a second tab later.
-    if (!isPrimary && !initialOpenPath.isEmpty()) {
-        if (auto *tab = tabModel->activeTab())
-            tab->navigateTo(initialOpenPath);
-    }
-
+    // ── Shared services: one per process, whatever the number of windows ──
     BookmarkModel *bookmarks = new BookmarkModel(&app);
     bookmarks->setBookmarks(config->bookmarks(), config->bookmarkNames());
 
@@ -761,48 +756,6 @@ int main(int argc, char *argv[])
     ClipboardManager *clipboard = new ClipboardManager(&app);
     // DragHelper created after IconProvider below
 
-    const QString homePath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
-    const QString initialPrimaryPath = tabModel->activeTab() && !tabModel->activeTab()->currentPath().isEmpty()
-        ? tabModel->activeTab()->currentPath()
-        : homePath;
-    const QString initialSecondaryPath = tabModel->activeTab() && !tabModel->activeTab()->secondaryCurrentPath().isEmpty()
-        ? tabModel->activeTab()->secondaryCurrentPath()
-        : initialPrimaryPath;
-    const bool initialSplitViewEnabled = tabModel->activeTab() && tabModel->activeTab()->splitViewEnabled();
-
-    FileSystemModel *fsModel = new FileSystemModel(&app);
-    fsModel->setShowHidden(config->showHidden());
-    fsModel->setRootPath(initialPrimaryPath);
-    mark("Primary fsModel populated");
-
-    FileSystemModel *splitFsModel = new FileSystemModel(&app);
-    splitFsModel->setShowHidden(config->showHidden());
-    if (initialSplitViewEnabled)
-        splitFsModel->setRootPath(initialSecondaryPath);
-    mark("Secondary fsModel populated");
-
-    FileSystemModel *millerParentModel = new FileSystemModel(&app);
-    millerParentModel->setShowHidden(config->showHidden());
-
-    FileSystemModel *millerPreviewModel = new FileSystemModel(&app);
-    millerPreviewModel->setShowHidden(config->showHidden());
-
-    SearchResultsModel *searchResults = new SearchResultsModel(&app);
-    SearchProxyModel *searchProxy = new SearchProxyModel(&app);
-    searchProxy->setSourceModel(searchResults);
-
-    SearchResultsModel *splitSearchResults = new SearchResultsModel(&app);
-    SearchProxyModel *splitSearchProxy = new SearchProxyModel(&app);
-    splitSearchProxy->setSourceModel(splitSearchResults);
-
-    SearchService *searchService = new SearchService(&app);
-    searchService->setObjectName("primary");
-    searchService->setResultsModel(searchResults);
-
-    SearchService *splitSearchService = new SearchService(&app);
-    splitSearchService->setObjectName("secondary");
-    splitSearchService->setResultsModel(splitSearchResults);
-
     PreviewService *previewService = new PreviewService(&app);
     MetadataExtractor *metadataExtractor = new MetadataExtractor(&app);
     previewService->setMetadataExtractor(metadataExtractor);
@@ -811,19 +764,11 @@ int main(int argc, char *argv[])
     RcloneService *rcloneService = new RcloneService(&app);
     RuntimeFeaturesService *runtimeFeatures = new RuntimeFeaturesService(&app);
     config->setShowWindowControlsDefault(runtimeFeatures->useIntegratedWindowControls());
-    GitStatusService *primaryGitService = new GitStatusService(&app);
-    GitStatusService *secondaryGitService = new GitStatusService(&app);
-    fsModel->setGitStatusService(primaryGitService);
-    splitFsModel->setGitStatusService(secondaryGitService);
 
     // Keep the live UI in sync with persisted config values.
     QObject::connect(config, &ConfigManager::configChanged, [=, &app, &resolveUiFont]() {
         theme->loadTheme(config->theme(), themeDirs);
         bookmarks->setBookmarks(config->bookmarks(), config->bookmarkNames());
-        fsModel->setShowHidden(config->showHidden());
-        splitFsModel->setShowHidden(config->showHidden());
-        millerParentModel->setShowHidden(config->showHidden());
-        millerPreviewModel->setShowHidden(config->showHidden());
         app.setFont(resolveUiFont(config->fontFamily()));
     });
 
@@ -852,9 +797,9 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
 
     // HyprFM and Quill are both compiled in. These paths only serve the
-    // on-disk fallback copy of the HyprFM module (see engine.load below). No
-    // source-tree path: an installed binary preferred it over its own install
-    // whenever the build tree it was built in still existed.
+    // on-disk fallback copy of the HyprFM module (see below). No source-tree
+    // path: an installed binary preferred it over its own install whenever
+    // the build tree it was built in still existed.
     if (!dataDir.isEmpty())
         engine.addImportPath(dataDir);
     engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR));
@@ -875,67 +820,42 @@ int main(int argc, char *argv[])
         iconProvider->setPrimaryTheme(config->iconTheme());
     });
 
-    // Register context properties
-    engine.rootContext()->setContextProperty("config", config);
-    engine.rootContext()->setContextProperty("theme", theme);
-    engine.rootContext()->setContextProperty("tabModel", tabModel);
-    engine.rootContext()->setContextProperty("bookmarks", bookmarks);
-    engine.rootContext()->setContextProperty("fileOps", fileOps);
-    engine.rootContext()->setContextProperty("undoManager", undoManager);
-    engine.rootContext()->setContextProperty("clipboard", clipboard);
-    engine.rootContext()->setContextProperty("dragHelper", dragHelper);
-    engine.rootContext()->setContextProperty("fsModel", fsModel);
-    engine.rootContext()->setContextProperty("splitFsModel", splitFsModel);
-    engine.rootContext()->setContextProperty("millerParentModel", millerParentModel);
-    engine.rootContext()->setContextProperty("millerPreviewModel", millerPreviewModel);
-    engine.rootContext()->setContextProperty("devices", devices);
-    engine.rootContext()->setContextProperty("recentFiles", recentFiles);
-    engine.rootContext()->setContextProperty("searchProxy", searchProxy);
-    engine.rootContext()->setContextProperty("searchResults", searchResults);
-    engine.rootContext()->setContextProperty("searchService", searchService);
-    engine.rootContext()->setContextProperty("splitSearchProxy", splitSearchProxy);
-    engine.rootContext()->setContextProperty("splitSearchResults", splitSearchResults);
-    engine.rootContext()->setContextProperty("splitSearchService", splitSearchService);
-    engine.rootContext()->setContextProperty("previewService", previewService);
-    engine.rootContext()->setContextProperty("metadataExtractor", metadataExtractor);
-    engine.rootContext()->setContextProperty("diskUsageService", diskUsageService);
-    engine.rootContext()->setContextProperty("remoteAccessService", remoteAccessService);
-    engine.rootContext()->setContextProperty("rcloneService", rcloneService);
-    engine.rootContext()->setContextProperty("runtimeFeatures", runtimeFeatures);
-    engine.rootContext()->setContextProperty("dependencies", dependencies);
-    engine.rootContext()->setContextProperty("sessionState", sessionState);
+    QQmlContext *shared = engine.rootContext();
+    shared->setContextProperty("config", config);
+    shared->setContextProperty("theme", theme);
+    shared->setContextProperty("bookmarks", bookmarks);
+    shared->setContextProperty("fileOps", fileOps);
+    shared->setContextProperty("undoManager", undoManager);
+    shared->setContextProperty("clipboard", clipboard);
+    shared->setContextProperty("dragHelper", dragHelper);
+    shared->setContextProperty("devices", devices);
+    shared->setContextProperty("recentFiles", recentFiles);
+    shared->setContextProperty("previewService", previewService);
+    shared->setContextProperty("metadataExtractor", metadataExtractor);
+    shared->setContextProperty("diskUsageService", diskUsageService);
+    shared->setContextProperty("remoteAccessService", remoteAccessService);
+    shared->setContextProperty("rcloneService", rcloneService);
+    shared->setContextProperty("runtimeFeatures", runtimeFeatures);
+    shared->setContextProperty("dependencies", dependencies);
 
-    const QString installedMainQml = dataDir.isEmpty()
-        ? QString()
-        : QDir(dataDir).filePath(QStringLiteral("HyprFM/qml/Main.qml"));
-
-    // The qrc module is qmlcachegen-compiled, so loading it skips parsing
-    // ~60 QML files on every launch. The installed on-disk copy is only the
+    // The main window, compiled once and instantiated per window. The qrc
+    // module is qmlcachegen-compiled; the installed on-disk copy is only the
     // fallback for a qrc payload that turns out incomplete (Qt 6.7.3 built
     // with NO_CACHEGEN dropped SettingsPanel.qml from it in v0.4.14).
     mark("engine.load start");
-    engine.loadFromModule("HyprFM", "Main");
-    if (engine.rootObjects().isEmpty() && !installedMainQml.isEmpty()
-        && QFile::exists(installedMainQml)) {
-        qWarning() << "HyprFM: embedded QML module failed to load, falling back to" << installedMainQml;
-        engine.load(QUrl::fromLocalFile(installedMainQml));
+    QQmlComponent mainComponent(&engine);
+    mainComponent.loadFromModule("HyprFM", "Main");
+    const QString installedMainQml = dataDir.isEmpty()
+        ? QString()
+        : QDir(dataDir).filePath(QStringLiteral("HyprFM/qml/Main.qml"));
+    if (mainComponent.isError() && !installedMainQml.isEmpty() && QFile::exists(installedMainQml)) {
+        qWarning() << "HyprFM: embedded QML module failed to load, falling back to" << installedMainQml
+                   << mainComponent.errorString();
+        mainComponent.loadUrl(QUrl::fromLocalFile(installedMainQml));
     }
-    mark("engine.load done");
-
-    if (engine.rootObjects().isEmpty())
+    if (mainComponent.isError()) {
+        qWarning().noquote() << mainComponent.errorString();
         return -1;
-
-    // First-frame checkpoint: one-shot hook on the root window's
-    // frameSwapped signal, for the timing log and the renderer choice.
-    // SingleShotConnection disconnects at the first emission, on the render
-    // thread. Disconnecting from inside the queued slot instead was too late:
-    // frames swapped before the first delivery each queued another call,
-    // which then ran against the deleted connection.
-    if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
-        QObject::connect(win, &QQuickWindow::frameSwapped, win, [mark, &renderer]() {
-            mark("first frame swapped");
-            renderer.firstFramePainted();
-        }, static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
     }
 
     auto applyWindowEffects = [config](QQuickWindow *window) {
@@ -956,39 +876,176 @@ int main(int argc, char *argv[])
 #endif
     };
 
+    // ── Windows ───────────────────────────────────────────────────────────
+    // Every window runs in this one process. Launching HyprFM again while it
+    // runs asks it for another window over the socket instead of starting a
+    // second process: the compiled QML, the shared services, the GPU device
+    // and the libraries are already there, which made a second window
+    // measurably cheaper to open (see the commit). What each window owns --
+    // its tabs, its listings, its searches, its zoom -- lives in a child
+    // context, so Main.qml sees the same names it always did.
+    QList<AppWindow *> windows;
+    AppWindow *sessionWindow = nullptr;   // the one whose state is session.json
+    AppWindow *lastActiveWindow = nullptr;
+
+    auto createWindow = [&](const QJsonObject &session, const QString &openPath) -> AppWindow * {
+        auto *w = new AppWindow(&app);
+
+        w->tabModel = new TabListModel(w);
+        w->tabModel->setDefaultViewMode(config->defaultView());
+        QObject::connect(config, &ConfigManager::configChanged, w->tabModel, [config, tabModel = w->tabModel]() {
+            tabModel->setDefaultViewMode(config->defaultView());
+        });
+        if (session.contains("tabs")) {
+            w->tabModel->restoreSession(session.value("tabs").toArray(), session.value("activeTab").toInt(0));
+        } else if (!openPath.isEmpty()) {
+            // A window with no session starts on the requested path in its
+            // one tab rather than opening a second tab for it later.
+            if (auto *tab = w->tabModel->activeTab())
+                tab->navigateTo(openPath);
+        }
+
+        // Session-scoped view state (zoom per view). 0 keeps built-in defaults.
+        w->sessionState = new SessionState(w);
+        w->sessionState->setGridColumns(session.value("gridColumns").toInt());
+        w->sessionState->setRowHeightDetailed(session.value("rowHeightDetailed").toInt());
+        w->sessionState->setRowHeightMiller(session.value("rowHeightMiller").toInt());
+
+        const QString homePath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+        TabModel *activeTab = w->tabModel->activeTab();
+        const QString initialPrimaryPath = activeTab && !activeTab->currentPath().isEmpty()
+            ? activeTab->currentPath() : homePath;
+        const QString initialSecondaryPath = activeTab && !activeTab->secondaryCurrentPath().isEmpty()
+            ? activeTab->secondaryCurrentPath() : initialPrimaryPath;
+
+        auto *fsModel = new FileSystemModel(w);
+        fsModel->setShowHidden(config->showHidden());
+        fsModel->setRootPath(initialPrimaryPath);
+        auto *splitFsModel = new FileSystemModel(w);
+        splitFsModel->setShowHidden(config->showHidden());
+        if (activeTab && activeTab->splitViewEnabled())
+            splitFsModel->setRootPath(initialSecondaryPath);
+        auto *millerParentModel = new FileSystemModel(w);
+        millerParentModel->setShowHidden(config->showHidden());
+        auto *millerPreviewModel = new FileSystemModel(w);
+        millerPreviewModel->setShowHidden(config->showHidden());
+        mark("fsModels populated");
+        QObject::connect(config, &ConfigManager::configChanged, w,
+                         [=]() {
+            for (FileSystemModel *model : {fsModel, splitFsModel, millerParentModel, millerPreviewModel})
+                model->setShowHidden(config->showHidden());
+        });
+
+        auto *searchResults = new SearchResultsModel(w);
+        auto *searchProxy = new SearchProxyModel(w);
+        searchProxy->setSourceModel(searchResults);
+        auto *splitSearchResults = new SearchResultsModel(w);
+        auto *splitSearchProxy = new SearchProxyModel(w);
+        splitSearchProxy->setSourceModel(splitSearchResults);
+        auto *searchService = new SearchService(w);
+        searchService->setObjectName("primary");
+        searchService->setResultsModel(searchResults);
+        auto *splitSearchService = new SearchService(w);
+        splitSearchService->setObjectName("secondary");
+        splitSearchService->setResultsModel(splitSearchResults);
+
+        auto *primaryGitService = new GitStatusService(w);
+        auto *secondaryGitService = new GitStatusService(w);
+        fsModel->setGitStatusService(primaryGitService);
+        splitFsModel->setGitStatusService(secondaryGitService);
+
+        auto *context = new QQmlContext(shared, w);
+        context->setContextProperty("tabModel", w->tabModel);
+        context->setContextProperty("sessionState", w->sessionState);
+        context->setContextProperty("fsModel", fsModel);
+        context->setContextProperty("splitFsModel", splitFsModel);
+        context->setContextProperty("millerParentModel", millerParentModel);
+        context->setContextProperty("millerPreviewModel", millerPreviewModel);
+        context->setContextProperty("searchProxy", searchProxy);
+        context->setContextProperty("searchResults", searchResults);
+        context->setContextProperty("searchService", searchService);
+        context->setContextProperty("splitSearchProxy", splitSearchProxy);
+        context->setContextProperty("splitSearchResults", splitSearchResults);
+        context->setContextProperty("splitSearchService", splitSearchService);
+
+        QObject *root = mainComponent.create(context);
+        w->window = qobject_cast<QQuickWindow *>(root);
+        if (!w->window) {
+            qWarning().noquote() << "HyprFM: could not create a window:" << mainComponent.errorString();
+            delete root;
+            delete w;
+            return nullptr;
+        }
+        root->setParent(w);
+
+        applyWindowEffects(w->window);
+        QObject::connect(config, &ConfigManager::configChanged, w->window, [=]() {
+            applyWindowEffects(w->window);
+        });
+
+        windows.append(w);
+        QObject::connect(w, &QObject::destroyed, &app, [&windows, &sessionWindow, &lastActiveWindow, w]() {
+            windows.removeAll(w);
+            if (sessionWindow == w) sessionWindow = nullptr;
+            if (lastActiveWindow == w) lastActiveWindow = nullptr;
+        });
+        return w;
+    };
+
+    QObject::connect(&app, &QGuiApplication::focusWindowChanged, &app, [&](QWindow *focused) {
+        for (AppWindow *w : std::as_const(windows))
+            if (w->window == focused)
+                lastActiveWindow = w;
+    });
+
+    AppWindow *first = createWindow(sessionData, isPrimary ? QString() : initialOpenPath);
+    mark("engine.load done");
+    if (!first)
+        return -1;
+    if (isPrimary)
+        sessionWindow = first;
+
+    // First-frame checkpoint: one-shot hook on the first window's
+    // frameSwapped signal, for the timing log and the renderer choice.
+    // SingleShotConnection disconnects at the first emission, on the render
+    // thread. Disconnecting from inside the queued slot instead was too late:
+    // frames swapped before the first delivery each queued another call,
+    // which then ran against the deleted connection.
+    QObject::connect(first->window, &QQuickWindow::frameSwapped, first->window, [mark, &renderer]() {
+        mark("first frame swapped");
+        renderer.firstFramePainted();
+    }, static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
+
     QTimer sessionSaveTimer;
     sessionSaveTimer.setSingleShot(true);
     sessionSaveTimer.setInterval(250);
 
+    // Only the session window is saved: the others are extra views, as the
+    // extra processes they replace were, and must not overwrite its tabs.
     auto saveSession = [&]() {
-        // Secondary windows share no state with the primary instance, so they
-        // must not overwrite its saved tabs/geometry.
-        if (!isPrimary)
+        if (!sessionWindow)
             return;
 
         QJsonObject session;
-        session["tabs"] = tabModel->saveSession();
-        session["activeTab"] = tabModel->activeIndex();
-        session["gridColumns"] = sessionState->gridColumns();
-        session["rowHeightDetailed"] = sessionState->rowHeightDetailed();
-        session["rowHeightMiller"] = sessionState->rowHeightMiller();
+        session["tabs"] = sessionWindow->tabModel->saveSession();
+        session["activeTab"] = sessionWindow->tabModel->activeIndex();
+        session["gridColumns"] = sessionWindow->sessionState->gridColumns();
+        session["rowHeightDetailed"] = sessionWindow->sessionState->rowHeightDetailed();
+        session["rowHeightMiller"] = sessionWindow->sessionState->rowHeightMiller();
 
-        if (auto *win = !engine.rootObjects().isEmpty()
-                ? qobject_cast<QQuickWindow *>(engine.rootObjects().first())
-                : nullptr) {
-            session["windowX"] = win->x();
-            session["windowY"] = win->y();
-            session["windowWidth"] = win->width();
-            session["windowHeight"] = win->height();
+        QQuickWindow *win = sessionWindow->window;
+        session["windowX"] = win->x();
+        session["windowY"] = win->y();
+        session["windowWidth"] = win->width();
+        session["windowHeight"] = win->height();
 
-            QWindow::Visibility savedVisibility = win->visibility();
-            if (savedVisibility == QWindow::Hidden
-                    || savedVisibility == QWindow::AutomaticVisibility
-                    || savedVisibility == QWindow::Minimized) {
-                savedVisibility = QWindow::Windowed;
-            }
-            session["windowVisibility"] = static_cast<int>(savedVisibility);
+        QWindow::Visibility savedVisibility = win->visibility();
+        if (savedVisibility == QWindow::Hidden
+                || savedVisibility == QWindow::AutomaticVisibility
+                || savedVisibility == QWindow::Minimized) {
+            savedVisibility = QWindow::Windowed;
         }
+        session["windowVisibility"] = static_cast<int>(savedVisibility);
 
         QSaveFile sf(sessionPath);
         if (sf.open(QIODevice::WriteOnly)) {
@@ -1000,25 +1057,36 @@ int main(int argc, char *argv[])
     auto scheduleSessionSave = [&]() {
         sessionSaveTimer.start();
     };
-
     QObject::connect(&sessionSaveTimer, &QTimer::timeout, &app, saveSession);
-    QObject::connect(tabModel, &TabListModel::sessionChanged, &app, scheduleSessionSave);
-    // Zoom changes are session state too, so persist them the same way.
-    QObject::connect(sessionState, &SessionState::gridColumnsChanged, &app, scheduleSessionSave);
-    QObject::connect(sessionState, &SessionState::rowHeightDetailedChanged, &app, scheduleSessionSave);
-    QObject::connect(sessionState, &SessionState::rowHeightMillerChanged, &app, scheduleSessionSave);
 
-    if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
-        applyWindowEffects(win);
-        QObject::connect(config, &ConfigManager::configChanged, win, [=]() {
-            applyWindowEffects(win);
-        });
+    if (sessionWindow) {
+        QObject::connect(sessionWindow->tabModel, &TabListModel::sessionChanged, &app, scheduleSessionSave);
+        // Zoom changes are session state too, so persist them the same way.
+        QObject::connect(sessionWindow->sessionState, &SessionState::gridColumnsChanged, &app, scheduleSessionSave);
+        QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightDetailedChanged, &app, scheduleSessionSave);
+        QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightMillerChanged, &app, scheduleSessionSave);
+        QQuickWindow *win = sessionWindow->window;
         QObject::connect(win, &QQuickWindow::xChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::yChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::widthChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::heightChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::visibilityChanged, &app, scheduleSessionSave);
     }
+
+    // A window's models go with it when it closes. The session window saves
+    // first; closing it while others are open leaves them running unsaved,
+    // like the extra processes did.
+    auto releaseOnClose = [&](AppWindow *w) {
+        QObject::connect(w->window, &QQuickWindow::closing, w, [&, w]() {
+            if (w == sessionWindow) {
+                sessionSaveTimer.stop();
+                saveSession();
+                sessionWindow = nullptr;
+            }
+            w->deleteLater();
+        });
+    };
+    releaseOnClose(first);
 
     // Save session on quit
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
@@ -1027,51 +1095,60 @@ int main(int argc, char *argv[])
     });
 
     // Restore window geometry
-    if (sessionData.contains("windowWidth") && !engine.rootObjects().isEmpty()) {
-        if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
-            win->setX(sessionData.value("windowX").toInt());
-            win->setY(sessionData.value("windowY").toInt());
-            win->setWidth(sessionData.value("windowWidth").toInt());
-            win->setHeight(sessionData.value("windowHeight").toInt());
+    if (sessionWindow && sessionData.contains("windowWidth")) {
+        QQuickWindow *win = sessionWindow->window;
+        win->setX(sessionData.value("windowX").toInt());
+        win->setY(sessionData.value("windowY").toInt());
+        win->setWidth(sessionData.value("windowWidth").toInt());
+        win->setHeight(sessionData.value("windowHeight").toInt());
 
-            QWindow::Visibility restoredVisibility = QWindow::Windowed;
-            if (sessionData.contains("windowVisibility")) {
-                restoredVisibility = static_cast<QWindow::Visibility>(
-                    sessionData.value("windowVisibility").toInt());
-            }
+        QWindow::Visibility restoredVisibility = QWindow::Windowed;
+        if (sessionData.contains("windowVisibility")) {
+            restoredVisibility = static_cast<QWindow::Visibility>(
+                sessionData.value("windowVisibility").toInt());
+        }
 
-            if (restoredVisibility == QWindow::Maximized
-                    || restoredVisibility == QWindow::FullScreen
-                    || restoredVisibility == QWindow::Windowed) {
-                win->setVisibility(restoredVisibility);
-            } else {
-                win->showNormal();
-            }
+        if (restoredVisibility == QWindow::Maximized
+                || restoredVisibility == QWindow::FullScreen
+                || restoredVisibility == QWindow::Windowed) {
+            win->setVisibility(restoredVisibility);
+        } else {
+            win->showNormal();
         }
     }
 
-    // Raise, focus, and navigate to a path — used for both the initial
-    // argv path and for paths forwarded by a subsequent invocation over
-    // the single-instance socket. Empty path just raises the window.
-    auto openPathInNewTab = [&engine, tabModel](const QString &path) {
-        if (!path.isEmpty())
-            tabModel->openPath(path);   // reuses a tab already showing it
-        if (engine.rootObjects().isEmpty())
+    // Raise, focus, and open a path as a tab in the window last used -- for
+    // the initial argv path and for paths handed over by a later invocation.
+    // Empty path just raises the window.
+    auto openPathInNewTab = [&](const QString &path) {
+        AppWindow *target = lastActiveWindow ? lastActiveWindow
+            : sessionWindow ? sessionWindow
+            : windows.isEmpty() ? nullptr : windows.constLast();
+        if (!target)
             return;
-        if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
-            if (win->visibility() == QWindow::Minimized || win->visibility() == QWindow::Hidden)
-                win->showNormal();
-            win->raise();
-            win->requestActivate();
+        if (!path.isEmpty())
+            target->tabModel->openPath(path);   // reuses a tab already showing it
+        QQuickWindow *win = target->window;
+        if (win->visibility() == QWindow::Minimized || win->visibility() == QWindow::Hidden)
+            win->showNormal();
+        win->raise();
+        win->requestActivate();
+    };
+
+    auto openNewWindow = [&](const QString &path) {
+        if (AppWindow *w = createWindow(QJsonObject(), path)) {
+            releaseOnClose(w);
+            w->window->raise();
+            w->window->requestActivate();
         }
     };
 
-    // The socket was opened before the session load; now that the window and
-    // the navigation helper exist, start answering handoffs on it.
+    // The socket was opened before the session load; now that the windows and
+    // the navigation helpers exist, start answering handoffs on it.
     if (isPrimary) {
-        QObject::connect(ipcServer, &QLocalServer::newConnection, &app, [ipcServer, openPathInNewTab]() {
+        QObject::connect(ipcServer, &QLocalServer::newConnection, &app, [&]() {
             while (QLocalSocket *conn = ipcServer->nextPendingConnection()) {
-                QObject::connect(conn, &QLocalSocket::readyRead, conn, [conn, openPathInNewTab]() {
+                QObject::connect(conn, &QLocalSocket::readyRead, conn, [&, conn]() {
                     const QByteArray data = conn->readAll();
                     for (const QByteArray &line : data.split('\n')) {
                         const QByteArray trimmed = line.trimmed();
@@ -1079,7 +1156,11 @@ int main(int argc, char *argv[])
                         QJsonParseError err;
                         const QJsonDocument doc = QJsonDocument::fromJson(trimmed, &err);
                         if (err.error != QJsonParseError::NoError || !doc.isObject()) continue;
-                        openPathInNewTab(doc.object().value(QStringLiteral("path")).toString());
+                        const QString path = doc.object().value(QStringLiteral("path")).toString();
+                        if (doc.object().value(QStringLiteral("newWindow")).toBool())
+                            openNewWindow(path);
+                        else
+                            openPathInNewTab(path);
                     }
                 });
                 QObject::connect(conn, &QLocalSocket::disconnected, conn, &QObject::deleteLater);
@@ -1087,11 +1168,10 @@ int main(int argc, char *argv[])
         });
     }
 
-    // Apply the path this process was launched with (if any) as a new tab
-    // on the restored session. Secondary windows already navigated their
-    // single tab above.
+    // Apply the path this process was launched with (if any) as a new tab on
+    // the restored session. A window without a session already opened on it.
     if (!initialOpenPath.isEmpty() && isPrimary)
-        QTimer::singleShot(0, &app, [=]() { openPathInNewTab(initialOpenPath); });
+        QTimer::singleShot(0, &app, [&]() { openPathInNewTab(initialOpenPath); });
 
     return app.exec();
 }
