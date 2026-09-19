@@ -28,6 +28,10 @@ export TMPDIR="$SANDBOX/tmp"
 mkdir -p "$TMPDIR"
 
 export HOME="$SANDBOX/home"
+# HyprFM follows XDG_CONFIG_HOME, which a desktop session often sets to the
+# real ~/.config: keep it inside the sandbox too.
+export XDG_CONFIG_HOME="$HOME/.config"
+export XDG_CACHE_HOME="$HOME/.cache"
 mkdir -p "$HOME/.config/hyprfm"
 SESSION="$HOME/.config/hyprfm/session.json"
 SOCKET="$TMPDIR/hyprfm-$(id -u)"

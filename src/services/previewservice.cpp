@@ -664,7 +664,8 @@ QString PreviewService::localPreviewPath(const QString &path) const
 
     // The cache only ever needs the file being previewed right now; drop the
     // previous copy so trashed files don't pile up in plaintext forever.
-    QString cacheRoot = QDir::homePath() + "/.cache/hyprfm/preview-cache";
+    QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
+        + "/hyprfm/preview-cache";
     QDir(cacheRoot).removeRecursively();
     QDir().mkpath(cacheRoot);
     QFile::setPermissions(cacheRoot, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);

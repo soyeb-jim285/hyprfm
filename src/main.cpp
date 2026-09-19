@@ -618,9 +618,15 @@ int main(int argc, char *argv[])
         return font;
     };
 
-    // Ensure config directory exists
-    const QString configDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation)
-                              + "/.config/hyprfm";
+    // $XDG_CONFIG_HOME/hyprfm (~/.config/hyprfm when unset). Not under
+    // Flatpak: the runtime points XDG_CONFIG_HOME at a per-app directory, and
+    // Flatpak installs have always kept their config in the real
+    // ~/.config/hyprfm, so following it there would lose it.
+    const bool inFlatpak = QFile::exists(QStringLiteral("/.flatpak-info"));
+    const QString configDir = (inFlatpak
+            ? QDir::homePath() + QStringLiteral("/.config")
+            : QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation))
+        + QStringLiteral("/hyprfm");
     QDir().mkpath(configDir);
     const QString configPath = configDir + "/config.toml";
 
