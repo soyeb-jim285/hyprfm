@@ -85,7 +85,9 @@ public:
     Q_INVOKABLE void sortByColumn(const QString &column, bool ascending);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE QVariantMap fileProperties(const QString &path) const;
-    Q_INVOKABLE QVariantMap folderItemCounts(const QStringList &paths) const;
+    Q_INVOKABLE QVariantMap folderItemCounts(const QStringList &paths) const { return countFolderItems(paths); }
+    // Same counts, computed on a worker; returns the id folderItemCountsReady carries.
+    Q_INVOKABLE int requestFolderItemCounts(const QStringList &paths);
     Q_INVOKABLE QVariantList availableApps(const QString &mimeType) const;
     Q_INVOKABLE QString defaultApp(const QString &mimeType) const;
     Q_INVOKABLE void setDefaultApp(const QString &mimeType, const QString &desktopFile);
@@ -115,6 +117,7 @@ signals:
     // The full properties of a remote location fileProperties() answered
     // with a pending placeholder.
     void remotePropertiesReady(const QString &path, const QVariantMap &properties);
+    void folderItemCountsReady(int requestId, const QVariantMap &counts);
 
 private:
     static constexpr qint64 kNoTime = std::numeric_limits<qint64>::min();
@@ -158,6 +161,7 @@ private:
         mutable std::shared_ptr<Details> details;
     };
     static Entry entryFromInfo(const QFileInfo &info, bool statted);
+    static QVariantMap countFolderItems(const QStringList &paths);
     void ensureStat(const Entry &entry, const QFileInfo &info) const;
     void ensureStat(const Entry &entry) const;
     QString entryPath(const Entry &entry) const { return m_entryPrefix + entry.name; }
@@ -209,6 +213,7 @@ private:
     QList<Entry> m_entries;
     QList<QVariantMap> m_remoteEntries;
     QSet<QString> m_remotePropertiesPending;
+    int m_folderCountRequest = 0;
     QList<QVariantMap> m_trashEntries;
     int m_fileCount = 0;
     int m_folderCount = 0;

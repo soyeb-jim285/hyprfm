@@ -15,6 +15,9 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QDirIterator>
+#include <QCoreApplication>
+#include <QPointer>
+#include <QThreadPool>
 #include <QUrl>
 #include "services/diskusageservice.h"
 #include <QtConcurrent>
@@ -1695,20 +1698,43 @@ void FileSystemModel::reloadTrash()
     m_folderCount = folders;
 }
 
-QVariantMap FileSystemModel::folderItemCounts(const QStringList &paths) const
+// Counted with an iterator: entryList() sorted every folder's names only
+// for them to be counted.
+QVariantMap FileSystemModel::countFolderItems(const QStringList &paths)
 {
     QVariantMap result;
     for (const QString &path : paths) {
-        if (path.isEmpty())
+        if (path.isEmpty() || !QFileInfo(path).isDir())
             continue;
-        QDir dir(path);
-        if (!dir.exists())
-            continue;
-        const int count = dir.entryList(
-            QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System).count();
+        int count = 0;
+        QDirIterator it(path, QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+        while (it.hasNext()) {
+            it.next();
+            ++count;
+        }
         result.insert(path, count);
     }
     return result;
+}
+
+// The detailed view asks for every folder row near the viewport, and each
+// count is a directory read: on a cold cache or a slow disk that stalled
+// scrolling (every window's, since they share the GUI thread). Count on a
+// worker; the answer comes back through folderItemCountsReady.
+int FileSystemModel::requestFolderItemCounts(const QStringList &paths)
+{
+    const int id = ++m_folderCountRequest;
+    // The reply goes through the application object and checks the guard on
+    // the GUI thread: the model can be destroyed (its window closed) while
+    // the worker is still counting.
+    QThreadPool::globalInstance()->start([paths, id, guard = QPointer<FileSystemModel>(this)]() {
+        const QVariantMap counts = countFolderItems(paths);
+        QMetaObject::invokeMethod(QCoreApplication::instance(), [guard, id, counts]() {
+            if (guard)
+                emit guard->folderItemCountsReady(id, counts);
+        }, Qt::QueuedConnection);
+    });
+    return id;
 }
 
 QVariantMap FileSystemModel::fileProperties(const QString &path) const

@@ -1,4 +1,5 @@
 #include <QTest>
+#include <QTemporaryDir>
 #include <QElapsedTimer>
 #include <QStorageInfo>
 #include <QSignalSpy>
@@ -20,6 +21,31 @@ class TestFileSystemModel : public QObject
     Q_OBJECT
 
 private slots:
+    // Folder item counts for the detailed view are computed on a worker.
+    void testFolderItemCountsArriveAsynchronously()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("sub");
+        for (const char *name : {"sub/a", "sub/b", "sub/.hidden"}) {
+            QFile f(dir.filePath(name));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        }
+        const QString sub = dir.filePath("sub");
+
+        FileSystemModel model;
+        QSignalSpy ready(&model, &FileSystemModel::folderItemCountsReady);
+        const int id = model.requestFolderItemCounts({sub});
+        QTRY_COMPARE(ready.count(), 1);
+        QCOMPARE(ready.at(0).at(0).toInt(), id);
+        QCOMPARE(ready.at(0).at(1).toMap().value(sub).toInt(), 3);
+
+        // The model can go away (its window closed) with a count in flight.
+        auto *doomed = new FileSystemModel;
+        doomed->requestFolderItemCounts({QStringLiteral("/usr/share"), sub});
+        delete doomed;
+        QTest::qWait(200);
+    }
+
     // Properties of a remote location outside the listing used to wait on
     // `gio info` (up to 8 s) on the GUI thread. They now answer at once with a
     // pending placeholder and deliver the rest through remotePropertiesReady.

@@ -52,11 +52,25 @@ FocusScope {
 
     // Map of folder path → item count
     property var folderItemCounts: ({})
+    property int folderCountRequest: -1
+
+    // Counted on a worker when the model can (the directory model); the map
+    // is replaced when the answer arrives, not cleared first, so the column
+    // does not blink while it is on its way.
+    Connections {
+        target: root.viewModel
+        ignoreUnknownSignals: true
+        function onFolderItemCountsReady(requestId, counts) {
+            if (requestId === root.folderCountRequest)
+                root.folderItemCounts = counts
+        }
+    }
 
     function refreshFolderItemCounts() {
-        folderItemCounts = ({})
-        if (!root.visible || !viewModel || listView.count <= 0 || !viewModel.folderItemCounts)
+        if (!root.visible || !viewModel || listView.count <= 0 || !viewModel.folderItemCounts) {
+            folderItemCounts = ({})
             return
+        }
 
         var first = Math.max(0, Math.floor(listView.contentY / root.rowHeight) - 12)
         var last = Math.min(listView.count - 1,
@@ -70,9 +84,14 @@ FocusScope {
                     paths.push(p)
             }
         }
-        if (paths.length === 0)
+        if (paths.length === 0) {
+            folderItemCounts = ({})
             return
-        folderItemCounts = viewModel.folderItemCounts(paths)
+        }
+        if (viewModel.requestFolderItemCounts)
+            folderCountRequest = viewModel.requestFolderItemCounts(paths)
+        else
+            folderItemCounts = viewModel.folderItemCounts(paths)
     }
 
     signal fileActivated(string filePath, bool isDirectory)
