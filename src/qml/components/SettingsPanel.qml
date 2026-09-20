@@ -37,6 +37,7 @@ Window {
     readonly property string defaultIconThemeName: "Adwaita"
     readonly property string defaultSidebarPosition: "left"
     readonly property int defaultSidebarWidth: 200
+    readonly property int defaultSidebarAutoHideWidth: 700
     readonly property int defaultRadiusSmall: 4
     readonly property int defaultRadiusMedium: 8
     readonly property int defaultRadiusLarge: 12
@@ -86,6 +87,7 @@ Window {
     property var draftHiddenQuickAccess: config.hiddenQuickAccess
     property string draftSidebarPosition: config.sidebarPosition
     property int draftSidebarWidth: currentSidebarWidth
+    property int draftSidebarAutoHideWidth: config.sidebarAutoHideWidth
     property int draftRadiusSmall: config.radiusSmall
     property int draftRadiusMedium: config.radiusMedium
     property int draftRadiusLarge: config.radiusLarge
@@ -268,6 +270,7 @@ Window {
         draftHiddenQuickAccess = []
         draftSidebarPosition = defaultSidebarPosition
         draftSidebarWidth = defaultSidebarWidth
+        draftSidebarAutoHideWidth = defaultSidebarAutoHideWidth
         draftRadiusSmall = defaultRadiusSmall
         draftRadiusMedium = defaultRadiusMedium
         draftRadiusLarge = defaultRadiusLarge
@@ -313,6 +316,7 @@ Window {
             draftHiddenQuickAccess = config.hiddenQuickAccess
             draftSidebarPosition = config.sidebarPosition
             draftSidebarWidth = currentSidebarWidth
+            draftSidebarAutoHideWidth = config.sidebarAutoHideWidth
             draftRadiusSmall = config.radiusSmall
             draftRadiusMedium = Math.max(config.radiusMedium, draftRadiusSmall)
             draftRadiusLarge = Math.max(config.radiusLarge, draftRadiusMedium)
@@ -384,6 +388,7 @@ Window {
             hiddenQuickAccess: draftHiddenQuickAccess,
             sidebarPosition: draftSidebarPosition,
             sidebarWidth: draftSidebarWidth,
+            sidebarAutoHideWidth: draftSidebarAutoHideWidth,
             radiusSmall: draftRadiusSmall,
             radiusMedium: draftRadiusMedium,
             radiusLarge: draftRadiusLarge,
@@ -720,6 +725,32 @@ Window {
                 value: root.draftSidebarWidth
                 onMoved: (value) => {
                     root.draftSidebarWidth = Math.round(value)
+                    root.queueSettingsApply()
+                }
+            }
+
+            Q.Toggle {
+                Layout.fillWidth: true
+                label: "Hide sidebar in narrow windows"
+                checked: root.draftSidebarAutoHideWidth > 0
+                onToggled: (value) => {
+                    root.draftSidebarAutoHideWidth = value ? root.defaultSidebarAutoHideWidth : 0
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Slider {
+                Layout.fillWidth: true
+                label: "Hide below window width"
+                from: 320
+                to: 2000
+                stepSize: 20
+                showValue: true
+                enabled: root.draftSidebarAutoHideWidth > 0
+                value: root.draftSidebarAutoHideWidth > 0 ? root.draftSidebarAutoHideWidth
+                                                          : root.defaultSidebarAutoHideWidth
+                onMoved: (value) => {
+                    root.draftSidebarAutoHideWidth = Math.round(value)
                     root.queueSettingsApply()
                 }
             }

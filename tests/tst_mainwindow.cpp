@@ -927,6 +927,56 @@ private slots:
     // fills with what is used and the label sits on it. The fill has to track
     // the ratio and step through accent/warning/error at 75% and 90%, since a
     // meter nobody can read at a glance is just a coloured box.
+    // The sidebar folds away on its own in a narrow window, comes back when
+    // there is room again, and stops second-guessing the user the moment they
+    // decide for themselves.
+    void testSidebarFoldsAwayInANarrowWindow()
+    {
+        App app;
+        QVERIFY(app.load());
+        QQuickWindow *window = app.window;
+        // The default threshold is 700; the window starts at 1100x700.
+        QVERIFY(window->property("sidebarVisible").toBool());
+        QVERIFY(!window->property("windowTooNarrowForSidebar").toBool());
+
+        // Narrow: folds away.
+        window->resize(560, 700);
+        QTRY_VERIFY(!window->property("sidebarVisible").toBool());
+
+        // Still toggleable by hand while narrow.
+        QMetaObject::invokeMethod(window, "toggleSidebar");
+        QTRY_VERIFY(window->property("sidebarVisible").toBool());
+
+        // And that choice survives widening - no second restore on top of it.
+        window->resize(1100, 700);
+        QTRY_VERIFY(window->property("sidebarVisible").toBool());
+
+        // Closing it by hand in a wide window keeps it closed when narrowed
+        // and widened again.
+        QMetaObject::invokeMethod(window, "toggleSidebar");
+        QTRY_VERIFY(!window->property("sidebarVisible").toBool());
+        window->resize(560, 700);
+        QTest::qWait(50);
+        QVERIFY(!window->property("sidebarVisible").toBool());
+        window->resize(1100, 700);
+        QTest::qWait(50);
+        QVERIFY(!window->property("sidebarVisible").toBool());
+
+        // HYPRFM_TEST_GRAB=<prefix> writes wide/narrow frames for eyeballing.
+        if (qEnvironmentVariableIsSet("HYPRFM_TEST_GRAB")) {
+            const QString prefix = qEnvironmentVariable("HYPRFM_TEST_GRAB");
+            QMetaObject::invokeMethod(window, "toggleSidebar");   // back on
+            QTest::qWait(400);
+            window->grabWindow().save(prefix + QStringLiteral("-wide.png"));
+            window->resize(560, 700);
+            QTest::qWait(600);
+            window->grabWindow().save(prefix + QStringLiteral("-narrow.png"));
+            window->resize(1100, 700);
+            QTest::qWait(600);
+            window->grabWindow().save(prefix + QStringLiteral("-wide-again.png"));
+        }
+    }
+
     void testStatusBarDiskMeterTracksUsage()
     {
         App app;

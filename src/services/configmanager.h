@@ -28,6 +28,7 @@ class ConfigManager : public QObject
     Q_PROPERTY(QString sidebarPosition READ sidebarPosition NOTIFY configChanged)
     Q_PROPERTY(int sidebarWidth READ sidebarWidth NOTIFY configChanged)
     Q_PROPERTY(bool sidebarVisible READ sidebarVisible NOTIFY configChanged)
+    Q_PROPERTY(int sidebarAutoHideWidth READ sidebarAutoHideWidth NOTIFY configChanged)
     Q_PROPERTY(QStringList hiddenQuickAccess READ hiddenQuickAccess NOTIFY configChanged)
     Q_PROPERTY(QStringList bookmarks READ bookmarks NOTIFY configChanged)
     Q_PROPERTY(QVariantMap bookmarkNames READ bookmarkNames NOTIFY configChanged)
@@ -87,6 +88,8 @@ public:
     QString sidebarPosition() const;
     int sidebarWidth() const;
     bool sidebarVisible() const;
+    // Window width below which the sidebar folds away on its own; 0 disables it.
+    int sidebarAutoHideWidth() const;
     QStringList hiddenQuickAccess() const;
     // Detailed (list) view columns, in display order. "name" is always present.
     QStringList listColumns() const;
@@ -178,6 +181,7 @@ private:
     QString m_sidebarPosition;
     int m_sidebarWidth;
     bool m_sidebarVisible;
+    int m_sidebarAutoHideWidth;
     QStringList m_hiddenQuickAccess;
     QStringList m_listColumns;
     QVariantMap m_listColumnWidths;

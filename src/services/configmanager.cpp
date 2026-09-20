@@ -41,6 +41,16 @@ bool writeConfigDocument(const QString &path, const toml::table &config)
 #include <QStandardPaths>
 
 namespace {
+// 0 disables auto-hiding; anything narrower than 320 would hide it at sizes the
+// window cannot reach, and anything wider than 2000 would hide it always.
+int clampedAutoHideWidth(int value)
+{
+    return value <= 0 ? 0 : qBound(320, value, 2000);
+}
+}
+
+
+namespace {
 
 struct ShortcutSpec {
     const char *action;
@@ -293,6 +303,7 @@ void ConfigManager::setDefaults()
     m_sidebarWidth = 200;
     m_dependencyStartupCheck = true;
     m_sidebarVisible = true;
+    m_sidebarAutoHideWidth = 700;
     m_hiddenQuickAccess.clear();
     setListColumnsNormalized({}, {});
     setMillerFractionsClamped(0.2, 0.5);
@@ -370,6 +381,8 @@ void ConfigManager::loadConfig()
             m_sidebarWidth = static_cast<int>(*v);
         if (auto v = config["sidebar"]["visible"].value<bool>())
             m_sidebarVisible = *v;
+        if (auto v = config["sidebar"]["auto_hide_width"].value<int64_t>())
+            m_sidebarAutoHideWidth = clampedAutoHideWidth(static_cast<int>(*v));
 
         // Quick-access entries the user removed from the sidebar, by name
         // ("Pictures", "Network", ...). Absent key = show everything.
@@ -610,6 +623,10 @@ dependency_startup_check = true
 position = "left"
 width = 200
 visible = true
+# Fold the sidebar away when the window is narrower than this many pixels.
+# It stays toggleable by hand, and comes back when the window grows again.
+# 0 turns it off; anything else is clamped to 320-2000.
+auto_hide_width = 700
 # Quick-access entries to hide. Valid names:
 # "Home", "Recents", "Trash", "Network", "Pictures", "Downloads"
 hidden_quick_access = []
@@ -854,6 +871,7 @@ bool ConfigManager::rememberSortPerFolder() const { return m_rememberSortPerFold
 QString ConfigManager::sidebarPosition() const { return m_sidebarPosition; }
 int ConfigManager::sidebarWidth() const { return m_sidebarWidth; }
 bool ConfigManager::sidebarVisible() const { return m_sidebarVisible; }
+int ConfigManager::sidebarAutoHideWidth() const { return m_sidebarAutoHideWidth; }
 QStringList ConfigManager::hiddenQuickAccess() const { return m_hiddenQuickAccess; }
 QStringList ConfigManager::bookmarks() const { return m_bookmarks; }
 QVariantMap ConfigManager::bookmarkNames() const { return m_bookmarkNames; }
@@ -1024,6 +1042,11 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
     if (settings.contains("sidebarVisible")) {
         m_sidebarVisible = settings.value("sidebarVisible").toBool();
         sidebar.insert_or_assign("visible", m_sidebarVisible);
+    }
+
+    if (settings.contains("sidebarAutoHideWidth")) {
+        m_sidebarAutoHideWidth = clampedAutoHideWidth(settings.value("sidebarAutoHideWidth").toInt());
+        sidebar.insert_or_assign("auto_hide_width", m_sidebarAutoHideWidth);
     }
 
     if (settings.contains("sidebarWidth")) {

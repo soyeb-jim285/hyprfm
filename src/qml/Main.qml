@@ -130,7 +130,8 @@ ApplicationWindow {
         }
 
         function onConfigChanged() {
-            root.sidebarVisible = config.sidebarVisible
+            root.sidebarVisible = config.sidebarVisible && !root.windowTooNarrowForSidebar
+            root.sidebarWaitingForWidth = config.sidebarVisible && root.windowTooNarrowForSidebar
             root.sidebarWidth = config.sidebarWidth
             // Re-resolve sort in case the default or remember toggle changed.
             if (tabModel.activeTab) {
@@ -203,6 +204,37 @@ ApplicationWindow {
     // ── Sidebar visibility (local property; config.sidebarVisible is read-only) ─
     property bool sidebarVisible: config.sidebarVisible
     property int sidebarWidth: config.sidebarWidth
+
+    // Below sidebar_auto_hide_width the sidebar folds away by itself, and comes
+    // back when the window grows again - unless the user has since decided for
+    // themselves, which toggleSidebar() records.
+    //
+    // The comparison is the only thing that runs while a window is being
+    // dragged; it is a binding on one boolean, so the handler below only fires
+    // on the two frames where the window actually crosses the threshold.
+    readonly property bool windowTooNarrowForSidebar:
+        config.sidebarAutoHideWidth > 0 && width > 0 && width < config.sidebarAutoHideWidth
+    property bool sidebarWaitingForWidth: false
+
+    onWindowTooNarrowForSidebarChanged: {
+        if (windowTooNarrowForSidebar) {
+            if (root.sidebarVisible) {
+                root.sidebarVisible = false
+                root.sidebarWaitingForWidth = true
+            }
+        } else if (root.sidebarWaitingForWidth) {
+            root.sidebarVisible = true
+            root.sidebarWaitingForWidth = false
+        }
+    }
+
+    // Every toggle goes through here: a deliberate choice outranks the width
+    // rule, so the sidebar stays as the user left it until they cross the
+    // threshold again.
+    function toggleSidebar() {
+        root.sidebarVisible = !root.sidebarVisible
+        root.sidebarWaitingForWidth = false
+    }
     readonly property int minSidebarWidth: 160
     readonly property int maxSidebarWidth: 480
     property bool sidebarResizeActive: false
@@ -3291,7 +3323,7 @@ ApplicationWindow {
     // Toggle sidebar
     Shortcut {
         sequence: config.shortcutMap["toggle_sidebar"]
-        onActivated: root.sidebarVisible = !root.sidebarVisible
+        onActivated: root.toggleSidebar()
     }
 
     Shortcut {
@@ -3775,7 +3807,7 @@ ApplicationWindow {
                     onRecentsClicked: {
                         root.setPaneRecents(root.activePane, true)
                     }
-                    onCollapseClicked: root.sidebarVisible = !root.sidebarVisible
+                    onCollapseClicked: root.toggleSidebar()
                     onFeatureHintRequested: (message) => toast.show(message, "info")
                 }
 
@@ -3869,7 +3901,7 @@ ApplicationWindow {
                 onViewModeRequested: (mode) => {
                     if (tabModel.activeTab) tabModel.activeTab.viewMode = mode
                 }
-                onSidebarToggleRequested: root.sidebarVisible = !root.sidebarVisible
+                onSidebarToggleRequested: root.toggleSidebar()
                 onBackRequested: root.goActivePaneBack()
                 onForwardRequested: root.goActivePaneForward()
                 onUpRequested: root.goActivePaneUp()
