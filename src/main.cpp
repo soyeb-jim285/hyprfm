@@ -11,6 +11,7 @@
 #include <QLoggingCategory>
 #include <QSurfaceFormat>
 #include <QFont>
+#include <QFontMetrics>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -631,6 +632,16 @@ int main(int argc, char *argv[])
     if (renderer.usesVulkan())
         std::thread(warmVulkanDriver).detach();
 #endif
+
+    // The first string any Qt process measures costs ~7 ms: fontconfig matches
+    // the family, FreeType loads the face, and the shaper initialises. That
+    // used to land on whichever Text item QML built first (the status bar's
+    // disk label, as it happened). The font database and FreeType are shared
+    // across threads under their own locks - only QFontCache is per-thread -
+    // so doing it on a worker leaves the GUI thread ~1 ms of engine setup.
+    std::thread([] {
+        QFontMetricsF(QFont()).horizontalAdvance(QStringLiteral("0123456789 GB free of"));
+    }).detach();
 
     // One process serves every window. Launching HyprFM while it runs hands
     // the request to it over a per-uid unix socket: `hyprfm <path>` adds a tab
