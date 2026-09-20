@@ -161,6 +161,7 @@ private:
         mutable std::shared_ptr<Details> details;
     };
     static Entry entryFromInfo(const QFileInfo &info, bool statted);
+    static void sortEntriesByName(QList<Entry> &entries, QDir::SortFlags flags);
     static QVariantMap countFolderItems(const QStringList &paths);
     void ensureStat(const Entry &entry, const QFileInfo &info) const;
     void ensureStat(const Entry &entry) const;
