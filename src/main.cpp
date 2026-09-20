@@ -1057,7 +1057,14 @@ int main(int argc, char *argv[])
                 lastActiveWindow = w;
     });
 
-    AppWindow *first = createWindow(sessionData, isPrimary ? QString() : initialOpenPath);
+    // With tabs to restore, the launch path is added on top of them once the
+    // window exists (below). With nothing to restore there is no reason to
+    // start on $HOME and navigate afterwards: that listed a directory nobody
+    // asked for, reset the model, rebuilt every delegate, and flashed the
+    // home folder on screen before the requested one.
+    const bool restoringSession = sessionData.contains(QStringLiteral("tabs"));
+    AppWindow *first = createWindow(sessionData,
+                                    (isPrimary && restoringSession) ? QString() : initialOpenPath);
     mark("engine.load done");
     if (!first)
         return -1;
@@ -1238,7 +1245,7 @@ int main(int argc, char *argv[])
 
     // Apply the path this process was launched with (if any) as a new tab on
     // the restored session. A window without a session already opened on it.
-    if (!initialOpenPath.isEmpty() && isPrimary)
+    if (!initialOpenPath.isEmpty() && isPrimary && restoringSession)
         QTimer::singleShot(0, &app, [&]() { openPathInNewTab(initialOpenPath); });
 
     return app.exec();
