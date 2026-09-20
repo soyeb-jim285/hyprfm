@@ -590,9 +590,12 @@ GridView {
             // this item paints nothing, so showing it in place of the icon
             // left an empty cell for as long as the render took - a PDF page
             // is ~50 ms of pdftoppm, and a folder full of them stayed blank.
-            // An empty or corrupt image never becomes Ready, so the icon also
-            // remains the fallback for those.
-            visible: delegateItem.hasThumbnail && status === Image.Ready
+            //
+            // The size check is the other half: an async image provider that
+            // returns nothing still ends at Image.Ready, with a zero-size
+            // image. That is what a file which is not really a PDF does, and
+            // checking only the status left those cells blank for good.
+            visible: delegateItem.hasThumbnail && status === Image.Ready && implicitWidth > 0
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 8

@@ -1060,6 +1060,7 @@ FocusScope {
                                 id: detThumb
                                 anchors.fill: parent
                                 visible: parent.hasThumbnail && status === Image.Ready
+                                         && implicitWidth > 0
                                 fillMode: Image.PreserveAspectFit
                                 source: !parent.hasThumbnail
                                     ? ""
