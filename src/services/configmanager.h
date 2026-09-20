@@ -71,6 +71,9 @@ public:
     QString lightTheme() const;
     QString darkTheme() const;
     QString iconTheme() const;
+    // What an empty icon_theme resolves to: the desktop's own theme, which
+    // only main.cpp can ask the portal for. Set once at startup.
+    void setIconThemeFallback(const QString &theme);
     QString fontFamily() const;
     QString defaultView() const;
     bool showHidden() const;
@@ -162,7 +165,8 @@ private:
     QString m_theme;
     QString m_lightTheme;
     QString m_darkTheme;
-    QString m_iconTheme;
+    QString m_iconTheme;          // as configured; empty means follow the desktop
+    QString m_iconThemeFallback;  // what empty resolves to
     QString m_fontFamily;
     QString m_defaultView;
     bool m_showHidden;

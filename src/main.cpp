@@ -20,6 +20,8 @@
 #include <QSaveFile>
 #include <QTimer>
 #include <QFontDatabase>
+#include <QDBusArgument>
+#include <QDBusMessage>
 #include <QDBusInterface>
 #include <QDBusReply>
 #include <QStyleHints>
@@ -428,6 +430,79 @@ void printUsage()
         HYPRFM_VERSION);
 }
 
+// What the desktop itself is set to, read the way every Wayland toolkit reads
+// it: the XDG portal's Settings interface. Used only for what the user has not
+// configured - an absent portal simply leaves the built-in defaults in place.
+struct DesktopSettings
+{
+    QString iconTheme;
+    QString fontFamily;
+    qreal fontPointSize = 0;
+    QString fontHinting;   // none / slight / medium / full, as the desktop sets it
+};
+
+DesktopSettings readDesktopSettings()
+{
+    DesktopSettings settings;
+    if (!QDBusConnection::sessionBus().isConnected())
+        return settings;
+
+    QDBusInterface portal(QStringLiteral("org.freedesktop.portal.Desktop"),
+                          QStringLiteral("/org/freedesktop/portal/desktop"),
+                          QStringLiteral("org.freedesktop.portal.Settings"),
+                          QDBusConnection::sessionBus());
+    if (!portal.isValid())
+        return settings;
+    // A desktop that is slow to answer must not hold up the window.
+    portal.setTimeout(200);
+
+    const QString ns = QStringLiteral("org.gnome.desktop.interface");
+
+    // One ReadAll instead of a round trip per key: each call is ~1.5 ms and
+    // this sits on the way to the first frame.
+    QVariantMap values;
+    QDBusMessage all = portal.call(QStringLiteral("ReadAll"), QStringList{ns});
+    if (all.type() == QDBusMessage::ReplyMessage && !all.arguments().isEmpty()) {
+        const QDBusArgument arg = all.arguments().constFirst().value<QDBusArgument>();
+        QMap<QString, QVariantMap> namespaces;
+        arg >> namespaces;
+        values = namespaces.value(ns);
+    }
+
+    const auto readKey = [&](const QString &key) -> QString {
+        const auto it = values.constFind(key);
+        if (it != values.constEnd()) {
+            const QVariant value = it.value();
+            return value.canConvert<QDBusVariant>() ? value.value<QDBusVariant>().variant().toString()
+                                                    : value.toString();
+        }
+        // Portals without ReadAll (or namespaces they do not carry).
+        QDBusReply<QDBusVariant> one = portal.call(QStringLiteral("ReadOne"), ns, key);
+        if (one.isValid())
+            return one.value().variant().toString();
+        return {};
+    };
+
+    settings.iconTheme = readKey(QStringLiteral("icon-theme")).trimmed();
+    settings.fontHinting = readKey(QStringLiteral("font-hinting")).trimmed();
+
+    // font-name is Pango's format: family, optional style words, then the size
+    // ("Adwaita Sans 11", "Cantarell Bold 12").
+    const QString fontName = readKey(QStringLiteral("font-name")).trimmed();
+    if (!fontName.isEmpty()) {
+        const qsizetype lastSpace = fontName.lastIndexOf(QLatin1Char(' '));
+        bool isNumber = false;
+        const qreal size = lastSpace > 0 ? fontName.mid(lastSpace + 1).toDouble(&isNumber) : 0;
+        if (isNumber && size > 0) {
+            settings.fontFamily = fontName.left(lastSpace).trimmed();
+            settings.fontPointSize = size;
+        } else {
+            settings.fontFamily = fontName;
+        }
+    }
+    return settings;
+}
+
 // The platform theme publishes its own UI font once the QPA plugin has
 // settled, which happens *after* the first window is created and silently
 // overwrites the font set at startup. Anything built before that keeps the
@@ -450,7 +525,9 @@ protected:
     {
         if (event->type() == QEvent::ApplicationFontChange && !m_applying) {
             const QFont wanted = m_desiredFont();
-            if (m_app->font().family() != wanted.family()) {
+            const QFont current = m_app->font();
+            if (current.family() != wanted.family()
+                || !qFuzzyCompare(current.pointSizeF(), wanted.pointSizeF())) {
                 m_applying = true;
                 m_app->setFont(wanted);
                 m_applying = false;
@@ -694,6 +771,8 @@ int main(int argc, char *argv[])
     // Use native text rendering (FreeType/fontconfig) for crisp fonts matching GTK apps
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
 
+    const DesktopSettings desktop = readDesktopSettings();
+
     auto resolveUiFont = [&](const QString &preferredFamily) {
         // Resolve the platform UI font first so the app does not depend on
         // theme-local font defaults that may not exist inside a sandbox.
@@ -701,10 +780,29 @@ int main(int argc, char *argv[])
         if (font.family().isEmpty())
             font = app.font();
 
-        if (!preferredFamily.trimmed().isEmpty())
+        if (!preferredFamily.trimmed().isEmpty()) {
             font.setFamily(preferredFamily.trimmed());
+        } else if (!desktop.fontFamily.isEmpty()) {
+            // Nothing configured: look the same as the rest of the desktop,
+            // size included - Theme.qml scales the whole UI from it.
+            font.setFamily(desktop.fontFamily);
+            if (desktop.fontPointSize > 0)
+                font.setPointSizeF(desktop.fontPointSize);
+        }
 
-        font.setHintingPreference(QFont::PreferFullHinting);
+        // Hinting is the desktop's call, not ours: forcing full hinting while
+        // the desktop asks for slight snapped stems to the pixel grid and made
+        // the same font look heavier here than in every GTK window next to it.
+        // fontconfig decides when the desktop says nothing.
+        if (desktop.fontHinting == QLatin1String("none"))
+            font.setHintingPreference(QFont::PreferNoHinting);
+        else if (desktop.fontHinting == QLatin1String("slight"))
+            font.setHintingPreference(QFont::PreferVerticalHinting);
+        else if (desktop.fontHinting == QLatin1String("medium")
+                 || desktop.fontHinting == QLatin1String("full"))
+            font.setHintingPreference(QFont::PreferFullHinting);
+        else
+            font.setHintingPreference(QFont::PreferDefaultHinting);
         return font;
     };
 
@@ -783,6 +881,12 @@ int main(int argc, char *argv[])
     mark("ConfigManager loaded");
     app.setFont(resolveUiFont(config->fontFamily()));
     new UiFontGuard(&app, [&]() { return resolveUiFont(config->fontFamily()); });
+    if (timingEnabled) {
+        const QFont uiFont = app.font();
+        qDebug().nospace() << "[startup] ui font " << uiFont.family() << ' '
+                           << uiFont.pointSizeF() << "pt (desktop: " << desktop.fontFamily
+                           << ' ' << desktop.fontPointSize << ", icons: " << config->iconTheme() << ')';
+    }
     ThemeLoader *theme = new ThemeLoader(&app);
     theme->loadTheme(config->theme(), themeDirs);
     mark("ThemeLoader loaded");
@@ -861,6 +965,12 @@ int main(int argc, char *argv[])
     if (!dataDir.isEmpty())
         engine.addImportPath(dataDir);
     engine.addImportPath(QStringLiteral(HYPRFM_DATA_DIR));
+
+    // An unset icon theme follows the desktop; Adwaita is the last resort when
+    // nothing answers. Resolved inside ConfigManager so QML's config.iconTheme
+    // (the ?theme= in every image://icon URL) sees the same answer.
+    config->setIconThemeFallback(desktop.iconTheme.isEmpty() ? QStringLiteral("Adwaita")
+                                                             : desktop.iconTheme);
 
     // Set icon theme so QIcon::fromTheme() works (e.g. for drag pixmaps)
     QIcon::setThemeName(config->iconTheme());

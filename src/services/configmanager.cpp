@@ -275,7 +275,13 @@ void ConfigManager::setDefaults()
         : m_defaultThemeName.trimmed();
     m_lightTheme = QStringLiteral("catppuccin-latte");
     m_darkTheme = QStringLiteral("catppuccin-mocha");
-    m_iconTheme = "Adwaita";
+    // Empty means "whatever the desktop is set to": main.cpp asks the XDG
+    // portal and hands the answer to setIconThemeFallback(). Adwaita ships 47
+    // mimetype icons, so pinning it here made most file types fall through to
+    // whichever fallback theme happened to have them - and it stays the
+    // built-in answer for a desktop that publishes nothing.
+    m_iconTheme.clear();
+    m_iconThemeFallback = QStringLiteral("Adwaita");
     m_fontFamily.clear();
     m_defaultView = "grid";
     m_showHidden = false;
@@ -573,7 +579,8 @@ dark_theme = "catppuccin-mocha"
 
 # Icon theme for file and folder icons (a directory name under
 # /usr/share/icons or ~/.icons). Toolbar and sidebar icons are built in.
-icon_theme = "Adwaita"
+# Empty follows the desktop's own icon theme.
+icon_theme = ""
 
 # UI font family. Empty = the desktop's UI font.
 font_family = ""
@@ -821,7 +828,20 @@ void ConfigManager::saveListColumns(const QStringList &columns, const QVariantMa
 QString ConfigManager::theme() const { return m_theme; }
 QString ConfigManager::lightTheme() const { return m_lightTheme; }
 QString ConfigManager::darkTheme() const { return m_darkTheme; }
-QString ConfigManager::iconTheme() const { return m_iconTheme; }
+QString ConfigManager::iconTheme() const
+{
+    return m_iconTheme.isEmpty() ? m_iconThemeFallback : m_iconTheme;
+}
+
+void ConfigManager::setIconThemeFallback(const QString &theme)
+{
+    const QString trimmed = theme.trimmed();
+    if (m_iconThemeFallback == trimmed)
+        return;
+    m_iconThemeFallback = trimmed;
+    if (m_iconTheme.isEmpty())
+        emit configChanged();
+}
 QString ConfigManager::fontFamily() const { return m_fontFamily; }
 QString ConfigManager::defaultView() const { return m_defaultView; }
 bool ConfigManager::showHidden() const { return m_showHidden; }
