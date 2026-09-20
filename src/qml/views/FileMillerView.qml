@@ -1014,7 +1014,7 @@ FocusScope {
                                 ? Theme.highlightMatch(currentDelegate.fileName, root.highlightQuery)
                                 : currentDelegate.fileName
                             color: Theme.text
-                            font.pointSize: Theme.fontSmall
+                            font.pointSize: Theme.fontNormal
                             elide: Text.ElideRight
                         }
 

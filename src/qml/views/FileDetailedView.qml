@@ -1170,7 +1170,7 @@ FocusScope {
                                 ? Theme.highlightMatch(detRow.fileName, root.highlightQuery)
                                 : detRow.fileName
                             color: Theme.text
-                            font.pointSize: Theme.fontSmall
+                            font.pointSize: Theme.fontNormal
                             elide: Text.ElideRight
                         }
                     }

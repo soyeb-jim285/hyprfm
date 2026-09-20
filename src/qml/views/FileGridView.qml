@@ -56,7 +56,9 @@ GridView {
         minColumns,
         Math.min(columnCount, Math.min(maxColumns, Math.max(1, Math.floor(width / minCellWidth))))
     )
-    readonly property int labelHeight: 32  // two lines of text below icon
+    // Two lines of the label font, so a larger desktop font does not get
+    // clipped: 32 px was exactly two lines at 10 pt and nothing more.
+    readonly property int labelHeight: Math.round(32 * Theme.uiScale)
     // Ask for the size the icon is actually drawn at. A fixed 96 was being
     // stretched to iconSize, which is ~229 at the default seven columns on a
     // 1080p window and over 900 zoomed all the way in, so every icon looked
@@ -750,7 +752,9 @@ GridView {
                 return name.substring(0, frontChars) + "\u2026" + name.substring(name.length - keep)
             }
             color: Theme.text
-            font.pointSize: Theme.fontSmall
+            // The file's name is the view's primary text: it gets the UI font
+            // size, not the one-point-smaller secondary size.
+            font.pointSize: Theme.fontNormal
             horizontalAlignment: Text.AlignHCenter
             maximumLineCount: 2
             wrapMode: Text.WrapAnywhere
