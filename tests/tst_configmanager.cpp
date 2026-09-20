@@ -828,6 +828,54 @@ private slots:
         QCOMPARE(second["name"].toString(), QString("Upload"));
     }
 
+    void testCustomContextActionShortcutAndTypes()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        QFile f(path);
+        f.open(QIODevice::WriteOnly);
+        f.write("[[context_menu.actions]]\n"
+                "name = \"Open in VS Code\"\n"
+                "command = \"code %f\"\n"
+                "types = [\"dir\", \"text/*\"]\n"
+                "shortcut = \"Ctrl+E\"\n"
+                "\n"
+                "[[context_menu.actions]]\n"
+                "name = \"Optimize PNG\"\n"
+                "command = \"oxipng -o 4 %f\"\n"
+                "types = [\"png\"]\n"
+                "\n"
+                "[[context_menu.actions]]\n"
+                "name = \"Anything\"\n"
+                "command = \"touch %f\"\n");
+        f.close();
+
+        ConfigManager mgr(path);
+        QCOMPARE(mgr.customContextActions().size(), 3);
+        QCOMPARE(mgr.customContextActions().at(0).toMap()["shortcut"].toString(), QString("Ctrl+E"));
+        // An action without one stays unbound rather than inheriting a neighbour's.
+        QVERIFY(!mgr.customContextActions().at(1).toMap().contains("shortcut"));
+
+        // "dir" matches folders, "text/*" the MIME prefix, and neither an image.
+        QVERIFY(mgr.customActionMatches(0, "/tmp/project", "", true));
+        QVERIFY(mgr.customActionMatches(0, "/tmp/a.txt", "text/plain", false));
+        QVERIFY(!mgr.customActionMatches(0, "/tmp/a.png", "image/png", false));
+
+        // An extension entry matches the suffix only, and never a folder.
+        QVERIFY(mgr.customActionMatches(1, "/tmp/shot.PNG", "image/png", false));
+        QVERIFY(!mgr.customActionMatches(1, "/tmp/a.txt", "text/plain", false));
+        QVERIFY(!mgr.customActionMatches(1, "/tmp/png", "", true));
+
+        // No types at all = everything.
+        QVERIFY(mgr.customActionMatches(2, "/tmp/a.txt", "text/plain", false));
+        QVERIFY(mgr.customActionMatches(2, "/tmp/project", "", true));
+
+        // Out-of-range indices match nothing instead of crashing.
+        QVERIFY(!mgr.customActionMatches(3, "/tmp/a.txt", "text/plain", false));
+        QVERIFY(!mgr.customActionMatches(-1, "/tmp/a.txt", "text/plain", false));
+    }
+
     void testNoContextActions()
     {
         QTemporaryDir dir;

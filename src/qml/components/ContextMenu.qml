@@ -112,28 +112,17 @@ Item {
     property bool _submenuOpensRight: true
     property real _submenuPointerCenterY: 24
 
-    // [[context_menu.actions]] entries whose `types` match the target:
-    // "*" (anything), "dir", an extension ("png"), or a MIME pattern
-    // ("image/*", "text/plain"). Unset types = everything.
+    // [[context_menu.actions]] entries whose `types` match the target; the
+    // matching itself lives in ConfigManager so the keyboard shortcuts in
+    // Main.qml apply the same rules.
     function customActionItems(mime) {
         var actions = config.customContextActions || []
-        var ext = targetIsDir ? "" : targetPath.split("/").pop().split(".").pop().toLowerCase()
         var items = []
         for (var i = 0; i < actions.length; ++i) {
             var a = actions[i]
             if (!a.name || !a.command) continue
-            var types = a.types || ["*"]
-            var match = types.length === 0
-            for (var t = 0; t < types.length && !match; ++t) {
-                var type = String(types[t]).toLowerCase()
-                if (type === "*") match = true
-                else if (type === "dir") match = targetIsDir
-                else if (type.indexOf("/") >= 0)
-                    match = !targetIsDir && (type.endsWith("/*") ? mime.startsWith(type.slice(0, -1)) : mime === type)
-                else match = !targetIsDir && ext === type.replace(/^\./, "")
-            }
-            if (match)
-                items.push({ text: a.name, shortcut: "", action: "custom:" + i, icon: "Terminal" })
+            if (config.customActionMatches(i, targetPath, mime, targetIsDir))
+                items.push({ text: a.name, shortcut: a.shortcut || "", action: "custom:" + i, icon: "Terminal" })
         }
         return items
     }

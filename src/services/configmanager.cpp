@@ -4,6 +4,7 @@
 #include "third_party/toml.hpp"
 
 #include <QFile>
+#include <QFileInfo>
 #include <QKeySequence>
 #include <QSaveFile>
 #include <sstream>
@@ -479,6 +480,8 @@ void ConfigManager::loadConfig()
                         action["name"] = QString::fromStdString(*v);
                     if (auto v = (*tbl)["command"].value<std::string>())
                         action["command"] = QString::fromStdString(*v);
+                    if (auto v = (*tbl)["shortcut"].value<std::string>())
+                        action["shortcut"] = QString::fromStdString(*v);
                     if (auto types = (*tbl)["types"].as_array()) {
                         QStringList typeList;
                         for (const auto &t : *types) {
@@ -687,7 +690,8 @@ current_fraction = 0.5
 # `command` takes desktop-entry field codes (%f or %u = the item's path) and runs once
 # per selected item, from that item's folder. `types` limits where the entry
 # shows: "*" (default), "dir", an extension ("png"), or a MIME pattern
-# ("image/*", "text/plain").
+# ("image/*", "text/plain"). `shortcut` is optional: a Qt key sequence that runs
+# the action on the current selection without opening the menu.
 # [[context_menu.actions]]
 # name = "Optimize PNG"
 # command = "oxipng -o 4 %f"
@@ -696,6 +700,7 @@ current_fraction = 0.5
 # name = "Open in VS Code"
 # command = "code %f"
 # types = ["dir", "text/*"]
+# shortcut = "Ctrl+E"
 
 [shortcuts]
 # Override any shortcut with a Qt key sequence. Defaults:
@@ -945,6 +950,47 @@ bool ConfigManager::keyEventMatches(const QString &action, int key, int modifier
     const auto mods = Qt::KeyboardModifiers(modifiers) & ~(Qt::KeypadModifier | Qt::GroupSwitchModifier);
     const QKeySequence want(shortcut(action));
     return !want.isEmpty() && want == QKeySequence(QKeyCombination(mods, Qt::Key(key)));
+}
+
+bool ConfigManager::customActionMatches(int index, const QString &path,
+                                        const QString &mimeType, bool isDir) const
+{
+    if (index < 0 || index >= m_customContextActions.size())
+        return false;
+
+    const QVariantMap action = m_customContextActions.at(index).toMap();
+    const QStringList types = action.value(QStringLiteral("types"),
+                                           QStringList{QStringLiteral("*")}).toStringList();
+    if (types.isEmpty())
+        return true;
+
+    const QString ext = isDir ? QString() : QFileInfo(path).suffix().toLower();
+    for (const QString &raw : types) {
+        const QString type = raw.trimmed().toLower();
+        if (type == QLatin1String("*"))
+            return true;
+        if (type == QLatin1String("dir")) {
+            if (isDir)
+                return true;
+            continue;
+        }
+        if (isDir)
+            continue;
+        if (type.contains(QLatin1Char('/'))) {
+            if (type.endsWith(QLatin1String("/*"))) {
+                if (mimeType.startsWith(type.chopped(1), Qt::CaseInsensitive))
+                    return true;
+            } else if (mimeType.compare(type, Qt::CaseInsensitive) == 0) {
+                return true;
+            }
+            continue;
+        }
+        const QStringView bare = type.startsWith(QLatin1Char('.')) ? QStringView(type).sliced(1)
+                                                                   : QStringView(type);
+        if (!ext.isEmpty() && ext == bare)
+            return true;
+    }
+    return false;
 }
 
 void ConfigManager::saveSettings(const QVariantMap &settings)

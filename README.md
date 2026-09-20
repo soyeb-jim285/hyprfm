@@ -398,6 +398,7 @@ names = { "~/Projects" = "Work" }   # optional display names (right-click → Re
 name = "Optimize PNG"
 command = "oxipng -o 4 %f"
 types = ["png"]                     # "*", "dir", extension, or MIME ("image/*")
+shortcut = "Ctrl+E"                 # optional; runs the action on the selection
 
 [shortcuts]
 # Override any shortcut. Examples:

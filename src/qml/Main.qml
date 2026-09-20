@@ -1106,6 +1106,30 @@ ApplicationWindow {
         return ""
     }
 
+    // Runs [[context_menu.actions]][index] on the current selection, the way
+    // clicking its menu entry would. Same guards as the menu: nothing for the
+    // trash or a remote pane, and only when the selection matches `types`.
+    function runCustomContextAction(index) {
+        var action = config.customContextActions[index]
+        if (!action || !action.command || root.isTrashView || root.isRemoteView)
+            return
+
+        var items = root.getSelectedItems(root.activePane)
+        if (items.length === 0)
+            return
+
+        var model = root.paneModel(root.activePane)
+        var mime = ""
+        if (model && !items[0].isDir) {
+            var props = model.fileProperties(items[0].path)
+            mime = props["mimeType"] || ""
+        }
+        if (!config.customActionMatches(index, items[0].path, mime, items[0].isDir))
+            return
+
+        fileOps.runCustomAction(action.command, root.getSelectedPaths(root.activePane))
+    }
+
     function showContextMenuForActiveSelection() {
         var positionSource = root.activeFileView() || contentArea
         var mapped = positionSource.mapToItem(null, positionSource.width / 2, positionSource.height / 2)
@@ -3238,6 +3262,17 @@ ApplicationWindow {
             sequence: "Alt+" + (index + 1)
             onActivated: tabModel.activeIndex =
                 index === 8 ? tabModel.count - 1 : Math.min(index, tabModel.count - 1)
+        }
+    }
+
+    // Custom actions that declare a `shortcut` get a binding of their own.
+    Instantiator {
+        model: config.customContextActions
+        delegate: Shortcut {
+            required property var modelData
+            required property int index
+            sequence: modelData.shortcut || ""
+            onActivated: root.runCustomContextAction(index)
         }
     }
 

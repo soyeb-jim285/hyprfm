@@ -129,6 +129,11 @@ public:
     Q_INVOKABLE void reload();
     Q_INVOKABLE QString shortcut(const QString &action) const;
     Q_INVOKABLE bool keyEventMatches(const QString &action, int key, int modifiers) const;
+    // Does customContextActions()[index] apply to this item? `types` entries are
+    // "*" (anything), "dir", an extension ("png") or a MIME pattern ("image/*",
+    // "text/plain"); an unset or empty list means everything.
+    Q_INVOKABLE bool customActionMatches(int index, const QString &path,
+                                         const QString &mimeType, bool isDir) const;
     Q_INVOKABLE void saveSettings(const QVariantMap &settings);
     // Per-folder sort memory. The getters resolve to the global default
     // (sortBy/sortAscending) when per-folder memory is off or the folder has
