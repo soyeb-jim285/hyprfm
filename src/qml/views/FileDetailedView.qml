@@ -1045,7 +1045,11 @@ FocusScope {
 
                             Image {
                                 anchors.fill: parent
-                                visible: !parent.hasThumbnail
+                                // Shown until the thumbnail is ready, and for
+                                // good if it never is (corrupt file, missing
+                                // pdftoppm): an Image that is not Ready paints
+                                // nothing at all.
+                                visible: !detThumb.visible
                                 source: "image://icon/" + detRow.fileIconName + "?theme=" + config.iconTheme
                                 sourceSize: Qt.size(root.detailIconSize * Screen.devicePixelRatio,
                                                     root.detailIconSize * Screen.devicePixelRatio)
@@ -1053,8 +1057,9 @@ FocusScope {
                             }
 
                             Image {
+                                id: detThumb
                                 anchors.fill: parent
-                                visible: parent.hasThumbnail
+                                visible: parent.hasThumbnail && status === Image.Ready
                                 fillMode: Image.PreserveAspectFit
                                 source: !parent.hasThumbnail
                                     ? ""

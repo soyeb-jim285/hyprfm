@@ -586,8 +586,13 @@ GridView {
 
         Image {
             id: thumbImg
-            // An empty or corrupt image has no thumbnail; show the icon instead.
-            visible: delegateItem.hasThumbnail && status !== Image.Error
+            // Not just "has a thumbnail": until the image is actually ready
+            // this item paints nothing, so showing it in place of the icon
+            // left an empty cell for as long as the render took - a PDF page
+            // is ~50 ms of pdftoppm, and a folder full of them stayed blank.
+            // An empty or corrupt image never becomes Ready, so the icon also
+            // remains the fallback for those.
+            visible: delegateItem.hasThumbnail && status === Image.Ready
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 8

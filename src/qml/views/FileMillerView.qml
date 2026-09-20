@@ -897,7 +897,7 @@ FocusScope {
 
                             Image {
                                 anchors.fill: parent
-                                visible: !parent.hasThumbnail
+                                visible: !millerThumb.visible
                                 source: "image://icon/" + currentDelegate.fileIconName + "?theme=" + config.iconTheme
                                 sourceSize: Qt.size((root.millerIconSize + 2) * Screen.devicePixelRatio,
                                                     (root.millerIconSize + 2) * Screen.devicePixelRatio)
@@ -905,8 +905,9 @@ FocusScope {
                             }
 
                             Image {
+                                id: millerThumb
                                 anchors.fill: parent
-                                visible: parent.hasThumbnail
+                                visible: parent.hasThumbnail && status === Image.Ready
                                 fillMode: Image.PreserveAspectFit
                                 source: parent.hasThumbnail
                                     ? ("image://thumbnail/" + currentDelegate.filePath
