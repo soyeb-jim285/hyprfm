@@ -67,7 +67,17 @@ endif()
 
 set_source_files_properties(qml/theme/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-option(HYPRFM_ENABLE_QML_CACHEGEN "Enable Qt QML cache compilation (faster startup, slower builds)" OFF)
+# Compiling QML ahead of time costs build time, so development builds skip it and
+# rely on Qt's on-disk cache instead. A packaged build cannot: that cache is keyed
+# by the source file's path and mtime, so it is empty on the first launch after
+# every install or update, and a Flatpak whose runtime remounts /app pays ~400 ms
+# to recompile 86 QML files. Release-type builds therefore default to ON.
+set(hyprfm_cachegen_default OFF)
+if(CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo|MinSizeRel)$")
+    set(hyprfm_cachegen_default ON)
+endif()
+option(HYPRFM_ENABLE_QML_CACHEGEN "Enable Qt QML cache compilation (faster startup, slower builds)"
+       ${hyprfm_cachegen_default})
 
 set(hyprfm_qml_module_args
     URI HyprFM
