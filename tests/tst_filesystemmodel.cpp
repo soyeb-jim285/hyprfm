@@ -801,6 +801,42 @@ private slots:
         QVERIFY(!model.isDir(0));
     }
 
+    // The listing is read from the directory itself (readdir + stat only where
+    // the dirent cannot answer), so it has to keep QDir::AllEntries' answers:
+    // symlinks resolve to their target's kind, and fifos, sockets and broken
+    // links are not files a file manager lists.
+    void testListingMatchesQDirForSpecialEntries()
+    {
+        TestDir dir;
+        dir.createFile("regular.txt");
+        QVERIFY(QDir(dir.path()).mkdir("sub"));
+        QVERIFY(QFile::link(dir.path() + "/sub", dir.path() + "/linkdir"));
+        QVERIFY(QFile::link(dir.path() + "/regular.txt", dir.path() + "/linkfile"));
+        QVERIFY(QFile::link(dir.path() + "/nowhere", dir.path() + "/broken"));
+        QCOMPARE(QProcess::execute("mkfifo", {dir.path() + "/fifo"}), 0);
+
+        FileSystemModel model;
+        model.setSynchronousReload(true);
+        model.setRootPath(dir.path());
+
+        QStringList names;
+        for (int i = 0; i < model.rowCount(); ++i)
+            names << model.fileName(i);
+        names.sort();
+        QCOMPARE(names, QStringList({"linkdir", "linkfile", "regular.txt", "sub"}));
+
+        for (int i = 0; i < model.rowCount(); ++i) {
+            if (model.fileName(i) == "linkdir") {
+                QVERIFY(model.isDir(i));
+                QVERIFY(model.data(model.index(i), FileSystemModel::IsSymlinkRole).toBool());
+            }
+            if (model.fileName(i) == "linkfile") {
+                QVERIFY(!model.isDir(i));
+                QVERIFY(model.data(model.index(i), FileSystemModel::IsSymlinkRole).toBool());
+            }
+        }
+    }
+
     // 11. Sorting
     void testSortByNameAscending()
     {

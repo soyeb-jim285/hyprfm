@@ -1,7 +1,11 @@
 #include "models/filesystemmodel.h"
+
+#include <dirent.h>
+#include <sys/stat.h>
 #include "services/cloudmounts.h"
 #include "services/gitstatusservice.h"
 #include "services/xdgtrash.h"
+#include <QFile>
 #include <QLocale>
 #include <QDateTime>
 #include <QDebug>
@@ -1176,29 +1180,88 @@ FileSystemModel::LocalReloadResult FileSystemModel::scanLocalEntries(
     if (rootPath.isEmpty())
         return result;
 
-    QDir dir(rootPath);
-    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot;
-    if (showHidden)
-        filters |= QDir::Hidden;
-
-    // QDir orders names by code point ("file10" before "file2", "\u00c4" after "z"),
-    // so a name listing is re-sorted below with a numeric, locale-aware
-    // collator - no point paying QDir to sort it first. Size and time orders
-    // are QDir's, and it has the stat results to do them.
     const int sortBy = sortFlags & QDir::SortByMask;
-    const bool byName = sortBy == QDir::Name;
-    QFileInfoList infos = dir.entryInfoList(filters, byName ? QDir::NoSort : sortFlags);
-    result.entries.reserve(infos.size());
-    const bool statted = sortBy == QDir::Size || sortBy == QDir::Time;
-    for (const QFileInfo &info : std::as_const(infos))
-        result.entries.append(entryFromInfo(info, statted));
-    if (byName)
-        sortEntriesByName(result.entries, sortFlags);
+    const bool wantStat = sortBy == QDir::Size || sortBy == QDir::Time;
+    result.entries = readLocalEntries(rootPath, showHidden, wantStat);
+    sortEntries(result.entries, sortFlags);
     return result;
 }
 
-void FileSystemModel::sortEntriesByName(QList<Entry> &entries, QDir::SortFlags flags)
+// Reads the directory itself instead of asking QDir for a QFileInfo per entry
+// (~15 ms for 10,000 of them). Everything a row needs up front is in the
+// dirent already: the name, and on every filesystem this runs on the type.
+// stat() is only for what the dirent cannot answer - a symlink, whose
+// dir-ness follows its target the way QFileInfo::isDir() does, an entry on a
+// filesystem that reports DT_UNKNOWN, and every entry when the listing is
+// ordered by size or time.
+QList<FileSystemModel::Entry> FileSystemModel::readLocalEntries(const QString &rootPath,
+                                                                bool showHidden, bool wantStat)
 {
+    QList<Entry> entries;
+    const QByteArray nativeRoot = QFile::encodeName(rootPath);
+    DIR *dir = ::opendir(nativeRoot.constData());
+    if (!dir)
+        return entries;
+
+    QByteArray path = nativeRoot;
+    if (!path.endsWith('/'))
+        path += '/';
+    const qsizetype prefix = path.size();
+
+    while (struct dirent *e = ::readdir(dir)) {
+        const char *name = e->d_name;
+        if (name[0] == '.') {
+            if (name[1] == '\0' || (name[1] == '.' && name[2] == '\0'))
+                continue;   // "." and ".."
+            if (!showHidden)
+                continue;
+        }
+
+        bool isLink = e->d_type == DT_LNK;
+        bool isDir = e->d_type == DT_DIR;
+        bool isRegular = e->d_type == DT_REG;
+        struct stat st;
+        bool statted = false;
+        if (isLink || wantStat || e->d_type == DT_UNKNOWN) {
+            path.truncate(prefix);
+            path += name;
+            statted = ::stat(path.constData(), &st) == 0;   // follows symlinks
+            if (e->d_type == DT_UNKNOWN) {
+                struct stat linkStat;
+                isLink = ::lstat(path.constData(), &linkStat) == 0 && S_ISLNK(linkStat.st_mode);
+            }
+            isDir = statted && S_ISDIR(st.st_mode);
+            isRegular = statted && S_ISREG(st.st_mode);
+        }
+        // What QDir::AllEntries keeps: directories and regular files, through
+        // symlinks. Fifos, sockets, devices and broken links are not listed.
+        if (!isDir && !isRegular)
+            continue;
+
+        Entry entry;
+        entry.name = QFile::decodeName(name);
+        entry.isDir = isDir;
+        entry.isSymLink = isLink;
+        if (wantStat && statted) {
+            entry.size = isDir ? 0 : st.st_size;
+            entry.modifiedMs = qint64(st.st_mtim.tv_sec) * 1000 + st.st_mtim.tv_nsec / 1000000;
+            entry.statted = true;
+        }
+        entries.append(std::move(entry));
+    }
+    ::closedir(dir);
+    return entries;
+}
+
+// Mirrors QDir's own ordering: directories first when asked, size largest
+// first, time newest first, ties broken by name, and Reversed flipping
+// everything but the dirs-first rule.
+void FileSystemModel::sortEntries(QList<Entry> &entries, QDir::SortFlags flags)
+{
+    const int sortBy = flags & QDir::SortByMask;
+    if (sortBy == QDir::Unsorted)
+        return;
+
     QCollator collator = nameCollator();
     const bool dirsFirst = flags & QDir::DirsFirst;
     const bool byType = flags & QDir::Type;
@@ -1222,9 +1285,17 @@ void FileSystemModel::sortEntriesByName(QList<Entry> &entries, QDir::SortFlags f
     }
 
     std::stable_sort(keys.begin(), keys.end(), [&](const Keyed &a, const Keyed &b) {
-        if (dirsFirst && entries.at(a.index).isDir != entries.at(b.index).isDir)
-            return entries.at(a.index).isDir;
-        int c = byType ? a.type.compare(b.type) : 0;
+        const Entry &ea = entries.at(a.index);
+        const Entry &eb = entries.at(b.index);
+        if (dirsFirst && ea.isDir != eb.isDir)
+            return ea.isDir;
+        int c = 0;
+        if (sortBy == QDir::Size)
+            c = ea.size == eb.size ? 0 : (ea.size > eb.size ? -1 : 1);
+        else if (sortBy == QDir::Time)
+            c = ea.modifiedMs == eb.modifiedMs ? 0 : (ea.modifiedMs > eb.modifiedMs ? -1 : 1);
+        else if (byType)
+            c = a.type.compare(b.type);
         if (c == 0)
             c = a.name.compare(b.name);
         return reversed ? c > 0 : c < 0;
