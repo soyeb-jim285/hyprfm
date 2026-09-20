@@ -876,6 +876,67 @@ private slots:
         QVERIFY(!mgr.customActionMatches(-1, "/tmp/a.txt", "text/plain", false));
     }
 
+    void testCustomActionShortcutConflictsWarn()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        QFile f(path);
+        f.open(QIODevice::WriteOnly);
+        f.write("[[context_menu.actions]]\n"
+                "name = \"Clash With Copy\"\n"
+                "command = \"true %f\"\n"
+                "shortcut = \"ctrl+c\"\n"
+                "\n"
+                "[[context_menu.actions]]\n"
+                "name = \"First\"\n"
+                "command = \"true %f\"\n"
+                "shortcut = \"Ctrl+Alt+M\"\n"
+                "\n"
+                "[[context_menu.actions]]\n"
+                "name = \"Second\"\n"
+                "command = \"true %f\"\n"
+                "shortcut = \"Ctrl+Alt+M\"\n"
+                "\n"
+                "[[context_menu.actions]]\n"
+                "name = \"Typo\"\n"
+                "command = \"true %f\"\n"
+                "shortcut = \"Ctrl+Shft+E\"\n");
+        f.close();
+
+        ConfigManager mgr(path);
+        const QString error = mgr.configError();
+        // Case-insensitive clash with a built-in, a clash between two actions,
+        // and a sequence Qt cannot parse all get named.
+        QVERIFY(error.contains("Clash With Copy"));
+        QVERIFY(error.contains("Copy"));
+        QVERIFY(error.contains("Second"));
+        QVERIFY(error.contains("Typo"));
+        // The action that claimed Ctrl+Alt+M first is not blamed for the clash.
+        QVERIFY(!error.contains("\"Ctrl+Alt+M\" on \"First\""));
+    }
+
+    void testCleanCustomActionShortcutsDoNotWarn()
+    {
+        QTemporaryDir dir;
+        QString path = dir.path() + "/config.toml";
+
+        QFile f(path);
+        f.open(QIODevice::WriteOnly);
+        f.write("[[context_menu.actions]]\n"
+                "name = \"Fine\"\n"
+                "command = \"true %f\"\n"
+                "shortcut = \"Ctrl+Alt+M\"\n"
+                "\n"
+                "[[context_menu.actions]]\n"
+                "name = \"No Binding\"\n"
+                "command = \"true %f\"\n");
+        f.close();
+
+        ConfigManager mgr(path);
+        QCOMPARE(mgr.configError(), QString());
+    }
+
     void testNoContextActions()
     {
         QTemporaryDir dir;

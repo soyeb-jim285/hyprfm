@@ -47,6 +47,7 @@ Item {
     signal sortRequested(string column, bool ascending)
     signal emptyTrashRequested()
     signal customActionRequested(string action)
+    signal customActionRunRequested(string name, string command, var paths)
 
     // Menus grow to fit their widest row instead of clipping it (issue #13).
     // The measurements mirror the row layouts below: margins, icon slots,
@@ -824,7 +825,7 @@ Item {
             if (action.startsWith("custom:")) {
                 var custom = config.customContextActions[parseInt(action.slice(7))]
                 if (custom && custom.command)
-                    fileOps.runCustomAction(custom.command, effectivePaths)
+                    customActionRunRequested(custom.name || "", custom.command, effectivePaths)
             } else {
                 customActionRequested(action)
             }

@@ -33,6 +33,8 @@ ApplicationWindow {
         ? secondaryPaneIsRecents
         : primaryPaneIsRecents
     property var deleteConfirmPaths: []
+    // A custom action waiting on the "that is a lot of processes" confirmation.
+    property var pendingCustomAction: ({ name: "", command: "", paths: [] })
     property var pendingCloudCallbacks: []
     property var transferConflictItems: []
     property var transferResolvedItems: []
@@ -582,6 +584,7 @@ ApplicationWindow {
             && !root.isShown(root.conflictDialog)
             && !root.isShown(root.deleteConfirmDialog)
             && !root.isShown(root.emptyTrashConfirmDialog)
+            && !root.isShown(root.customActionConfirmDialog)
             && !(root.quickPreview && root.quickPreview.active)
     }
 
@@ -1106,6 +1109,24 @@ ApplicationWindow {
         return ""
     }
 
+    // A custom action runs its command once per selected item, so a big
+    // selection means a lot of processes at once. Confirm past this many.
+    readonly property int customActionConfirmThreshold: 20
+
+    // Every custom action run goes through here, from the menu entry and from
+    // its shortcut alike, so both ask before spawning a swarm of processes.
+    function runCustomActionOnPaths(name, command, paths) {
+        if (!command || paths.length === 0)
+            return
+
+        if (paths.length > root.customActionConfirmThreshold) {
+            root.pendingCustomAction = { name: name, command: command, paths: paths }
+            root.openDialog(customActionConfirmDialogLoader)
+            return
+        }
+        fileOps.runCustomAction(command, paths)
+    }
+
     // Runs [[context_menu.actions]][index] on the current selection, the way
     // clicking its menu entry would. Same guards as the menu: nothing for the
     // trash or a remote pane, and only when the selection matches `types`.
@@ -1127,7 +1148,8 @@ ApplicationWindow {
         if (!config.customActionMatches(index, items[0].path, mime, items[0].isDir))
             return
 
-        fileOps.runCustomAction(action.command, root.getSelectedPaths(root.activePane))
+        root.runCustomActionOnPaths(action.name || "", action.command,
+                                    root.getSelectedPaths(root.activePane))
     }
 
     function showContextMenuForActiveSelection() {
@@ -2960,6 +2982,70 @@ ApplicationWindow {
     }
     readonly property var deleteConfirmDialog: deleteConfirmDialogLoader.item
 
+    // ── Bulk Custom Action Confirmation Dialog ──────────────────────────────
+    Loader {
+        id: customActionConfirmDialogLoader
+        objectName: "customActionConfirmDialogLoader"
+        anchors.fill: parent
+        z: 9998
+        active: false
+        sourceComponent: Component {
+            Q.Dialog {
+                id: customActionConfirmDialog
+                anchors.fill: parent
+                z: 9998
+                dialogWidth: 360
+                title: "Run on every selected item?"
+                initialFocusItem: cancelCustomActionButton
+                onAccepted: fileOps.runCustomAction(root.pendingCustomAction.command,
+                                                    root.pendingCustomAction.paths)
+
+                Text {
+                    Layout.fillWidth: true
+                    textFormat: Text.PlainText
+                    text: "\"" + root.pendingCustomAction.name + "\" runs once per item, so this starts "
+                        + root.pendingCustomAction.paths.length + " processes at once."
+                    color: Theme.subtext
+                    font.pointSize: Theme.fontNormal
+                    wrapMode: Text.WordWrap
+                }
+
+                RowLayout {
+                    Layout.alignment: Qt.AlignRight
+                    spacing: 12
+
+                    Q.Button {
+                        id: cancelCustomActionButton
+                        text: "Cancel"
+                        variant: "ghost"
+                        size: "small"
+                        KeyNavigation.left: confirmCustomActionButton
+                        KeyNavigation.right: confirmCustomActionButton
+                        KeyNavigation.tab: confirmCustomActionButton
+                        KeyNavigation.backtab: confirmCustomActionButton
+                        Keys.onLeftPressed: confirmCustomActionButton.forceActiveFocus()
+                        Keys.onRightPressed: confirmCustomActionButton.forceActiveFocus()
+                        onClicked: customActionConfirmDialog.reject()
+                    }
+
+                    Q.Button {
+                        id: confirmCustomActionButton
+                        text: "Run"
+                        size: "small"
+                        KeyNavigation.left: cancelCustomActionButton
+                        KeyNavigation.right: cancelCustomActionButton
+                        KeyNavigation.tab: cancelCustomActionButton
+                        KeyNavigation.backtab: cancelCustomActionButton
+                        Keys.onLeftPressed: cancelCustomActionButton.forceActiveFocus()
+                        Keys.onRightPressed: cancelCustomActionButton.forceActiveFocus()
+                        onClicked: customActionConfirmDialog.accept()
+                    }
+                }
+            }
+        }
+    }
+    readonly property var customActionConfirmDialog: customActionConfirmDialogLoader.item
+
     // ── Empty Trash Confirmation Dialog ──────────────────────────────────────
     Loader {
         id: emptyTrashConfirmDialogLoader
@@ -3057,6 +3143,10 @@ ApplicationWindow {
                     root.appChooserDialog.filePath = path
                     root.appChooserDialog.mimeType = mimeType
                     root.appChooserDialog.open()
+                }
+
+                onCustomActionRunRequested: (name, command, paths) => {
+                    root.runCustomActionOnPaths(name, command, paths)
                 }
 
                 onCutRequested: (paths) => clipboard.cut(paths)

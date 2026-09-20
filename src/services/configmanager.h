@@ -156,6 +156,10 @@ signals:
 
 private:
     void loadConfig();
+    void setConfigError(const QString &message);
+    // Empty when every custom action's `shortcut` parses and is unclaimed;
+    // otherwise a message naming the ones that will not fire.
+    QString customActionShortcutProblems() const;
     void setDefaults();
     QString folderSortStorePath() const;
     void loadFolderSort();

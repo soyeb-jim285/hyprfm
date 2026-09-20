@@ -5,6 +5,7 @@
 
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QKeySequence>
 #include <QSaveFile>
 #include <sstream>
@@ -509,20 +510,14 @@ void ConfigManager::loadConfig()
                 m_shortcuts[QStringLiteral("new_file")] = s_defaultShortcuts.value(QStringLiteral("new_file"));
         }
 
-        if (!m_configError.isEmpty()) {
-            m_configError.clear();
-            emit configErrorChanged();
-        }
+        setConfigError(customActionShortcutProblems());
     } catch (const toml::parse_error &err) {
         qWarning() << "Config parse error:" << err.what();
         const auto desc = err.description();
         const QString message = QStringLiteral("config.toml line %1: %2")
             .arg(err.source().begin.line)
             .arg(QString::fromUtf8(desc.data(), int(desc.size())));
-        if (message != m_configError) {
-            m_configError = message;
-            emit configErrorChanged();
-        }
+        setConfigError(message);
     }
     emit listColumnsChanged();
     emit millerFractionsChanged();
@@ -991,6 +986,66 @@ bool ConfigManager::customActionMatches(int index, const QString &path,
             return true;
     }
     return false;
+}
+
+void ConfigManager::setConfigError(const QString &message)
+{
+    if (message == m_configError)
+        return;
+    m_configError = message;
+    emit configErrorChanged();
+}
+
+// A custom action whose `shortcut` Qt cannot parse, or that collides with
+// another action or a built-in binding, never fires — Qt drops an ambiguous
+// shortcut instead of picking a winner. Say so instead of letting the key
+// silently do nothing.
+QString ConfigManager::customActionShortcutProblems() const
+{
+    QStringList problems;
+    QHash<QString, QString> seen;   // normalized sequence -> what claims it
+
+    for (const auto &spec : kShortcutSpecs) {
+        const QString action = QString::fromUtf8(spec.action);
+        const QKeySequence seq(m_shortcuts.value(action, s_defaultShortcuts.value(action)));
+        if (!seq.isEmpty())
+            seen.insert(seq.toString(QKeySequence::PortableText),
+                        QString::fromUtf8(spec.label));
+    }
+
+    for (const QVariant &entry : m_customContextActions) {
+        const QVariantMap action = entry.toMap();
+        const QString text = action.value(QStringLiteral("shortcut")).toString().trimmed();
+        if (text.isEmpty())
+            continue;
+
+        const QString name = action.value(QStringLiteral("name")).toString();
+        // Qt keeps an unparseable sequence around as Key_unknown rather than
+        // rejecting it, and a shortcut on that key can never be pressed.
+        const QKeySequence seq(text);
+        bool unknown = seq.isEmpty();
+        for (int i = 0; i < seq.count() && !unknown; ++i)
+            unknown = seq[i].key() == Qt::Key_unknown;
+        if (unknown) {
+            problems.append(QStringLiteral("\"%1\" on \"%2\" is not a key sequence")
+                                .arg(text, name));
+            continue;
+        }
+
+        const QString normalized = seq.toString(QKeySequence::PortableText);
+        const auto claimed = seen.constFind(normalized);
+        if (claimed != seen.constEnd()) {
+            problems.append(QStringLiteral("\"%1\" on \"%2\" is already used by %3")
+                                .arg(normalized, name, *claimed));
+            continue;
+        }
+        seen.insert(normalized, QStringLiteral("\"%1\"").arg(name));
+    }
+
+    if (problems.isEmpty())
+        return {};
+    return QStringLiteral("config.toml: %1 — that shortcut will not fire")
+        .arg(problems.join(QStringLiteral("; ")));
 }
 
 void ConfigManager::saveSettings(const QVariantMap &settings)
