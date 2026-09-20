@@ -5,6 +5,8 @@
 #include <QQuickTextureFactory>
 #include <QSignalSpy>
 #include <QStandardPaths>
+#include <QScopeGuard>
+#include <QDir>
 #include <QTemporaryDir>
 #include <QUrl>
 
@@ -144,6 +146,73 @@ private slots:
         // specific speedup, so it does not flake on a loaded machine.
         QVERIFY2(warmMs <= coldMs, qPrintable(QStringLiteral("cold %1 ms, warm %2 ms")
                                                   .arg(coldMs).arg(warmMs)));
+    }
+
+    // A file that merely ends in .pdf must not cost a pdftoppm run: MIME
+    // detection falls back to the extension when the content says nothing, so
+    // a directory of such files used to spawn (and serialise) one subprocess
+    // each, leaving the view blank meanwhile.
+    void testNonPdfContentIsRejectedWithoutRunningPoppler()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString fakePath = dir.filePath(QStringLiteral("not-really.pdf"));
+        QFile fake(fakePath);
+        QVERIFY(fake.open(QIODevice::WriteOnly));
+        fake.write(QByteArray(4096, '\x01'));
+        fake.close();
+
+        PdfPreviewProvider provider;
+        const QString id = QString::fromLatin1(QUrl::toPercentEncoding(fakePath)) + "?page=0";
+
+        QElapsedTimer timer;
+        timer.start();
+        const QImage image = renderAndWait(provider, id, QSize(400, 500));
+        const qint64 elapsed = timer.elapsed();
+
+        QVERIFY(image.isNull());
+        // Rejecting on the header is a 1 KB read; spawning pdftoppm and
+        // waiting for it to fail is tens of milliseconds.
+        QVERIFY2(elapsed < 50, qPrintable(QStringLiteral("took %1 ms").arg(elapsed)));
+    }
+
+    // The rendered page outlives the process, so a second run of the app does
+    // not re-render what it already has.
+    void testRenderedPageSurvivesANewProvider()
+    {
+        if (QStandardPaths::findExecutable("pdftoppm").isEmpty()
+            || QStandardPaths::findExecutable("pdfinfo").isEmpty())
+            QSKIP("poppler-utils (pdftoppm/pdfinfo) not installed");
+
+        QTemporaryDir cacheDir;
+        QVERIFY(cacheDir.isValid());
+        const QByteArray previousCacheHome = qgetenv("XDG_CACHE_HOME");
+        qputenv("XDG_CACHE_HOME", cacheDir.path().toLocal8Bit());
+        const auto restore = qScopeGuard([&] {
+            if (previousCacheHome.isEmpty())
+                qunsetenv("XDG_CACHE_HOME");
+            else
+                qputenv("XDG_CACHE_HOME", previousCacheHome);
+        });
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString pdfPath = createPdf(dir.path());
+        const QString id = QString::fromLatin1(QUrl::toPercentEncoding(pdfPath)) + "?page=0";
+
+        QImage first;
+        {
+            PdfPreviewProvider provider;
+            first = renderAndWait(provider, id, QSize(400, 500));
+        }
+        QVERIFY(!first.isNull());
+        QVERIFY(!QDir(cacheDir.path() + QStringLiteral("/hyprfm/pdf-pages"))
+                     .entryList({QStringLiteral("*.jpg")}, QDir::Files).isEmpty());
+
+        // A provider with an empty in-memory cache still answers from disk.
+        PdfPreviewProvider fresh;
+        const QImage second = renderAndWait(fresh, id, QSize(400, 500));
+        QCOMPARE(second.size(), first.size());
     }
 };
 

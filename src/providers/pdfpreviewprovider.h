@@ -20,6 +20,10 @@ public:
 private:
     // Returns true and fills m_image when this page is already rendered.
     bool tryCache(const QString &key);
+    // Same, from the on-disk cache of rendered pages; fills the memory cache
+    // on the way through.
+    bool tryDiskCache(const QString &key);
+    void writeDiskCache(const QString &key, const QByteArray &jpeg);
 
     QString m_id;
     QSize m_requestedSize;

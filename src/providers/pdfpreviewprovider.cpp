@@ -8,6 +8,11 @@
 #include <QProcess>
 #include <QQuickTextureFactory>
 #include <QRegularExpression>
+#include <QCryptographicHash>
+#include <QDir>
+#include <QSaveFile>
+#include <QSet>
+#include <mutex>
 #include <QStandardPaths>
 #include <QThreadPool>
 #include <QUrl>
@@ -59,6 +64,14 @@ QSizeF pageSizeUncached(const QString &path)
 
 // ponytail: unbounded map, but it holds one QSizeF per PDF previewed this
 // session. Add an LRU cap if someone ever previews thousands of documents.
+// Same answer as pdfinfo, without the ~17 ms process: it is a property of the
+// document, so it survives on disk beside the rendered pages. The rendered
+// page's cache key contains the dpi, which is derived from this size, so this
+// lookup has to happen before the page cache can be consulted at all - which
+// is why a warm page cache alone still cost a pdfinfo run per process.
+QSizeF pageSizeFromDisk(const QString &key);
+void pageSizeToDisk(const QString &key, const QSizeF &size);
+
 QSizeF pageSizePoints(const QString &path)
 {
     const QString key = path + QLatin1Char('\0')
@@ -77,7 +90,12 @@ QSizeF pageSizePoints(const QString &path)
     // Deliberately computed outside the lock: two threads racing on a cold
     // cache just both run pdfinfo and store the same answer, which is far
     // cheaper than serialising every render behind one mutex.
-    const QSizeF size = pageSizeUncached(path);
+    QSizeF size = pageSizeFromDisk(key);
+    if (!size.isValid()) {
+        size = pageSizeUncached(path);
+        if (size.isValid())
+            pageSizeToDisk(key, size);
+    }
 
     QMutexLocker locker(&mutex);
     cache.insert(key, size);
@@ -135,6 +153,86 @@ QCache<QString, QImage> &renderCache()
     return cache;
 }
 
+// Pages that could not be rendered: a file that is not really a PDF, or one
+// poppler refuses. Without this, every pass over a directory of them spawns
+// pdftoppm again for each one, and they are serialised behind renderLock().
+QSet<QString> &failedRenders()
+{
+    static QSet<QString> failed;
+    return failed;
+}
+
+// The in-memory cache dies with the process and is capped at 64 MB, so a
+// folder of PDFs re-renders on every launch and on every scroll back. The
+// rendered JPEG is a few tens of KB; keeping it on disk turns a ~50 ms
+// pdftoppm run into a file read.
+// poppler's own tolerance: the %PDF- header may sit anywhere in the first
+// kilobyte, after a BOM or stray bytes.
+bool looksLikePdf(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return false;
+    return file.read(1024).contains("%PDF-");
+}
+
+QString pageCacheDir()
+{
+    // Not cached in a static: it is only consulted on a cache miss or a write,
+    // and resolving it each time keeps it honest when XDG_CACHE_HOME changes.
+    return QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
+        + QStringLiteral("/hyprfm/pdf-pages");
+}
+
+QString diskCachePath(const QString &key)
+{
+    const QByteArray hash =
+        QCryptographicHash::hash(key.toUtf8(), QCryptographicHash::Sha1).toHex();
+    return pageCacheDir() + QLatin1Char('/') + QString::fromLatin1(hash) + QStringLiteral(".jpg");
+}
+
+QSizeF pageSizeFromDisk(const QString &key)
+{
+    QFile file(diskCachePath(key) + QStringLiteral(".size"));
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    const QList<QByteArray> parts = file.read(64).trimmed().split(' ');
+    if (parts.size() != 2)
+        return {};
+    return QSizeF(parts.at(0).toDouble(), parts.at(1).toDouble());
+}
+
+void pageSizeToDisk(const QString &key, const QSizeF &size)
+{
+    if (!QDir().mkpath(pageCacheDir()))
+        return;
+    QSaveFile file(diskCachePath(key) + QStringLiteral(".size"));
+    if (!file.open(QIODevice::WriteOnly))
+        return;
+    file.write(QByteArray::number(size.width()) + ' ' + QByteArray::number(size.height()));
+    file.commit();
+}
+
+// ponytail: one sweep per process, oldest first, no LRU bookkeeping. 128 MB is
+// a few thousand pages; if someone ever browses more than that in one session
+// the newest ones simply stay in the memory cache.
+void pruneDiskCacheOnce()
+{
+    static std::once_flag once;
+    std::call_once(once, [] {
+        QFileInfoList files = QDir(pageCacheDir()).entryInfoList({QStringLiteral("*.jpg")},
+                                                                 QDir::Files, QDir::Time);
+        qint64 total = 0;
+        for (const QFileInfo &info : std::as_const(files))
+            total += info.size();
+        while (total > 128 * 1024 * 1024 && !files.isEmpty()) {
+            const QFileInfo oldest = files.takeLast();
+            total -= oldest.size();
+            QFile::remove(oldest.absoluteFilePath());
+        }
+    });
+}
+
 // Serialises the actual pdftoppm runs. Without it the cache never helps on
 // first paint: QML issues the duplicate requests concurrently, so both miss
 // the cache and both render. Holding this across the subprocess is safe --
@@ -165,6 +263,32 @@ bool PdfPreviewResponse::tryCache(const QString &key)
     return false;
 }
 
+bool PdfPreviewResponse::tryDiskCache(const QString &key)
+{
+    QFile file(diskCachePath(key));
+    if (!file.open(QIODevice::ReadOnly))
+        return false;
+    const QByteArray jpeg = file.readAll();
+    if (jpeg.isEmpty() || !m_image.loadFromData(jpeg, "JPEG"))
+        return false;
+    QMutexLocker locker(&renderCacheMutex());
+    renderCache().insert(key, new QImage(m_image),
+                         static_cast<qsizetype>(m_image.sizeInBytes()));
+    return true;
+}
+
+void PdfPreviewResponse::writeDiskCache(const QString &key, const QByteArray &jpeg)
+{
+    if (!QDir().mkpath(pageCacheDir()))
+        return;
+    QSaveFile file(diskCachePath(key));
+    if (!file.open(QIODevice::WriteOnly))
+        return;
+    if (file.write(jpeg) == jpeg.size())
+        file.commit();
+    pruneDiskCacheOnce();
+}
+
 void PdfPreviewResponse::run()
 {
     const PdfRequest request = parseRequest(m_id);
@@ -178,11 +302,26 @@ void PdfPreviewResponse::run()
         return;
     }
 
+    // poppler scans the first kilobyte for the header and renders anything it
+    // finds one in, so this rejects only what it would reject anyway - but it
+    // does so with a 1 KB read instead of a process spawn. A directory of
+    // files that merely end in .pdf (MIME detection falls back to the
+    // extension when the content says nothing) used to start pdftoppm for
+    // every one of them, serialised behind renderLock().
+    if (!looksLikePdf(request.path)) {
+        emit finished();
+        return;
+    }
+
     const QSizeF sizePts = pageSizePoints(request.path);
     const int dpi = static_cast<int>(dpiForRequest(sizePts, m_requestedSize) + 0.5);
     const QString key = renderKey(request.path, request.page, dpi);
 
     if (tryCache(key)) {
+        emit finished();
+        return;
+    }
+    if (tryDiskCache(key)) {
         emit finished();
         return;
     }
@@ -195,6 +334,13 @@ void PdfPreviewResponse::run()
     if (tryCache(key)) {
         emit finished();
         return;
+    }
+    {
+        QMutexLocker locker(&renderCacheMutex());
+        if (failedRenders().contains(key)) {
+            emit finished();
+            return;
+        }
     }
 
     // pdftoppm writes to stdout only when no output-prefix argument is
@@ -217,13 +363,11 @@ void PdfPreviewResponse::run()
         request.path,
     });
 
-    if (!proc.waitForFinished(15000) || proc.exitCode() != 0) {
-        emit finished();
-        return;
-    }
-
-    const QByteArray jpeg = proc.readAllStandardOutput();
+    const bool ran = proc.waitForFinished(15000) && proc.exitCode() == 0;
+    const QByteArray jpeg = ran ? proc.readAllStandardOutput() : QByteArray();
     if (jpeg.isEmpty()) {
+        QMutexLocker locker(&renderCacheMutex());
+        failedRenders().insert(key);
         emit finished();
         return;
     }
@@ -232,8 +376,11 @@ void PdfPreviewResponse::run()
 
     if (!m_image.isNull()) {
         const qsizetype cost = m_image.sizeInBytes();
-        QMutexLocker locker(&renderCacheMutex());
-        renderCache().insert(key, new QImage(m_image), static_cast<qsizetype>(cost));
+        {
+            QMutexLocker locker(&renderCacheMutex());
+            renderCache().insert(key, new QImage(m_image), static_cast<qsizetype>(cost));
+        }
+        writeDiskCache(key, jpeg);
     }
 
     emit finished();
