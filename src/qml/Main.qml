@@ -2925,58 +2925,13 @@ ApplicationWindow {
         z: 9998
         active: false
         sourceComponent: Component {
-            Q.Dialog {
-                id: deleteConfirmDialog
-                anchors.fill: parent
-                z: 9998
-                dialogWidth: 360
+            ConfirmDialog {
                 title: "Permanently Delete?"
-                initialFocusItem: cancelDeleteButton
+                confirmText: "Delete"
+                message: root.deleteConfirmPaths.length === 1
+                    ? "\"" + root.deleteConfirmPaths[0].substring(root.deleteConfirmPaths[0].lastIndexOf("/") + 1) + "\" will be permanently deleted. This cannot be undone."
+                    : root.deleteConfirmPaths.length + " items will be permanently deleted. This cannot be undone."
                 onAccepted: fileOps.deleteFiles(root.deleteConfirmPaths)
-
-                Text {
-                    Layout.fillWidth: true
-                    textFormat: Text.PlainText
-                    text: root.deleteConfirmPaths.length === 1
-                        ? "\"" + root.deleteConfirmPaths[0].substring(root.deleteConfirmPaths[0].lastIndexOf("/") + 1) + "\" will be permanently deleted. This cannot be undone."
-                        : root.deleteConfirmPaths.length + " items will be permanently deleted. This cannot be undone."
-                    color: Theme.subtext
-                    font.pointSize: Theme.fontNormal
-                    wrapMode: Text.WordWrap
-                }
-
-                RowLayout {
-                    Layout.alignment: Qt.AlignRight
-                    spacing: 12
-
-                    Q.Button {
-                        id: cancelDeleteButton
-                        text: "Cancel"
-                        variant: "ghost"
-                        size: "small"
-                        KeyNavigation.left: confirmDeleteButton
-                        KeyNavigation.right: confirmDeleteButton
-                        KeyNavigation.tab: confirmDeleteButton
-                        KeyNavigation.backtab: confirmDeleteButton
-                        Keys.onLeftPressed: confirmDeleteButton.forceActiveFocus()
-                        Keys.onRightPressed: confirmDeleteButton.forceActiveFocus()
-                        onClicked: deleteConfirmDialog.reject()
-                    }
-
-                    Q.Button {
-                        id: confirmDeleteButton
-                        text: "Delete"
-                        variant: "danger"
-                        size: "small"
-                        KeyNavigation.left: cancelDeleteButton
-                        KeyNavigation.right: cancelDeleteButton
-                        KeyNavigation.tab: cancelDeleteButton
-                        KeyNavigation.backtab: cancelDeleteButton
-                        Keys.onLeftPressed: cancelDeleteButton.forceActiveFocus()
-                        Keys.onRightPressed: cancelDeleteButton.forceActiveFocus()
-                        onClicked: deleteConfirmDialog.accept()
-                    }
-                }
             }
         }
     }
@@ -2990,57 +2945,14 @@ ApplicationWindow {
         z: 9998
         active: false
         sourceComponent: Component {
-            Q.Dialog {
-                id: customActionConfirmDialog
-                anchors.fill: parent
-                z: 9998
-                dialogWidth: 360
+            ConfirmDialog {
                 title: "Run on every selected item?"
-                initialFocusItem: cancelCustomActionButton
+                confirmText: "Run"
+                confirmVariant: "primary"
+                message: "\"" + root.pendingCustomAction.name + "\" runs once per item, so this starts "
+                    + root.pendingCustomAction.paths.length + " processes at once."
                 onAccepted: fileOps.runCustomAction(root.pendingCustomAction.command,
                                                     root.pendingCustomAction.paths)
-
-                Text {
-                    Layout.fillWidth: true
-                    textFormat: Text.PlainText
-                    text: "\"" + root.pendingCustomAction.name + "\" runs once per item, so this starts "
-                        + root.pendingCustomAction.paths.length + " processes at once."
-                    color: Theme.subtext
-                    font.pointSize: Theme.fontNormal
-                    wrapMode: Text.WordWrap
-                }
-
-                RowLayout {
-                    Layout.alignment: Qt.AlignRight
-                    spacing: 12
-
-                    Q.Button {
-                        id: cancelCustomActionButton
-                        text: "Cancel"
-                        variant: "ghost"
-                        size: "small"
-                        KeyNavigation.left: confirmCustomActionButton
-                        KeyNavigation.right: confirmCustomActionButton
-                        KeyNavigation.tab: confirmCustomActionButton
-                        KeyNavigation.backtab: confirmCustomActionButton
-                        Keys.onLeftPressed: confirmCustomActionButton.forceActiveFocus()
-                        Keys.onRightPressed: confirmCustomActionButton.forceActiveFocus()
-                        onClicked: customActionConfirmDialog.reject()
-                    }
-
-                    Q.Button {
-                        id: confirmCustomActionButton
-                        text: "Run"
-                        size: "small"
-                        KeyNavigation.left: cancelCustomActionButton
-                        KeyNavigation.right: cancelCustomActionButton
-                        KeyNavigation.tab: cancelCustomActionButton
-                        KeyNavigation.backtab: cancelCustomActionButton
-                        Keys.onLeftPressed: cancelCustomActionButton.forceActiveFocus()
-                        Keys.onRightPressed: cancelCustomActionButton.forceActiveFocus()
-                        onClicked: customActionConfirmDialog.accept()
-                    }
-                }
             }
         }
     }
@@ -3054,55 +2966,11 @@ ApplicationWindow {
         z: 9998
         active: false
         sourceComponent: Component {
-            Q.Dialog {
-                id: emptyTrashConfirmDialog
-                anchors.fill: parent
-                z: 9998
-                dialogWidth: 360
+            ConfirmDialog {
                 title: "Empty Trash?"
-                initialFocusItem: cancelEmptyTrashButton
+                confirmText: "Empty Trash"
+                message: "All items in the Trash will be permanently deleted. This cannot be undone."
                 onAccepted: fileOps.emptyTrash()
-
-                Text {
-                    Layout.fillWidth: true
-                    text: "All items in the Trash will be permanently deleted. This cannot be undone."
-                    color: Theme.subtext
-                    font.pointSize: Theme.fontNormal
-                    wrapMode: Text.WordWrap
-                }
-
-                RowLayout {
-                    Layout.alignment: Qt.AlignRight
-                    spacing: 12
-
-                    Q.Button {
-                        id: cancelEmptyTrashButton
-                        text: "Cancel"
-                        variant: "ghost"
-                        size: "small"
-                        KeyNavigation.left: confirmEmptyTrashButton
-                        KeyNavigation.right: confirmEmptyTrashButton
-                        KeyNavigation.tab: confirmEmptyTrashButton
-                        KeyNavigation.backtab: confirmEmptyTrashButton
-                        Keys.onLeftPressed: confirmEmptyTrashButton.forceActiveFocus()
-                        Keys.onRightPressed: confirmEmptyTrashButton.forceActiveFocus()
-                        onClicked: emptyTrashConfirmDialog.reject()
-                    }
-
-                    Q.Button {
-                        id: confirmEmptyTrashButton
-                        text: "Empty Trash"
-                        variant: "danger"
-                        size: "small"
-                        KeyNavigation.left: cancelEmptyTrashButton
-                        KeyNavigation.right: cancelEmptyTrashButton
-                        KeyNavigation.tab: cancelEmptyTrashButton
-                        KeyNavigation.backtab: cancelEmptyTrashButton
-                        Keys.onLeftPressed: cancelEmptyTrashButton.forceActiveFocus()
-                        Keys.onRightPressed: cancelEmptyTrashButton.forceActiveFocus()
-                        onClicked: emptyTrashConfirmDialog.accept()
-                    }
-                }
             }
         }
     }

@@ -696,6 +696,7 @@ private slots:
         QTest::addColumn<QString>("dialog");
         QTest::newRow("delete") << "deleteConfirmDialog";
         QTest::newRow("empty trash") << "emptyTrashConfirmDialog";
+        QTest::newRow("bulk custom action") << "customActionConfirmDialog";
         QTest::newRow("conflict") << "conflictDialog";
         QTest::newRow("app chooser") << "appChooserDialog";
     }
