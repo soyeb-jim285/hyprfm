@@ -24,6 +24,7 @@ public:
     Q_INVOKABLE bool isRemotePath(const QString &) const { return false; }
     Q_INVOKABLE bool isSlowPath(const QString &) const { return false; }
     Q_INVOKABLE bool isArchive(const QString &) const { return false; }
+    Q_INVOKABLE bool isExecutable(const QString &) const { return false; }
 };
 
 class ClipboardStub : public QObject

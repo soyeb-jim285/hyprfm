@@ -226,6 +226,52 @@ private slots:
         qunsetenv("TERMINAL");
     }
 
+    void testRunExecutableRunsInItsFolderOrTerminal()
+    {
+        QTemporaryDir dir;
+        const QString marker = dir.filePath("ran");
+        const QString prog = dir.filePath("prog.sh");
+        {
+            QFile f(prog);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(QStringLiteral("#!/bin/sh\npwd > \"%1\"\n").arg(marker).toUtf8());
+        }
+        const QString plain = dir.filePath("notes.txt");
+        { QFile f(plain); QVERIFY(f.open(QIODevice::WriteOnly)); }
+
+        FileOperations ops;
+        QVERIFY(!ops.isExecutable(prog));
+        QVERIFY(!ops.isExecutable(dir.path()));
+        QSignalSpy finished(&ops, &FileOperations::operationFinished);
+        ops.runExecutable(prog, false);
+        QCOMPARE(finished.count(), 1);
+        QVERIFY(!finished.first().at(0).toBool());
+
+        QFile::setPermissions(prog, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        QVERIFY(ops.isExecutable(prog));
+        ops.runExecutable(prog, false);
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(marker), 5000);
+        QFile f(marker);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(f.readAll()).trimmed(), dir.path());
+
+        const QString argv = dir.filePath("argv");
+        const QString term = dir.filePath("term.sh");
+        {
+            QFile t(term);
+            QVERIFY(t.open(QIODevice::WriteOnly));
+            t.write(QStringLiteral("#!/bin/sh\nprintf '%s ' \"$@\" > \"%1\"\n").arg(argv).toUtf8());
+        }
+        QFile::setPermissions(term, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        qputenv("TERMINAL", term.toUtf8());
+        ops.runExecutable(prog, true);
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(argv), 5000);
+        QFile a(argv);
+        QVERIFY(a.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(a.readAll()).trimmed(), QStringLiteral("-e ") + prog);
+        qunsetenv("TERMINAL");
+    }
+
     void testRunCustomActionSubstitutesPathAndRunsPerItem()
     {
         QTemporaryDir dir;

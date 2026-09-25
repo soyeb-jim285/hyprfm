@@ -1997,7 +1997,40 @@ void FileOperations::openInTerminal(const QString &dirPath)
         emit operationFinished(false, QStringLiteral("Open in Terminal is only available for local folders"));
         return;
     }
+    startTerminal(dirPath, {});
+}
 
+bool FileOperations::isExecutable(const QString &path) const
+{
+    if (isUriPath(path))
+        return false;
+    const QFileInfo info(path);
+    return info.isFile() && info.isExecutable();
+}
+
+// Runs an executable file (binary or script with a shebang) in its own
+// folder. inTerminal gives it a terminal window, for programs that need one;
+// that window closes when the program exits.
+void FileOperations::runExecutable(const QString &path, bool inTerminal)
+{
+    if (!isExecutable(path)) {
+        emit operationFinished(false,
+            QStringLiteral("%1 is not an executable file").arg(locationFileName(path)));
+        return;
+    }
+    const QString dir = QFileInfo(path).absolutePath();
+    if (inTerminal) {
+        startTerminal(dir, {QStringLiteral("-e"), path});
+        return;
+    }
+    if (!QProcess::startDetached(path, {}, dir))
+        emit operationFinished(false,
+            QStringLiteral("Could not run %1").arg(locationFileName(path)));
+}
+
+// Opens $TERMINAL in dirPath, running command (e.g. {"-e", prog}) if given.
+void FileOperations::startTerminal(const QString &dirPath, const QStringList &command)
+{
     // $TERMINAL may carry flags ("kitty -1"); split like a shell would.
     QStringList args = QProcess::splitCommand(qEnvironmentVariable("TERMINAL", "kitty"));
     if (args.isEmpty())
@@ -2027,6 +2060,7 @@ void FileOperations::openInTerminal(const QString &dirPath)
              || exe == QLatin1String("mate-terminal") || exe == QLatin1String("lxterminal")
              || exe == QLatin1String("deepin-terminal") || exe == QLatin1String("qterminal"))
         args << QStringLiteral("--working-directory") << dirPath;
+    args << command;
 
     auto *proc = new QProcess(this);
     proc->setWorkingDirectory(dirPath);

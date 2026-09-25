@@ -76,6 +76,8 @@ public:
     Q_INVOKABLE QString pasteClipboardImage(const QString &destinationDir);
     Q_INVOKABLE void copyPathToClipboard(const QString &path);
     Q_INVOKABLE void openInTerminal(const QString &dirPath);
+    Q_INVOKABLE bool isExecutable(const QString &path) const;
+    Q_INVOKABLE void runExecutable(const QString &path, bool inTerminal);
     Q_INVOKABLE void runCustomAction(const QString &command, const QStringList &paths);
     Q_INVOKABLE void openNewWindow(const QString &dirPath);
     Q_INVOKABLE int compressFiles(const QStringList &paths, const QString &format);
@@ -120,6 +122,7 @@ signals:
     void operationFinished(bool success, const QString &error, int operationId = -1);
 
 private:
+    void startTerminal(const QString &dirPath, const QStringList &command);
     struct ActiveTransfer {
         int id = 0;
         QThread *thread = nullptr;

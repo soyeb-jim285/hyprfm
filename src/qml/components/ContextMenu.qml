@@ -675,6 +675,10 @@ Item {
             }
             if (targetIsDir && !isTrashView && !remoteContext)
                 items.push({ text: "Open in Terminal", shortcut: "", action: "terminal", icon: "Terminal" })
+            if (!targetIsDir && !isTrashView && !remoteContext && fileOps.isExecutable(targetPath)) {
+                items.push({ text: "Run", shortcut: "", action: "run", icon: "Play" })
+                items.push({ text: "Run in Terminal", shortcut: "", action: "run_terminal", icon: "Terminal" })
+            }
             if (!isTrashView && !remoteContext) {
                 var custom = customActionItems(typeof mime === "string" ? mime : "")
                 if (custom.length > 0) {
@@ -796,6 +800,8 @@ Item {
         case "paste": pasteRequested(effectiveDir); break
         case "selectall": selectAllRequested(); break
         case "terminal": openInTerminalRequested(effectiveDir); break
+        case "run": fileOps.runExecutable(targetPath, false); break
+        case "run_terminal": fileOps.runExecutable(targetPath, true); break
         case "newfolder": newFolderRequested(effectiveDir); break
         case "newfile": newFileRequested(effectiveDir); break
         case "properties": propertiesRequested(targetPath); break
