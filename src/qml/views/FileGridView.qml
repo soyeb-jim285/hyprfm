@@ -598,6 +598,7 @@ GridView {
             // image. That is what a file which is not really a PDF does, and
             // checking only the status left those cells blank for good.
             visible: delegateItem.hasThumbnail && status === Image.Ready && implicitWidth > 0
+            opacity: delegateItem.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 8
@@ -619,6 +620,7 @@ GridView {
         Image {
             id: iconImg
             visible: !thumbImg.visible
+            opacity: delegateItem.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 8

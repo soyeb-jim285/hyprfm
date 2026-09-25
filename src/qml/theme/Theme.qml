@@ -24,6 +24,8 @@ QtObject {
         var pointSize = Qt.application.font.pointSize
         return pointSize > 0 ? pointSize : 10
     }
+    // Icons of dotfiles are drawn at this opacity so they stand apart.
+    readonly property real hiddenIconOpacity: 0.55
     readonly property real uiScale: Math.max(1.0, baseFontSize / 10.0)
     readonly property int spacing: Math.round(8 * uiScale)
     readonly property int fontSmall: Math.max(9, Math.round(baseFontSize - 1))

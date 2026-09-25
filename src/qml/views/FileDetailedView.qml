@@ -1050,6 +1050,7 @@ FocusScope {
                                 // pdftoppm): an Image that is not Ready paints
                                 // nothing at all.
                                 visible: !detThumb.visible
+                                opacity: detRow.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
                                 source: "image://icon/" + detRow.fileIconName + "?theme=" + config.iconTheme
                                 sourceSize: Qt.size(root.detailIconSize * Screen.devicePixelRatio,
                                                     root.detailIconSize * Screen.devicePixelRatio)
@@ -1058,6 +1059,7 @@ FocusScope {
 
                             Image {
                                 id: detThumb
+                                opacity: detRow.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
                                 anchors.fill: parent
                                 visible: parent.hasThumbnail && status === Image.Ready
                                          && implicitWidth > 0

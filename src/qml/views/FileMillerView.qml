@@ -383,7 +383,8 @@ FocusScope {
                             sourceSize: Qt.size(root.millerIconSize * Screen.devicePixelRatio,
                                                 root.millerIconSize * Screen.devicePixelRatio)
                             asynchronous: true
-                            opacity: parentDelegate.isCurrentDir ? 0.95 : 0.8
+                            opacity: (parentDelegate.isCurrentDir ? 0.95 : 0.8)
+                                     * (parentDelegate.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1)
                         }
 
                         Text {
@@ -898,6 +899,7 @@ FocusScope {
                             Image {
                                 anchors.fill: parent
                                 visible: !millerThumb.visible
+                                opacity: currentDelegate.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
                                 source: "image://icon/" + currentDelegate.fileIconName + "?theme=" + config.iconTheme
                                 sourceSize: Qt.size((root.millerIconSize + 2) * Screen.devicePixelRatio,
                                                     (root.millerIconSize + 2) * Screen.devicePixelRatio)
@@ -906,6 +908,7 @@ FocusScope {
 
                             Image {
                                 id: millerThumb
+                                opacity: currentDelegate.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
                                 anchors.fill: parent
                                 visible: parent.hasThumbnail && status === Image.Ready
                                          && implicitWidth > 0
@@ -1532,6 +1535,7 @@ FocusScope {
                                     width: 14; height: 14
                                     anchors.verticalCenter: parent.verticalCenter
                                     source: "image://icon/" + fileIconName + "?theme=" + config.iconTheme
+                                    opacity: fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
                                     sourceSize: Qt.size(14 * Screen.devicePixelRatio,
                                                         14 * Screen.devicePixelRatio)
                                     asynchronous: true
