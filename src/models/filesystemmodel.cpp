@@ -1019,6 +1019,15 @@ void FileSystemModel::setShowHidden(bool show)
     emit showHiddenChanged();
 }
 
+void FileSystemModel::setHiddenLast(bool last)
+{
+    if (m_hiddenLast == last)
+        return;
+    m_hiddenLast = last;
+    if (!m_rootPath.isEmpty())
+        reload();
+}
+
 void FileSystemModel::sortByColumn(const QString &column, bool ascending)
 {
     if (m_sortColumn == column && m_sortAscending == ascending)
@@ -1173,7 +1182,7 @@ static QString suffixOf(const QString &name)
 
 FileSystemModel::LocalReloadResult FileSystemModel::scanLocalEntries(
     quint64 generation, const QString &rootPath, bool showHidden,
-    QDir::SortFlags sortFlags)
+    QDir::SortFlags sortFlags, bool hiddenLast)
 {
     LocalReloadResult result;
     result.generation = generation;
@@ -1183,7 +1192,7 @@ FileSystemModel::LocalReloadResult FileSystemModel::scanLocalEntries(
     const int sortBy = sortFlags & QDir::SortByMask;
     const bool wantStat = sortBy == QDir::Size || sortBy == QDir::Time;
     result.entries = readLocalEntries(rootPath, showHidden, wantStat);
-    sortEntries(result.entries, sortFlags);
+    sortEntries(result.entries, sortFlags, hiddenLast);
     return result;
 }
 
@@ -1255,8 +1264,9 @@ QList<FileSystemModel::Entry> FileSystemModel::readLocalEntries(const QString &r
 
 // Mirrors QDir's own ordering: directories first when asked, size largest
 // first, time newest first, ties broken by name, and Reversed flipping
-// everything but the dirs-first rule.
-void FileSystemModel::sortEntries(QList<Entry> &entries, QDir::SortFlags flags)
+// everything but the dirs-first rule. hiddenLast puts dotfiles after the
+// rest of their group (folders or files), also regardless of Reversed.
+void FileSystemModel::sortEntries(QList<Entry> &entries, QDir::SortFlags flags, bool hiddenLast)
 {
     const int sortBy = flags & QDir::SortByMask;
     if (sortBy == QDir::Unsorted)
@@ -1289,6 +1299,11 @@ void FileSystemModel::sortEntries(QList<Entry> &entries, QDir::SortFlags flags)
         const Entry &eb = entries.at(b.index);
         if (dirsFirst && ea.isDir != eb.isDir)
             return ea.isDir;
+        if (hiddenLast) {
+            const bool ha = ea.name.startsWith(QLatin1Char('.'));
+            if (ha != eb.name.startsWith(QLatin1Char('.')))
+                return !ha;
+        }
         int c = 0;
         if (sortBy == QDir::Size)
             c = ea.size == eb.size ? 0 : (ea.size > eb.size ? -1 : 1);
@@ -1317,7 +1332,7 @@ void FileSystemModel::scheduleLocalReload(bool tryDiff)
     if (m_synchronousReload) {
         // Test mode: run scan inline so rowCount is correct before the
         // caller moves on.
-        applyLocalReload(scanLocalEntries(gen, m_rootPath, m_showHidden, m_sortFlags),
+        applyLocalReload(scanLocalEntries(gen, m_rootPath, m_showHidden, m_sortFlags, m_hiddenLast),
                          tryDiff);
         return;
     }
@@ -1336,7 +1351,7 @@ void FileSystemModel::scheduleLocalReload(bool tryDiff)
     }
 
     auto future = QtConcurrent::run(&FileSystemModel::scanLocalEntries,
-                                    gen, m_rootPath, m_showHidden, m_sortFlags);
+                                    gen, m_rootPath, m_showHidden, m_sortFlags, m_hiddenLast);
     m_localReloadWatcher->setFuture(future);
 }
 
@@ -1489,6 +1504,11 @@ void FileSystemModel::applyRemoteReload(const QString &rootPath, const QByteArra
         const bool rhsDir = rhs.value(QStringLiteral("isDir")).toBool();
         if (lhsDir != rhsDir)
             return lhsDir > rhsDir;
+        if (m_hiddenLast) {
+            const bool lhsHidden = lhs.value(QStringLiteral("fileName")).toString().startsWith(QLatin1Char('.'));
+            if (lhsHidden != rhs.value(QStringLiteral("fileName")).toString().startsWith(QLatin1Char('.')))
+                return !lhsHidden;
+        }
 
         int comparison = 0;
         if (m_sortColumn == QStringLiteral("size")) {
@@ -1534,7 +1554,7 @@ QList<FileSystemModel::Entry> FileSystemModel::currentLocalEntries() const
     // syscall + QFileInfo construction: derived fields (icon name,
     // mime-backed type, locale-formatted date, permission text) populate
     // lazily on first data() request for each row.
-    return scanLocalEntries(m_localReloadGeneration, m_rootPath, m_showHidden, m_sortFlags).entries;
+    return scanLocalEntries(m_localReloadGeneration, m_rootPath, m_showHidden, m_sortFlags, m_hiddenLast).entries;
 }
 
 FileSystemModel::Entry FileSystemModel::entryFromInfo(const QFileInfo &info, bool statted)
@@ -1755,6 +1775,11 @@ void FileSystemModel::reloadTrash()
         const bool rhsDir = rhs.value("isDir").toBool();
         if (lhsDir != rhsDir)
             return lhsDir > rhsDir;
+        if (m_hiddenLast) {
+            const bool lhsHidden = lhs.value(QStringLiteral("fileName")).toString().startsWith(QLatin1Char('.'));
+            if (lhsHidden != rhs.value(QStringLiteral("fileName")).toString().startsWith(QLatin1Char('.')))
+                return !lhsHidden;
+        }
 
         int comparison = 0;
         if (m_sortColumn == "size") {

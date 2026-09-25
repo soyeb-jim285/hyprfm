@@ -406,6 +406,31 @@ private slots:
         QCOMPARE(names, QStringList({"File1.txt", "file2.txt", "file10.txt"}));
     }
 
+    void testHiddenLastKeepsDotfilesAfterTheirGroup()
+    {
+        TestDir dir;
+        dir.createFiles({"b.txt", ".a.txt", "a.txt"});
+        dir.createDir(".conf");
+        dir.createDir("docs");
+
+        FileSystemModel model;
+        model.setSynchronousReload(true);
+        model.setShowHidden(true);
+        model.setRootPath(dir.path());
+        model.setHiddenLast(true);
+
+        auto names = [&] {
+            QStringList out;
+            for (int i = 0; i < model.rowCount(); ++i)
+                out << model.data(model.index(i), FileSystemModel::FileNameRole).toString();
+            return out;
+        };
+        QCOMPARE(names(), QStringList({"docs", ".conf", "a.txt", "b.txt", ".a.txt"}));
+
+        model.sortByColumn("name", false);
+        QCOMPARE(names(), QStringList({"docs", ".conf", "b.txt", "a.txt", ".a.txt"}));
+    }
+
     void testSizeTextUsesLocaleDecimalSeparator()
     {
         TestDir dir;

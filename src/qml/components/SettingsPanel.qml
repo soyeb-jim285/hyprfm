@@ -79,6 +79,7 @@ Window {
     property string draftIconTheme: config.iconTheme
     property bool draftDarkMode: true
     property bool draftShowHidden: currentShowHidden
+    property bool draftHiddenLast: config.hiddenLast
     property bool draftRightClickToEditPath: config.rightClickToEditPath
     property bool draftDependencyStartupCheck: config.dependencyStartupCheck
     property bool draftSidebarVisible: currentSidebarVisible
@@ -264,6 +265,7 @@ Window {
         draftFontFamily = ""
         draftIconTheme = defaultIconThemeName
         draftShowHidden = false
+        draftHiddenLast = false
         draftRightClickToEditPath = true
         draftDependencyStartupCheck = true
         draftSidebarVisible = true
@@ -310,6 +312,7 @@ Window {
             iconThemeOptions = buildOptions(availableIconThemeValues, draftIconTheme, "Adwaita")
 
             draftShowHidden = currentShowHidden
+            draftHiddenLast = config.hiddenLast
             draftRightClickToEditPath = config.rightClickToEditPath
             draftDependencyStartupCheck = config.dependencyStartupCheck
             draftSidebarVisible = currentSidebarVisible
@@ -382,6 +385,7 @@ Window {
             fontFamily: draftFontFamily,
             iconTheme: draftIconTheme,
             showHidden: draftShowHidden,
+            hiddenLast: draftHiddenLast,
             rightClickToEditPath: draftRightClickToEditPath,
             dependencyStartupCheck: draftDependencyStartupCheck,
             sidebarVisible: draftSidebarVisible,
@@ -679,6 +683,16 @@ Window {
                 checked: root.draftShowHidden
                 onToggled: (value) => {
                     root.draftShowHidden = value
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Toggle {
+                Layout.fillWidth: true
+                label: "Sort hidden files last"
+                checked: root.draftHiddenLast
+                onToggled: (value) => {
+                    root.draftHiddenLast = value
                     root.applySettingsNow()
                 }
             }

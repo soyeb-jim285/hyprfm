@@ -1088,20 +1088,26 @@ int main(int argc, char *argv[])
 
         auto *fsModel = new FileSystemModel(w);
         fsModel->setShowHidden(config->showHidden());
+        fsModel->setHiddenLast(config->hiddenLast());
         fsModel->setRootPath(initialPrimaryPath);
         auto *splitFsModel = new FileSystemModel(w);
         splitFsModel->setShowHidden(config->showHidden());
+        splitFsModel->setHiddenLast(config->hiddenLast());
         if (activeTab && activeTab->splitViewEnabled())
             splitFsModel->setRootPath(initialSecondaryPath);
         auto *millerParentModel = new FileSystemModel(w);
         millerParentModel->setShowHidden(config->showHidden());
+        millerParentModel->setHiddenLast(config->hiddenLast());
         auto *millerPreviewModel = new FileSystemModel(w);
         millerPreviewModel->setShowHidden(config->showHidden());
+        millerPreviewModel->setHiddenLast(config->hiddenLast());
         mark("fsModels populated");
         QObject::connect(config, &ConfigManager::configChanged, w,
                          [=]() {
-            for (FileSystemModel *model : {fsModel, splitFsModel, millerParentModel, millerPreviewModel})
+            for (FileSystemModel *model : {fsModel, splitFsModel, millerParentModel, millerPreviewModel}) {
+                model->setHiddenLast(config->hiddenLast());
                 model->setShowHidden(config->showHidden());
+            }
         });
 
         auto *searchResults = new SearchResultsModel(w);

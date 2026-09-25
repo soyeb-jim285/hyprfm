@@ -297,6 +297,7 @@ void ConfigManager::setDefaults()
     m_fontFamily.clear();
     m_defaultView = "grid";
     m_showHidden = false;
+    m_hiddenLast = false;
     m_rightClickToEditPath = true;
     m_sortBy = "name";
     m_sortAscending = true;
@@ -366,6 +367,8 @@ void ConfigManager::loadConfig()
             m_defaultView = QString::fromStdString(*v);
         if (auto v = config["general"]["show_hidden"].value<bool>())
             m_showHidden = *v;
+        if (auto v = config["general"]["hidden_last"].value<bool>())
+            m_hiddenLast = *v;
         if (auto v = config["general"]["right_click_to_edit_path"].value<bool>())
             m_rightClickToEditPath = *v;
         if (auto v = config["general"]["dependency_startup_check"].value<bool>())
@@ -600,6 +603,10 @@ font_family = ""
 default_view = "grid"
 
 show_hidden = false
+
+# Sort hidden files after the others (folders and files each keep their own
+# group) instead of letting the leading dot put them first.
+hidden_last = false
 
 # Right click anywhere on the address bar enters path edit mode with the
 # whole path selected, just like Ctrl+L. Left clicks on breadcrumb segments
@@ -863,6 +870,7 @@ QString ConfigManager::fontFamily() const { return m_fontFamily; }
 QString ConfigManager::defaultView() const { return m_defaultView; }
 bool ConfigManager::showHidden() const { return m_showHidden; }
 
+bool ConfigManager::hiddenLast() const { return m_hiddenLast; }
 bool ConfigManager::rightClickToEditPath() const { return m_rightClickToEditPath; }
 bool ConfigManager::dependencyStartupCheck() const { return m_dependencyStartupCheck; }
 QString ConfigManager::sortBy() const { return m_sortBy; }
@@ -1103,6 +1111,11 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
     if (settings.contains("showHidden")) {
         m_showHidden = settings.value("showHidden").toBool();
         general.insert_or_assign("show_hidden", m_showHidden);
+    }
+
+    if (settings.contains("hiddenLast")) {
+        m_hiddenLast = settings.value("hiddenLast").toBool();
+        general.insert_or_assign("hidden_last", m_hiddenLast);
     }
 
     if (settings.contains("rightClickToEditPath")) {

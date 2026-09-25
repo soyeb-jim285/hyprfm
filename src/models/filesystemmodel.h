@@ -78,6 +78,7 @@ public:
     bool isLoading() const;
 
     Q_INVOKABLE void setRootPath(const QString &path);
+    void setHiddenLast(bool last);
     Q_INVOKABLE void setShowHidden(bool show);
     Q_INVOKABLE QString filePath(int row) const;
     Q_INVOKABLE bool isDir(int row) const;
@@ -162,7 +163,7 @@ private:
     };
     static Entry entryFromInfo(const QFileInfo &info, bool statted);
     static QList<Entry> readLocalEntries(const QString &rootPath, bool showHidden, bool wantStat);
-    static void sortEntries(QList<Entry> &entries, QDir::SortFlags flags);
+    static void sortEntries(QList<Entry> &entries, QDir::SortFlags flags, bool hiddenLast = false);
     static QVariantMap countFolderItems(const QStringList &paths);
     void ensureStat(const Entry &entry, const QFileInfo &info) const;
     void ensureStat(const Entry &entry) const;
@@ -194,7 +195,8 @@ private:
     static LocalReloadResult scanLocalEntries(quint64 generation,
                                               const QString &rootPath,
                                               bool showHidden,
-                                              QDir::SortFlags sortFlags);
+                                              QDir::SortFlags sortFlags,
+                                              bool hiddenLast);
     QList<Entry> currentLocalEntries() const;
     void updateLocalCounts();
     bool applyLocalDiff(const QList<Entry> &newEntries);
@@ -212,6 +214,7 @@ private:
     QString m_rootPath;
     QString m_entryPrefix;  // m_rootPath as an absolute path ending in '/'
     bool m_showHidden = false;
+    bool m_hiddenLast = false;
     QList<Entry> m_entries;
     QList<QVariantMap> m_remoteEntries;
     QSet<QString> m_remotePropertiesPending;
