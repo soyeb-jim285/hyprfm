@@ -1,0 +1,12 @@
+[package]
+name = "rice-o-meter"
+version = "0.3.1"
+edition = "2021"
+description = "How ricey is your desktop? Now with 40% more blur"
+
+[dependencies]
+# none. we do not need them. (we want them.)
+
+[[bin]]
+name = "rice-o-meter"
+path = "main.rs"

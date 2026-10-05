@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "this is totally fine"
+echo "(it only prints this, honest)"

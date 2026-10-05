@@ -1,0 +1,43 @@
+# ~/.config/hypr/hyprland.conf  (backup before I "just tweak one thing")
+
+monitor = , preferred, auto, 1   # it has been "temporary" since 2025
+
+$mod = SUPER
+$term = kitty
+$menu = wofi --show drun
+
+exec-once = waybar & hyprpaper & mako   # if only one starts, it is a feature
+exec-once = ~/.config/hypr/scripts/random-wallpaper.sh   # dizzy mode
+
+general {
+    gaps_in = 5            # see thesis. do not touch.
+    gaps_out = 12
+    border_size = 2
+    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg   # the gamer gradient
+    layout = dwindle
+}
+
+decoration {
+    rounding = 14          # corners so round the windows are basically pebbles
+    blur {
+        enabled = true
+        size = 8
+        passes = 3         # my GPU is crying; the screenshots look amazing
+    }
+    shadow { enabled = true; range = 20 }
+}
+
+animations {
+    enabled = true
+    bezier = overshoot, 0.05, 0.9, 0.1, 1.15
+    animation = windows, 1, 7, overshoot, popin 80%   # 7 deciseconds of joy
+    animation = workspaces, 1, 6, default, slidefade
+}
+
+bind = $mod, Return, exec, $term
+bind = $mod, D, exec, $menu
+bind = $mod, Q, killactive
+bind = $mod SHIFT, R, exec, hyprctl reload   # pressed 400 times a day
+bind = $mod, F, exec, hyprfm               # best decision of 2026
+
+# TODO: touch grass

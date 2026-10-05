@@ -1,0 +1,9 @@
+# rice-o-meter settings
+[weights]
+blur = 5
+bezier = 8
+gaps = 3
+
+[output]
+format = "text"      # "json" is planned for when I finish the thesis
+emoji = false        # we are professionals

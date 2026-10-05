@@ -1,0 +1,12 @@
+EXCUSES FOR NOT SUBMITTING THE THESIS
+=====================================
+1. My compositor was on fire (the animations were too fast).
+2. I had to fix the 1px gap between waybar and the first window.
+3. The thesis template did not match my colorscheme.
+4. I upgraded Hyprland on a Sunday. Mistakes were made.
+5. Word has no vim keybindings, so this is a health and safety issue.
+6. My dotfiles repo has 412 commits and 3 of them are about the thesis.
+7. I was waiting for the fonts to feel right. (They never feel right.)
+8. It works on my machine. The deadline is on yours.
+9. The cat sat on the keyboard and rebased main.
+10. I switched to Dvorak, then Colemak, then back. Typing is hard now.

@@ -1,0 +1,13 @@
+date,item,hours_spent,regret_level,gaps_in,verdict
+2026-01-04,first install of Hyprland,6,low,5,"it is so smooth"
+2026-01-11,waybar custom modules,14,medium,5,"clock now shows moon phase"
+2026-01-19,matching GTK + Qt + terminal theme,22,high,5,"Qt had other plans"
+2026-02-02,blur and shadows tuning,9,medium,6,"you cannot see it. it is there."
+2026-02-14,rewrote bar in eww,31,high,6,"eww"
+2026-02-21,rewrote bar in ags,27,high,6,"ags"
+2026-03-03,wallpaper rotation daemon,12,low,6,"changes every 4 seconds. dizzy."
+2026-03-15,lockscreen with animated cat,18,low,5,"worth it"
+2026-04-01,custom shell prompt (3 lines tall),8,medium,5,"leaves 4 lines for work"
+2026-04-20,migrate dotfiles to nix,60,extreme,5,"send help"
+2026-05-09,migrate back from nix,35,none,5,"liberated"
+2026-06-30,gaps_in 5 to 6 to 5 to 6,3,low,6,"final. (not final)"

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>On the Optimal Value of gaps_in</title>
+<style>
+@page { size: A4; margin: 0 }
+body { margin: 0; font: 11pt/1.55 "Inter", "DejaVu Sans", sans-serif; color: #1c1b29 }
+.page { width: 210mm; height: 297mm; box-sizing: border-box; padding: 22mm 24mm; page-break-after: always; position: relative; overflow: hidden }
+.cover { background: #1e1e2e; color: #cdd6f4; display: flex; flex-direction: column; justify-content: center; padding: 30mm }
+.cover .bar { height: 6px; width: 60mm; border-radius: 6px; background: linear-gradient(90deg,#89b4fa,#f38ba8); margin-bottom: 14mm }
+.cover h1 { font-size: 34pt; line-height: 1.1; margin: 0 0 8mm; letter-spacing: -0.02em; color: #f5c2e7 }
+.cover h2 { font-size: 14pt; font-weight: 400; margin: 0 0 40mm; color: #a6adc8 }
+.cover p { margin: 2mm 0; color: #bac2de }
+.cover .mono { font-family: "JetBrains Mono", monospace; font-size: 10pt; color: #94e2d5; position: absolute; bottom: 22mm }
+h3 { font-size: 15pt; margin: 0 0 4mm; color: #4c4f69 }
+.abstract { font-style: italic; border-left: 3px solid #f38ba8; padding-left: 5mm }
+table { border-collapse: collapse; width: 100%; margin: 6mm 0; font-size: 10pt }
+th, td { border-bottom: 1px solid #ccd0da; padding: 2mm 3mm; text-align: left }
+th { background: #eff1f5 }
+.cap { font-size: 9pt; color: #6c6f85 }
+</style></head><body>
+
+<section class="page cover">
+  <div class="bar"></div>
+  <h1>On the Optimal Value of <code>gaps_in</code></h1>
+  <h2>A longitudinal study of five versus six pixels</h2>
+  <p>A thesis submitted in partial fulfilment of the requirements for the degree of Master of Procrastination</p>
+  <p>Department of Dotfiles, University of /home</p>
+  <p>Advisor: Prof. R. Eload (still waiting for a reply)</p>
+  <div class="mono">$ hyprctl keyword general:gaps_in 5</div>
+</section>
+
+<section class="page">
+  <h3>Abstract</h3>
+  <p class="abstract">We investigate whether increasing <code>gaps_in</code> from 5 to 6 improves perceived productivity. Over twelve months and 183 reloads we find that productivity is unaffected, regret is substantial, and the window gap was never actually visible. Future work: the same, with blur.</p>
+  <h3 style="margin-top:10mm">1. Method</h3>
+  <p>Each week the author set <code>gaps_in</code> to a value in {4, 5, 6} and recorded mood on a scale of 1 to 10. Measurements were taken while not writing this thesis.</p>
+  <h3 style="margin-top:10mm">2. Results</h3>
+  <table>
+    <tr><th>gaps_in</th><th>Weeks</th><th>Mean mood</th><th>Thesis pages written</th></tr>
+    <tr><td>4</td><td>8</td><td>6.1</td><td>0</td></tr>
+    <tr><td>5</td><td>31</td><td>7.4</td><td>2</td></tr>
+    <tr><td>6</td><td>13</td><td>7.3</td><td>0 (new bar)</td></tr>
+  </table>
+  <p class="cap">Table 1. Mood is statistically indistinguishable between 5 and 6 (p = 0.9, n = lots of reloads).</p>
+</section>
+
+<section class="page">
+  <h3>3. Regret over time</h3>
+  <svg viewBox="0 0 440 220" width="100%" role="img" aria-label="Regret by month">
+    <g stroke="#ccd0da"><line x1="40" y1="180" x2="430" y2="180"/><line x1="40" y1="20" x2="40" y2="180"/></g>
+    <g fill="#89b4fa"><rect x="60" y="130" width="30" height="50"/><rect x="110" y="100" width="30" height="80"/><rect x="160" y="60" width="30" height="120"/><rect x="210" y="90" width="30" height="90"/></g>
+    <g fill="#f38ba8"><rect x="260" y="25" width="30" height="155"/><rect x="310" y="120" width="30" height="60"/><rect x="360" y="150" width="30" height="30"/></g>
+    <g font-size="11" fill="#6c6f85" text-anchor="middle"><text x="75" y="196">Jan</text><text x="125" y="196">Feb</text><text x="175" y="196">Mar</text><text x="225" y="196">Apr</text><text x="275" y="196">May</text><text x="325" y="196">Jun</text><text x="375" y="196">Jul</text><text x="275" y="18">nix migration</text></g>
+  </svg>
+  <p class="cap">Figure 1. Regret (arbitrary units) by month. The spike is the Nix migration.</p>
+  <h3 style="margin-top:10mm">4. Conclusion</h3>
+  <p>The optimal value of <code>gaps_in</code> is 5. Or 6. See Appendix A (not yet written).</p>
+</section>
+</body></html>

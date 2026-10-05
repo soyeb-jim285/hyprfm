@@ -36,9 +36,38 @@ jobs:
         run: |
           mkdir -p /tmp/out && chown ricer /tmp/out
           STAGE="${{ github.event.inputs.stage || 'smoke' }}"
-          runuser -u ricer -- dbus-run-session -- sh "$GITHUB_WORKSPACE/brag/capture/$STAGE.sh" /tmp/out "$GITHUB_WORKSPACE/build/src/hyprfm"
+          timeout 600 runuser -u ricer -- dbus-run-session -- sh "$GITHUB_WORKSPACE/brag/capture/$STAGE.sh" /tmp/out "$GITHUB_WORKSPACE/build/src/hyprfm"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: capture
           path: /tmp/out
+
+  assets:
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    timeout-minutes: 30
+    steps:
+      - run: pacman -Syu --noconfirm --needed git
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: sh brag/ci/setup-arch.sh
+      - name: Build demo home
+        run: |
+          chmod -R a+rX "$GITHUB_WORKSPACE"
+          runuser -u ricer -- sh "$GITHUB_WORKSPACE/brag/assets/build-demo-home.sh" /home/ricer
+      - name: Contact sheet
+        run: |
+          mkdir -p /tmp/sheet && cd /home/ricer
+          find . -type f | sort > /tmp/sheet/tree.txt
+          du -sh . >> /tmp/sheet/tree.txt
+          magick montage Pictures/*.jpg Pictures/Wallpapers/*.jpg -thumbnail 480x320 -tile 5x -geometry +6+6 -background '#11111b' -fill white -title 'pictures' /tmp/sheet/pictures.jpg
+          for v in Videos/*.mp4; do ffmpeg -loglevel error -y -ss 5 -i "$v" -frames:v 1 -vf scale=640:-2 "/tmp/sheet/$(basename "$v").jpg"; done
+          pdftoppm -r 40 -png Documents/thesis-final-FINAL-v3.pdf /tmp/sheet/thesis
+          for m in Music/*.mp3; do ffprobe -v error -show_entries format_tags -of compact "$m"; done >> /tmp/sheet/tree.txt
+          exiftool -Make -Model -ExposureTime -FNumber Pictures/pair-programmer.jpg Pictures/Wallpapers/orbital-sunrise-final2.jpg >> /tmp/sheet/tree.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: assets-sheet
+          path: /tmp/sheet

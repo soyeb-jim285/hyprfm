@@ -1,0 +1,5 @@
+/* the report page. yes, it has a dark mode. yes, it is the only mode. */
+:root { --bg: #1e1e2e; --fg: #cdd6f4; --accent: #f5c2e7; }
+body  { background: var(--bg); color: var(--fg); font: 16px/1.6 "Inter", sans-serif; }
+h1    { color: var(--accent); letter-spacing: -0.02em; }
+.meter { height: 12px; border-radius: 14px; background: linear-gradient(90deg, #89b4fa, #f38ba8); }
