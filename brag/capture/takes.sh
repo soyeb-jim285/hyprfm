@@ -12,9 +12,9 @@ H="$HOME"
 take_launch() {        # the window appearing, from an empty desktop
   write_config grid
   rec_start launch
-  mark launch; "$BIN" "$H" >> "$OUT/hyprfm.log" 2>&1 & APP=$!
+  echo "0.4 launch" > "$LOG"; "$BIN" "$H" >> "$OUT/hyprfm.log" 2>&1 & APP=$!
   sleep 3
-  rec_stop; app_stop
+  play; rec_stop; app_stop
 }
 
 take_wallpapers() {    # Miller: scrub the preview through the wallpapers
@@ -22,7 +22,7 @@ take_wallpapers() {    # Miller: scrub the preview through the wallpapers
   rec_start wallpapers
   t pic 0.4; k Right 0.5; t wal 0.4; k Right 1.4
   for i in 1 2 3 4 5 6; do k Down 1.0; done
-  rec_stop 0.6; app_stop
+  play; rec_stop 0.6; app_stop
 }
 
 take_tour() {          # Miller: one folder of everything, previewed inline
@@ -32,14 +32,14 @@ take_tour() {          # Miller: one folder of everything, previewed inline
   k Left 0.3; k Left 0.4; t doc 0.4; k Right 2.2; t todo 2.2; t thesis-f 2.2
   k Left 0.4; t dow 0.4; k Right 1.2; k Down 2.0
   k Left 0.4; t fon 0.4; k Right 2.0
-  rec_stop; app_stop
+  play; rec_stop; app_stop
 }
 
 take_peek() {          # Space quick preview over the pictures, then browse
   write_config grid; app_start "$H/Pictures"
   rec_start peek
   t pair 0.8; k space 2.6; k Right 1.6; k Right 1.6; k Right 1.6; k Right 1.6; k Escape 0.8
-  rec_stop; app_stop
+  play; rec_stop; app_stop
 }
 
 take_peek_media() {    # Space on music tags, a video poster, a PDF
@@ -48,7 +48,7 @@ take_peek_media() {    # Space on music tags, a video poster, a PDF
   t lof 0.5; k space 2.6; k Escape 0.6
   c alt Up 0.6; t vid 0.3; k Return 0.8; t lau 0.5; k space 2.4; k Escape 0.6
   c alt Up 0.6; t doc 0.3; k Return 0.8; t thesis-f 0.5; k space 2.2; k Down 1.4; k Down 1.6; k Escape 0.6
-  rec_stop; app_stop
+  play; rec_stop; app_stop
 }
 
 take_split() {         # F3 split, copy a wallpaper across panes, no mouse
@@ -56,7 +56,7 @@ take_split() {         # F3 split, copy a wallpaper across panes, no mouse
   rec_start split
   k F3 1.2; c ctrl+alt Right 0.5; c alt Up 0.8; t scr 0.4; k Return 1.0
   c ctrl+alt Left 0.6; t gre 0.6; c ctrl c 0.6; c ctrl+alt Right 0.6; c ctrl v 2.0
-  rec_stop; app_stop
+  play; rec_stop; app_stop
 }
 
 take_rename() {        # bulk rename with a live preview
@@ -64,39 +64,39 @@ take_rename() {        # bulk rename with a live preview
   rec_start rename
   t wallpaper 0.6; c shift Right 0.6; k F2 1.5
   t wallpaper-final 2.5
-  rec_stop; app_stop
+  play; rec_stop; app_stop
 }
 
 take_undo() {          # delete the thesis, regret it, Ctrl+Z
   write_config grid; app_start "$H/Documents"
   rec_start undo
   t thesis-f 1.0; k Delete 2.0; c ctrl z 2.4
-  rec_stop; app_stop
+  play; rec_stop; app_stop
 }
 
 take_themes() {        # live theme reload while browsing
   write_config miller; app_start "$H"
-  t pic 0.3; k Right 0.4; t wal 0.3; k Right 0.6; t cos 1.2
+  t pic 0.3; k Right 0.4; t wal 0.3; k Right 0.6; t cos 1.2; play
   rec_start themes
   sleep 0.8
   for th in rose-pine nord gruvbox-dark dracula catppuccin-latte rose-pine-dawn monokai-pro rose-pine-moon gruvbox-light catppuccin-mocha; do
     set_theme "$th" 0.9
   done
-  rec_stop; app_stop
+  play; rec_stop; app_stop
 }
 
 take_git() {           # git status badges in the detailed view
   write_config detailed; app_start "$H/Code/rice-o-meter"
   rec_start git
   sleep 0.6; k Down 0.8; k Down 0.8; k Down 0.8; k Down 1.0
-  rec_stop; app_stop
+  play; rec_stop; app_stop
 }
 
 take_pathbar() {       # Ctrl+L, type a path, suggestions, Enter
   write_config grid; app_start "$H"
   rec_start pathbar
   c ctrl l 0.6; t "~/Pictures/Wa" 1.4; k Down 0.6; k Return 1.8
-  rec_stop; app_stop
+  play; rec_stop; app_stop
 }
 
 ALL="launch wallpapers tour peek peek_media split rename undo themes git pathbar"
