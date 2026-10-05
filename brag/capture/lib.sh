@@ -32,7 +32,7 @@ app_start() {   # $1 = path to open
   APP=$!
   sleep "${APP_WAIT:-4}"
 }
-app_stop() { kill "$APP" 2>/dev/null; sleep 1.5; kill -9 "$APP" 2>/dev/null; true; }
+app_stop() { kill "$APP" 2>/dev/null || true; sleep 1.5; kill -9 "$APP" 2>/dev/null || true; }
 
 now() { date +%s.%N; }
 rec_start() {   # $1 = take name
