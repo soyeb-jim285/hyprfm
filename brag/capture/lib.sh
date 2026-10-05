@@ -37,13 +37,14 @@ app_stop() { kill "$APP" 2>/dev/null; sleep 1.5; kill -9 "$APP" 2>/dev/null; tru
 now() { date +%s.%N; }
 rec_start() {   # $1 = take name
   TAKE="$1"; LOG="$OUT/$TAKE.keys"; : > "$LOG"
-  wf-recorder -o HEADLESS-1 -r 30 -c libx264 -p preset=veryfast -p crf=16 \
+  wf-recorder -D -o HEADLESS-1 -r 30 -c libx264 -p preset=veryfast -p crf=16 \
     -f "$OUT/$TAKE.mp4" > "$OUT/$TAKE.wfr.log" 2>&1 &
   REC=$!
   sleep 0.6; T0=$(now); sleep 0.6
 }
 rec_stop() {
   sleep "${1:-0.8}"
+  timeout 10 grim -s 0.5 "$OUT/$TAKE-end.png" || true
   kill -INT "$REC"
   timeout 20 sh -c "while kill -0 $REC 2>/dev/null; do sleep 0.2; done" || kill -9 "$REC"
 }

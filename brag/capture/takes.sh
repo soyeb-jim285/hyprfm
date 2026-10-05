@@ -6,7 +6,7 @@ OUT="$1"; BIN="$2"; shift 2; mkdir -p "$OUT"
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/session.sh"
 . "$HERE/lib.sh"
-trap 'cp "$XDG_RUNTIME_DIR/sway.log" "$OUT/" 2>/dev/null; kill $(jobs -p) 2>/dev/null; kill $SWAY_PID 2>/dev/null; true' EXIT
+trap 'cp "$XDG_RUNTIME_DIR/sway.log" "$OUT/" 2>/dev/null; kill $(jobs -p) 2>/dev/null; kill $SWAY_PID 2>/dev/null; exit 0' EXIT
 H="$HOME"
 
 take_launch() {        # the window appearing, from an empty desktop
