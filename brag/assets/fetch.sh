@@ -22,13 +22,13 @@ while IFS="$TAB" read -r dest url maxw title author page lic; do
         magick "$raw" -quality 88 "$out"
       fi ;;
     *.mp4)
-      ffmpeg -y -loglevel error -i "$raw" -t 20 -vf "scale='min(1920,iw)':-2" \
+      ffmpeg -nostdin -y -loglevel error -i "$raw" -t 20 -vf "scale='min(1920,iw)':-2" \
         -c:v libx264 -crf 26 -an -movflags +faststart "$out" ;;
     *.mp3)
       case "$dest" in
         *gymnopedie*|*lofi*) date=1888 ;; *) date=1875 ;;
       esac
-      ffmpeg -y -loglevel error -i "$raw" -t 180 -vn -map_metadata -1 -c:a libmp3lame -b:a 192k \
+      ffmpeg -nostdin -y -loglevel error -i "$raw" -t 180 -vn -map_metadata -1 -c:a libmp3lame -b:a 192k \
         -id3v2_version 3 -metadata title="$title" -metadata artist="$author" \
         -metadata album="Music To Rice To" -metadata genre="Classical" -metadata date="$date" "$out" ;;
     *) echo "unknown type: $dest" >&2; exit 1 ;;
