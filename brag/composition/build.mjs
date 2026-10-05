@@ -7,7 +7,8 @@
 // keycaps and keypress sounds land on the frames where the real key was sent.
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+const require_spawn = (cmd, args) => spawnSync(cmd, args, { encoding: 'utf8' }).stderr;
 import { CUTS } from './edl.mjs';
 
 const [cutName, TAKES, OUT] = process.argv.slice(2);
@@ -47,7 +48,14 @@ const WIN_X = (W - WIN_W) / 2, WIN_Y = cut.winY ?? 46;
 const BAND_Y = WIN_Y + WIN_H;             // lower band for captions + keycaps
 
 // ---- resolve scenes onto the timeline -------------------------------------
-const scenes = cut.scenes(ev, takeDuration);
+// first big visual change in a take (e.g. the window appearing)
+function sceneChange(take) {
+  const r = require_spawn('ffmpeg', ['-hide_banner', '-i', path.join(TAKES, `${take}.mp4`), '-vf',
+    "select='gt(scene,0.15)',showinfo", '-f', 'null', '-']);
+  const m = r.match(/pts_time:([0-9.]+)/);
+  return m ? +m[1] : 0;
+}
+const scenes = cut.scenes(ev, takeDuration, sceneChange);
 let t = 0;
 for (const s of scenes) { s.start = +t.toFixed(3); t += s.dur; }
 const TOTAL = +t.toFixed(3);
@@ -59,11 +67,17 @@ const keyLabel = k => KEYNAME[k] ?? (k.length === 1 ? k.toUpperCase() : k);
 
 const html = [], js = [], audio = [];
 let sfxIdx = 0, aid = 0;
+const trackEnds = [];
 const KEYS = fs.readdirSync(path.join(HERE, 'sfx')).filter(f => f.startsWith('keypress-'));
 function sfx(file, at, vol, dur = 0.4) {
   if (at < 0 || at >= TOTAL - 0.05) return;
   aid++;
-  audio.push(`<audio id="sfx${aid}" src="assets/sfx/${file}" data-start="${at.toFixed(3)}" data-duration="${Math.min(dur, TOTAL - at).toFixed(3)}" data-track-index="${11 + (aid % 6)}" data-volume="${vol}"></audio>`);
+  const d = Math.min(dur, TOTAL - at);
+  // first track that is free at `at` (lint wants overlapping audio on separate tracks)
+  let tr = trackEnds.findIndex(end => end <= at);
+  if (tr < 0) { tr = trackEnds.length; trackEnds.push(0); }
+  trackEnds[tr] = at + d + 0.01;
+  audio.push(`<audio id="sfx${aid}" src="assets/sfx/${file}" data-start="${at.toFixed(3)}" data-duration="${d.toFixed(3)}" data-track-index="${11 + tr}" data-volume="${vol}"></audio>`);
 }
 const keySound = (at, vol = 0.32) => sfx(KEYS[(sfxIdx++ * 7) % KEYS.length], at, vol, 0.3);
 
@@ -115,7 +129,8 @@ for (const [i, s] of scenes.entries()) {
   } else {
     // title scene: html authored in the EDL, animated by its own tweens
     html.push(`<section id="${id}t" class="title clip" data-start="${s.start}" data-duration="${s.dur}" data-track-index="2">${s.html}</section>`);
-    for (const a of s.anim ?? []) js.push(a.replace(/@(\d+(\.\d+)?)/g, (_, n) => (s.start + +n).toFixed(3)));
+    const anims = typeof s.anim === 'function' ? s.anim(`#${id}t`) : (s.anim ?? []);
+    for (const a of anims) js.push(a.replace(/@(\d+(\.\d+)?)/g, (_, n) => (s.start + +n).toFixed(3)));
     // the window steps aside while a title owns the frame
     js.push(`tl.to('#win', {opacity:0, scale:0.96, duration:0.35, ease:'power2.in'}, ${s.start});`);
     js.push(`tl.to('#win', {opacity:1, scale:1, duration:0.45, ease:'power3.out'}, ${(s.start + s.dur).toFixed(3)});`);
@@ -202,6 +217,7 @@ body { margin:0; background:var(--crust); color:var(--text); font-family:Inter, 
 .title .url { font-family:"JetBrains Mono", monospace; font-weight:600; font-size:30px; color:var(--blue); margin-top:14px; }
 .title .big { font-family:"Instrument Serif", serif; font-size:110px; line-height:1.02; max-width:1500px; }
 .title .big em { color:var(--pink); font-style:italic; }
+.title .big .l { display:block; }
 </style>
 </head>
 <body>

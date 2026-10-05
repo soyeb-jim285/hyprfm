@@ -10,7 +10,7 @@ trap 'cp "$XDG_RUNTIME_DIR/sway.log" "$OUT/" 2>/dev/null; kill $(jobs -p) 2>/dev
 H="$HOME"
 
 take_launch() {        # the window appearing, from an empty desktop
-  write_config grid
+  write_config grid; rm -f "$HOME/.config/hyprfm/session.json"
   rec_start launch
   echo "0.4 launch" > "$LOG"; "$BIN" "$H" >> "$OUT/hyprfm.log" 2>&1 & APP=$!
   sleep 3
@@ -72,7 +72,7 @@ take_rename() {        # bulk rename with a live preview
   write_config grid; app_start "$H/Downloads"
   rec_start rename
   t wallpaper 0.6; c shift Right 0.6; k F2 1.4
-  t wallpaper 0.5; k Tab 0.4; t wallpaper-FINAL-v2 2.2; k Return 2.2
+  t wallpaper 2.6; k Escape 1.0
   play; rec_stop; app_stop
 }
 

@@ -6,15 +6,23 @@ on:
       stage:
         description: "takes (all) or a space-separated list of take names"
         default: ""
+      capture_run:
+        description: "reuse the takes from this run id (skips capture)"
+        default: ""
+      cuts:
+        description: "cuts to render"
+        default: "long short"
   push:
     branches: [brag-video]
     paths: ['brag/**', '.github/workflows/brag.yml']
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   capture:
+    if: ${{ !github.event.inputs.capture_run }}
     runs-on: ubuntu-24.04
     container: archlinux:latest
     timeout-minutes: 60
@@ -46,3 +54,31 @@ jobs:
           name: capture
           path: /tmp/out
 
+
+  render:
+    needs: capture
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - uses: actions/download-artifact@v4
+        with:
+          name: capture
+          path: /tmp/takes
+          run-id: ${{ github.event.inputs.capture_run || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Build and render
+        env:
+          CUTS: ${{ github.event.inputs.cuts || 'long short' }}
+        run: sh brag/ci/render.sh /tmp/takes /tmp/render
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: videos
+          path: /tmp/render
