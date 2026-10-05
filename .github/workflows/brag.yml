@@ -1,0 +1,44 @@
+name: Brag video
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "smoke | capture | render | all"
+        default: smoke
+  push:
+    branches: [brag-video]
+    paths: ['brag/**', '.github/workflows/brag.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    timeout-minutes: 60
+    steps:
+      - name: Setup
+        run: |
+          pacman -Syu --noconfirm --needed git
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install deps
+        run: sh brag/ci/setup-arch.sh
+      - name: Build HyprFM
+        run: |
+          cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF
+          cmake --build build --parallel
+          chmod -R a+rX "$GITHUB_WORKSPACE"
+      - name: Capture
+        run: |
+          mkdir -p /tmp/out && chown ricer /tmp/out
+          STAGE="${{ github.event.inputs.stage || 'smoke' }}"
+          runuser -u ricer -- dbus-run-session -- sh "$GITHUB_WORKSPACE/brag/capture/$STAGE.sh" /tmp/out "$GITHUB_WORKSPACE/build/src/hyprfm"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capture
+          path: /tmp/out
