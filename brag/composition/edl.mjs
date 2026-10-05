@@ -48,7 +48,8 @@ export const CUTS = {
         ['type', 'fon', 'Fonts, with a specimen.'],
       ];
       for (const [kind, what, text, chapter] of tour) {
-        const tin = ev('tour', kind, what) - 0.35;
+        // fonts: cut on the Right that opens the folder, so the specimen gets the time
+        const tin = what === 'fon' ? ev('tour', 'key', 'Right', 4) - 0.3 : ev('tour', kind, what) - 0.35;
         const d = what === 'fon' ? 3.0 : 2.6;
         s.push({ take: 'tour', in: tin, dur: Math.min(d, dur('tour') - tin - 0.1),
           caps: [{ t: 0.05, d: d - 0.1, chapter, text }] });
@@ -87,7 +88,7 @@ export const CUTS = {
       const rIn = ev('rename', 'key', 'F2') - 0.3;
       const rD = ev('rename', 'key', 'Escape') + 0.1 - rIn;
       s.push({ take: 'rename', in: rIn, dur: rD, zoom: [{ t: 0.3, scale: 1.45, ox: 800, oy: 500, d: 0.6, ease: 'power3.out' }],
-        caps: [{ t: 0.15, d: rD - 0.25, chapter: 'Bulk rename', text: 'Rename in bulk. The preview updates as you type.' }] });
+        caps: [{ t: 0.15, d: rD - 0.25, chapter: 'Bulk rename', text: 'Bulk rename, previewed as you type.' }] });
       // 10 — themes reload live
       s.push({ take: 'themes', in: 0.6, dur: Math.min(6.6, dur('themes') - 0.8),
         caps: [{ t: 0.2, d: 6.3, chapter: 'Themes', text: '10 themes. Save <code>config.toml</code>, it reloads.' }] });

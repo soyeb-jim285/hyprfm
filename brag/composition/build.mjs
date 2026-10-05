@@ -55,7 +55,17 @@ function sceneChange(take) {
   const m = r.match(/pts_time:([0-9.]+)/);
   return m ? +m[1] : 0;
 }
-const scenes = cut.scenes(ev, takeDuration, sceneChange);
+// first frame noticeably brighter than the empty desktop (the window appearing)
+function appear(take) {
+  const r = require_spawn('ffmpeg', ['-hide_banner', '-i', path.join(TAKES, `${take}.mp4`), '-vf',
+    'signalstats,metadata=print:key=lavfi.signalstats.YAVG', '-f', 'null', '-']);
+  const vals = [...r.matchAll(/pts_time:([0-9.]+)[\s\S]*?YAVG=([0-9.]+)/g)].map(m => [+m[1], +m[2]]);
+  if (!vals.length) return sceneChange(take);
+  const base = vals[0][1];
+  const hit = vals.find(([, y]) => y > base + 4);
+  return hit ? hit[0] : sceneChange(take);
+}
+const scenes = cut.scenes(ev, takeDuration, appear);
 let t = 0;
 for (const s of scenes) { s.start = +t.toFixed(3); t += s.dur; }
 const TOTAL = +t.toFixed(3);
