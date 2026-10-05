@@ -12,6 +12,9 @@ on:
       cuts:
         description: "cuts to render"
         default: "long short"
+      script:
+        description: "capture script: takes (videos) or site (website stills/loops)"
+        default: "takes"
   push:
     branches: [brag-video]
     paths: ['brag/**', '.github/workflows/brag.yml']
@@ -47,7 +50,7 @@ jobs:
       - name: Record takes
         run: |
           mkdir -p /tmp/out && chown ricer /tmp/out
-          timeout 1500 runuser -u ricer -- dbus-run-session -- sh "$GITHUB_WORKSPACE/brag/capture/takes.sh" /tmp/out "$GITHUB_WORKSPACE/build/src/hyprfm" ${{ github.event.inputs.stage }}
+          timeout 1500 runuser -u ricer -- dbus-run-session -- sh "$GITHUB_WORKSPACE/brag/capture/${{ github.event.inputs.script || 'takes' }}.sh" /tmp/out "$GITHUB_WORKSPACE/build/src/hyprfm" ${{ github.event.inputs.stage }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -57,7 +60,7 @@ jobs:
 
   render:
     needs: capture
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && github.event.inputs.script != 'site' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
