@@ -28,11 +28,20 @@ take_wallpapers() {    # Miller: scrub the preview through the wallpapers
 take_tour() {          # Miller: one folder of everything, previewed inline
   write_config miller; app_start "$H"
   rec_start tour
-  t cod 0.4; k Right 0.5; k Right 0.6; t main 2.0; t rice 1.6
-  k Left 0.3; k Left 0.4; t doc 0.4; k Right 2.2; t todo 2.2; t thesis-f 2.2
-  k Left 0.4; t dow 0.4; k Right 1.2; k Down 2.0
-  k Left 0.4; t fon 0.4; k Right 2.0
+  t cod 0.4; k Right 0.5; k Right 0.6; t main 2.8; t rice 2.4
+  k Left 0.3; k Left 0.4; t doc 0.4; k Right 0.5; t todo 2.8; t thesis-f 2.8
+  k Left 0.4; t dow 0.4; k Right 0.5; t dot 2.8
+  k Left 0.4; t fon 0.4; k Right 2.8
   play; rec_stop; app_stop
+}
+
+take_cold() {          # cold open: the ricer's todo list, held
+  write_config miller; app_start "$H"
+  t doc 0.4; k Right 0.5; t todo 0.4; play
+  sleep 1.5
+  rec_start cold
+  sleep 7
+  rec_stop 0.2; app_stop
 }
 
 take_peek() {          # Space quick preview over the pictures, then browse
@@ -62,8 +71,8 @@ take_split() {         # F3 split, copy a wallpaper across panes, no mouse
 take_rename() {        # bulk rename with a live preview
   write_config grid; app_start "$H/Downloads"
   rec_start rename
-  t wallpaper 0.6; c shift Right 0.6; k F2 1.5
-  t wallpaper-final 2.5
+  t wallpaper 0.6; c shift Right 0.6; k F2 1.4
+  t wallpaper 0.5; k Tab 0.4; t wallpaper-FINAL-v2 2.2; k Return 2.2
   play; rec_stop; app_stop
 }
 
@@ -99,7 +108,7 @@ take_pathbar() {       # Ctrl+L, type a path, suggestions, Enter
   play; rec_stop; app_stop
 }
 
-ALL="launch wallpapers tour peek peek_media split rename undo themes git pathbar"
+ALL="cold launch wallpapers tour peek peek_media split rename undo themes git pathbar"
 for name in ${*:-$ALL}; do
   "take_$name" || echo "TAKE FAILED: $name" >> "$OUT/failed.txt"
 done

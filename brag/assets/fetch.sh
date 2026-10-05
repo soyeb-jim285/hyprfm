@@ -22,7 +22,7 @@ while IFS="$TAB" read -r dest url maxw title author page lic; do
         magick "$raw" -quality 88 "$out"
       fi ;;
     *.mp4)
-      ffmpeg -nostdin -y -loglevel error -i "$raw" -t 20 -vf "scale='min(1920,iw)':-2" \
+      ffmpeg -nostdin -y -loglevel error -sseof -20 -i "$raw" -t 20 -vf "scale='min(1920,iw)':-2" \
         -c:v libx264 -crf 26 -an -movflags +faststart "$out" ;;
     *.mp3)
       case "$dest" in
