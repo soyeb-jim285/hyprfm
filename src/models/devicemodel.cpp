@@ -770,14 +770,24 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
     endResetModel();
 }
 
-// Map a /dev/<basename> path to its UDisks2 object path. This works for
-// regular partitions (sdXY, nvmeXnYpZ, mmcblkXpY). Device-mapper / LUKS
-// names use a different escaping scheme that we don't try to handle here;
-// for those cases the call simply errors out and we log it.
+// Map a /dev/<basename> path to its UDisks2 object path. D-Bus object paths
+// only allow [A-Za-z0-9_], so UDisks2 escapes every other byte as "_xx"
+// (lowercase hex, see udisks_safe_append_to_object_path()). Plain partitions
+// (sdXY, nvmeXnYpZ, mmcblkXpY) pass through unchanged; device-mapper / LUKS
+// nodes need the escaping, e.g. dm-1 -> dm_2d1.
 static QString udisksObjectPathFor(const QString &devicePath)
 {
-    return QStringLiteral("/org/freedesktop/UDisks2/block_devices/")
-        + QFileInfo(devicePath).fileName();
+    QString path = QStringLiteral("/org/freedesktop/UDisks2/block_devices/");
+    const QByteArray name = QFileInfo(devicePath).fileName().toUtf8();
+    for (const char ch : name) {
+        const auto c = static_cast<unsigned char>(ch);
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+            || (c >= '0' && c <= '9') || c == '_')
+            path += QLatin1Char(ch);
+        else
+            path += QStringLiteral("_%1").arg(c, 2, 16, QLatin1Char('0'));
+    }
+    return path;
 }
 
 // UDisks2 returns "Not authorized to perform operation" when polkit refuses
