@@ -183,6 +183,7 @@ private:
     void reload();
     void reloadLocal();
     void reloadRemote();
+    void startRemoteList(const QString &rootPath, int generation);
     void reloadTrash();
     void cancelRemoteReload();
     void applyRemoteReload(const QString &rootPath, const QByteArray &output);

@@ -442,15 +442,37 @@ QVariantMap buildRemoteEntryFromLine(const QString &line)
     const QString typeToken = match.captured(3).trimmed().toLower();
     const auto attrs = parseGioAttributes(match.captured(4));
 
-    const bool isDir = typeToken.contains(QStringLiteral("directory"));
-    const QString displayName = attrs.value(QStringLiteral("standard::display-name"), locationFileName(uri));
+    const QString targetUri = attrs.value(QStringLiteral("standard::target-uri"));
     const QString contentType = attrs.value(QStringLiteral("standard::content-type"));
+
+    // Follow standard::target-uri whenever the entry points somewhere
+    // other than itself. gvfs uses this across every backend:
+    //   - network:/// discovery shortcuts (wsdd / dnssd) → smb://host/
+    //   - SMB share roots under smb://host/               → smb://host/share
+    //   - similar indirection on sftp, ftp, dav, …
+    // The entry's own path is a placeholder in the discovery/browse
+    // namespace; the target is the real browsable location. Skipping
+    // self-referential targets prevents redirect loops.
+    const QString resolvedTarget = normalizeLocation(targetUri);
+    const bool hasTarget = !targetUri.isEmpty() && resolvedTarget != uri;
+    const QString filePath = hasTarget ? resolvedTarget : uri;
+
+    // A followed target is navigable unless the content-type explicitly
+    // says otherwise. Discovery shortcuts and mountable share roots are
+    // directories in practice; a regular-file content-type wins over
+    // the type token so we never treat a file as a folder.
+    bool isDir = typeToken.contains(QStringLiteral("directory"));
+    if (hasTarget) {
+        isDir = !contentType.contains(QStringLiteral("regular"));
+    }
+
+    const QString displayName = attrs.value(QStringLiteral("standard::display-name"), locationFileName(uri));
     const int unixMode = attrs.value(QStringLiteral("unix::mode")).toInt();
     const QDateTime modified = dateTimeFromSeconds(attrs.value(QStringLiteral("time::modified")));
 
     QVariantMap entry;
     entry[QStringLiteral("fileName")] = displayName;
-    entry[QStringLiteral("filePath")] = uri;
+    entry[QStringLiteral("filePath")] = filePath;
     entry[QStringLiteral("fileSize")] = isDir ? QVariant(qint64(-1)) : QVariant(size);
     entry[QStringLiteral("fileSizeText")] = isDir ? QString() : formattedSize(size);
     entry[QStringLiteral("fileType")] = fileTypeForEntry(displayName, isDir, contentType);
@@ -1396,19 +1418,50 @@ void FileSystemModel::reloadRemote()
 
     setIsLoading(true);
 
+    const int generation = m_remoteReloadGeneration;
+    const QString rootPath = m_rootPath;
+
+    // Mount first so `gio list` can enumerate. Server roots (smb://host/)
+    // list without an explicit mount, but share paths (smb://host/share/)
+    // need a gvfs mount to exist. With credentials cached in the keyring
+    // this returns immediately; if credentials are missing it exits fast
+    // and the list below still runs (showing an error or the browse view).
+    auto *mountProc = new QProcess(this);
+    m_remoteReloadProcess = mountProc;
+    connect(mountProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, mountProc, generation, rootPath](int, QProcess::ExitStatus) {
+        if (mountProc != m_remoteReloadProcess || generation != m_remoteReloadGeneration) {
+            mountProc->deleteLater();
+            return;
+        }
+        mountProc->deleteLater();
+        m_remoteReloadProcess = nullptr;
+        startRemoteList(rootPath, generation);
+    });
+    startHostToolProcess(mountProc, QStringLiteral("gio"),
+                         {QStringLiteral("mount"), gioLocationArg(rootPath)});
+    QTimer::singleShot(10000, mountProc, [this, mountProc, generation]() {
+        if (mountProc == m_remoteReloadProcess
+            && generation == m_remoteReloadGeneration
+            && mountProc->state() != QProcess::NotRunning) {
+            mountProc->kill();
+        }
+    });
+}
+
+void FileSystemModel::startRemoteList(const QString &rootPath, int generation)
+{
     QStringList args = {
         QStringLiteral("list"),
         QStringLiteral("-l"),
         QStringLiteral("-u"),
         QStringLiteral("-a"),
-        QStringLiteral("standard::display-name,standard::content-type,time::modified,unix::mode,standard::is-symlink,standard::symlink-target")
+        QStringLiteral("standard::display-name,standard::content-type,time::modified,unix::mode,standard::is-symlink,standard::symlink-target,standard::target-uri")
     };
     if (m_showHidden)
         args.append(QStringLiteral("-h"));
-    args.append(gioLocationArg(m_rootPath));
+    args.append(gioLocationArg(rootPath));
 
-    const int generation = m_remoteReloadGeneration;
-    const QString rootPath = m_rootPath;
     auto *process = new QProcess(this);
     m_remoteReloadProcess = process;
 
