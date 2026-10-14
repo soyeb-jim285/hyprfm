@@ -383,6 +383,9 @@ private slots:
         QCOMPARE(mgr.shortcut("select_all"), QString("Ctrl+A"));
         QCOMPARE(mgr.shortcut("focus_left_pane"), QString("Ctrl+Alt+Left"));
         QCOMPARE(mgr.shortcut("focus_right_pane"), QString("Ctrl+Alt+Right"));
+        QCOMPARE(mgr.shortcut("focus_up_pane"), QString("Ctrl+Alt+Up"));
+        QCOMPARE(mgr.shortcut("focus_down_pane"), QString("Ctrl+Alt+Down"));
+        QCOMPARE(mgr.shortcut("toggle_split_orientation"), QString("Ctrl+Shift+O"));
         QCOMPARE(mgr.shortcut("focus_next_pane"), QString("F6"));
         QCOMPARE(mgr.shortcut("focus_previous_pane"), QString("Shift+F6"));
     }

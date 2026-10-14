@@ -17,6 +17,7 @@ Item {
     property bool targetIsDir: false
     property bool isEmptySpace: false
     property var selectedPaths: []
+    property var selectedFolderPaths: []
     property var customItems: []
     property var contextData: ({})
     property int menuWidth: 260
@@ -46,6 +47,7 @@ Item {
     signal viewModeRequested(string mode)
     signal sortRequested(string column, bool ascending)
     signal emptyTrashRequested()
+    signal mergeFoldersRequested(var paths)
     signal customActionRequested(string action)
     signal customActionRunRequested(string name, string command, var paths)
 
@@ -647,6 +649,13 @@ Item {
         if (hasCustomItems) {
             return customItems
         }
+        if (selectedFolderPaths.length === 2
+                && !isTrashView
+                && !fileOps.isRemotePath(selectedFolderPaths[0])
+                && !fileOps.isRemotePath(selectedFolderPaths[1])) {
+            items.push({ text: "Merge These Two Folders", shortcut: "", action: "merge_folders", icon: "SquareSplitHorizontal" })
+            items.push({ separator: true })
+        }
         if (!isEmptySpace && targetPath !== "") {
             items.push({ text: "Open", shortcut: config.shortcutMap["open"] || "Return", action: "open", icon: "ExternalLink" })
             if (targetIsDir)
@@ -838,6 +847,7 @@ Item {
         case "extract_to": fileOps.extractArchiveTo(targetPath); break
         case "setwallpaper": fileOps.setWallpaper(targetPath); break
         case "emptytrash": emptyTrashRequested(); break
+        case "merge_folders": mergeFoldersRequested(selectedFolderPaths); break
         default:
             if (action.startsWith("custom:")) {
                 var custom = config.customContextActions[parseInt(action.slice(7))]

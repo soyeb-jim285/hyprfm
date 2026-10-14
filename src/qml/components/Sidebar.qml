@@ -14,6 +14,7 @@ Rectangle {
     property bool isRecentsView: false
     property Item tooltipLayer: null
     signal bookmarkClicked(string path)
+    signal savedSplitClicked(var split)
 
     // Index of the bookmark being renamed inline, -1 when none.
     property int renamingBookmarkIndex: -1
@@ -40,6 +41,7 @@ Rectangle {
     Component { id: iconUsb; IconUsb { size: 18; color: Theme.subtext } }
     Component { id: iconUsbOff; IconUsb { size: 18; color: Theme.muted } }
     Component { id: iconFolder; IconFolder { size: 18; color: Theme.subtext } }
+    Component { id: iconSplit; IconSquareSplitHorizontal { size: 18; color: Theme.subtext } }
 
     // Inverse rounded corner — top right
     Shape {
@@ -608,6 +610,108 @@ Rectangle {
             Layout.rightMargin: Theme.spacing
             height: 1
             color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+        }
+
+        // Saved splits section — click to restore both panes
+        Item {
+            Layout.fillWidth: true
+            implicitHeight: savedSplitsList.height
+
+            function displayName(path) {
+                if (!path)
+                    return ""
+                var trimmed = path.replace(/\/$/, "")
+                if (trimmed === "")
+                    return "/"
+                var parts = trimmed.split("/")
+                return parts[parts.length - 1] || trimmed
+            }
+
+            ListView {
+                id: savedSplitsList
+                width: parent.width
+                height: contentHeight
+                interactive: false
+                model: config.savedSplits
+
+                delegate: Item {
+                    width: savedSplitsList.width
+                    height: 32
+                    property var savedSplit: modelData || ({
+                        name: model.name,
+                        primaryPath: model.primaryPath,
+                        secondaryPath: model.secondaryPath,
+                        orientation: model.orientation
+                    })
+
+                    Rectangle {
+                        width: parent.width - Theme.spacing
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        height: 32
+                        color: savedSplitHover.containsMouse
+                            ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
+                            : "transparent"
+                        radius: Theme.radiusSmall
+                        Behavior on color { ColorAnimation { duration: Theme.animDuration } }
+
+                        Row {
+                            anchors.left: parent.left
+                            anchors.leftMargin: Theme.spacing
+                            anchors.right: parent.right
+                            anchors.rightMargin: Theme.spacing
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: Theme.spacing
+
+                            Loader {
+                                width: 18; height: 18
+                                anchors.verticalCenter: parent.verticalCenter
+                                sourceComponent: iconSplit
+                            }
+
+                            Text {
+                                textFormat: Text.PlainText
+                                text: savedSplit.name
+                                        || displayName(savedSplit.primaryPath) + " + " + displayName(savedSplit.secondaryPath)
+                                color: Theme.text
+                                font.pointSize: Theme.fontNormal
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                                width: parent.width - 18 - Theme.spacing
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: savedSplitHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton) {
+                                var mapped = savedSplitHover.mapToItem(null, mouse.x, mouse.y)
+                                root.sidebarContextMenuRequested({
+                                    kind: "savedSplit",
+                                    index: index,
+                                    name: savedSplit.name || "",
+                                    primaryPath: savedSplit.primaryPath,
+                                    secondaryPath: savedSplit.secondaryPath,
+                                    orientation: savedSplit.orientation || "vertical"
+                                }, mapped)
+                                return
+                            }
+                            if (!savedSplit.primaryPath || !savedSplit.secondaryPath)
+                                return
+                            root.savedSplitClicked({
+                                name: savedSplit.name || "",
+                                primaryPath: savedSplit.primaryPath,
+                                secondaryPath: savedSplit.secondaryPath,
+                                orientation: savedSplit.orientation || "vertical"
+                            })
+                        }
+                    }
+                }
+            }
         }
 
         // Auto-navigate after mounting an unmounted device

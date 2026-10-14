@@ -14,6 +14,7 @@ class TabModel : public QObject
     Q_PROPERTY(bool canGoBack READ canGoBack NOTIFY historyChanged)
     Q_PROPERTY(bool canGoForward READ canGoForward NOTIFY historyChanged)
     Q_PROPERTY(bool splitViewEnabled READ splitViewEnabled WRITE setSplitViewEnabled NOTIFY splitViewEnabledChanged)
+    Q_PROPERTY(QString splitOrientation READ splitOrientation WRITE setSplitOrientation NOTIFY splitOrientationChanged)
     Q_PROPERTY(QString secondaryCurrentPath READ secondaryCurrentPath WRITE setSecondaryCurrentPath NOTIFY secondaryCurrentPathChanged)
     Q_PROPERTY(bool secondaryCanGoBack READ secondaryCanGoBack NOTIFY secondaryHistoryChanged)
     Q_PROPERTY(bool secondaryCanGoForward READ secondaryCanGoForward NOTIFY secondaryHistoryChanged)
@@ -29,6 +30,7 @@ public:
     bool canGoBack() const;
     bool canGoForward() const;
     bool splitViewEnabled() const;
+    QString splitOrientation() const;
     QString secondaryCurrentPath() const;
     bool secondaryCanGoBack() const;
     bool secondaryCanGoForward() const;
@@ -39,6 +41,7 @@ public:
     // Maps retired and unrecognised view modes onto a mode the UI can render.
     static QString normalizeViewMode(const QString &mode);
     void setSplitViewEnabled(bool enabled);
+    void setSplitOrientation(const QString &orientation);
     void setSecondaryCurrentPath(const QString &path);
     void setSortBy(const QString &column);
     void setSortAscending(bool ascending);
@@ -52,6 +55,7 @@ public:
     Q_INVOKABLE void secondaryGoForward();
     Q_INVOKABLE void secondaryGoUp();
     Q_INVOKABLE void resetSecondaryTo(const QString &path);
+    Q_INVOKABLE void toggleSplitOrientation();
 
 signals:
     void currentPathChanged();
@@ -59,6 +63,7 @@ signals:
     void viewModeChanged();
     void historyChanged();
     void splitViewEnabledChanged();
+    void splitOrientationChanged();
     void secondaryCurrentPathChanged();
     void secondaryHistoryChanged();
     void sortChanged();
@@ -72,6 +77,7 @@ private:
     QStringList m_secondaryBackStack;
     QStringList m_secondaryForwardStack;
     bool m_splitViewEnabled = false;
+    QString m_splitOrientation;
     bool m_secondaryInitialized = false;
     QString m_sortBy;
     bool m_sortAscending;

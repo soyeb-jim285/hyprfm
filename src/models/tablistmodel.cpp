@@ -59,6 +59,7 @@ void TabListModel::connectTab(int row, TabModel *tab)
     connect(tab, &TabModel::secondaryCurrentPathChanged, this, &TabListModel::sessionChanged);
     connect(tab, &TabModel::viewModeChanged, this, &TabListModel::sessionChanged);
     connect(tab, &TabModel::splitViewEnabledChanged, this, &TabListModel::sessionChanged);
+    connect(tab, &TabModel::splitOrientationChanged, this, &TabListModel::sessionChanged);
     connect(tab, &TabModel::sortChanged, this, &TabListModel::sessionChanged);
 }
 
@@ -198,6 +199,7 @@ void TabListModel::closeTab(int index)
         tab->sortBy(),
         tab->sortAscending(),
         tab->splitViewEnabled(),
+        tab->splitOrientation(),
     });
 
     beginRemoveRows(QModelIndex(), index, index);
@@ -231,6 +233,7 @@ void TabListModel::reopenClosedTab()
     tab->setSortBy(info.sortBy);
     tab->setSortAscending(info.sortAscending);
     tab->setSplitViewEnabled(info.splitViewEnabled);
+    tab->setSplitOrientation(info.splitOrientation);
     m_tabs.append(tab);
     connectTab(m_tabs.size() - 1, tab);
     endInsertRows();
@@ -247,6 +250,7 @@ QJsonArray TabListModel::saveSession() const
             {"path", tab->currentPath()},
             {"viewMode", tab->viewMode()},
             {"splitViewEnabled", tab->splitViewEnabled()},
+            {"splitOrientation", tab->splitOrientation()},
             {"secondaryPath", tab->secondaryCurrentPath()},
             {"sortBy", tab->sortBy()},
             {"sortAscending", tab->sortAscending()},
@@ -270,6 +274,7 @@ void TabListModel::restoreSession(const QJsonArray &tabs, int activeIdx)
         tab->navigateTo(normalizedSessionPath(obj.value("path").toString()));
         tab->setViewMode(obj.value("viewMode").toString(m_defaultViewMode));
         tab->setSplitViewEnabled(obj.value("splitViewEnabled").toBool(false));
+        tab->setSplitOrientation(obj.value("splitOrientation").toString());
         tab->setSecondaryCurrentPath(normalizedSessionPath(obj.value("secondaryPath").toString(tab->currentPath())));
         tab->setSortBy(obj.value("sortBy").toString("name"));
         tab->setSortAscending(obj.value("sortAscending").toBool(true));

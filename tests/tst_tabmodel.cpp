@@ -81,6 +81,18 @@ private slots:
         QCOMPARE(tab.secondaryCurrentPath(), tab.currentPath());
     }
 
+    void testSplitOrientation()
+    {
+        TabModel tab;
+        QCOMPARE(tab.splitOrientation(), QString());
+        tab.setSplitOrientation("horizontal");
+        QCOMPARE(tab.splitOrientation(), QString("horizontal"));
+        tab.toggleSplitOrientation();
+        QCOMPARE(tab.splitOrientation(), QString("vertical"));
+        tab.toggleSplitOrientation();
+        QCOMPARE(tab.splitOrientation(), QString("horizontal"));
+    }
+
     void testSecondaryNavigation()
     {
         TabModel tab;

@@ -13,6 +13,7 @@
 #include <QQuickWindow>
 #include <QScopeGuard>
 #include <QStyleHints>
+#include <algorithm>
 #include <functional>
 #include <QTemporaryDir>
 #include <QWheelEvent>
@@ -631,6 +632,99 @@ private slots:
                                             .arg(focused->objectName().isEmpty()
                                                  ? QString::fromLatin1(focused->metaObject()->className())
                                                  : focused->objectName())));
+    }
+
+    void testNavigatingHomeClosesSplitView()
+    {
+        App app;
+        QVERIFY(app.load());
+
+        TabModel *tab = app.tabModel->activeTab();
+        QVERIFY(tab);
+        tab->navigateTo(app.home.path() + "/first");
+        tab->resetSecondaryTo(app.home.path() + "/second");
+        tab->setSplitViewEnabled(true);
+
+        QObject *root = app.window->contentItem()->parent();
+        QVERIFY(root);
+        const QString home = QDir::homePath();
+        QVERIFY(QMetaObject::invokeMethod(root, "navigateActivePaneTo",
+                                          Q_ARG(QVariant, home)));
+
+        QTRY_VERIFY(!tab->splitViewEnabled());
+        QCOMPARE(tab->currentPath(), home);
+        QCOMPARE(root->property("activePane").toString(), QStringLiteral("primary"));
+    }
+
+    void testMergingTwoSelectedFoldersAddsSavedSplit()
+    {
+        App app;
+        QVERIFY(app.load());
+        const QString first = app.home.path() + "/first";
+        const QString second = app.home.path() + "/second";
+        QVERIFY(QDir().mkpath(first));
+        QVERIFY(QDir().mkpath(second));
+
+        QVERIFY(app.item("contextMenuLoader")->setProperty("active", true));
+        QObject *menu = app.item("contextMenu");
+        QVERIFY(menu);
+        menu->setProperty("selectedFolderPaths", QStringList{first, second});
+
+        QVariant modelResult;
+        QVERIFY(QMetaObject::invokeMethod(menu, "buildModel", Q_RETURN_ARG(QVariant, modelResult)));
+        const QVariantList items = modelResult.toList();
+        QVERIFY(std::any_of(items.cbegin(), items.cend(), [](const QVariant &entry) {
+            return entry.toMap().value("action").toString() == "merge_folders";
+        }));
+
+        QVERIFY(QMetaObject::invokeMethod(menu, "executeAction",
+                                          Q_ARG(QVariant, QStringLiteral("merge_folders")),
+                                          Q_ARG(QVariant, QVariant()),
+                                          Q_ARG(QVariant, QVariant())));
+        auto *config = app.engine.rootContext()->contextProperty("config").value<QObject *>();
+        QVERIFY(config);
+        const QVariantList saved = config->property("savedSplits").toList();
+        QCOMPARE(saved.size(), 1);
+        QCOMPARE(saved.first().toMap().value("primaryPath").toString(), first);
+        QCOMPARE(saved.first().toMap().value("secondaryPath").toString(), second);
+    }
+
+    void testSavedSplitContextMenuCanBookmarkBothFolders()
+    {
+        App app;
+        QVERIFY(app.load());
+        const QString first = app.home.path() + "/first";
+        const QString second = app.home.path() + "/second";
+        QVERIFY(QDir().mkpath(first));
+        QVERIFY(QDir().mkpath(second));
+
+        QVERIFY(app.item("sidebarContextMenuLoader")->setProperty("active", true));
+        QObject *menu = app.item("sidebarContextMenuLoader")->property("item").value<QObject *>();
+        QVERIFY(menu);
+        QObject *root = app.window->contentItem()->parent();
+        QVERIFY(root);
+        QVariantMap item{
+            {"kind", "savedSplit"},
+            {"index", 0},
+            {"primaryPath", first},
+            {"secondaryPath", second}
+        };
+        QVariant itemsResult;
+        QVERIFY(QMetaObject::invokeMethod(root, "sidebarMenuItems",
+                                          Q_RETURN_ARG(QVariant, itemsResult),
+                                          Q_ARG(QVariant, item)));
+        const QVariantList items = itemsResult.toList();
+        QVERIFY(std::any_of(items.cbegin(), items.cend(), [](const QVariant &entry) {
+            return entry.toMap().value("action").toString() == "bookmark_saved_split";
+        }));
+
+        QVERIFY(menu->setProperty("sidebarItem", item));
+        QVERIFY(QMetaObject::invokeMethod(menu, "executeAction",
+                                          Q_ARG(QVariant, QStringLiteral("bookmark_saved_split")),
+                                          Q_ARG(QVariant, QVariant()),
+                                          Q_ARG(QVariant, QVariant())));
+        QVERIFY(app.bookmarks->containsPath(first));
+        QVERIFY(app.bookmarks->containsPath(second));
     }
 
     // Quick preview is created the first time Space is pressed rather than at

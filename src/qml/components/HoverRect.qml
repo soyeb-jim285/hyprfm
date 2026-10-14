@@ -9,6 +9,7 @@ Rectangle {
     property bool hoverEnabled: true
 
     signal clicked()
+    signal rightClicked()
     signal doubleClicked()
 
     color: hoverEnabled && hoverArea.containsMouse
@@ -22,9 +23,15 @@ Rectangle {
         id: hoverArea
         anchors.fill: parent
         hoverEnabled: root.hoverEnabled
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         cursorShape: root.hoverEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
         enabled: root.hoverEnabled
-        onClicked: root.clicked()
+        onClicked: (mouse) => {
+            if (mouse.button === Qt.RightButton)
+                root.rightClicked()
+            else
+                root.clicked()
+        }
         onDoubleClicked: root.doubleClicked()
     }
 }

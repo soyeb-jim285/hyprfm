@@ -19,6 +19,7 @@ class ConfigManager : public QObject
     Q_PROPERTY(QString iconTheme READ iconTheme NOTIFY configChanged)
     Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY configChanged)
     Q_PROPERTY(QString defaultView READ defaultView NOTIFY configChanged)
+    Q_PROPERTY(QString splitOrientation READ splitOrientation NOTIFY configChanged)
     Q_PROPERTY(bool showHidden READ showHidden NOTIFY configChanged)
     Q_PROPERTY(bool hiddenLast READ hiddenLast NOTIFY configChanged)
     Q_PROPERTY(bool rightClickToEditPath READ rightClickToEditPath NOTIFY configChanged)
@@ -34,6 +35,7 @@ class ConfigManager : public QObject
     Q_PROPERTY(QStringList hiddenQuickAccess READ hiddenQuickAccess NOTIFY configChanged)
     Q_PROPERTY(QStringList bookmarks READ bookmarks NOTIFY configChanged)
     Q_PROPERTY(QVariantMap bookmarkNames READ bookmarkNames NOTIFY configChanged)
+    Q_PROPERTY(QVariantList savedSplits READ savedSplits NOTIFY savedSplitsChanged)
     Q_PROPERTY(QStringList listColumns READ listColumns NOTIFY listColumnsChanged)
     Q_PROPERTY(QVariantMap listColumnWidths READ listColumnWidths NOTIFY listColumnsChanged)
     Q_PROPERTY(QVariantMap millerFractions READ millerFractions NOTIFY millerFractionsChanged)
@@ -79,6 +81,7 @@ public:
     void setIconThemeFallback(const QString &theme);
     QString fontFamily() const;
     QString defaultView() const;
+    QString splitOrientation() const;
     bool showHidden() const;
     // Right click on the address bar starts path editing (Ctrl+L behaviour).
     // Clicking a breadcrumb segment still navigates.
@@ -110,6 +113,8 @@ public:
     QStringList bookmarks() const;
     // Custom bookmark display names keyed by the entry in bookmarks().
     QVariantMap bookmarkNames() const;
+    // Saved split views: [{ name, primaryPath, secondaryPath, orientation }]
+    QVariantList savedSplits() const;
     int radiusSmall() const;
     int radiusMedium() const;
     int radiusLarge() const;
@@ -148,6 +153,7 @@ public:
                                    bool ascending);
     Q_INVOKABLE void saveShortcuts(const QVariantMap &shortcuts);
     Q_INVOKABLE void saveBookmarks(const QStringList &paths, const QVariantMap &names = {});
+    Q_INVOKABLE void saveSavedSplits(const QVariantList &splits);
     Q_INVOKABLE void saveListColumns(const QStringList &columns, const QVariantMap &widths);
     Q_INVOKABLE void saveMillerFractions(double parent, double current);
     Q_INVOKABLE void saveSidebarWidth(int width);
@@ -155,6 +161,7 @@ public:
 signals:
     void configChanged();
     void configErrorChanged();
+    void savedSplitsChanged();
     void listColumnsChanged();
     void millerFractionsChanged();
 
@@ -185,6 +192,7 @@ private:
     QString m_iconThemeFallback;  // what empty resolves to
     QString m_fontFamily;
     QString m_defaultView;
+    QString m_splitOrientation;
     bool m_showHidden;
     bool m_hiddenLast;
     bool m_rightClickToEditPath;
@@ -207,6 +215,7 @@ private:
     void setMillerFractionsClamped(double parent, double current);
     QStringList m_bookmarks;
     QVariantMap m_bookmarkNames;
+    QVariantList m_savedSplits;
     int m_radiusSmall;
     int m_radiusMedium;
     int m_radiusLarge;

@@ -96,6 +96,9 @@ const ShortcutSpec kShortcutSpecs[] = {
     {"focus_previous_pane", "Focus Previous Pane"},
     {"focus_left_pane", "Focus Left Pane"},
     {"focus_right_pane", "Focus Right Pane"},
+    {"focus_up_pane", "Focus Top Pane"},
+    {"focus_down_pane", "Focus Bottom Pane"},
+    {"toggle_split_orientation", "Toggle Split Orientation"},
     {"grid_view", "Grid View"},
     {"miller_view", "Miller View"},
     {"detailed_view", "Detailed View"},
@@ -184,6 +187,9 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"focus_previous_pane", "Shift+F6"},
     {"focus_left_pane", "Ctrl+Alt+Left"},
     {"focus_right_pane", "Ctrl+Alt+Right"},
+    {"focus_up_pane", "Ctrl+Alt+Up"},
+    {"focus_down_pane", "Ctrl+Alt+Down"},
+    {"toggle_split_orientation", "Ctrl+Shift+O"},
     {"grid_view", "Ctrl+1"},
     {"miller_view", "Ctrl+2"},
     {"detailed_view", "Ctrl+3"},
@@ -296,6 +302,7 @@ void ConfigManager::setDefaults()
     m_iconThemeFallback = QStringLiteral("Adwaita");
     m_fontFamily.clear();
     m_defaultView = "grid";
+    m_splitOrientation = QStringLiteral("vertical");
     m_showHidden = false;
     m_hiddenLast = false;
     m_rightClickToEditPath = true;
@@ -366,6 +373,13 @@ void ConfigManager::loadConfig()
             m_fontFamily = QString::fromStdString(*v);
         if (auto v = config["general"]["default_view"].value<std::string>())
             m_defaultView = QString::fromStdString(*v);
+        if (auto v = config["general"]["split_orientation"].value<std::string>()) {
+            QString val = QString::fromStdString(*v).trimmed().toLower();
+            if (val == QLatin1String("horizontal") || val == QLatin1String("horiz") || val == QLatin1String("top_bottom"))
+                m_splitOrientation = QStringLiteral("horizontal");
+            else
+                m_splitOrientation = QStringLiteral("vertical");
+        }
         if (auto v = config["general"]["show_hidden"].value<bool>())
             m_showHidden = *v;
         if (auto v = config["general"]["hidden_last"].value<bool>())
@@ -475,6 +489,25 @@ void ConfigManager::loadConfig()
                 if (auto v = val.value<std::string>())
                     m_bookmarkNames.insert(QString::fromStdString(std::string(key)),
                                            QString::fromStdString(*v));
+            }
+        }
+
+        m_savedSplits.clear();
+        if (auto arr = config["saved_splits"]["splits"].as_array()) {
+            for (const auto &item : *arr) {
+                if (auto tbl = item.as_table()) {
+                    QVariantMap split;
+                    if (auto v = (*tbl)["name"].value<std::string>())
+                        split.insert("name", QString::fromStdString(*v));
+                    if (auto v = (*tbl)["primaryPath"].value<std::string>())
+                        split.insert("primaryPath", QString::fromStdString(*v));
+                    if (auto v = (*tbl)["secondaryPath"].value<std::string>())
+                        split.insert("secondaryPath", QString::fromStdString(*v));
+                    if (auto v = (*tbl)["orientation"].value<std::string>())
+                        split.insert("orientation", QString::fromStdString(*v));
+                    if (split.contains("primaryPath") && split.contains("secondaryPath"))
+                        m_savedSplits.append(split);
+                }
             }
         }
 
@@ -605,6 +638,9 @@ font_family = ""
 # View for new tabs: "grid" | "detailed" | "miller"
 default_view = "grid"
 
+# Split view orientation when opening a folder in split: "vertical" | "horizontal"
+split_orientation = "vertical"
+
 show_hidden = false
 
 # Sort hidden files after the others (folders and files each keep their own
@@ -694,6 +730,13 @@ current_fraction = 0.5
 # and choose "Rename" to set one in-app.
 # names = { "~/Projects" = "Work" }
 
+[saved_splits]
+# Saved split views. Reopen both panes of a split layout with one click.
+# Each entry: name, primaryPath, secondaryPath, orientation ("vertical"|"horizontal").
+# splits = [
+#     { name = "Codici - Flowchart", primaryPath = "~/Codici", secondaryPath = "~/Flowchart", orientation = "vertical" }
+# ]
+
 [context_menu]
 # Extra entries at the bottom of a file's or folder's right-click menu.
 # `command` takes desktop-entry field codes (%f or %u = the item's path) and runs once
@@ -749,6 +792,9 @@ current_fraction = 0.5
 # focus_previous_pane = "Shift+F6"
 # focus_left_pane   = "Ctrl+Alt+Left"
 # focus_right_pane  = "Ctrl+Alt+Right"
+# focus_up_pane     = "Ctrl+Alt+Up"
+# focus_down_pane   = "Ctrl+Alt+Down"
+# toggle_split_orientation = "Ctrl+Shift+O"
 # grid_view         = "Ctrl+1"
 # miller_view       = "Ctrl+2"
 # detailed_view     = "Ctrl+3"
@@ -875,6 +921,7 @@ void ConfigManager::setIconThemeFallback(const QString &theme)
 }
 QString ConfigManager::fontFamily() const { return m_fontFamily; }
 QString ConfigManager::defaultView() const { return m_defaultView; }
+QString ConfigManager::splitOrientation() const { return m_splitOrientation; }
 bool ConfigManager::showHidden() const { return m_showHidden; }
 
 bool ConfigManager::hiddenLast() const { return m_hiddenLast; }
@@ -890,6 +937,7 @@ bool ConfigManager::sidebarVisible() const { return m_sidebarVisible; }
 int ConfigManager::sidebarAutoHideWidth() const { return m_sidebarAutoHideWidth; }
 QStringList ConfigManager::hiddenQuickAccess() const { return m_hiddenQuickAccess; }
 QStringList ConfigManager::bookmarks() const { return m_bookmarks; }
+QVariantList ConfigManager::savedSplits() const { return m_savedSplits; }
 QVariantMap ConfigManager::bookmarkNames() const { return m_bookmarkNames; }
 int ConfigManager::radiusSmall() const { return m_radiusSmall; }
 int ConfigManager::radiusMedium() const { return m_radiusMedium; }
@@ -1114,6 +1162,14 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
     if (settings.contains("fontFamily")) {
         m_fontFamily = settings.value("fontFamily").toString().trimmed();
         general.insert_or_assign("font_family", m_fontFamily.toStdString());
+    }
+
+    if (settings.contains("splitOrientation")) {
+        const QString splitOrientation = settings.value("splitOrientation").toString().trimmed().toLower();
+        if (splitOrientation == QLatin1String("horizontal") || splitOrientation == QLatin1String("vertical")) {
+            m_splitOrientation = splitOrientation;
+            general.insert_or_assign("split_orientation", splitOrientation.toStdString());
+        }
     }
 
     if (settings.contains("showHidden")) {
@@ -1473,6 +1529,47 @@ void ConfigManager::saveBookmarks(const QStringList &paths, const QVariantMap &n
         m_configModified = QFileInfo(m_configPath).lastModified();
         m_watcher.addPath(m_configPath);
     }
+}
+
+void ConfigManager::saveSavedSplits(const QVariantList &splits)
+{
+    m_savedSplits = splits;
+
+    const bool wasWatchingConfig = m_watcher.files().contains(m_configPath);
+    if (wasWatchingConfig)
+        m_watcher.removePath(m_configPath);
+
+    toml::table config;
+    if (QFile::exists(m_configPath)) {
+        try {
+            config = toml::parse_file(m_configPath.toStdString());
+        } catch (...) {}
+    }
+
+    toml::array arr;
+    for (const auto &splitVar : splits) {
+        const QVariantMap split = splitVar.toMap();
+        toml::table entry;
+        if (const auto name = split.value("name").toString(); !name.isEmpty())
+            entry.insert_or_assign("name", name.toStdString());
+        if (const auto primary = split.value("primaryPath").toString(); !primary.isEmpty())
+            entry.insert_or_assign("primaryPath", primary.toStdString());
+        if (const auto secondary = split.value("secondaryPath").toString(); !secondary.isEmpty())
+            entry.insert_or_assign("secondaryPath", secondary.toStdString());
+        if (const auto orientation = split.value("orientation").toString(); !orientation.isEmpty())
+            entry.insert_or_assign("orientation", orientation.toStdString());
+        arr.push_back(std::move(entry));
+    }
+    config.insert_or_assign("saved_splits", toml::table{{"splits", std::move(arr)}});
+
+    writeConfigDocument(m_configPath, config);
+
+    if (QFile::exists(m_configPath)) {
+        m_configModified = QFileInfo(m_configPath).lastModified();
+        m_watcher.addPath(m_configPath);
+    }
+
+    emit savedSplitsChanged();
 }
 
 void ConfigManager::saveSidebarWidth(int width)

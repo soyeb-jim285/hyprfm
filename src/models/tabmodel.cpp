@@ -95,6 +95,7 @@ QString TabModel::viewMode() const { return m_viewMode; }
 bool TabModel::canGoBack() const { return !m_backStack.isEmpty(); }
 bool TabModel::canGoForward() const { return !m_forwardStack.isEmpty(); }
 bool TabModel::splitViewEnabled() const { return m_splitViewEnabled; }
+QString TabModel::splitOrientation() const { return m_splitOrientation; }
 QString TabModel::secondaryCurrentPath() const { return m_secondaryCurrentPath; }
 bool TabModel::secondaryCanGoBack() const { return !m_secondaryBackStack.isEmpty(); }
 bool TabModel::secondaryCanGoForward() const { return !m_secondaryForwardStack.isEmpty(); }
@@ -141,6 +142,23 @@ void TabModel::setSplitViewEnabled(bool enabled)
     m_splitViewEnabled = enabled;
     emit splitViewEnabledChanged();
     emit titleChanged();
+}
+
+void TabModel::setSplitOrientation(const QString &orientation)
+{
+    if (m_splitOrientation == orientation)
+        return;
+
+    m_splitOrientation = orientation;
+    emit splitOrientationChanged();
+}
+
+void TabModel::toggleSplitOrientation()
+{
+    if (m_splitOrientation == QStringLiteral("horizontal"))
+        setSplitOrientation(QStringLiteral("vertical"));
+    else
+        setSplitOrientation(QStringLiteral("horizontal"));
 }
 
 void TabModel::setSecondaryCurrentPath(const QString &path)

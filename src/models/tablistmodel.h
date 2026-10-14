@@ -65,6 +65,7 @@ private:
         QString sortBy;
         bool sortAscending = true;
         bool splitViewEnabled = false;
+        QString splitOrientation;
     };
     QList<ClosedTabInfo> m_closedTabs;
 };
