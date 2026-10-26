@@ -15,8 +15,15 @@ ListView {
     readonly property var rows: table && table.rows ? table.rows : []
     readonly property int cellPadding: 8
     readonly property int rowHeight: Math.ceil(metrics.height) + 8
+    // Average width per character, but never narrower than the bold header:
+    // short headers of wide letters ("month") overrun the average, notably
+    // with Segoe UI on Windows.
     readonly property var widths: (table && table.columnWidths ? table.columnWidths : [])
-        .map(function(chars) { return Math.ceil(chars * metrics.averageCharacterWidth) + 2 * root.cellPadding })
+        .map(function(chars, i) {
+            const header = rows.length > 0 && i < rows[0].length ? rows[0][i] : ""
+            return Math.ceil(Math.max(chars * metrics.averageCharacterWidth,
+                                      headerMetrics.advanceWidth(header))) + 2 * root.cellPadding
+        })
     readonly property real tableWidth: widths.reduce(function(sum, w) { return sum + w }, 0)
     readonly property color lineColor: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
 
@@ -30,6 +37,12 @@ ListView {
     FontMetrics {
         id: metrics
         font.pointSize: root.fontSize
+    }
+
+    FontMetrics {
+        id: headerMetrics
+        font.pointSize: root.fontSize
+        font.bold: true
     }
 
     component TableRow: Row {
