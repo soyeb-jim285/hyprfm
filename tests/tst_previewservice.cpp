@@ -87,9 +87,6 @@ private slots:
     // rendered HTML; local ones stay, since they cost no network request.
     void testMarkdownPreviewDropsRemoteImages()
     {
-        if (QStandardPaths::findExecutable(QStringLiteral("md2html")).isEmpty())
-            QSKIP("md2html not found in PATH");
-
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
 
@@ -203,9 +200,6 @@ private slots:
 
     void testMarkdownPreviewHonoursTheLineCap()
     {
-        if (QStandardPaths::findExecutable(QStringLiteral("md2html")).isEmpty())
-            QSKIP("md2html not found in PATH");
-
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
 
@@ -291,14 +285,11 @@ private slots:
                  qPrintable(QString::number(preview.value("html").toString().size())));
     }
 
-    // Markdown goes through md2html rather than bat, so the preview pane can
-    // show a styled document. Without md4c's CLI installed the service must
-    // still hand back the raw source via bat instead of a blank pane.
+    // Markdown is rendered rather than run through bat, so the preview pane
+    // can show a styled document: by md2html, or by Qt's own Markdown reader
+    // where md2html is not installed (always on Windows).
     void testMarkdownPreviewRendersHtml()
     {
-        if (!md2htmlAvailable())
-            QSKIP("md2html not found in PATH");
-
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString path = dir.path() + "/README.md";
@@ -317,7 +308,7 @@ private slots:
         QCOMPARE(preview.value("usesBat").toBool(), true);
         const QString html = preview.value("html").toString();
         QVERIFY2(html.contains("<h1"), qPrintable(html.left(200)));
-        QVERIFY2(html.contains("<em>"), qPrintable(html.left(200)));
+        QVERIFY2(html.contains("emphasis") && !html.contains("*emphasis*"), qPrintable(html.left(200)));
         // Raw source must not leak through as the body.
         QVERIFY2(!html.contains("# Title"), qPrintable(html.left(200)));
     }

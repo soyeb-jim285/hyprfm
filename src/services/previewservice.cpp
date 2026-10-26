@@ -18,6 +18,7 @@
 #include <QRegularExpression>
 #include <QRawFont>
 #include <QStandardPaths>
+#include <QTextDocument>
 #include <QThreadPool>
 #include <QUrl>
 
@@ -506,9 +507,13 @@ bool isJsonPath(const QString &path)
     return QFileInfo(path).suffix().compare(QLatin1String("json"), Qt::CaseInsensitive) == 0;
 }
 
-// Render Markdown to HTML via `md2html` (md4c). Reads the data on stdin so the
-// path never has to be quoted, and never touches a shell. Returns empty and
-// sets `error` when md2html is missing, times out, or fails.
+QString runMd2html(const QString &executable, const QByteArray &markdown, QString *error);
+QString withoutRemoteImages(QString html);
+
+// Render Markdown to HTML via `md2html` (md4c), or Qt's built-in Markdown
+// reader where md2html is not installed. md2html reads the data on stdin so
+// the path never has to be quoted, and never touches a shell. Returns empty
+// and sets `error` when md2html times out or fails.
 QByteArray markdownToHtml(const QByteArray &markdown, QString *error)
 {
     if (error)
@@ -518,12 +523,23 @@ QByteArray markdownToHtml(const QByteArray &markdown, QString *error)
     // Markdown file the selection lands on.
     static const QString executable =
         QStandardPaths::findExecutable(QStringLiteral("md2html"));
+    QString html;
     if (executable.isEmpty()) {
-        if (error)
-            *error = QStringLiteral("md2html not found");
-        return {};
+        // No md2html (Windows never has it): Qt's own md4c copy, GitHub
+        // dialect. Its HTML already carries table borders.
+        QTextDocument doc;
+        doc.setMarkdown(QString::fromUtf8(markdown), QTextDocument::MarkdownDialectGitHub);
+        html = doc.toHtml();
+    } else {
+        html = runMd2html(executable, markdown, error);
+        if (html.isEmpty())
+            return {};
     }
+    return withoutRemoteImages(html).toUtf8();
+}
 
+QString runMd2html(const QString &executable, const QByteArray &markdown, QString *error)
+{
     QProcess proc;
     // GFM (--github) enables GitHub-flavoured tables plus strikethrough,
     // autolinks and task lists. Qt's rich-text engine renders all of them
@@ -555,7 +571,11 @@ QByteArray markdownToHtml(const QByteArray &markdown, QString *error)
     // to get real column layout and gridlines in the preview.
     html.replace(QStringLiteral("<table>"),
                  QStringLiteral("<table border=\"1\" cellpadding=\"4\" cellspacing=\"0\">"));
+    return html;
+}
 
+QString withoutRemoteImages(QString html)
+{
     // Qt resolves <img> through QQuickPixmap, which fetches http(s) URLs. A
     // Markdown file from a download, an archive or a shared folder could
     // therefore tell whoever wrote it that the file had been opened, and hand
@@ -567,7 +587,7 @@ QByteArray markdownToHtml(const QByteArray &markdown, QString *error)
         QStringLiteral("<img\\b[^>]*\\bsrc\\s*=\\s*[\"']?\\s*(?:[a-z][a-z0-9+.-]*:)?//[^>]*>"),
         QRegularExpression::CaseInsensitiveOption);
     html.remove(remoteImage);
-    return html.toUtf8();
+    return html;
 }
 
 }
