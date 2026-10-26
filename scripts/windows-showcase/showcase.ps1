@@ -179,8 +179,10 @@ $script:cx = [int]($screen.Width * 0.6); $cy = [int]($screen.Height * 0.55)
 
 Shot '01-grid-dark'
 ClickEmpty
+# The first key after launch can be lost; Ctrl+3 first so a lost key
+# shows up as a missing detailed shot, not a Miller shot of the grid.
+Keys '^3' 1500; Keys '^3' 500; Shot '02-detailed-view'
 Keys '^2' 1500; Shot '03-miller-view'
-Keys '^3' 1500; Shot '02-detailed-view'
 Keys '^1' 1200; ClickEmpty
 
 Go "$demo\Pictures"; Shot '04-pictures-thumbnails'
