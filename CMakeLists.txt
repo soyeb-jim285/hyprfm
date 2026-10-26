@@ -29,7 +29,11 @@ if(WIN32)
     enable_language(C)
     include(FetchContent)
     set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)   # let the set()s below win over its option()s
-    set(CRYPTO_BACKEND WinCNG)
+    # A cache entry: libssh2's own CACHE declaration would otherwise replace
+    # a plain set() with its empty default, and it then auto-detects any
+    # OpenSSL it finds (the CI runner has one), making hyprfm.exe need
+    # libcrypto-3-x64.dll.
+    set(CRYPTO_BACKEND WinCNG CACHE STRING "" FORCE)
     set(BUILD_SHARED_LIBS OFF)
     set(BUILD_STATIC_LIBS ON)
     set(BUILD_EXAMPLES OFF)

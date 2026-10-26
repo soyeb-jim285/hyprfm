@@ -141,6 +141,12 @@ jobs:
           $crt = Get-ChildItem "$env:VCToolsRedistDir/x64" -Directory -Filter 'Microsoft.VC*.CRT' |
                  Select-Object -First 1
           Copy-Item "$($crt.FullName)/*.dll" $bin
+          # Everything the exe links must ship or be part of Windows; the
+          # runner has OpenSSL on PATH, so the smoke test would not notice.
+          $deps = dumpbin /dependents stage/bin/hyprfm.exe | Select-String '\.dll' |
+                  ForEach-Object { $_.Line.Trim() }
+          $deps
+          if ($deps -match 'libcrypto|libssl') { throw 'hyprfm.exe links OpenSSL' }
           Get-ChildItem stage -Recurse -File | Measure-Object -Sum Length |
             ForEach-Object { "Package: {0} files, {1:N1} MB" -f $_.Count, ($_.Sum / 1MB) }
 
