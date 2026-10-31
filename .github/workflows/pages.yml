@@ -1,0 +1,52 @@
+name: Website
+
+# Publishes website/ to GitHub Pages at hyprfm.soyebjim.me. The custom domain is
+# set under Settings -> Pages, so no CNAME file is needed with an Actions deploy.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'website/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push replaces a queued one, never a running one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Only what the page loads. website/ also holds the HyperFrames film
+      # project (film/) and the capture rig (.rig/), which must not be served.
+      - name: Assemble the site
+        run: |
+          mkdir -p _site/fonts _site/media
+          cd website
+          cp index.html base.css tokens.css site.css hero-bg.js keys.js themes.js ../_site/
+          cp fonts/fonts.css fonts/*.woff2 ../_site/fonts/
+          cp -r media/web ../_site/media/
+
+      - name: Upload
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
