@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HyprFM, a file manager for Hyprland</title>
+  <meta name="description" content="HyprFM is a fast, keyboard-first Qt 6 file manager for Hyprland and Wayland, with Miller columns, quick preview, a built-in terminal and TOML themes.">
+  <meta name="theme-color" content="#16181f">
+  <meta property="og:title" content="HyprFM, a file manager for Hyprland">
+  <meta property="og:description" content="Miller columns, quick preview and a real shell, all from the keyboard.">
+  <meta property="og:image" content="media/web/film-poster.jpg">
+  <link rel="icon" href="media/web/logo.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/display-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/text-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="masthead" data-masthead>
+    <p class="banner"><a href="#tour-terminal">New on main: a built-in terminal</a></p>
+    <nav class="bar container" aria-label="Main">
+      <a class="wordmark" href="#top" aria-label="HyprFM home"><img src="media/web/logo.svg" width="28" height="28" alt=""><span>HyprFM</span></a>
+      <ul class="bar__links">
+        <li><a href="#tour">Tour</a></li>
+        <li><a href="#keys">Keys</a></li>
+        <li><a href="#themes">Themes</a></li>
+        <li><a href="#speed">Speed</a></li>
+      </ul>
+      <div class="bar__end">
+        <a class="iconlink" href="https://github.com/soyeb-jim285/hyprfm" aria-label="HyprFM on GitHub">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+        </a>
+        <a class="btn btn--ghost" href="#install">Install</a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <canvas class="hero__canvas" aria-hidden="true"></canvas>
+      <div class="hero__scrim" aria-hidden="true"></div>
+      <div class="hero__body container">
+        <h1 id="hero-title">A file manager<br> made for Hyprland</h1>
+        <p class="lead">Miller columns, quick preview and a real shell, all from the keyboard.</p>
+        <div class="hero__actions">
+          <a class="btn" href="#install">Install HyprFM</a>
+          <a class="btn btn--quiet" href="https://github.com/soyeb-jim285/hyprfm">Source on GitHub</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="film" aria-label="HyprFM at work">
+      <div class="container">
+        <figure class="film__frame" data-kind="product">
+          <video id="film" muted loop playsinline preload="metadata" poster="media/web/film-poster.jpg" width="1920" height="1080" aria-label="A 35 second silent film: the HyprFM window over a fog valley, browsing photos, previewing, reading Markdown, splitting panes, renaming, running git in the built-in terminal, then switching to a light theme.">
+            <source src="media/web/film.webm" type="video/webm">
+            <source src="media/web/film.mp4" type="video/mp4">
+          </video>
+        </figure>
+        <div class="film__foot">
+          <p class="caption">Every frame is the real window in a nested Hyprland, with Hyprland’s own blur. Nothing is mocked up.</p>
+          <button class="btn btn--ghost btn--sm" type="button" data-film-toggle aria-pressed="false">
+            <svg class="i-pause" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>
+            <svg class="i-play" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+            <span data-film-label>Pause film</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="tour" id="tour" aria-labelledby="tour-title">
+      <div class="container">
+        <div class="headblock headblock--split">
+          <h2 id="tour-title">One key, one pane</h2>
+          <p class="lead">Each clip is the real window, recorded at the keypress named beside it.</p>
+        </div>
+        <div class="bento">
+          <figure class="tile tile--6" data-kind="product">
+            <div class="tile__media"><video muted loop playsinline preload="none" poster="media/web/loop-views.jpg" width="1280" height="810" data-loop aria-label="Arrow keys step through photos while the third column previews each one"><source src="media/web/loop-views.webm" type="video/webm"><source src="media/web/loop-views.mp4" type="video/mp4"></video></div>
+            <figcaption><h3>Miller columns <kbd>Ctrl</kbd><kbd>2</kbd></h3><p>Parent, folder and a live preview, side by side.</p></figcaption>
+          </figure>
+          <figure class="tile tile--6" data-kind="product">
+            <div class="tile__media"><video muted loop playsinline preload="none" poster="media/web/loop-preview.jpg" width="1280" height="810" data-loop aria-label="Quick preview showing photos full size with their metadata"><source src="media/web/loop-preview.webm" type="video/webm"><source src="media/web/loop-preview.mp4" type="video/mp4"></video></div>
+            <figcaption><h3>Quick preview <kbd>Space</kbd></h3><p>Photos, video posters and PDFs, full size, with their metadata.</p></figcaption>
+          </figure>
+          <figure class="tile tile--5" id="tour-terminal" data-kind="product" style="--focus: 35% 50%">
+            <div class="tile__media"><video muted loop playsinline preload="none" poster="media/web/loop-terminal.jpg" width="1280" height="810" data-loop aria-label="The built-in terminal opens under the file list and runs git status"><source src="media/web/loop-terminal.webm" type="video/webm"><source src="media/web/loop-terminal.mp4" type="video/mp4"></video></div>
+            <figcaption><h3>Built-in terminal <kbd>F4</kbd></h3><p>A shell under the folder you are in, on Ghostty’s terminal core.</p></figcaption>
+          </figure>
+          <figure class="tile tile--7" data-kind="product">
+            <div class="tile__media"><video muted loop playsinline preload="none" poster="media/web/loop-rename.jpg" width="1280" height="810" data-loop aria-label="Bulk rename previews every new file name before anything changes"><source src="media/web/loop-rename.webm" type="video/webm"><source src="media/web/loop-rename.mp4" type="video/mp4"></video></div>
+            <figcaption><h3>Bulk rename <kbd>F2</kbd></h3><p>Find and replace, regex, prefixes and sequences, previewed first.</p></figcaption>
+          </figure>
+          <figure class="tile tile--6" data-kind="product">
+            <div class="tile__media"><video muted loop playsinline preload="none" poster="media/web/loop-docs.jpg" width="1280" height="810" data-loop aria-label="The preview column shows a PDF page, then a rendered Markdown file"><source src="media/web/loop-docs.webm" type="video/webm"><source src="media/web/loop-docs.mp4" type="video/mp4"></video></div>
+            <figcaption><h3>Readable previews</h3><p>PDF pages, rendered Markdown and highlighted code in the side pane.</p></figcaption>
+          </figure>
+          <figure class="tile tile--6" data-kind="product">
+            <div class="tile__media"><video muted loop playsinline preload="none" poster="media/web/loop-split.jpg" width="1280" height="810" data-loop aria-label="A second pane opens beside the first with another folder"><source src="media/web/loop-split.webm" type="video/webm"><source src="media/web/loop-split.mp4" type="video/mp4"></video></div>
+            <figcaption><h3>Split pane <kbd>F3</kbd></h3><p>Two folders at once. Drag between them, or to any Wayland app.</p></figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="keys" id="keys" aria-labelledby="keys-title">
+      <div class="container">
+        <div class="keys__head">
+          <h2 id="keys-title">Every action has a key</h2>
+          <p class="lead"><span class="board-hint">Hold Ctrl, Shift or Alt to see each layer light up. </span>Remap any of them under <code>[shortcuts]</code> in <code>config.toml</code>.</p>
+        </div>
+        <div class="board" data-board hidden>
+          <div class="board__layers" role="group" aria-label="Modifier layer">
+            <button type="button" data-layer="" aria-pressed="true">No modifier</button>
+            <button type="button" data-layer="Ctrl" aria-pressed="false">Ctrl</button>
+            <button type="button" data-layer="Shift" aria-pressed="false">Shift</button>
+            <button type="button" data-layer="Alt" aria-pressed="false">Alt</button>
+            <button type="button" data-layer="Ctrl+Shift" aria-pressed="false">Ctrl Shift</button>
+            <button type="button" data-layer="Ctrl+Alt" aria-pressed="false">Ctrl Alt</button>
+          </div>
+          <div class="board__keys" data-keys-grid aria-hidden="true"></div>
+          <p class="board__say" aria-live="polite" data-say>Point at a lit key, or press it.</p>
+          <ul class="board__legend">
+            <li data-cat="go">Move around</li><li data-cat="files">Files</li><li data-cat="tabs">Tabs and panes</li><li data-cat="view">View</li>
+          </ul>
+        </div>
+        <details class="keys__all">
+          <summary>All 49 as a list</summary>
+          <div class="keys__cols">
+            <div data-cat="go"><h3>Move around</h3><dl>
+              <div data-keys="Return"><dt><kbd>Enter</kbd></dt><dd>Open</dd></div>
+              <div data-keys="Alt+Left"><dt><kbd>Alt</kbd><kbd>←</kbd></dt><dd>Back</dd></div>
+              <div data-keys="Alt+Right"><dt><kbd>Alt</kbd><kbd>→</kbd></dt><dd>Forward</dd></div>
+              <div data-keys="Alt+Up"><dt><kbd>Alt</kbd><kbd>↑</kbd></dt><dd>Parent folder</dd></div>
+              <div data-keys="Alt+Home"><dt><kbd>Alt</kbd><kbd>Home</kbd></dt><dd>Home folder</dd></div>
+              <div data-keys="F5"><dt><kbd>F5</kbd></dt><dd>Refresh</dd></div>
+              <div data-keys="Ctrl+L"><dt><kbd>Ctrl</kbd><kbd>L</kbd></dt><dd>Type a path</dd></div>
+              <div data-keys="Ctrl+F"><dt><kbd>Ctrl</kbd><kbd>F</kbd></dt><dd>Search</dd></div>
+              <div data-keys="Space"><dt><kbd>Space</kbd></dt><dd>Quick preview</dd></div>
+            </dl></div>
+            <div data-cat="files"><h3>Files</h3><dl>
+              <div data-keys="Ctrl+C"><dt><kbd>Ctrl</kbd><kbd>C</kbd></dt><dd>Copy</dd></div>
+              <div data-keys="Ctrl+X"><dt><kbd>Ctrl</kbd><kbd>X</kbd></dt><dd>Cut</dd></div>
+              <div data-keys="Ctrl+V"><dt><kbd>Ctrl</kbd><kbd>V</kbd></dt><dd>Paste</dd></div>
+              <div data-keys="F2"><dt><kbd>F2</kbd></dt><dd>Rename</dd></div>
+              <div data-keys="Ctrl+Shift+N"><dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>N</kbd></dt><dd>New folder</dd></div>
+              <div data-keys="Ctrl+N"><dt><kbd>Ctrl</kbd><kbd>N</kbd></dt><dd>New file</dd></div>
+              <div data-keys="Delete"><dt><kbd>Delete</kbd></dt><dd>Trash</dd></div>
+              <div data-keys="Shift+Delete"><dt><kbd>Shift</kbd><kbd>Delete</kbd></dt><dd>Delete for good</dd></div>
+              <div data-keys="Ctrl+A"><dt><kbd>Ctrl</kbd><kbd>A</kbd></dt><dd>Select all</dd></div>
+              <div data-keys="Ctrl+Z"><dt><kbd>Ctrl</kbd><kbd>Z</kbd></dt><dd>Undo</dd></div>
+              <div data-keys="Ctrl+Shift+Z"><dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Z</kbd></dt><dd>Redo</dd></div>
+              <div data-keys="Alt+Return"><dt><kbd>Alt</kbd><kbd>Enter</kbd></dt><dd>Properties</dd></div>
+              <div data-keys="Shift+F10"><dt><kbd>Shift</kbd><kbd>F10</kbd></dt><dd>Menu</dd></div>
+            </dl></div>
+            <div data-cat="tabs"><h3>Tabs and panes</h3><dl>
+              <div data-keys="Ctrl+T"><dt><kbd>Ctrl</kbd><kbd>T</kbd></dt><dd>New tab</dd></div>
+              <div data-keys="Ctrl+Alt+N"><dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>N</kbd></dt><dd>New window</dd></div>
+              <div data-keys="Ctrl+W"><dt><kbd>Ctrl</kbd><kbd>W</kbd></dt><dd>Close tab</dd></div>
+              <div data-keys="Ctrl+Tab"><dt><kbd>Ctrl</kbd><kbd>Tab</kbd></dt><dd>Next tab</dd></div>
+              <div data-keys="Ctrl+Shift+Tab"><dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Tab</kbd></dt><dd>Previous tab</dd></div>
+              <div data-keys="Ctrl+Shift+T"><dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd></dt><dd>Reopen tab</dd></div>
+              <div data-keys="Ctrl+Return"><dt><kbd>Ctrl</kbd><kbd>Enter</kbd></dt><dd>Open in a tab</dd></div>
+              <div data-keys="Ctrl+Shift+Return"><dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Enter</kbd></dt><dd>Open in split</dd></div>
+              <div data-keys="F3"><dt><kbd>F3</kbd></dt><dd>Split view</dd></div>
+              <div data-keys="F6"><dt><kbd>F6</kbd></dt><dd>Next pane</dd></div>
+              <div data-keys="Shift+F6"><dt><kbd>Shift</kbd><kbd>F6</kbd></dt><dd>Previous pane</dd></div>
+              <div data-keys="Ctrl+Alt+Left"><dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>←</kbd></dt><dd>Pane left</dd></div>
+              <div data-keys="Ctrl+Alt+Right"><dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>→</kbd></dt><dd>Pane right</dd></div>
+              <div data-keys="Ctrl+Alt+Up"><dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>↑</kbd></dt><dd>Pane up</dd></div>
+              <div data-keys="Ctrl+Alt+Down"><dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>↓</kbd></dt><dd>Pane down</dd></div>
+              <div data-keys="Ctrl+Shift+O"><dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd></dt><dd>Flip split</dd></div>
+            </dl></div>
+            <div data-cat="view"><h3>View</h3><dl>
+              <div data-keys="Ctrl+H"><dt><kbd>Ctrl</kbd><kbd>H</kbd></dt><dd>Hidden files</dd></div>
+              <div data-keys="Ctrl+Shift+B"><dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>B</kbd></dt><dd>Transparency</dd></div>
+              <div data-keys="F9"><dt><kbd>F9</kbd></dt><dd>Sidebar</dd></div>
+              <div data-keys="F4"><dt><kbd>F4</kbd></dt><dd>Terminal</dd></div>
+              <div data-keys="Ctrl+Alt+T"><dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>T</kbd></dt><dd>Terminal app</dd></div>
+              <div data-keys="Ctrl+1"><dt><kbd>Ctrl</kbd><kbd>1</kbd></dt><dd>Grid</dd></div>
+              <div data-keys="Ctrl+2"><dt><kbd>Ctrl</kbd><kbd>2</kbd></dt><dd>Columns</dd></div>
+              <div data-keys="Ctrl+3"><dt><kbd>Ctrl</kbd><kbd>3</kbd></dt><dd>Details</dd></div>
+              <div data-keys="Ctrl+,"><dt><kbd>Ctrl</kbd><kbd>,</kbd></dt><dd>Settings</dd></div>
+              <div data-keys="Ctrl+Shift+,"><dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>,</kbd></dt><dd>Edit config</dd></div>
+              <div data-keys="Ctrl+?"><dt><kbd>Ctrl</kbd><kbd>?</kbd></dt><dd>All shortcuts</dd></div>
+            </dl></div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="themes" id="themes" aria-labelledby="themes-title">
+      <div class="container">
+        <div class="themes__head">
+          <h2 id="themes-title">Ten themes, or your wallpaper’s</h2>
+          <p class="lead">Every colour eases across in 350 ms, the same curve the app uses. Set the theme to <code>pywal</code> and it follows your wallpaper.</p>
+        </div>
+        <div class="fm-stage">
+          <div class="fm" data-fm="catppuccin-mocha" role="img" aria-label="The HyprFM window in the selected theme: Miller columns open on Pictures, a lake photo previewed">
+            <div class="fm__top">
+              <div class="fm__brand">Hyprfm <svg><use href="#i-panel"/></svg></div>
+              <div class="fm__crumbs"><svg><use href="#i-left"/></svg><svg class="is-off"><use href="#i-right"/></svg><svg><use href="#i-up"/></svg><svg class="is-off"><use href="#i-home"/></svg><span class="is-off">Home</span><span class="is-off">/</span><b>Pictures</b></div>
+              <div class="fm__tools"><span class="fm__seg"><svg><use href="#i-grid"/></svg><svg class="is-on"><use href="#i-cols"/></svg><svg><use href="#i-list"/></svg></span><svg><use href="#i-split"/></svg><svg><use href="#i-search"/></svg><svg><use href="#i-keys"/></svg><svg><use href="#i-gear"/></svg></div>
+            </div>
+            <div class="fm__body">
+              <ul class="fm__side">
+                <li><svg><use href="#i-home"/></svg>Home</li><li><svg><use href="#i-clock"/></svg>Recents</li><li><svg><use href="#i-trash"/></svg>Trash</li><li><svg><use href="#i-globe"/></svg>Network</li>
+                <li class="is-sel"><svg><use href="#i-image"/></svg>Pictures</li><li><svg><use href="#i-down"/></svg>Downloads</li>
+                <li class="fm__rule"><svg><use href="#i-folder"/></svg>Documents</li><li><svg><use href="#i-folder"/></svg>Downloads</li><li class="is-sel"><svg><use href="#i-folder"/></svg>Pictures</li><li><svg><use href="#i-folder"/></svg>Projects</li><li><svg><use href="#i-folder"/></svg>Videos</li>
+              </ul>
+              <ul class="fm__col">
+                <li class="d">Desktop</li><li class="d">Documents</li><li class="d">Downloads</li><li class="d">Music</li><li class="d is-open">Pictures</li><li class="d">Projects</li><li class="d">Videos</li>
+              </ul>
+              <ul class="fm__col fm__col--files">
+                <li class="d">Trips</li><li class="d">Wallpapers</li>
+                <li style="--t: 0">beskydy-october.jpg</li><li style="--t: 1">conwy-estuary-dusk.jpg</li><li style="--t: 2">esztergom-blue-hour.jpg</li><li class="is-sel" style="--t: 3">herbert-lake-mist.jpg</li><li style="--t: 4">howth-head-gorse.jpg</li><li style="--t: 5">mylgval-cirque.jpg</li><li style="--t: 6">namib-dunes.jpg</li><li style="--t: 7">oeschinensee-perseids.jpg</li>
+              </ul>
+              <div class="fm__preview">
+                <img src="media/web/fm-herbert.webp" width="960" height="640" alt="" loading="lazy">
+                <p><b>herbert-lake-mist.jpg</b><br>JPEG image, 518.7 KB<br>Dimensions: 1920 x 1280<br>Location: /home/you/Pictures</p>
+              </div>
+            </div>
+            <div class="fm__status"><span>10 items (2 folders, 8 files)</span><span>1 selected, 518.7 KB <i>24.3 GB free of 195.8 GB</i></span></div>
+          </div>
+        </div>
+        <div class="fm-picks" role="radiogroup" aria-label="Theme" data-fm-picks>
+          <button type="button" role="radio" aria-checked="true" data-fm="catppuccin-mocha">Catppuccin Mocha</button>
+          <button type="button" role="radio" aria-checked="false" data-fm="catppuccin-latte" tabindex="-1">Catppuccin Latte</button>
+          <button type="button" role="radio" aria-checked="false" data-fm="rose-pine" tabindex="-1">Rosé Pine</button>
+          <button type="button" role="radio" aria-checked="false" data-fm="rose-pine-moon" tabindex="-1">Rosé Pine Moon</button>
+          <button type="button" role="radio" aria-checked="false" data-fm="rose-pine-dawn" tabindex="-1">Rosé Pine Dawn</button>
+          <button type="button" role="radio" aria-checked="false" data-fm="nord" tabindex="-1">Nord</button>
+          <button type="button" role="radio" aria-checked="false" data-fm="dracula" tabindex="-1">Dracula</button>
+          <button type="button" role="radio" aria-checked="false" data-fm="gruvbox-dark" tabindex="-1">Gruvbox Dark</button>
+          <button type="button" role="radio" aria-checked="false" data-fm="gruvbox-light" tabindex="-1">Gruvbox Light</button>
+          <button type="button" role="radio" aria-checked="false" data-fm="monokai-pro" tabindex="-1">Monokai Pro</button>
+        </div>
+      </div>
+      <svg class="sprite" aria-hidden="true">
+        <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10 "/></symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M12 6v6l4 2 "/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M10 11v6 M14 11v6 M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6 M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 "/></symbol>
+        <symbol id="i-globe" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 1 0 20a10 10 0 1 1 0-20 M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20 M2 12h20 "/></symbol>
+        <symbol id="i-image" viewBox="0 0 24 24"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 9a2 2 0 1 0 4 0a2 2 0 1 0-4 0 m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21 "/></symbol>
+        <symbol id="i-down" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3 "/></symbol>
+        <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z "/></symbol>
+        <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6 "/></symbol>
+        <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6 "/></symbol>
+        <symbol id="i-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6 "/></symbol>
+        <symbol id="i-grid" viewBox="0 0 24 24"><path d="M3 3h7v7h-7z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7h-7z "/></symbol>
+        <symbol id="i-cols" viewBox="0 0 24 24"><path d="M3 3h18v18H3zM9 3v18M15 3v18 "/></symbol>
+        <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01 "/></symbol>
+        <symbol id="i-split" viewBox="0 0 24 24"><path d="M8 19H5c-1 0-2-1-2-2V7c0-1 1-2 2-2h3 M16 5h3c1 0 2 1 2 2v10c0 1-1 2-2 2h-3 M12 4v16 "/></symbol>
+        <symbol id="i-search" viewBox="0 0 24 24"><path d="M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16z M21 21l-4.35-4.35 "/></symbol>
+        <symbol id="i-keys" viewBox="0 0 24 24"><path d="M10 8h.01 M12 12h.01 M14 8h.01 M16 12h.01 M18 8h.01 M6 8h.01 M7 16h10 M8 12h.01 M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z "/></symbol>
+        <symbol id="i-gear" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915 M9 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0 "/></symbol>
+        <symbol id="i-panel" viewBox="0 0 24 24"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M9 3v18 "/></symbol>
+      </svg>
+    </section>
+
+    <section class="speed" id="speed" aria-labelledby="speed-title">
+      <div class="container">
+        <div class="headblock headblock--split">
+          <h2 id="speed-title">Fast, with receipts</h2>
+          <p class="lead">Measured on 20 September 2026 on a Ryzen 5 5600H laptop. <a href="https://github.com/soyeb-jim285/hyprfm/blob/main/docs/performance-history.md">Read the method</a></p>
+        </div>
+        <ol class="rows">
+          <li><span class="rows__fig num">163<span class="u">ms</span></span><span class="rows__what"><strong>Launch to first frame</strong> Opening your home folder.</span></li>
+          <li><span class="rows__fig num">40<span class="u">ms</span></span><span class="rows__what"><strong>Into a folder of 10,000 files</strong> Listed, sorted and drawn.</span></li>
+          <li><span class="rows__fig num">114<span class="u">MB</span></span><span class="rows__what"><strong>Memory with the window up</strong> Proportional set size, GPU driver included.</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="install" id="install" aria-labelledby="install-title">
+      <div class="container install__grid">
+        <div class="install__text">
+          <h2 id="install-title">Install it tonight</h2>
+          <p class="lead">Qt 6 on Wayland. Pick the package your system already trusts.</p>
+          <div class="switch" data-switch>
+            <div class="seg seg--wrap" role="tablist" aria-label="Package">
+              <button type="button" role="tab" id="pk-aur" aria-controls="pk-aur-panel" aria-selected="true">Arch</button>
+              <button type="button" role="tab" id="pk-flat" aria-controls="pk-flat-panel" aria-selected="false" tabindex="-1">Flatpak</button>
+              <button type="button" role="tab" id="pk-app" aria-controls="pk-app-panel" aria-selected="false" tabindex="-1">AppImage</button>
+              <button type="button" role="tab" id="pk-nix" aria-controls="pk-nix-panel" aria-selected="false" tabindex="-1">Nix</button>
+              <button type="button" role="tab" id="pk-src" aria-controls="pk-src-panel" aria-selected="false" tabindex="-1">Source</button>
+            </div>
+            <div class="switch__panels">
+              <div role="tabpanel" id="pk-aur-panel" aria-labelledby="pk-aur" class="cmd"><pre><code>yay -S hyprfm-git</code></pre><button class="copy" type="button" data-copy>Copy</button></div>
+              <div role="tabpanel" id="pk-flat-panel" aria-labelledby="pk-flat" class="cmd"><pre><code>flatpak remote-add --user --if-not-exists \
+  flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak remote-add --user --if-not-exists \
+  hyprfm https://flatpak.hyprfm.soyebjim.me/hyprfm.flatpakrepo
+flatpak install --user hyprfm io.github.soyeb_jim285.HyprFM</code></pre><button class="copy" type="button" data-copy>Copy</button></div>
+              <div role="tabpanel" id="pk-app-panel" aria-labelledby="pk-app" class="cmd"><pre><code>chmod +x HyprFM-*-x86_64.AppImage
+./HyprFM-*-x86_64.AppImage</code></pre><button class="copy" type="button" data-copy>Copy</button><p class="cmd__note">Download the AppImage from the <a href="https://github.com/soyeb-jim285/hyprfm/releases/latest">latest release</a>. It bundles Qt.</p></div>
+              <div role="tabpanel" id="pk-nix-panel" aria-labelledby="pk-nix" class="cmd"><pre><code>nix run github:soyeb-jim285/hyprfm</code></pre><button class="copy" type="button" data-copy>Copy</button></div>
+              <div role="tabpanel" id="pk-src-panel" aria-labelledby="pk-src" class="cmd"><pre><code>git clone --recursive https://github.com/soyeb-jim285/hyprfm.git
+cd hyprfm
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel</code></pre><button class="copy" type="button" data-copy>Copy</button></div>
+            </div>
+            <p class="copy__status" aria-live="polite" data-copy-status></p>
+          </div>
+        </div>
+        <figure class="install__shot" data-kind="product">
+          <img src="media/web/settings.webp" width="1800" height="1138" loading="lazy" alt="HyprFM settings, Look and Feel page: dark mode, theme, font, icon pack and the transparency and corner radius sliders">
+          <figcaption class="caption">After install, <kbd>Ctrl</kbd><kbd>,</kbd> opens settings. Every change is written back to <code>config.toml</code>.</figcaption>
+        </figure>
+      </div>
+    </section>
+  </main>
+
+  <footer class="colophon">
+    <div class="container colophon__grid">
+      <a class="wordmark wordmark--lg" href="#top" aria-label="HyprFM, back to top"><img src="media/web/logo.svg" width="48" height="48" alt=""><span>HyprFM</span></a>
+      <div class="colophon__text">
+        <p>HyprFM is free software under the MIT license, written in Qt 6 and QML by Soyeb Pervez Jim. Bugs and ideas go to <a href="https://github.com/soyeb-jim285/hyprfm/issues">the issue tracker</a>; releases live on <a href="https://github.com/soyeb-jim285/hyprfm/releases">GitHub</a> and the <a href="https://aur.archlinux.org/packages/hyprfm-git">AUR</a>.</p>
+        <p class="credits" data-credits>Photographs in the film: <a href="https://commons.wikimedia.org/wiki/File:Vallee-brouillard.jpg">Thomas Bresson</a> (CC BY 3.0). In the screenshots: <a href="https://commons.wikimedia.org/wiki/File:Conwy_Estuary_at_dusk_-_geograph.org.uk_-_4556293.jpg">Matt Harrop</a> (CC BY-SA 2.0), <a href="https://commons.wikimedia.org/wiki/File:Mountain_lake,_Mylgval_mountain_cirque_before_sunset,_Caucasus_Mountains.jpg">Vyacheslav Argenberg</a> (CC BY 4.0), <a href="https://commons.wikimedia.org/wiki/File:Namib-Naukluft_Sand_Dunes_(2011).jpg">Yathin S Krishnappa</a> (CC BY-SA 3.0), <a href="https://commons.wikimedia.org/wiki/File:Herbert_Lake_beim_Icefields_Parkway.jpg">Florian Fuchs</a> (CC BY 3.0), <a href="https://commons.wikimedia.org/wiki/File:Esztergom_by_night_01_-_Simor_J%C3%A1nos_utca.jpg">Pudelek</a> (CC BY-SA 4.0), <a href="https://commons.wikimedia.org/wiki/File:Gorse_at_Howth_Head_cliffs.jpg">Jonathan</a> (CC BY-SA 4.0), <a href="https://commons.wikimedia.org/wiki/File:036_Milky_Way_during_Perseids_seen_from_Oeschinensee_with_water_reflections_Photo_by_Giles_Laurent.jpg">Giles Laurent</a> (CC BY-SA 4.0), <a href="https://commons.wikimedia.org/wiki/File:Slezsk%C3%A9_Beskydy_-_Ryt%C3%AD%C5%99sk%C3%A1_stezka_(cesta_N%C3%BDdek_-_Velk%C3%A1_%C4%8Cantoryje).JPG">Marcin Szala</a> (CC BY-SA 4.0), all via Wikimedia Commons.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.documentElement.classList.add('js');
+    const still = matchMedia('(prefers-reduced-motion: reduce)');
+
+    // The film: plays muted, pauses on request, stays still under reduced motion.
+    const film = document.getElementById('film');
+    const toggle = document.querySelector('[data-film-toggle]');
+    const label = document.querySelector('[data-film-label]');
+    let filmWanted = !still.matches;
+    const setFilm = (play) => {
+      filmWanted = play;
+      if (play) film.play().catch(() => {}); else film.pause();
+      toggle.setAttribute('aria-pressed', String(!play));
+      label.textContent = play ? 'Pause film' : 'Play film';
+    };
+    toggle.addEventListener('click', () => setFilm(film.paused));
+    setFilm(filmWanted);
+
+    // Loops play only while on screen, and never under reduced motion.
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const v = e.target;
+        if (v === film) { if (!e.isIntersecting) film.pause(); else if (filmWanted) film.play().catch(() => {}); continue; }
+        if (e.isIntersecting && !still.matches) v.play().catch(() => {}); else v.pause();
+      }
+    }, { threshold: 0.35 });
+    document.querySelectorAll('video[data-loop]').forEach((v) => io.observe(v));
+    io.observe(film);
+
+    // Tabs: arrow keys move between them; without script every panel shows.
+    document.querySelectorAll('[data-switch]').forEach((sw) => {
+      const tabs = [...sw.querySelectorAll('[role=tab]')];
+      const show = (t, focus) => {
+        tabs.forEach((x) => {
+          const on = x === t;
+          x.setAttribute('aria-selected', String(on));
+          x.tabIndex = on ? 0 : -1;
+          document.getElementById(x.getAttribute('aria-controls')).hidden = !on;
+        });
+        if (focus) t.focus();
+      };
+      tabs.forEach((t, i) => {
+        t.addEventListener('click', () => show(t));
+        t.addEventListener('keydown', (e) => {
+          const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+          if (d) { e.preventDefault(); show(tabs[(i + d + tabs.length) % tabs.length], true); }
+        });
+      });
+      show(tabs.find((t) => t.getAttribute('aria-selected') === 'true'));
+    });
+
+    // Copy a command.
+    const status = document.querySelector('[data-copy-status]');
+    document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
+      const text = b.parentElement.querySelector('code').textContent;
+      try { await navigator.clipboard.writeText(text); status.textContent = 'Command copied.'; b.textContent = 'Copied'; }
+      catch { status.textContent = 'Copy is blocked here. Select the command and copy it by hand.'; }
+      setTimeout(() => { b.textContent = 'Copy'; }, 1600);
+    }));
+
+    // The banner retracts once you scroll; the bar turns to slate glass past the photograph.
+    const mast = document.querySelector('[data-masthead]');
+    let ticking = false;
+    addEventListener('scroll', () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        mast.classList.toggle('is-scrolled', scrollY > 24);
+        mast.classList.toggle('is-past', scrollY > innerHeight * 0.6);
+        ticking = false;
+      });
+    }, { passive: true });
+  </script>
+  <script type="module" src="hero-bg.js"></script>
+  <script type="module" src="keys.js"></script>
+  <script type="module" src="themes.js"></script>
+</body>
+</html>

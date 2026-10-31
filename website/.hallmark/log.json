@@ -1,0 +1,33 @@
+[
+ {
+  "shape": "Bento Grid",
+  "theme": "dusk",
+  "axes": "dark/grotesk-sans/cool",
+  "hero": "Corridor",
+  "nav": "banner over a retracting bar",
+  "footer": "colophon block",
+  "imagery": "screenshots 12 + clips 7 (nested Hyprland), film 1 (HyperFrames), library photo 1",
+  "photos": [
+   "Vallee-brouillard.jpg"
+  ],
+  "entry": "none",
+  "fingerprint": "dusk/bento/corridor/banner-bar/colophon/film-first",
+  "sections": [
+   "Hero (Corridor over fog)",
+   "Showcase (film)",
+   "Bento (six loops)",
+   "Index (keys)",
+   "Switcher (themes)",
+   "Rows (measured speed)",
+   "Switcher (install) beside a screen",
+   "Footer"
+  ],
+  "signature": "the real HyprFM window in Hyprland blur over the same fog valley as the hero",
+  "waived": [
+   "59"
+  ],
+  "prompt": "HyprFM website, fresh captures, HyperFrames film",
+  "date": "2026-10-31",
+  "mode": "build"
+ }
+]

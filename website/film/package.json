@@ -1,0 +1,11 @@
+{
+  "name": "film",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.8.223 preview",
+    "check": "npx --yes hyperframes@0.8.223 check",
+    "render": "npx --yes hyperframes@0.8.223 render",
+    "publish": "npx --yes hyperframes@0.8.223 publish"
+  }
+}

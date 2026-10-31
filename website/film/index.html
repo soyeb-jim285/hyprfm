@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --ground: #2a2e3a;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); }
+      #root { position: relative; width: 100%; height: 100%; }
+      #ground { position: absolute; inset: 0; overflow: hidden; }
+      #ground-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0%; transform-origin: 50% 30%; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="35" data-width="1920" data-height="1080">
+      <div id="ground" class="clip" data-start="0" data-duration="35" data-track-index="0" data-layout-allow-overflow>
+        <img id="ground-img" src="assets/fog.jpg" alt="" />
+      </div>
+      <div id="take" data-composition-id="take" data-composition-src="compositions/take.html"
+        data-start="0" data-duration="31.3" data-track-index="1" data-track-kind="graphics"
+        data-width="1920" data-height="1080"></div>
+      <div id="endcard" data-composition-id="endcard" data-composition-src="compositions/endcard.html"
+        data-start="30.9" data-duration="4.1" data-track-index="2" data-track-kind="graphics"
+        data-width="1920" data-height="1080"></div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      // The hour drifts: the photograph settles 6% over the whole film.
+      tl.fromTo("#ground-img", { scale: 1.06 }, { scale: 1, duration: 35, ease: "none" }, 0);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

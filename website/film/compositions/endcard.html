@@ -1,0 +1,34 @@
+<template>
+  <style>
+    @font-face { font-family: "Wix Madefor Display"; font-weight: 400 800; src: url("assets/display-latin.woff2") format("woff2"); }
+    #root { position: absolute; inset: 0; --ink: #1c2130; --muted: #4a5163; --flood: #f4efe7; }
+    #end-flood { position: absolute; inset: 0; background: var(--flood); opacity: 0.3; }
+    #end-logo { position: absolute; left: 640px; top: 340px; width: 200px; height: 200px; }
+    #end-word {
+      position: absolute; left: 872px; top: 382px; margin: 0;
+      font: 500 150px/1 "Wix Madefor Display", sans-serif; letter-spacing: -0.03em; color: var(--ink);
+    }
+    #end-cmd {
+      position: absolute; left: 652px; top: 610px; margin: 0;
+      font: 500 40px/1 "JetBrains Mono", monospace; color: var(--ink); white-space: pre;
+    }
+    #end-cmd .p { color: var(--muted); }
+    #end-cmd .ch { opacity: 0; }
+  </style>
+  <div id="root" data-composition-id="endcard" data-width="1920" data-height="1080">
+    <div id="end-flood"></div>
+    <img id="end-logo" class="clip" src="assets/logo.svg" alt="" data-start="0" data-duration="4.1" data-track-index="1" />
+    <h1 id="end-word" class="clip" data-start="0" data-duration="4.1" data-track-index="2">HyprFM</h1>
+    <p id="end-cmd" class="clip" data-start="0" data-duration="4.1" data-track-index="3"><span class="p">$ </span><span class="ch">y</span><span class="ch">a</span><span class="ch">y</span><span class="ch"> </span><span class="ch">-</span><span class="ch">S</span><span class="ch"> </span><span class="ch">h</span><span class="ch">y</span><span class="ch">p</span><span class="ch">r</span><span class="ch">f</span><span class="ch">m</span><span class="ch">-</span><span class="ch">g</span><span class="ch">i</span><span class="ch">t</span></p>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    // the window has just folded onto the folder body; the mark takes over and settles
+    tl.fromTo("#end-logo", { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.6, ease: "expo.out" }, 0.05);
+    // the name wipes in from the mark's edge
+    tl.fromTo("#end-word", { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.6, ease: "power3.out" }, 0.4);
+    tl.fromTo("#end-cmd .p", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 0.95);
+    tl.fromTo("#end-cmd .ch", { opacity: 0 }, { opacity: 1, duration: 0.01, stagger: 0.045 }, 1.05);
+    window.__timelines["endcard"] = tl;
+  </script>
+</template>

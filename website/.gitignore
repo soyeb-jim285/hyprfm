@@ -1,0 +1,19 @@
+# capture rig output (regenerate with .rig/make-home.sh, .rig/shoot-all.sh, .rig/record-all.sh)
+.rig/home/
+.rig/run/
+.rig/photos/
+.rig/session.env
+# masters; the page only needs media/web
+media/raw/
+media/clips/
+media/fog-orig.jpg
+media/fog-1600.jpg
+media/fog-2880.jpg
+media/wall.png
+film/renders/
+film/.hyperframes/
+film/node_modules/
+.hallmark/shots/
+# tool caches
+.impeccable/
+film/AGENTS.md

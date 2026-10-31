@@ -1,0 +1,101 @@
+<template>
+  <style>
+    @font-face { font-family: "Wix Madefor Display"; font-weight: 400 800; src: url("assets/display-latin.woff2") format("woff2"); }
+    #root { position: absolute; inset: 0; --ink: #1c2130; --flood: #f4efe7; }
+    #take-flood { position: absolute; inset: 0; background: var(--flood); opacity: 0; }
+    #take-cam { position: absolute; inset: 0; transform-origin: 50% 50%; }
+    #take-win {
+      position: absolute; left: 340px; top: 230px; width: 1240px; height: 784px;
+      border-radius: 20px; overflow: hidden; background: #1e1e2e;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 40px 80px -24px rgba(8,10,20,0.55);
+    }
+    .shot { position: absolute; inset: 0; }
+    .shot video { position: absolute; left: 0; top: 0; width: 1240px; height: 784px; object-fit: cover; }
+    .title {
+      position: absolute; left: 340px; top: 92px; margin: 0;
+      font: 500 60px/1.05 "Wix Madefor Display", sans-serif; letter-spacing: -0.022em; color: var(--ink);
+      white-space: nowrap;
+    }
+    .title span { display: inline-block; }
+    #take-mark { top: 38px; font-size: 132px; letter-spacing: -0.03em; }
+    #take-mark-sub { left: auto; right: 340px; top: 120px; font-size: 38px; text-align: right; }
+  </style>
+  <div id="root" data-composition-id="take" data-width="1920" data-height="1080">
+    <div id="take-flood"></div>
+
+    <div id="take-cam" data-layout-allow-overflow>
+      <div id="take-win" data-layout-allow-overflow>
+        <div class="shot" id="sh-views"><video id="v-views" class="clip" src="assets/views.mp4" muted playsinline data-start="0" data-duration="6.15" data-media-start="1.6" data-track-index="2"></video></div>
+        <div class="shot" id="sh-preview"><video id="v-preview" class="clip" src="assets/preview.mp4" muted playsinline data-start="6.0" data-duration="4.95" data-media-start="1.7" data-track-index="3"></video></div>
+        <div class="shot" id="sh-docs"><video id="v-docs" class="clip" src="assets/docs.mp4" muted playsinline data-start="10.8" data-duration="4.15" data-media-start="1.2" data-track-index="2"></video></div>
+        <div class="shot" id="sh-split"><video id="v-split" class="clip" src="assets/split.mp4" muted playsinline data-start="14.8" data-duration="2.55" data-media-start="1.3" data-track-index="3"></video></div>
+        <div class="shot" id="sh-rename"><video id="v-rename" class="clip" src="assets/rename.mp4" muted playsinline data-start="17.2" data-duration="3.75" data-media-start="0.9" data-track-index="2"></video></div>
+        <div class="shot" id="sh-term"><video id="v-term" class="clip" src="assets/terminal.mp4" muted playsinline data-start="20.8" data-duration="3.95" data-media-start="1.2" data-track-index="3"></video></div>
+        <div class="shot" id="sh-light"><video id="v-light" class="clip" src="assets/light.mp4" muted playsinline data-start="24.6" data-duration="6.7" data-media-start="1.6" data-track-index="2"></video></div>
+      </div>
+    </div>
+
+    <h2 id="take-t1" class="title clip" data-start="2.2" data-duration="2.0" data-track-index="5"><span>Walk your files by keyboard</span></h2>
+    <h2 id="take-mark" class="title clip" data-start="4.2" data-duration="1.9" data-track-index="5"><span>HyprFM</span></h2>
+    <p id="take-mark-sub" class="title clip" data-start="4.35" data-duration="1.75" data-track-index="6"><span>A file manager for Hyprland</span></p>
+    <h2 id="take-t3" class="title clip" data-start="6.3" data-duration="2.3" data-track-index="5"><span>Look without opening</span></h2>
+    <h2 id="take-t4" class="title clip" data-start="11.1" data-duration="1.85" data-track-index="5"><span>PDF and Markdown, rendered</span></h2>
+    <h2 id="take-t5" class="title clip" data-start="15.0" data-duration="2.05" data-track-index="5"><span>Two folders, side by side</span></h2>
+    <h2 id="take-t6" class="title clip" data-start="17.3" data-duration="1.7" data-track-index="5"><span>Rename the whole selection</span></h2>
+    <h2 id="take-t7" class="title clip" data-start="21.0" data-duration="1.75" data-track-index="5"><span>A shell under every folder</span></h2>
+    <h2 id="take-t8" class="title clip" data-start="25.0" data-duration="2.3" data-track-index="5"><span>Dark or light, your theme</span></h2>
+    <h2 id="take-t9" class="title clip" data-start="27.9" data-duration="2.6" data-track-index="5"><span>Made to live on Hyprland</span></h2>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    const cam = "#take-cam";
+    const base = { scale: 1, x: 0, y: 0 };
+
+    // Titles: the whole line sharpens in, holds dead still, blurs out.
+    const titles = [
+      ["#take-t1", 2.2, 2.0], ["#take-mark", 4.2, 1.9], ["#take-mark-sub", 4.35, 1.75],
+      ["#take-t3", 6.3, 2.3], ["#take-t4", 11.1, 1.85], ["#take-t5", 15.0, 2.05],
+      ["#take-t6", 17.3, 1.7], ["#take-t7", 21.0, 1.75], ["#take-t8", 25.0, 2.3], ["#take-t9", 27.9, 2.6],
+    ];
+    for (const [id, s, d] of titles) {
+      const el = id + " span";
+      tl.fromTo(el, { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "power4.out" }, s);
+      tl.to(el, { opacity: 0, filter: "blur(8px)", duration: 0.2, ease: "power3.in" }, s + d - 0.24);
+    }
+
+    // Shots inside the window: blur swaps, one whip.
+    const swapIn = (id, t) => tl.fromTo(id, { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.15, ease: "power2.out" }, t);
+    const swapOut = (id, t) => tl.to(id, { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power2.in" }, t);
+    tl.set(".shot", { opacity: 0 }, 0);
+    tl.set("#sh-views", { opacity: 1 }, 0);
+    swapOut("#sh-views", 6.0); swapIn("#sh-preview", 6.0);
+    // whip from preview to docs
+    tl.to("#sh-preview", { x: -140, opacity: 0, filter: "blur(14px)", duration: 0.28, ease: "power3.in" }, 10.66);
+    tl.fromTo("#sh-docs", { x: 140, opacity: 0, filter: "blur(14px)" }, { x: 0, opacity: 1, filter: "blur(0px)", duration: 0.3, ease: "expo.out" }, 10.82);
+    swapOut("#sh-docs", 14.8); swapIn("#sh-split", 14.8);
+    swapOut("#sh-split", 17.2); swapIn("#sh-rename", 17.2);
+    swapOut("#sh-rename", 20.8); swapIn("#sh-term", 20.8);
+    // the light theme lands as a flood: the fog lifts across the frame as the window turns to day
+    swapOut("#sh-term", 24.6);
+    tl.fromTo("#sh-light", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.inOut" }, 24.6);
+    tl.fromTo("#take-flood", { opacity: 0 }, { opacity: 0.3, duration: 0.45, ease: "power2.inOut" }, 24.6);
+
+    // Camera: window on its ground, then a punch into the pane that is acting.
+    tl.set(cam, { scale: 1.5, x: -478, y: -34 }, 0);
+    tl.to(cam, { ...base, duration: 0.8, ease: "power2.inOut" }, 1.4);
+    tl.to(cam, { scale: 1.45, x: 373, y: -23, duration: 0.8, ease: "power2.inOut" }, 8.6);
+    tl.to(cam, { ...base, duration: 0.42, ease: "power3.in" }, 10.38);
+    tl.to(cam, { scale: 1.5, x: -494, y: 130, duration: 0.8, ease: "power2.inOut" }, 12.9);
+    tl.to(cam, { ...base, duration: 0.5, ease: "power2.inOut" }, 14.3);
+    tl.set(cam, { scale: 1.4, x: 0, y: -95 }, 19.0); // hard cut onto the rename dialog
+    tl.to(cam, { ...base, duration: 0.5, ease: "power2.inOut" }, 20.3);
+    tl.to(cam, { scale: 1.9, x: 372, y: -463, duration: 0.8, ease: "power2.inOut" }, 22.7);
+    tl.to(cam, { ...base, duration: 0.45, ease: "power2.inOut" }, 24.15);
+    // the window folds into the mark: it shrinks onto the logo's folder body and hands over
+    tl.to(cam, { scale: 0.136, x: -220, y: -94, duration: 0.65, ease: "power3.inOut" }, 30.45);
+    tl.to("#take-win", { opacity: 0, duration: 0.2, ease: "power2.in" }, 30.95);
+    tl.to("#take-flood", { opacity: 0.3, duration: 0.01 }, 31.0);
+
+    window.__timelines["take"] = tl;
+  </script>
+</template>
