@@ -51,8 +51,8 @@ class TestMainWindow : public QObject
     struct App {
         QTemporaryDir home;
         QTemporaryDir moduleDir;
-        QQmlApplicationEngine engine;
-        QObject owner;   // parents everything so teardown order is sane
+        QObject owner;
+        QQmlApplicationEngine engine; // destroy QML before its context services
         TabListModel *tabModel = nullptr;
         SessionState *sessionState = nullptr;
         BookmarkModel *bookmarks = nullptr;
@@ -83,6 +83,9 @@ class TestMainWindow : public QObject
             theme->loadTheme(config->theme(), themeDirs);
             tabModel = new TabListModel(&owner);
             bookmarks = new BookmarkModel(&owner);
+            QObject::connect(bookmarks, &BookmarkModel::bookmarksChanged, config, [this, config] {
+                config->saveBookmarks(bookmarks->paths(), bookmarks->names(), bookmarks->savedSplits());
+            });
             auto *fileOps = new FileOperations(&owner);
             auto *undoManager = new UndoManager(fileOps, &owner);
             auto *clipboard = new ClipboardManager(&owner);
@@ -738,6 +741,39 @@ private slots:
                                                  : focused->objectName())));
     }
 
+    void testHomeQuickAccessClosesSplit_data()
+    {
+        QTest::addColumn<QString>("orientation");
+        QTest::newRow("top-bottom") << QStringLiteral("horizontal");
+        QTest::newRow("side-by-side") << QStringLiteral("vertical");
+    }
+
+    void testHomeQuickAccessClosesSplit()
+    {
+        QFETCH(QString, orientation);
+        App app;
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        QVERIFY(tab);
+        const QString other = app.home.path() + "/other";
+        QVERIFY(QDir().mkpath(other));
+        tab->resetSecondaryTo(other);
+        tab->setSplitOrientation(orientation);
+        tab->setSplitViewEnabled(true);
+        QObject *root = app.window->contentItem()->parent();
+        QVERIFY(root);
+        QVERIFY(QMetaObject::invokeMethod(root, "setActivePane", Q_ARG(QVariant, QStringLiteral("secondary"))));
+
+        QQuickItem *home = app.item("quickAccess_Home");
+        QVERIFY(home);
+        QTest::mouseClick(app.window, Qt::LeftButton, {},
+                         home->mapToScene(QPointF(home->width() / 2, home->height() / 2)).toPoint());
+        QTRY_VERIFY(!tab->splitViewEnabled());
+        QCOMPARE(tab->currentPath(), QDir::homePath());
+        QCOMPARE(root->property("activePane").toString(), QStringLiteral("primary"));
+        QTRY_COMPARE(root->property("splitTransitionProgress").toReal(), 0.0);
+    }
+
     // Both panes get about half the space in either orientation. The
     // horizontal-split change once let the secondary pane fill the width
     // too, which squeezed the primary pane to a sliver in a vertical split.
@@ -906,8 +942,16 @@ private slots:
         QCOMPARE(saved.first().toMap().value("secondaryPath").toString(), second);
     }
 
-    void testSavedSplitContextMenuCanBookmarkBothFolders()
+    void testSavedSplitIsOneBookmark_data()
     {
+        QTest::addColumn<QString>("orientation");
+        QTest::newRow("top-bottom") << QString("horizontal");
+        QTest::newRow("left-right") << QString("vertical");
+    }
+
+    void testSavedSplitIsOneBookmark()
+    {
+        QFETCH(QString, orientation);
         App app;
         QVERIFY(app.load());
         const QString first = app.home.path() + "/first";
@@ -915,33 +959,182 @@ private slots:
         QVERIFY(QDir().mkpath(first));
         QVERIFY(QDir().mkpath(second));
 
+        QVERIFY(QMetaObject::invokeMethod(app.window, "saveSplitPaths",
+                                          Q_ARG(QVariant, first), Q_ARG(QVariant, second),
+                                          Q_ARG(QVariant, orientation), Q_ARG(QVariant, -1)));
+        QCOMPARE(app.bookmarks->rowCount(), 1);
+        QVERIFY(!app.bookmarks->containsPath(first));
+        QVERIFY(!app.bookmarks->containsPath(second));
+
+        // Reopen through the real sidebar row, with a search active beforehand.
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSearch"));
+        QQuickItem *entry = app.item("bookmark_0");
+        QTRY_VERIFY(entry = app.item("bookmark_0"));
+        QTest::qWait(300); // bookmark insertion animation
+        QTest::mouseClick(app.window, Qt::LeftButton, {},
+                         entry->mapToScene(QPointF(entry->width() / 2, entry->height() / 2)).toPoint());
+        TabModel *tab = app.tabModel->activeTab();
+        QTRY_VERIFY(tab->splitViewEnabled());
+        QCOMPARE(tab->currentPath(), first);
+        QCOMPARE(tab->secondaryCurrentPath(), second);
+        QCOMPARE(tab->splitOrientation(), orientation);
+        QVERIFY(!app.window->property("searchMode").toBool());
+        QCOMPARE(app.window->property("activePane").toString(), QString("primary"));
+
+        if (qEnvironmentVariableIsSet("HYPRFM_SPLIT_GRAB")) {
+            QTest::qWait(400);
+            app.window->grabWindow().save(qEnvironmentVariable("HYPRFM_SPLIT_GRAB") + "-" + orientation + ".png");
+        }
+
+        // The shared bookmark menu renames/removes the pair as one entry.
         QVERIFY(app.item("sidebarContextMenuLoader")->setProperty("active", true));
         QObject *menu = app.item("sidebarContextMenuLoader")->property("item").value<QObject *>();
         QVERIFY(menu);
-        QObject *root = app.window->contentItem()->parent();
-        QVERIFY(root);
-        QVariantMap item{
-            {"kind", "savedSplit"},
-            {"index", 0},
-            {"primaryPath", first},
-            {"secondaryPath", second}
-        };
-        QVariant itemsResult;
-        QVERIFY(QMetaObject::invokeMethod(root, "sidebarMenuItems",
-                                          Q_RETURN_ARG(QVariant, itemsResult),
-                                          Q_ARG(QVariant, item)));
-        const QVariantList items = itemsResult.toList();
-        QVERIFY(std::any_of(items.cbegin(), items.cend(), [](const QVariant &entry) {
-            return entry.toMap().value("action").toString() == "bookmark_saved_split";
-        }));
-
+        const QVariantMap item{{"kind", "savedSplit"}, {"index", 0}};
         QVERIFY(menu->setProperty("sidebarItem", item));
         QVERIFY(QMetaObject::invokeMethod(menu, "executeAction",
-                                          Q_ARG(QVariant, QStringLiteral("bookmark_saved_split")),
-                                          Q_ARG(QVariant, QVariant()),
-                                          Q_ARG(QVariant, QVariant())));
-        QVERIFY(app.bookmarks->containsPath(first));
-        QVERIFY(app.bookmarks->containsPath(second));
+                                          Q_ARG(QVariant, QStringLiteral("removebookmark")),
+                                          Q_ARG(QVariant, QVariant()), Q_ARG(QVariant, QVariant())));
+        QCOMPARE(app.bookmarks->rowCount(), 0);
+        QVERIFY(app.bookmarks->savedSplits().isEmpty());
+    }
+
+    void testClickingPathBarEditsAndEscapeCancels()
+    {
+        App app;
+        QVERIFY(app.load());
+        QQuickItem *bar = app.item("breadcrumb");
+        QVERIFY(bar);
+        const QString original = app.tabModel->activeTab()->currentPath();
+        QTest::mouseClick(app.window, Qt::LeftButton, {},
+                         bar->mapToScene(QPointF(bar->width() - 8, bar->height() / 2)).toPoint());
+        QVERIFY(bar->property("editMode").toBool());
+        QQuickItem *input = app.item("pathInput");
+        QVERIFY(input);
+        QVERIFY(input->hasActiveFocus());
+        QCOMPARE(input->property("selectedText").toString(), original);
+        for (const QChar c : QStringLiteral("/tmp"))
+            QTest::keyClick(app.window, c.toLatin1());
+        QTest::keyClick(app.window, Qt::Key_Escape);
+        QVERIFY(!bar->property("editMode").toBool());
+        QCOMPARE(app.tabModel->activeTab()->currentPath(), original);
+        // Focus goes back to the files, so the keyboard works straight away.
+        auto *grid = app.item("primaryFileView")->property("gridViewItem").value<QQuickItem *>();
+        QTRY_VERIFY(grid->hasActiveFocus());
+    }
+
+    void testPathBarNavigatesTypedDirectory_data()
+    {
+        QTest::addColumn<QString>("inputKind");
+        for (const char *kind : {"absolute", "relative", "colon", "tilde", "completion", "secondary"})
+            QTest::newRow(kind) << QString::fromLatin1(kind);
+    }
+
+    void testPathBarNavigatesTypedDirectory()
+    {
+        QFETCH(QString, inputKind);
+        App app;
+        QVERIFY(app.load());
+        // "v1:old" looks like a URI scheme but is a folder in the current one.
+        const QString target = app.home.path() + (inputKind == "colon" ? "/v1:old" : "/Folder with spaces");
+        QVERIFY(QDir().mkpath(target + "/child"));
+        auto *tab = app.tabModel->activeTab();
+        tab->navigateTo(app.home.path());
+        if (inputKind == "secondary") {
+            tab->resetSecondaryTo(app.home.path());
+            tab->setSplitViewEnabled(true);
+            QVERIFY(QMetaObject::invokeMethod(app.window, "setActivePane",
+                                              Q_ARG(QVariant, QStringLiteral("secondary"))));
+        }
+        QTest::keyClick(app.window, Qt::Key_L, Qt::ControlModifier);
+        QQuickItem *bar = app.item("breadcrumb");
+        QVERIFY(bar);
+        QTRY_VERIFY(bar->property("editMode").toBool());
+        QQuickItem *input = app.item("pathInput");
+        QVERIFY(input);
+        const QString typed = inputKind == "relative" ? "Folder with spaces/"
+            : inputKind == "colon" ? "v1:old"
+            : inputKind == "tilde" ? "~/"
+            : inputKind == "completion" ? target.left(target.size() - 3)
+            : target + "/";
+        input->setProperty("text", typed);
+        if (inputKind == "completion")
+            QTest::keyClick(app.window, Qt::Key_Tab);
+        QTest::keyClick(app.window, Qt::Key_Return);
+        const QString expected = inputKind == "tilde" ? QDir::homePath() : target;
+        QTRY_COMPARE(QDir::cleanPath(inputKind == "secondary" ? tab->secondaryCurrentPath() : tab->currentPath()), expected);
+        QVERIFY(!bar->property("editMode").toBool());
+        if (inputKind == "secondary") {
+            QCOMPARE(tab->currentPath(), app.home.path());
+            QVERIFY(tab->splitViewEnabled());
+        }
+    }
+
+    // Only Home itself closes a split. Reaching ~ any other way (breadcrumb,
+    // typed path, a terminal link) navigates the active pane and keeps it.
+    void testOnlyHomeClosesTheSplit()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        const QString sub = app.home.path() + "/sub";
+        QVERIFY(QDir().mkpath(sub));
+        tab->navigateTo(app.home.path());
+        tab->resetSecondaryTo(sub);
+        tab->setSplitViewEnabled(true);
+        QVERIFY(QMetaObject::invokeMethod(app.window, "setActivePane",
+                                          Q_ARG(QVariant, QStringLiteral("secondary"))));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "navigateActivePaneTo",
+                                          Q_ARG(QVariant, QDir::homePath())));
+        QTRY_COMPARE(tab->secondaryCurrentPath(), QDir::homePath());
+        QVERIFY(tab->splitViewEnabled());
+        QCOMPARE(tab->currentPath(), app.home.path());
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "goHome"));
+        QTRY_VERIFY(!tab->splitViewEnabled());
+        QTRY_COMPARE(tab->currentPath(), QDir::homePath());
+    }
+
+    // Tab rebuilds the suggestion list for the completed text; the index of
+    // the row picked before must not survive into the new list.
+    void testPathBarTabThenReturnOpensCompletedPath()
+    {
+        App app;
+        QVERIFY(app.load());
+        for (const char *name : {"Dall", "Dbox", "Dcar"})
+            QVERIFY(QDir().mkpath(app.home.path() + "/" + name));
+        QTest::keyClick(app.window, Qt::Key_L, Qt::ControlModifier);
+        QQuickItem *bar = app.item("breadcrumb");
+        QTRY_VERIFY(bar->property("editMode").toBool());
+        app.item("pathInput")->setProperty("text", app.home.path() + "/D");
+        QCOMPARE(bar->property("suggestionItems").toList().size(), 3);
+        QTest::keyClick(app.window, Qt::Key_Down);
+        QTest::keyClick(app.window, Qt::Key_Down);
+        QTest::keyClick(app.window, Qt::Key_Down);
+        const QString picked = bar->property("suggestionItems").toList().at(2).toMap().value("path").toString();
+        QTest::keyClick(app.window, Qt::Key_Tab);
+        QTest::keyClick(app.window, Qt::Key_Return);
+        QTRY_COMPARE(QDir::cleanPath(app.tabModel->activeTab()->currentPath()), QDir::cleanPath(picked));
+    }
+
+    // Completing "~/..." offers and inserts "~" paths, not the expanded home.
+    void testPathBarCompletionKeepsTilde()
+    {
+        App app;
+        QVERIFY(app.load());
+        QTest::keyClick(app.window, Qt::Key_L, Qt::ControlModifier);
+        QQuickItem *bar = app.item("breadcrumb");
+        QTRY_VERIFY(bar->property("editMode").toBool());
+        app.item("pathInput")->setProperty("text", "~/");
+        const QVariantList items = bar->property("suggestionItems").toList();
+        if (items.isEmpty())
+            QSKIP("home has no folders to suggest");
+        for (const QVariant &item : items) {
+            const QString shown = item.toMap().value("displayPath").toString();
+            QVERIFY2(shown.startsWith("~"), qPrintable(shown));
+        }
+        // Nothing is picked until the user chooses, so Return opens what was typed.
+        QCOMPARE(bar->property("suggestionIndex").toInt(), -1);
     }
 
     // Quick preview is created the first time Space is pressed rather than at
@@ -1331,6 +1524,123 @@ private slots:
         QTest::keyClick(app.window, Qt::Key_1, Qt::ControlModifier);
         QTRY_COMPARE(app.tabModel->activeTab()->viewMode(), QString("grid"));
         QTRY_VERIFY(grid->property("current").toBool());
+    }
+
+    void testToolbarSplitButtonsSelectTheirOrientation()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        QVERIFY(tab);
+        auto *vertical = app.item("verticalSplitButton");
+        auto *horizontal = app.item("horizontalSplitButton");
+        QVERIFY(vertical && horizontal);
+        auto *grid = app.item("viewModeButton_grid");
+        QVERIFY(grid);
+        QCOMPARE(vertical->parentItem(), horizontal->parentItem());
+        QVERIFY(vertical->parentItem() != grid->parentItem());
+
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(vertical));
+        QTRY_VERIFY(tab->splitViewEnabled());
+        QCOMPARE(tab->splitOrientation(), QStringLiteral("vertical"));
+        QVERIFY(vertical->property("current").toBool());
+
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(horizontal));
+        QTRY_COMPARE(tab->splitOrientation(), QStringLiteral("horizontal"));
+        QVERIFY(tab->splitViewEnabled());
+        QVERIFY(horizontal->property("current").toBool());
+
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(horizontal));
+        QTRY_VERIFY(!tab->splitViewEnabled());
+    }
+
+    static void showOtherFolderInSecondary(App &app)
+    {
+        const QString other = app.home.path() + "/other";
+        QVERIFY(QDir().mkpath(other));
+        app.tabModel->activeTab()->navigateSecondaryTo(other);
+        QTRY_COMPARE(app.tabModel->activeTab()->secondaryCurrentPath(), other);
+    }
+
+    void testActiveSplitAppearsInSidebarUntilSaved()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        QVERIFY(tab);
+        auto *sidebar = app.item("sidebarPanel");
+        auto *activeSplit = app.item("activeSplitRow");
+        auto *save = app.item("saveActiveSplitButton");
+        auto *emptyHint = app.item("emptyBookmarksHint");
+        QVERIFY(sidebar && activeSplit && save && emptyHint);
+        QVERIFY(!sidebar->property("activeSplitVisible").toBool());
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "toggleSplitView"));
+        // A new split shows the same folder twice: nothing worth saving yet.
+        QTRY_VERIFY(tab->splitViewEnabled());
+        QVERIFY(!sidebar->property("activeSplitVisible").toBool());
+        showOtherFolderInSecondary(app);
+        QTRY_VERIFY(sidebar->property("activeSplitVisible").toBool());
+        QVERIFY(emptyHint->isVisible());
+        app.window->grabWindow();
+        QTRY_VERIFY(app.center(save).x() > 0);
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(save));
+        QTRY_COMPARE(app.bookmarks->rowCount(), 1);
+        QVERIFY(tab->splitViewEnabled());
+        QTRY_VERIFY(!sidebar->property("activeSplitVisible").toBool());
+        const auto split = app.bookmarks->splitAt(0);
+        QCOMPARE(split.value("primaryPath").toString(), tab->currentPath());
+        QCOMPARE(split.value("secondaryPath").toString(), tab->secondaryCurrentPath());
+    }
+
+    void testDragActiveSplitIntoEmptyBookmarks()
+    {
+        App app;
+        QVERIFY(app.load());
+        QVERIFY(QMetaObject::invokeMethod(app.window, "toggleSplitView"));
+        showOtherFolderInSecondary(app);
+        auto *activeSplit = app.item("activeSplitRow");
+        auto *emptyHint = app.item("emptyBookmarksHint");
+        QVERIFY(activeSplit && emptyHint);
+        QTRY_VERIFY(emptyHint->isVisible());
+        app.window->grabWindow();
+        QTRY_VERIFY(app.center(activeSplit).x() > 0);
+
+        const QPoint start = app.center(activeSplit);
+        const QPoint finish = app.center(emptyHint);
+        QTest::mousePress(app.window, Qt::LeftButton, {}, start);
+        QTest::mouseMove(app.window, start + QPoint(0, 12));
+        QTest::mouseMove(app.window, finish);
+        QTest::mouseRelease(app.window, Qt::LeftButton, {}, finish);
+        QTRY_COMPARE(app.bookmarks->rowCount(), 1);
+    }
+
+    void testDragActiveSplitAmongExistingBookmarks()
+    {
+        App app;
+        QVERIFY(app.load());
+        const QString folder = app.home.path() + "/favorite";
+        QVERIFY(QDir().mkpath(folder));
+        app.bookmarks->addBookmark(folder);
+        QCOMPARE(app.bookmarks->rowCount(), 1);
+        QVERIFY(QMetaObject::invokeMethod(app.window, "toggleSplitView"));
+        showOtherFolderInSecondary(app);
+        auto *activeSplit = app.item("activeSplitRow");
+        QQuickItem *firstBookmark = nullptr;
+        QTRY_VERIFY(firstBookmark = app.item("bookmark_0"));
+        QVERIFY(activeSplit);
+        app.window->grabWindow();
+
+        const QPoint start = app.center(activeSplit);
+        const QPoint finish = firstBookmark->mapToScene(
+            QPointF(firstBookmark->width() / 2, 4)).toPoint();
+        QTest::mousePress(app.window, Qt::LeftButton, {}, start);
+        QTest::mouseMove(app.window, start + QPoint(0, 12));
+        QTest::mouseMove(app.window, finish);
+        QTest::mouseRelease(app.window, Qt::LeftButton, {}, finish);
+        QTRY_COMPARE(app.bookmarks->rowCount(), 2);
+        QCOMPARE(app.bookmarks->splitAt(0).value("primaryPath").toString(),
+                 app.tabModel->activeTab()->currentPath());
     }
 
     // The status bar reports free space as a Dolphin-style meter: the bar

@@ -945,11 +945,11 @@ int main(int argc, char *argv[])
 
     // ── Shared services: one per process, whatever the number of windows ──
     BookmarkModel *bookmarks = new BookmarkModel(&app);
-    bookmarks->setBookmarks(config->bookmarks(), config->bookmarkNames());
+    bookmarks->setBookmarks(config->bookmarks(), config->bookmarkNames(), config->savedSplits());
 
     // Persist bookmark changes to config
     QObject::connect(bookmarks, &BookmarkModel::bookmarksChanged, [=]() {
-        config->saveBookmarks(bookmarks->paths(), bookmarks->names());
+        config->saveBookmarks(bookmarks->paths(), bookmarks->names(), bookmarks->savedSplits());
     });
 
     FileOperations *fileOps = new FileOperations(&app);
@@ -969,7 +969,7 @@ int main(int argc, char *argv[])
     // Keep the live UI in sync with persisted config values.
     QObject::connect(config, &ConfigManager::configChanged, [=, &app, &resolveUiFont]() {
         theme->loadTheme(config->theme(), themeDirs);
-        bookmarks->setBookmarks(config->bookmarks(), config->bookmarkNames());
+        bookmarks->setBookmarks(config->bookmarks(), config->bookmarkNames(), config->savedSplits());
         app.setFont(resolveUiFont(config->fontFamily()));
     });
 

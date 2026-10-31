@@ -85,6 +85,27 @@ private slots:
         QCOMPARE(service.isSearching(), false);
     }
 
+    void testCancelDiscardsBufferedResults()
+    {
+        TestDir dir;
+        dir.createFile("matching.txt");
+        SearchResultsModel model;
+        SearchService service;
+        if (!service.hasFd())
+            QSKIP("fd is not installed");
+        service.setResultsModel(&model);
+        QSignalSpy finished(&service, &SearchService::searchFinished);
+        service.startSearch(dir.path(), "matching", false);
+        QProcess *process = service.findChild<QProcess *>();
+        QVERIFY(process);
+        QVERIFY(process->waitForStarted());
+        QTest::qSleep(100); // let fd fill its pipe without delivering Qt events
+        service.cancelSearch();
+        QCOMPARE(model.rowCount(), 0);
+        QCOMPARE(finished.count(), 0);
+        QVERIFY(!service.isSearching());
+    }
+
     void testResultCap()
     {
         SearchService service;

@@ -806,7 +806,7 @@ Item {
                     items.push({ text: "Split View Here", shortcut: keys("split_view"), action: "split_here", icon: "SquareSplitHorizontal" })
                 else {
                     items.push({ text: "Close Split View", shortcut: keys("split_view"), action: "close_split", icon: "SquareSplitHorizontal" })
-                    items.push({ text: "Save Split to Sidebar", shortcut: "", action: "save_current_split", icon: "Bookmark" })
+                    items.push({ text: "Save Split to Bookmarks", shortcut: "", action: "save_current_split", icon: "Bookmark" })
                 }
                 items.push({ separator: true })
                 if (!remoteContext) {

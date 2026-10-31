@@ -251,6 +251,19 @@ private slots:
         QCOMPARE(model.activeTab()->currentPath(), QString("/tmp"));
     }
 
+    void testOpeningHomeDoesNotReuseSplitTab()
+    {
+        TabListModel model;
+        TabModel *split = model.activeTab();
+        split->navigateTo(QDir::homePath());
+        split->resetSecondaryTo("/tmp");
+        split->setSplitViewEnabled(true);
+        model.openPath(QDir::homePath());
+        QVERIFY(!model.activeTab()->splitViewEnabled());
+        QCOMPARE(model.activeTab()->currentPath(), QDir::homePath());
+        QVERIFY(split->splitViewEnabled());
+    }
+
     void testMoveTabReordersAndKeepsActive()
     {
         TabListModel model;

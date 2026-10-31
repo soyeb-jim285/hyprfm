@@ -133,7 +133,8 @@ void TabListModel::openPath(const QString &path)
 {
     const QString wanted = QDir::cleanPath(path);
     for (int i = 0; i < m_tabs.size(); ++i) {
-        if (QDir::cleanPath(m_tabs.at(i)->currentPath()) == wanted) {
+        if (!m_tabs.at(i)->splitViewEnabled()
+            && QDir::cleanPath(m_tabs.at(i)->currentPath()) == wanted) {
             setActiveIndex(i);
             return;
         }

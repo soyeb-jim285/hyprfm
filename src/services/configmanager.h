@@ -175,8 +175,9 @@ public:
     Q_INVOKABLE void setFolderSort(const QString &path, const QString &sortBy,
                                    bool ascending);
     Q_INVOKABLE void saveShortcuts(const QVariantMap &shortcuts);
-    Q_INVOKABLE void saveBookmarks(const QStringList &paths, const QVariantMap &names = {});
-    Q_INVOKABLE void saveSavedSplits(const QVariantList &splits);
+    // Folder bookmarks and split bookmarks, in one config.toml write.
+    void saveBookmarks(const QStringList &paths, const QVariantMap &names,
+                       const QVariantList &splits);
     Q_INVOKABLE void saveListColumns(const QStringList &columns, const QVariantMap &widths);
     Q_INVOKABLE void saveMillerFractions(double parent, double current);
     Q_INVOKABLE void saveSidebarWidth(int width);

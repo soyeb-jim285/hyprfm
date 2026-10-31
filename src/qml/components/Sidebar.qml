@@ -12,9 +12,14 @@ Rectangle {
     property string currentPath: ""
     property string trashPath: fsModel.homePath() + "/.local/share/Trash/files"
     property bool isRecentsView: false
+    property bool activeSplitVisible: false
+    property string activeSplitPrimaryPath: ""
+    property string activeSplitSecondaryPath: ""
+    property bool activeSplitHorizontal: false
     property Item tooltipLayer: null
     signal bookmarkClicked(string path)
     signal savedSplitClicked(var split)
+    signal saveActiveSplitRequested(int index)
 
     // Index of the bookmark being renamed inline, -1 when none.
     property int renamingBookmarkIndex: -1
@@ -124,6 +129,7 @@ Rectangle {
 
                 delegate: Rectangle {
                     id: quickAccessDelegate
+                    objectName: "quickAccess_" + model.name
 
                     // Entries the user hid via the sidebar context menu or
                     // Settings → Layout collapse away entirely.
@@ -230,11 +236,115 @@ Rectangle {
             color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
         }
 
+        Item {
+            Layout.fillWidth: true
+            Layout.preferredHeight: root.activeSplitVisible ? 48 : 0
+            visible: root.activeSplitVisible
+
+            Rectangle {
+                id: activeSplitRow
+                objectName: "activeSplitRow"
+                width: parent.width - Theme.spacing
+                height: 44
+                x: (parent.width - width) / 2
+                y: 2
+                radius: Theme.radiusSmall
+                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.13)
+                Drag.active: splitDragArea.drag.active
+                Drag.source: activeSplitRow
+                Drag.keys: ["hyprfm-active-split"]
+                Drag.hotSpot.x: splitDragArea.mouseX
+                Drag.hotSpot.y: splitDragArea.mouseY
+                Accessible.role: Accessible.ListItem
+                Accessible.name: "Active split, drag to bookmarks or save"
+
+                MouseArea {
+                    id: splitDragArea
+                    anchors.fill: parent
+                    cursorShape: Qt.OpenHandCursor
+                    drag.target: activeSplitRow
+                    drag.threshold: 6
+                    onReleased: {
+                        if (drag.active)
+                            activeSplitRow.Drag.drop()
+                        Qt.callLater(activeSplitRow.restorePosition)
+                    }
+                    onCanceled: Qt.callLater(activeSplitRow.restorePosition)
+                }
+
+                function restorePosition() {
+                    x = Qt.binding(() => (parent.width - width) / 2)
+                    y = 2
+                }
+
+                IconSquareSplitHorizontal {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Theme.spacing
+                    anchors.verticalCenter: parent.verticalCenter
+                    size: 18
+                    rotation: root.activeSplitHorizontal ? 90 : 0
+                    color: Theme.accent
+                }
+
+                Column {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Theme.spacing + 18 + Theme.spacing
+                    anchors.right: saveSplitButton.left
+                    anchors.rightMargin: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 1
+
+                    Text {
+                        text: "Active split"
+                        color: Theme.accent
+                        font.pointSize: Theme.fontSmall
+                        font.weight: Font.Medium
+                    }
+                    Text {
+                        width: parent.width
+                        textFormat: Text.PlainText
+                        text: bookmarksSection.displayName(root.activeSplitPrimaryPath)
+                              + " + " + bookmarksSection.displayName(root.activeSplitSecondaryPath)
+                        color: Theme.subtext
+                        font.pointSize: Theme.fontSmall
+                        elide: Text.ElideRight
+                    }
+                }
+
+                HoverRect {
+                    id: saveSplitButton
+                    objectName: "saveActiveSplitButton"
+                    anchors.right: parent.right
+                    anchors.rightMargin: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 30; height: 30
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Save active split to bookmarks"
+                    onClicked: root.saveActiveSplitRequested(-1)
+                    IconBookmark { anchors.centerIn: parent; size: 16; color: Theme.accent }
+                }
+            }
+        }
+
+        Item {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 25
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.spacing + 3
+                anchors.verticalCenter: parent.verticalCenter
+                text: "FAVOURITES"
+                color: Theme.muted
+                font.pointSize: Theme.fontSmall
+                font.weight: Font.DemiBold
+            }
+        }
+
         // Bookmarks section — drag folders to add, drag items to reorder
         Item {
             id: bookmarksSection
             Layout.fillWidth: true
-            implicitHeight: bookmarksList.height
+            implicitHeight: Math.max(bookmarksList.height, root.activeSplitVisible ? rowHeight : 0)
 
             readonly property int rowHeight: 32
             readonly property bool externalDragActive:
@@ -316,6 +426,29 @@ Rectangle {
                 property int _extDropIndex: -1
             }
 
+            DropArea {
+                id: activeSplitDropArea
+                anchors.fill: parent
+                z: 150
+                keys: ["hyprfm-active-split"]
+                onDropped: (drop) => {
+                    var index = Math.max(0, Math.min(
+                        Math.round(drop.y / bookmarksSection.rowHeight), bookmarks.count))
+                    root.saveActiveSplitRequested(index)
+                    drop.accept()
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                z: 149
+                visible: activeSplitDropArea.containsDrag
+                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.08)
+                border.color: Theme.accent
+                border.width: 1
+                radius: Theme.radiusSmall
+            }
+
             ListView {
                 id: bookmarksList
                 width: parent.width
@@ -339,6 +472,7 @@ Rectangle {
                 }
 
                 delegate: Item {
+                    objectName: "bookmark_" + index
                     width: bookmarksList.width
                     height: bookmarksSection.rowHeight
 
@@ -354,7 +488,7 @@ Rectangle {
                         Behavior on opacity { NumberAnimation { duration: 120 } }
 
                         readonly property bool isActive:
-                            !root.isRecentsView && model.path === root.currentPath
+                            !root.isRecentsView && model.path !== "" && model.path === root.currentPath
 
                         color: {
                             if (isActive) return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
@@ -376,7 +510,7 @@ Rectangle {
                             Loader {
                                 width: 18; height: 18
                                 anchors.verticalCenter: parent.verticalCenter
-                                sourceComponent: iconFolder
+                                sourceComponent: model.split && model.split.primaryPath ? iconSplit : iconFolder
                             }
 
                             Text {
@@ -394,7 +528,7 @@ Rectangle {
                             // losing focus commits (same as renaming a file).
                             Rectangle {
                                 id: bmRenameBox
-                                visible: root.renamingBookmarkIndex === index
+                                visible: root.renamingBookmarkIndex >= 0 && root.renamingBookmarkIndex === index
                                 width: parent.width - 18 - Theme.spacing
                                 height: bookmarksSection.rowHeight - 6
                                 anchors.verticalCenter: parent.verticalCenter
@@ -437,6 +571,15 @@ Rectangle {
                         }
                     }
                 }
+            }
+
+            Text {
+                objectName: "emptyBookmarksHint"
+                visible: bookmarks.count === 0 && root.activeSplitVisible
+                anchors.centerIn: parent
+                text: "Drop here to save"
+                color: Theme.muted
+                font.pointSize: Theme.fontSmall
             }
 
             Rectangle {
@@ -536,7 +679,9 @@ Rectangle {
                     } else if (mouse.button === Qt.LeftButton && pressIndex >= 0 && pressIndex < bookmarks.count) {
                         var path = bookmarks.data(
                             bookmarks.index(pressIndex, 0), 258 /* PathRole */) || ""
-                        if (path) root.bookmarkClicked(path)
+                        var split = bookmarks.splitAt(pressIndex)
+                        if (split.primaryPath) root.savedSplitClicked(split)
+                        else if (path) root.bookmarkClicked(path)
                     }
                     pressIndex = -1
                     pressButton = Qt.NoButton
@@ -553,7 +698,7 @@ Rectangle {
                     var path = bookmarks.data(bookmarks.index(index, 0), 258 /* PathRole */) || ""
                     var mapped = bmInteraction.mapToItem(null, mouse.x, mouse.y)
                     root.sidebarContextMenuRequested({
-                        kind: "bookmark",
+                        kind: bookmarks.splitAt(index).primaryPath ? "savedSplit" : "bookmark",
                         index: index,
                         name: bookmarks.data(bookmarks.index(index, 0), 257 /* NameRole */) || "",
                         path: path
@@ -607,117 +752,6 @@ Rectangle {
         // Separator between bookmarks and devices
         Rectangle {
             visible: bookmarks.count > 0
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.spacing
-            Layout.rightMargin: Theme.spacing
-            height: 1
-            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
-        }
-
-        // Saved splits section — click to restore both panes
-        Item {
-            Layout.fillWidth: true
-            implicitHeight: savedSplitsList.height
-
-            function displayName(path) {
-                if (!path)
-                    return ""
-                var trimmed = path.replace(/\/$/, "")
-                if (trimmed === "")
-                    return "/"
-                var parts = trimmed.split("/")
-                return parts[parts.length - 1] || trimmed
-            }
-
-            ListView {
-                id: savedSplitsList
-                width: parent.width
-                height: contentHeight
-                interactive: false
-                model: config.savedSplits
-
-                delegate: Item {
-                    width: savedSplitsList.width
-                    height: 32
-                    property var savedSplit: modelData || ({
-                        name: model.name,
-                        primaryPath: model.primaryPath,
-                        secondaryPath: model.secondaryPath,
-                        orientation: model.orientation
-                    })
-
-                    Rectangle {
-                        width: parent.width - Theme.spacing
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        height: 32
-                        color: savedSplitHover.containsMouse
-                            ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
-                            : "transparent"
-                        radius: Theme.radiusSmall
-                        Behavior on color { ColorAnimation { duration: Theme.animDuration } }
-
-                        Row {
-                            anchors.left: parent.left
-                            anchors.leftMargin: Theme.spacing
-                            anchors.right: parent.right
-                            anchors.rightMargin: Theme.spacing
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: Theme.spacing
-
-                            Loader {
-                                width: 18; height: 18
-                                anchors.verticalCenter: parent.verticalCenter
-                                sourceComponent: iconSplit
-                            }
-
-                            Text {
-                                textFormat: Text.PlainText
-                                text: savedSplit.name
-                                        || displayName(savedSplit.primaryPath) + " + " + displayName(savedSplit.secondaryPath)
-                                color: Theme.text
-                                font.pointSize: Theme.fontNormal
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                                width: parent.width - 18 - Theme.spacing
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        id: savedSplitHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        acceptedButtons: Qt.LeftButton | Qt.RightButton
-                        onClicked: (mouse) => {
-                            if (mouse.button === Qt.RightButton) {
-                                var mapped = savedSplitHover.mapToItem(null, mouse.x, mouse.y)
-                                root.sidebarContextMenuRequested({
-                                    kind: "savedSplit",
-                                    index: index,
-                                    name: savedSplit.name || "",
-                                    primaryPath: savedSplit.primaryPath,
-                                    secondaryPath: savedSplit.secondaryPath,
-                                    orientation: savedSplit.orientation || "vertical"
-                                }, mapped)
-                                return
-                            }
-                            if (!savedSplit.primaryPath || !savedSplit.secondaryPath)
-                                return
-                            root.savedSplitClicked({
-                                name: savedSplit.name || "",
-                                primaryPath: savedSplit.primaryPath,
-                                secondaryPath: savedSplit.secondaryPath,
-                                orientation: savedSplit.orientation || "vertical"
-                            })
-                        }
-                    }
-                }
-            }
-        }
-
-        Rectangle {
-            visible: savedSplitsList.count > 0
             Layout.fillWidth: true
             Layout.leftMargin: Theme.spacing
             Layout.rightMargin: Theme.spacing

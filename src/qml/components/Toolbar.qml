@@ -30,6 +30,7 @@ Rectangle {
     property bool filterPanelOpen: false
     property alias searchBar: searchBarLoader.item
     property alias filterPanel: filterPanelLoader.item
+    readonly property bool pathEditing: breadcrumb.editMode
 
     function startEditing() {
         if (!searchMode) breadcrumb.startEditing()
@@ -67,8 +68,7 @@ Rectangle {
     signal forwardRequested()
     signal upRequested()
     signal navigateRequested(string targetPath)
-    signal splitViewToggled()
-    signal splitOrientationToggled()
+    signal splitRequested(string orientation)
     signal viewModeRequested(string mode)
     signal typeFilterChanged(string filter)
     signal dateFilterChanged(string filter)
@@ -339,30 +339,59 @@ Rectangle {
                     }
                 }
 
-                HoverRect {
-                    width: Theme.controlSize; height: Theme.controlSize
+                Rectangle {
+                    id: splitSwitcher
+                    readonly property int segment: Theme.controlSize - 4
+
                     visible: !root.searchMode
-                    border.width: root.splitViewEnabled ? 1 : 0
-                    border.color: root.splitViewEnabled
-                        ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.65)
-                        : "transparent"
-                    color: root.splitViewEnabled
-                        ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b,
-                                  hovered ? 0.30 : 0.22)
-                        : (hovered
-                            ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
-                            : "transparent")
-                    rightClickEnabled: true
-                    tooltip: "Split view"
-                    shortcut: "split_view"
-                    onClicked: root.splitViewToggled()
-                    onRightClicked: root.splitOrientationToggled()
-                    IconSquareSplitHorizontal {
+                    Layout.preferredWidth: visible ? splitModeRow.width + 4 : 0
+                    Layout.preferredHeight: Theme.controlSize
+                    Layout.alignment: Qt.AlignVCenter
+                    radius: Theme.radiusSmall
+                    color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.06)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.10)
+                    Accessible.role: Accessible.Grouping
+                    Accessible.name: "Split view"
+
+                    Row {
+                        id: splitModeRow
                         anchors.centerIn: parent
-                        size: 18
-                        rotation: root.isSplitHorizontal ? 90 : 0
-                        Behavior on rotation { NumberAnimation { duration: Theme.animDuration } }
-                        color: root.splitViewEnabled ? Theme.accent : Theme.text
+                        spacing: 0
+
+                        Repeater {
+                            model: [
+                                { orientation: "vertical", name: "Vertical split view" },
+                                { orientation: "horizontal", name: "Horizontal split view" }
+                            ]
+
+                            delegate: HoverRect {
+                                id: splitButton
+                                required property var modelData
+                                objectName: modelData.orientation + "SplitButton"
+                                readonly property bool current: root.splitViewEnabled &&
+                                    root.isSplitHorizontal === (modelData.orientation === "horizontal")
+                                width: splitSwitcher.segment
+                                height: splitSwitcher.segment
+                                Accessible.role: Accessible.Button
+                                Accessible.name: modelData.name
+                                Accessible.checked: current
+                                tooltip: modelData.name
+                                color: current
+                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b,
+                                              hovered ? 0.34 : 0.26)
+                                    : (hovered
+                                        ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+                                        : "transparent")
+                                onClicked: root.splitRequested(modelData.orientation)
+                                IconSquareSplitHorizontal {
+                                    anchors.centerIn: parent
+                                    size: 16
+                                    rotation: splitButton.modelData.orientation === "horizontal" ? 90 : 0
+                                    color: splitButton.current ? Theme.accent : Theme.text
+                                }
+                            }
+                        }
                     }
                 }
 

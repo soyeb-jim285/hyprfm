@@ -1,4 +1,5 @@
 #include <QTest>
+#include <QDir>
 #include <QSignalSpy>
 #include <QAbstractItemModelTester>
 #include "models/bookmarkmodel.h"
@@ -8,6 +9,66 @@ class TestBookmarkModel : public QObject
     Q_OBJECT
 
 private slots:
+    void testSplitBookmarkRoundTripAndReorder()
+    {
+        BookmarkModel model;
+        QAbstractItemModelTester modelTester(&model, QAbstractItemModelTester::FailureReportingMode::QtTest);
+        model.setBookmarks({"~/Documents", "~/Downloads"});
+        model.addSplitBookmark("~/Code", "~/Flowchart", "horizontal");
+        model.addSplitBookmark(QDir::homePath() + "/Code/", "~/Flowchart/", "horizontal");
+        QCOMPARE(model.rowCount(), 3); // duplicate is ignored
+        QCOMPARE(model.paths(), QStringList({"~/Documents", "~/Downloads"}));
+        QVERIFY(!model.containsPath("~/Code"));
+        QVERIFY(model.data(model.index(2), BookmarkModel::PathRole).toString().isEmpty());
+        model.renameBookmark(2, "Code and diagrams");
+        model.moveBookmark(2, 1);
+
+        BookmarkModel restored;
+        restored.setBookmarks(model.paths(), model.names(), model.savedSplits());
+        QCOMPARE(restored.rowCount(), 3);
+        QCOMPARE(restored.splitAt(1).value("name").toString(), QString("Code and diagrams"));
+        QCOMPARE(restored.splitAt(1).value("primaryPath").toString(), QDir::homePath() + "/Code");
+        QCOMPARE(restored.splitAt(1).value("secondaryPath").toString(), QDir::homePath() + "/Flowchart");
+        QCOMPARE(restored.splitAt(1).value("orientation").toString(), QString("horizontal"));
+        QCOMPARE(restored.data(restored.index(2), BookmarkModel::NameRole).toString(), QString("Downloads"));
+        restored.removeBookmark(1);
+        QCOMPARE(restored.rowCount(), 2);
+        QVERIFY(restored.savedSplits().isEmpty());
+    }
+
+    // containsSplit matches what addSplitBookmark stored, whatever form the
+    // paths were given in; a split of one folder twice is not saved; an index
+    // inserts in place.
+    void testSplitLookupAndInsert()
+    {
+        BookmarkModel model;
+        model.addBookmark("~/Downloads");
+        QVERIFY(model.addSplitBookmark("sftp://host/My Docs", "~/Code", "vertical", {}, 0));
+        QCOMPARE(model.rowCount(), 2);
+        QCOMPARE(model.splitAt(0).value("secondaryPath").toString(), QDir::homePath() + "/Code");
+        QVERIFY(model.containsSplit("sftp://host/My Docs", QDir::homePath() + "/Code/", "vertical"));
+        QVERIFY(!model.containsSplit("sftp://host/My Docs", "~/Code", "horizontal"));
+        QVERIFY(!model.addSplitBookmark("sftp://host/My Docs", "~/Code", "vertical"));
+        QVERIFY(!model.addSplitBookmark("~/Code", QDir::homePath() + "/Code/", "vertical"));
+        QCOMPARE(model.rowCount(), 2);
+    }
+
+    void testLegacySavedSplitsBecomeBookmarks()
+    {
+        BookmarkModel model;
+        model.setBookmarks({"~/Documents"}, {}, {
+            QVariantMap{{"name", "Code - Flowchart"}, {"primaryPath", "~/Code"},
+                        {"secondaryPath", "~/Flowchart"}, {"orientation", "horizontal"}},
+            QVariantMap{{"primaryPath", "/tmp"}, {"secondaryPath", "/var"}}
+        });
+        QCOMPARE(model.rowCount(), 3);
+        QCOMPARE(model.splitAt(1).value("name").toString(), QString("Code - Flowchart"));
+        QCOMPARE(model.splitAt(2).value("orientation").toString(), QString("vertical"));
+        model.renameBookmark(1, "");
+        QCOMPARE(model.splitAt(1).value("name").toString(), QString("Code + Flowchart"));
+        QVERIFY(model.splitAt(0).isEmpty());
+    }
+
     void testModelConsistency()
     {
         BookmarkModel model;

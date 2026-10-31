@@ -90,7 +90,10 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 
 - **Full keyboard navigation**: arrows, vim-friendly shortcuts, type-ahead search
 - **Tabs** with independent history per pane
-- **Path bar** with breadcrumbs and inline editing (`Ctrl+L`)
+- **Path bar** with breadcrumbs and inline editing: click the current folder or
+  empty space, or press `Ctrl+L`. Type an absolute path, `~/...`, or a folder
+  relative to the active pane; `Tab` completes suggestions, `Enter` opens the
+  typed path, and `Esc` cancels.
 - **Bookmarks sidebar** with drag-to-reorder, inline rename, and udisks2 device mounting
 - **Kinetic wheel scrolling** with momentum and rubber-band overscroll
 - **Rubber-band selection** in all views
@@ -312,6 +315,16 @@ too.
 
 Only the first window keeps the saved session (tabs + window geometry);
 additional windows start fresh and leave it untouched.
+
+Home (toolbar button, shortcut or sidebar entry) closes an open split and
+shows Home across the full window.
+
+Right-click empty space in a split and choose **Save Split to Bookmarks**, or
+select two folders and choose **Save as Split View**, to keep both paths and
+their orientation as one bookmark. Split bookmarks can be
+renamed, reordered alongside folder bookmarks, and removed from the sidebar.
+Clicking one opens both panes together. Existing saved splits are included in
+Bookmarks automatically, retaining their names and orientation.
 
 Run `hyprfm --help` for the full list of flags and environment variables.
 

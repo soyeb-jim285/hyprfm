@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include "testdir.h"
 #include "services/fileoperations.h"
+#include "services/archivepassword.h"
 #include "services/xdgtrash.h"
 
 class TestFileOperations : public QObject
@@ -1480,8 +1481,30 @@ private slots:
         archiveDir.createDir("payload");
         archiveDir.createFile("payload/inner.txt", "secret");
         const QString archivePath = archiveDir.path() + "/locked.zip";
-        QVERIFY(runCommand("zip", {"-q", "-P", "testpass", "-r", archivePath, "payload"},
-                           archiveDir.path()));
+        // ZipCrypto's short password check can accidentally accept a wrong
+        // password, write corrupt bytes, and only then report a CRC error.
+        // Such files intentionally survive partial-extraction cleanup. This
+        // test needs a header rejection, so check both passwords without
+        // extracting anything and regenerate the random header if necessary.
+        bool rejectsBeforeExtraction = false;
+        for (int attempt = 0; attempt < 32 && !rejectsBeforeExtraction; ++attempt) {
+            QFile::remove(archivePath);
+            QVERIFY(runCommand("zip", {"-q", "-P", "testpass", "-r", archivePath, "payload"},
+                               archiveDir.path()));
+            rejectsBeforeExtraction = true;
+            for (const QString &password : {effectiveArchivePassword(QString()), QStringLiteral("wrongpass")}) {
+                QProcess check;
+                check.setProcessChannelMode(QProcess::MergedChannels);
+                check.start("unzip", {"-t", "-P", password, archivePath});
+                QVERIFY(check.waitForFinished(10000));
+                const QByteArray output = check.readAll();
+                if (!output.contains("incorrect password") || output.contains("bad CRC")) {
+                    rejectsBeforeExtraction = false;
+                    break;
+                }
+            }
+        }
+        QVERIFY2(rejectsBeforeExtraction, "Could not create a ZIP that rejects both test passwords at its header");
 
         FileOperations ops;
         const QString dest = ops.newExtractionFolder(archivePath);

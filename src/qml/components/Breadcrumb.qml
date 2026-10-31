@@ -5,6 +5,7 @@ import HyprFM
 
 Item {
     id: root
+    objectName: "breadcrumb"
     Accessible.role: Accessible.Pane
     Accessible.name: "Breadcrumb navigation: " + root.path
 
@@ -20,6 +21,11 @@ Item {
             return fsModel.homePath()
         if (trimmed.startsWith("~/"))
             return fsModel.homePath() + trimmed.substring(1)
+        // Anything else that is not a URI ("sftp://", "trash:///") is a folder
+        // in the current one; "v1:old" is a folder name, not a scheme.
+        if (trimmed !== "" && !trimmed.startsWith("/")
+                && !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed))
+            return (root.isRecentsView ? fsModel.homePath() : root.path).replace(/\/$/, "") + "/" + trimmed
         return trimmed
     }
 
@@ -40,8 +46,12 @@ Item {
             return
         }
 
-        suggestionItems = fsModel.pathSuggestions(query, query.endsWith("/") ? -1 : 8)
-        suggestionIndex = suggestionItems.length > 0 ? 0 : -1
+        // pathSuggestions keeps a typed "~" in what it offers, so only a
+        // relative path is resolved here.
+        suggestionItems = fsModel.pathSuggestions(query.startsWith("~") ? query : normalizedInputPath(query),
+                                                  query.endsWith("/") ? -1 : 8)
+        // Return opens what was typed until a suggestion is explicitly chosen.
+        suggestionIndex = -1
     }
 
     function commitNavigation(targetPath) {
@@ -59,9 +69,10 @@ Item {
             return
 
         var suggestion = suggestionItems[index]
+        // Setting the text rebuilds suggestionItems, so the old index means
+        // nothing now: Return opens the completed text.
         pathInput.text = suggestion.displayPath || suggestion.path || ""
         pathInput.cursorPosition = pathInput.text.length
-        suggestionIndex = index
 
         if (navigateNow)
             commitNavigation(suggestion.path || pathInput.text)
@@ -236,6 +247,9 @@ Item {
 
         TextInput {
             id: pathInput
+            objectName: "pathInput"
+            Accessible.role: Accessible.EditableText
+            Accessible.name: "Folder path"
             anchors.fill: parent
             anchors.leftMargin: Theme.spacing
             anchors.rightMargin: Theme.spacing
@@ -243,6 +257,7 @@ Item {
             color: Theme.text
             font.pointSize: Theme.fontNormal
             selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
+            clip: true
 
             Keys.onDownPressed: (event) => {
                 if (root.suggestionItems.length === 0)
@@ -360,7 +375,6 @@ Item {
                         id: mouseArea
                         anchors.fill: parent
                         hoverEnabled: true
-                        onEntered: root.suggestionIndex = index
                         onClicked: root.applySuggestion(index, true)
                     }
                 }

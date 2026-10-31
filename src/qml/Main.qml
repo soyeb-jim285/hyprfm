@@ -336,6 +336,33 @@ ApplicationWindow {
         return tabModel.activeTab ? tabModel.activeTab.splitViewEnabled : false
     }
 
+    // Focus requests are held off while the path bar is open; hand focus
+    // back to the pane once it closes (Esc, Enter, or a click elsewhere).
+    Connections {
+        target: toolbar
+        function onPathEditingChanged() {
+            if (!toolbar.pathEditing)
+                root.scheduleActivePaneFocus()
+        }
+    }
+
+    // Bumped on every bookmark change, including a config reload that swaps
+    // one split for another without changing the count.
+    property int bookmarksRevision: 0
+    Connections {
+        target: bookmarks
+        function onBookmarksChanged() { root.bookmarksRevision++ }
+        function onModelReset() { root.bookmarksRevision++ }
+    }
+    readonly property bool activeSplitUnsaved: {
+        var tab = tabModel.activeTab
+        root.bookmarksRevision
+        if (!tab || !tab.splitViewEnabled || tab.currentPath === tab.secondaryCurrentPath)
+            return false
+        return !bookmarks.containsSplit(tab.currentPath, tab.secondaryCurrentPath,
+                                        root.isSplitHorizontal ? "horizontal" : "vertical")
+    }
+
     readonly property bool isSplitHorizontal: {
         var orient = (tabModel.activeTab && tabModel.activeTab.splitOrientation)
             ? tabModel.activeTab.splitOrientation
@@ -348,6 +375,19 @@ ApplicationWindow {
         // From the effective orientation: a tab with none set follows the
         // config default, which may already be horizontal.
         tabModel.activeTab.splitOrientation = root.isSplitHorizontal ? "vertical" : "horizontal"
+    }
+
+    function toggleSplitInOrientation(orientation) {
+        if (!tabModel.activeTab)
+            return
+        if (tabModel.activeTab.splitViewEnabled &&
+                (root.isSplitHorizontal ? "horizontal" : "vertical") === orientation) {
+            root.toggleSplitView()
+            return
+        }
+        tabModel.activeTab.splitOrientation = orientation
+        if (!tabModel.activeTab.splitViewEnabled)
+            root.toggleSplitView()
     }
 
     function paneBaseModel(pane) {
@@ -646,6 +686,7 @@ ApplicationWindow {
     function shouldFocusActivePane() {
         return root.active
             && !root.searchMode
+            && !toolbar.pathEditing
             && !(root.bulkRenameDialog && root.bulkRenameDialog.visible)
             && !(root.remoteConnectDialog && root.remoteConnectDialog.visible)
             && !(root.settingsPanel && root.settingsPanel.visible)
@@ -731,6 +772,14 @@ ApplicationWindow {
 
     function navigateActivePaneTo(path) {
         navigatePaneTo(activePane, path)
+    }
+
+    // Home (toolbar, shortcut, sidebar) closes a split and shows Home across
+    // the whole window. Other ways of reaching ~ keep the split.
+    function goHome() {
+        if (tabModel.activeTab && splitViewEnabled())
+            root.toggleSplitView()
+        navigatePaneTo(activePane, fsModel.homePath())
     }
 
     function openPathInNewTab(path) {
@@ -983,36 +1032,24 @@ ApplicationWindow {
         root.updateSelectionStatus()
     }
 
-    function saveCurrentSplit() {
+    function saveCurrentSplit(index) {
         if (!tabModel.activeTab || !tabModel.activeTab.splitViewEnabled)
             return
 
         var tab = tabModel.activeTab
-        root.saveSplitPaths(tab.currentPath, tab.secondaryCurrentPath)
+        root.saveSplitPaths(tab.currentPath, tab.secondaryCurrentPath, undefined, index)
     }
 
-    function saveSplitPaths(primaryPath, secondaryPath) {
-        if (!primaryPath || !secondaryPath || primaryPath === secondaryPath)
+    function saveSplitPaths(primaryPath, secondaryPath, orientation, index) {
+        if (!primaryPath || !secondaryPath)
             return
-        var orientation = root.isSplitHorizontal ? "horizontal" : "vertical"
-        var splits = config.savedSplits.slice()
-        for (var i = 0; i < splits.length; ++i) {
-            if (splits[i].primaryPath === primaryPath && splits[i].secondaryPath === secondaryPath
-                    && splits[i].orientation === orientation) {
-                toast.show("This split is already in the sidebar", "info")
-                return
-            }
-        }
-
-        var name = pathDisplayName(primaryPath) + " + " + pathDisplayName(secondaryPath)
-        splits.push({
-            name: name,
-            primaryPath: primaryPath,
-            secondaryPath: secondaryPath,
-            orientation: orientation
-        })
-        config.saveSavedSplits(splits)
-        toast.show("Split saved to sidebar — right-click it there to remove", "info")
+        var orient = orientation || (root.isSplitHorizontal ? "horizontal" : "vertical")
+        if (bookmarks.addSplitBookmark(primaryPath, secondaryPath, orient, "", index === undefined ? -1 : index))
+            toast.show("Split added to bookmarks", "info")
+        else if (bookmarks.containsSplit(primaryPath, secondaryPath, orient))
+            toast.show("This split is already in bookmarks", "info")
+        else
+            toast.show("Both panes show the same folder", "info")
     }
 
     function saveSelectedFolders(paths) {
@@ -1021,24 +1058,22 @@ ApplicationWindow {
         root.saveSplitPaths(paths[0], paths[1])
     }
 
-    function removeSavedSplit(index) {
-        var splits = config.savedSplits.slice()
-        if (index < 0 || index >= splits.length)
-            return
-        splits.splice(index, 1)
-        config.saveSavedSplits(splits)
-    }
-
     function restoreSavedSplit(split) {
         if (!tabModel.activeTab || !split)
             return
 
         var tab = tabModel.activeTab
+        root.clearPaneSearch("primary")
+        root.clearPaneSearch("secondary")
+        root.setPaneRecents("primary", false)
+        root.setPaneRecents("secondary", false)
+        root.setActivePane("primary")
         tab.splitViewEnabled = true
         tab.splitOrientation = (split.orientation || config.splitOrientation || "vertical").toLowerCase()
         tab.navigateTo(split.primaryPath)
         tab.resetSecondaryTo(split.secondaryPath)
         root.updateSelectionStatus()
+        root.scheduleActivePaneFocus()
     }
 
     function activePaneCanGoBack() {
@@ -3396,21 +3431,15 @@ ApplicationWindow {
                 }
 
                 onCustomActionRequested: (action) => {
-                    if (action === "bookmark_saved_split") {
-                        if (sidebarItem.primaryPath && sidebarItem.secondaryPath) {
-                            bookmarks.addBookmark(sidebarItem.primaryPath)
-                            bookmarks.addBookmark(sidebarItem.secondaryPath)
-                            toast.show("Both folders added to bookmarks", "info")
-                        }
-                    } else if (action === "remove_saved_split") {
-                        root.removeSavedSplit(sidebarItem.index)
+                    if (action === "open_saved_split") {
+                        root.restoreSavedSplit(bookmarks.splitAt(sidebarItem.index))
                     } else if (action === "emptytrash") {
                         root.openDialog(emptyTrashConfirmDialogLoader)
                     } else if (action === "renamebookmark") {
-                        if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
+                        if ((sidebarItem.kind === "bookmark" || sidebarItem.kind === "savedSplit") && sidebarItem.index >= 0)
                             sidebarPanel.startBookmarkRename(sidebarItem.index)
                     } else if (action === "removebookmark") {
-                        if (sidebarItem.kind === "bookmark" && sidebarItem.index >= 0)
+                        if ((sidebarItem.kind === "bookmark" || sidebarItem.kind === "savedSplit") && sidebarItem.index >= 0)
                             bookmarks.removeBookmark(sidebarItem.index)
                     } else if (action === "hidequickaccess") {
                         if (sidebarItem.kind === "quickAccess" && sidebarItem.name) {
@@ -3537,7 +3566,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: config.shortcutMap["home"]
-        onActivated: root.navigateActivePaneTo(fsModel.homePath())
+        onActivated: root.goHome()
     }
 
     Shortcut {
@@ -3894,9 +3923,10 @@ ApplicationWindow {
 
         if (item.kind === "savedSplit") {
             return [
-                { text: "Add Both Folders to Bookmarks", shortcut: "", action: "bookmark_saved_split", icon: "Bookmark" },
+                { text: "Open", shortcut: "", action: "open_saved_split", icon: "SquareSplitHorizontal" },
                 { separator: true },
-                { text: "Remove Saved Split", shortcut: "", action: "remove_saved_split", destructive: true }
+                { text: "Rename", shortcut: "", action: "renamebookmark" },
+                { text: "Remove from Bookmarks", shortcut: "", action: "removebookmark", destructive: true }
             ]
         }
 
@@ -4092,14 +4122,22 @@ ApplicationWindow {
                     height: parent.height
                     tooltipLayer: sidebarTooltipLayer
                     currentPath: panePath(activePane)
+                    activeSplitVisible: root.activeSplitUnsaved
+                    activeSplitPrimaryPath: tabModel.activeTab ? tabModel.activeTab.currentPath : ""
+                    activeSplitSecondaryPath: tabModel.activeTab ? tabModel.activeTab.secondaryCurrentPath : ""
+                    activeSplitHorizontal: root.isSplitHorizontal
                     trashPath: root.unifiedTrashPath
                     isRecentsView: root.isRecentsView
                     onBookmarkClicked: (path) => {
-                        root.navigateActivePaneTo(path)
+                        if (path === fsModel.homePath())
+                            root.goHome()
+                        else
+                            root.navigateActivePaneTo(path)
                     }
                     onSavedSplitClicked: (split) => {
                         root.restoreSavedSplit(split)
                     }
+                    onSaveActiveSplitRequested: (index) => root.saveCurrentSplit(index)
                     onRenamingBookmarkIndexChanged: {
                         if (renamingBookmarkIndex < 0)
                             root.scheduleActivePaneFocus()
@@ -4232,11 +4270,8 @@ ApplicationWindow {
                         fileOps.restoreFromTrash(paths)
                 }
                 onEmptyTrashRequested: root.openDialog(emptyTrashConfirmDialogLoader)
-                onSplitViewToggled: root.toggleSplitView()
-                onSplitOrientationToggled: root.toggleSplitOrientation()
-                onHomeClicked: {
-                    root.navigateActivePaneTo(fsModel.homePath())
-                }
+                onSplitRequested: (orientation) => root.toggleSplitInOrientation(orientation)
+                onHomeClicked: root.goHome()
                 onSearchClicked: root.openSearch()
                 onSearchClosed: root.closeSearch()
                 onSearchQueryChanged: (query) => root.handleSearchQuery(query)
@@ -4378,8 +4413,9 @@ ApplicationWindow {
 
                                 onInteractionStarted: root.setActivePane("primary")
                                 onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("primary", filePath, isDirectory)
+                                // Model resets also clear selection; only an
+                                // interaction should switch the active pane.
                                 onSelectionChanged: {
-                                    root.setActivePane("primary")
                                     root.updateSelectionStatus()
                                 }
                                 onTransferRequested: (paths, destinationPath, moveOperation) => {
@@ -4474,7 +4510,6 @@ ApplicationWindow {
                                     onInteractionStarted: root.setActivePane("secondary")
                                     onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("secondary", filePath, isDirectory)
                                     onSelectionChanged: {
-                                        root.setActivePane("secondary")
                                         root.updateSelectionStatus()
                                     }
                                     onTransferRequested: (paths, destinationPath, moveOperation) => {
