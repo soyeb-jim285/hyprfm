@@ -682,6 +682,7 @@ int main(int argc, char *argv[])
     // `--new-window` (`-n`) forces a standalone window even when a path is
     // given, i.e. it opts out of the tab handoff described below.
     QString initialOpenPath;
+    QString initialSecondaryPath;
     bool newWindow = false;
     for (int i = 1; i < argc; ++i) {
         QString a = QString::fromLocal8Bit(argv[i]);
@@ -692,11 +693,18 @@ int main(int argc, char *argv[])
         if (a.startsWith('-')) continue;
         if (initialOpenPath.isEmpty())
             initialOpenPath = a;
+        else if (initialSecondaryPath.isEmpty())
+            initialSecondaryPath = a;
     }
     if (!initialOpenPath.isEmpty()) {
         QFileInfo fi(initialOpenPath);
         if (fi.exists())
             initialOpenPath = fi.absoluteFilePath();
+    }
+    if (!initialSecondaryPath.isEmpty()) {
+        QFileInfo fi(initialSecondaryPath);
+        if (fi.exists())
+            initialSecondaryPath = fi.absoluteFilePath();
     }
 
     // Before QGuiApplication: it may set VK_DRIVER_FILES, which is only safe
@@ -775,6 +783,8 @@ int main(int argc, char *argv[])
             // as a window of its own, as every launch used to.
             QJsonObject msg;
             msg.insert(QStringLiteral("path"), initialOpenPath);
+            if (!initialSecondaryPath.isEmpty())
+                msg.insert(QStringLiteral("secondaryPath"), initialSecondaryPath);
             if (newWindow || initialOpenPath.isEmpty())
                 msg.insert(QStringLiteral("newWindow"), true);
             QByteArray payload = QJsonDocument(msg).toJson(QJsonDocument::Compact);
@@ -1108,7 +1118,7 @@ int main(int argc, char *argv[])
     AppWindow *sessionWindow = nullptr;   // the one whose state is session.json
     AppWindow *lastActiveWindow = nullptr;
 
-    auto createWindow = [&](const QJsonObject &session, const QString &openPath) -> AppWindow * {
+    auto createWindow = [&](const QJsonObject &session, const QString &openPath, const QString &secondaryPath = QString()) -> AppWindow * {
         auto *w = new AppWindow(&app);
 
         w->tabModel = new TabListModel(w);
@@ -1121,8 +1131,14 @@ int main(int argc, char *argv[])
         } else if (!openPath.isEmpty()) {
             // A window with no session starts on the requested path in its
             // one tab rather than opening a second tab for it later.
-            if (auto *tab = w->tabModel->activeTab())
+            if (auto *tab = w->tabModel->activeTab()) {
                 tab->navigateTo(openPath);
+                if (!secondaryPath.isEmpty()) {
+                    tab->setSplitViewEnabled(true);
+                    tab->setSplitOrientation(config->splitOrientation());
+                    tab->resetSecondaryTo(secondaryPath);
+                }
+            }
         }
 
         // Session-scoped view state (zoom per view). 0 keeps built-in defaults.
@@ -1243,7 +1259,8 @@ int main(int argc, char *argv[])
     // home folder on screen before the requested one.
     const bool restoringSession = sessionData.contains(QStringLiteral("tabs"));
     AppWindow *first = createWindow(sessionData,
-                                    (isPrimary && restoringSession) ? QString() : initialOpenPath);
+                                    (isPrimary && restoringSession) ? QString() : initialOpenPath,
+                                    (isPrimary && restoringSession) ? QString() : initialSecondaryPath);
     mark("engine.load done");
     if (!first)
         return -1;
@@ -1374,14 +1391,18 @@ int main(int argc, char *argv[])
     // Raise, focus, and open a path as a tab in the window last used -- for
     // the initial argv path and for paths handed over by a later invocation.
     // Empty path just raises the window.
-    auto openPathInNewTab = [&](const QString &path) {
+    auto openPathInNewTab = [&](const QString &path, const QString &secondaryPath = QString()) {
         AppWindow *target = lastActiveWindow ? lastActiveWindow
             : sessionWindow ? sessionWindow
             : windows.isEmpty() ? nullptr : windows.constLast();
         if (!target)
             return;
-        if (!path.isEmpty())
-            target->tabModel->openPath(path);   // reuses a tab already showing it
+        if (!path.isEmpty()) {
+            if (!secondaryPath.isEmpty())
+                target->tabModel->openSplit(path, secondaryPath, config->splitOrientation());
+            else
+                target->tabModel->openPath(path);
+        }
         QQuickWindow *win = target->window;
         if (win->visibility() == QWindow::Minimized || win->visibility() == QWindow::Hidden)
             win->showNormal();
@@ -1389,8 +1410,8 @@ int main(int argc, char *argv[])
         win->requestActivate();
     };
 
-    auto openNewWindow = [&](const QString &path) {
-        if (AppWindow *w = createWindow(QJsonObject(), path)) {
+    auto openNewWindow = [&](const QString &path, const QString &secondaryPath = QString()) {
+        if (AppWindow *w = createWindow(QJsonObject(), path, secondaryPath)) {
             releaseOnClose(w);
             w->window->raise();
             w->window->requestActivate();
@@ -1411,10 +1432,11 @@ int main(int argc, char *argv[])
                         const QJsonDocument doc = QJsonDocument::fromJson(trimmed, &err);
                         if (err.error != QJsonParseError::NoError || !doc.isObject()) continue;
                         const QString path = doc.object().value(QStringLiteral("path")).toString();
+                        const QString secondary = doc.object().value(QStringLiteral("secondaryPath")).toString();
                         if (doc.object().value(QStringLiteral("newWindow")).toBool())
-                            openNewWindow(path);
+                            openNewWindow(path, secondary);
                         else
-                            openPathInNewTab(path);
+                            openPathInNewTab(path, secondary);
                     }
                 });
                 QObject::connect(conn, &QLocalSocket::disconnected, conn, &QObject::deleteLater);
@@ -1425,7 +1447,7 @@ int main(int argc, char *argv[])
     // Apply the path this process was launched with (if any) as a new tab on
     // the restored session. A window without a session already opened on it.
     if (!initialOpenPath.isEmpty() && isPrimary && restoringSession)
-        QTimer::singleShot(0, &app, [&]() { openPathInNewTab(initialOpenPath); });
+        QTimer::singleShot(0, &app, [&]() { openPathInNewTab(initialOpenPath, initialSecondaryPath); });
 
     return app.exec();
 }
