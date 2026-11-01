@@ -36,6 +36,7 @@ public:
     // new tab there. Used for launch arguments and single-instance handoffs
     // so repeated launches don't pile up duplicate tabs.
     Q_INVOKABLE void openPath(const QString &path);
+    Q_INVOKABLE void openSplit(const QString &primary, const QString &secondary, const QString &orientation = QString());
     // Reorder a tab (drag in the tab strip). The active tab stays active.
     Q_INVOKABLE void moveTab(int from, int to);
     Q_INVOKABLE void closeTab(int index);
