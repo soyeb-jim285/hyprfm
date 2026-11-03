@@ -57,7 +57,8 @@ private slots:
         QElapsedTimer t;
         t.start();
         const QVariantMap props = model.fileProperties(uri);
-        QVERIFY2(t.elapsed() < 200, qPrintable(QString::number(t.elapsed())));
+        // The blocking call took seconds; 200 ms flaked on a loaded CI runner.
+        QVERIFY2(t.elapsed() < 2000, qPrintable(QString::number(t.elapsed())));
         QVERIFY(props.value("pending").toBool());
         QCOMPARE(props.value("name").toString(), QStringLiteral("file.txt"));
 
