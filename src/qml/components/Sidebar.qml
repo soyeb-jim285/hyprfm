@@ -792,7 +792,9 @@ Rectangle {
                           + " free of "
                           + Quill.Format.bytes(model.totalSize)
                           + " (" + Math.round(model.usagePercent) + "% used)"
-                        : "Not mounted — click to mount"
+                        : model.backend === "mtp-missing"
+                          ? "Needs gvfs-mtp — click for details"
+                          : "Not mounted — click to mount"
 
                     function clamp(value, minValue, maxValue) {
                         return Math.max(minValue, Math.min(value, Math.max(minValue, maxValue)))
@@ -908,6 +910,8 @@ Rectangle {
 
                             if (model.mounted)
                                 root.bookmarkClicked(model.mountPoint)
+                            else if (model.backend === "mtp-missing")
+                                root.featureHintRequested(runtimeFeatures.installHint("mtpDevice"))
                             else if (model.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable)
                                 root.featureHintRequested(runtimeFeatures.installHint("deviceMount"))
                             else

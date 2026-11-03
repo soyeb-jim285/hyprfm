@@ -3451,7 +3451,9 @@ ApplicationWindow {
                             }
                         }
                     } else if (action === "mountdevice") {
-                        if (sidebarItem.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable) {
+                        if (sidebarItem.backend === "mtp-missing") {
+                            toast.show(runtimeFeatures.installHint("mtpDevice"), "info")
+                        } else if (sidebarItem.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable) {
                             toast.show(runtimeFeatures.installHint("deviceMount"), "info")
                         } else if (sidebarItem.kind === "device" && sidebarItem.index >= 0) {
                             devices.mount(sidebarItem.index)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QFileSystemWatcher>
 #include <QList>
 #include <QTimer>
 
@@ -11,6 +12,7 @@ typedef struct _GVolumeMonitor GVolumeMonitor;
 enum class DeviceBackend {
     UDisks2,
     Gio,
+    MtpMissing,   // Android phone seen by udev, but gvfs-mtp is not installed
 };
 
 struct DeviceEntry {
@@ -72,10 +74,12 @@ private:
     void clearDevices();
     void setupGioMonitor();
     void setupUDisks2();
+    void appendUnbrowsableMtpDevices();
     static bool isVirtual(const QString &fsType);
 
     QList<DeviceEntry> m_devices;
     GVolumeMonitor *m_volumeMonitor = nullptr;
     quint64 m_refreshGeneration = 0;
     QTimer m_refreshTimer;
+    QFileSystemWatcher m_usbWatcher;
 };

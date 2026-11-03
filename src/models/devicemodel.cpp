@@ -251,6 +251,12 @@ bool afcBackendAvailable()
         || QFileInfo::exists(QStringLiteral("/run/host/usr/libexec/gvfsd-afc"));
 }
 
+bool mtpBackendAvailable()
+{
+    return QFileInfo::exists(QStringLiteral("/usr/share/gvfs/remote-volume-monitors/mtp.monitor"))
+        || QFileInfo::exists(QStringLiteral("/run/host/usr/share/gvfs/remote-volume-monitors/mtp.monitor"));
+}
+
 QString mobileUdidFromUri(const QString &uri)
 {
     const QString scheme = schemeFromUri(uri);
@@ -397,6 +403,57 @@ void onGioMountUnmounted(GObject *sourceObject, GAsyncResult *result, gpointer u
 }
 
 } // namespace
+
+// Without gvfs-mtp nothing on the GIO side reports an Android phone, so it
+// would just be missing from the sidebar. libmtp's udev rules tag the phone
+// with ID_MTP_DEVICE=1 regardless, so list it from the udev database as an
+// entry that only explains what to install.
+void DeviceModel::appendUnbrowsableMtpDevices()
+{
+    if (mtpBackendAvailable())
+        return;
+
+    // Hotplug: udisks and the GIO monitors stay silent for an MTP phone,
+    // so watch the USB device nodes. ponytail: a new bus directory (rare)
+    // is only picked up on the next refresh.
+    const QDir usbRoot(QStringLiteral("/dev/bus/usb"));
+    if (m_usbWatcher.directories().isEmpty() && usbRoot.exists()) {
+        for (const QString &bus : usbRoot.entryList(QDir::Dirs | QDir::NoDotAndDotDot))
+            m_usbWatcher.addPath(usbRoot.filePath(bus));
+        connect(&m_usbWatcher, &QFileSystemWatcher::directoryChanged,
+                this, &DeviceModel::scheduleRefresh);
+    }
+
+    // c189 = USB device char nodes; one file per whole device, not per interface.
+    const QDir udevData(QStringLiteral("/run/udev/data"));
+    for (const QString &fileName : udevData.entryList({QStringLiteral("c189:*")}, QDir::Files)) {
+        QFile file(udevData.filePath(fileName));
+        if (!file.open(QIODevice::ReadOnly))
+            continue;
+        QHash<QString, QString> props;
+        for (const QByteArray &line : file.readAll().split('\n')) {
+            if (!line.startsWith("E:"))
+                continue;
+            const int eq = line.indexOf('=');
+            if (eq > 2)
+                props.insert(QString::fromUtf8(line.mid(2, eq - 2)),
+                             QString::fromUtf8(line.mid(eq + 1)));
+        }
+        if (props.value(QStringLiteral("ID_MTP_DEVICE")) != QLatin1String("1"))
+            continue;
+
+        QString name = props.value(QStringLiteral("ID_MODEL")).replace(u'_', u' ').trimmed();
+        const QString vendor = props.value(QStringLiteral("ID_VENDOR")).replace(u'_', u' ').trimmed();
+        if (!vendor.isEmpty() && !name.startsWith(vendor, Qt::CaseInsensitive))
+            name = vendor + u' ' + name;
+        if (name.isEmpty())
+            name = QStringLiteral("Android Phone");
+
+        m_devices.append({name, QStringLiteral("mtp-missing:") + fileName, QString(),
+                          QStringLiteral("mtp"), 0, 0, 0, true, false,
+                          QString(), DeviceBackend::MtpMissing, nullptr, nullptr});
+    }
+}
 
 void DeviceModel::scheduleRefresh()
 {
@@ -760,6 +817,8 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
             g_object_unref(volumeMonitor);
     }
 
+    appendUnbrowsableMtpDevices();
+
     std::sort(m_devices.begin(), m_devices.end(),
               [](const DeviceEntry &a, const DeviceEntry &b) {
                   if (a.removable != b.removable)
@@ -867,6 +926,8 @@ void DeviceModel::mount(int index)
         return;
 
     const DeviceEntry entry = m_devices.at(index);
+    if (entry.backend == DeviceBackend::MtpMissing)
+        return; // the sidebar shows the install hint instead
     const QString fsType = entry.fsType;
     const QString label = entry.deviceName;
 
@@ -1019,9 +1080,13 @@ QVariant DeviceModel::data(const QModelIndex &index, int role) const
     case UsagePercentRole: return d.usagePercent;
     case RemovableRole:    return d.removable;
     case MountedRole:      return d.mounted;
-    case BackendRole:      return d.backend == DeviceBackend::Gio
-                                ? QStringLiteral("gio")
-                                : QStringLiteral("udisks2");
+    case BackendRole:
+        switch (d.backend) {
+        case DeviceBackend::Gio:        return QStringLiteral("gio");
+        case DeviceBackend::MtpMissing: return QStringLiteral("mtp-missing");
+        case DeviceBackend::UDisks2:    break;
+        }
+        return QStringLiteral("udisks2");
     }
     return {};
 }

@@ -169,7 +169,8 @@ private slots:
             QModelIndex idx = model.index(i);
             const QString backend = model.data(idx, DeviceModel::BackendRole).toString();
             QVERIFY2(backend == QStringLiteral("udisks2")
-                         || backend == QStringLiteral("gio"),
+                         || backend == QStringLiteral("gio")
+                         || backend == QStringLiteral("mtp-missing"),
                      qPrintable(QString("Unexpected backend at row %1: %2")
                                     .arg(i)
                                     .arg(backend)));
