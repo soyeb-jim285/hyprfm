@@ -52,11 +52,13 @@ DeviceModel::DeviceModel(QObject *parent, bool deferInitialRefresh)
         QTimer::singleShot(0, this, [this]() {
             setupGioMonitor();
             setupUDisks2();
+            setupMtpWatcher();
         });
         scheduleRefresh();
     } else {
         setupGioMonitor();
         setupUDisks2();
+        setupMtpWatcher();
         refresh();
     }
 }
@@ -251,10 +253,23 @@ bool afcBackendAvailable()
         || QFileInfo::exists(QStringLiteral("/run/host/usr/libexec/gvfsd-afc"));
 }
 
+// Checked once: GIO loads its remote volume monitors once per process, so
+// gvfs-mtp installed while HyprFM runs only works after a restart. Until
+// then keep showing the phone with the hint.
 bool mtpBackendAvailable()
 {
-    return QFileInfo::exists(QStringLiteral("/usr/share/gvfs/remote-volume-monitors/mtp.monitor"))
+    static const bool available =
+        QFileInfo::exists(QStringLiteral("/usr/share/gvfs/remote-volume-monitors/mtp.monitor"))
         || QFileInfo::exists(QStringLiteral("/run/host/usr/share/gvfs/remote-volume-monitors/mtp.monitor"));
+    return available;
+}
+
+const QString kUdevDataDir = QStringLiteral("/run/udev/data");
+
+// c189 = USB device char nodes; one file per whole device, not per interface.
+QStringList udevUsbDeviceFiles()
+{
+    return QDir(kUdevDataDir).entryList({QStringLiteral("c189:*")}, QDir::Files, QDir::Name);
 }
 
 QString mobileUdidFromUri(const QString &uri)
@@ -413,20 +428,8 @@ void DeviceModel::appendUnbrowsableMtpDevices()
     if (mtpBackendAvailable())
         return;
 
-    // Hotplug: udisks and the GIO monitors stay silent for an MTP phone,
-    // so watch the USB device nodes. ponytail: a new bus directory (rare)
-    // is only picked up on the next refresh.
-    const QDir usbRoot(QStringLiteral("/dev/bus/usb"));
-    if (m_usbWatcher.directories().isEmpty() && usbRoot.exists()) {
-        for (const QString &bus : usbRoot.entryList(QDir::Dirs | QDir::NoDotAndDotDot))
-            m_usbWatcher.addPath(usbRoot.filePath(bus));
-        connect(&m_usbWatcher, &QFileSystemWatcher::directoryChanged,
-                this, &DeviceModel::scheduleRefresh);
-    }
-
-    // c189 = USB device char nodes; one file per whole device, not per interface.
-    const QDir udevData(QStringLiteral("/run/udev/data"));
-    for (const QString &fileName : udevData.entryList({QStringLiteral("c189:*")}, QDir::Files)) {
+    const QDir udevData(kUdevDataDir);
+    for (const QString &fileName : udevUsbDeviceFiles()) {
         QFile file(udevData.filePath(fileName));
         if (!file.open(QIODevice::ReadOnly))
             continue;
@@ -453,6 +456,25 @@ void DeviceModel::appendUnbrowsableMtpDevices()
                           QStringLiteral("mtp"), 0, 0, 0, true, false,
                           QString(), DeviceBackend::MtpMissing, nullptr, nullptr});
     }
+}
+
+// Hotplug for the entries above: udisks and the GIO monitors stay silent
+// for an MTP phone. udev writes a device's db file atomically once its rules
+// (ID_MTP_DEVICE included) have run and deletes it on removal, so the db
+// directory is race-free where /dev/bus/usb is not. It also churns on every
+// unrelated uevent, so only a change in the set of USB devices refreshes.
+void DeviceModel::setupMtpWatcher()
+{
+    if (mtpBackendAvailable() || !m_usbWatcher.addPath(kUdevDataDir))
+        return;
+    m_usbDeviceFiles = udevUsbDeviceFiles();
+    connect(&m_usbWatcher, &QFileSystemWatcher::directoryChanged, this, [this]() {
+        QStringList files = udevUsbDeviceFiles();
+        if (files == m_usbDeviceFiles)
+            return;
+        m_usbDeviceFiles = std::move(files);
+        scheduleRefresh();
+    });
 }
 
 void DeviceModel::scheduleRefresh()

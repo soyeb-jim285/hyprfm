@@ -97,7 +97,7 @@ QString RuntimeFeaturesService::installHint(const QString &feature) const
     if (feature == QStringLiteral("deviceMount"))
         return QStringLiteral("Install udisks2 to mount and unmount devices from the sidebar.");
     if (feature == QStringLiteral("mtpDevice"))
-        return QStringLiteral("Install gvfs-mtp (gvfs-backends on Debian/Ubuntu) to browse Android phones, then reconnect the phone.");
+        return QStringLiteral("Install gvfs-mtp (gvfs-backends on Debian/Ubuntu) to browse Android phones, then restart HyprFM.");
     if (feature == QStringLiteral("clipboardImage"))
         return QStringLiteral("Install wl-clipboard to paste images and copy paths through Wayland.");
     if (feature == QStringLiteral("textHighlight"))

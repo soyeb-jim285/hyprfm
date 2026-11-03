@@ -75,6 +75,7 @@ private:
     void setupGioMonitor();
     void setupUDisks2();
     void appendUnbrowsableMtpDevices();
+    void setupMtpWatcher();
     static bool isVirtual(const QString &fsType);
 
     QList<DeviceEntry> m_devices;
@@ -82,4 +83,5 @@ private:
     quint64 m_refreshGeneration = 0;
     QTimer m_refreshTimer;
     QFileSystemWatcher m_usbWatcher;
+    QStringList m_usbDeviceFiles;
 };

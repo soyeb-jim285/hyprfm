@@ -3935,7 +3935,8 @@ ApplicationWindow {
         if (item.kind === "device") {
             if (!item.mounted)
                 return [
-                    { text: "Mount", shortcut: "", action: "mountdevice" }
+                    { text: item.backend === "mtp-missing" ? "How to Open…" : "Mount",
+                      shortcut: "", action: "mountdevice" }
                 ]
 
             return [
