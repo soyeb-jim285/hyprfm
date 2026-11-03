@@ -155,42 +155,6 @@ bool hasHardwareVulkanDevice()
     return found;
 }
 
-// Bringing up Vulkan costs ~47 ms between the QML tree being ready and the
-// scene graph being initialised, and Qt does it on the GUI thread once the
-// window is shown. Loading the loader + ICD and creating a throwaway instance
-// on a worker while QML is still being built overlaps most of that with work
-// already happening: 47 -> 34 ms, ~8 ms off the window appearing.
-void warmVulkanDriver()
-{
-    void *lib = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
-    if (!lib)
-        return;
-    struct AppInfo { int sType; const void *next; const char *app; uint32_t appVer;
-                     const char *engine; uint32_t engineVer; uint32_t apiVersion; };
-    struct CreateInfo { int sType; const void *next; uint32_t flags; const AppInfo *app;
-                        uint32_t layers; const char *const *layerNames;
-                        uint32_t exts; const char *const *extNames; };
-    using Instance = void *;
-    using Device = void *;
-    using GetProc = void *(*)(Instance, const char *);
-    using Create = int (*)(const CreateInfo *, const void *, Instance *);
-    using Destroy = void (*)(Instance, const void *);
-    using Enumerate = int (*)(Instance, uint32_t *, Device *);
-    auto getProc = reinterpret_cast<GetProc>(dlsym(lib, "vkGetInstanceProcAddr"));
-    auto create = getProc ? reinterpret_cast<Create>(getProc(nullptr, "vkCreateInstance")) : nullptr;
-    const AppInfo app{0, nullptr, "hyprfm", 0, nullptr, 0, (1u << 22) | (1u << 12)};
-    const CreateInfo info{1, nullptr, 0, &app, 0, nullptr, 0, nullptr};
-    Instance instance = nullptr;
-    if (create && create(&info, nullptr, &instance) == 0) {
-        uint32_t count = 0;
-        if (auto enumerate = reinterpret_cast<Enumerate>(getProc(instance, "vkEnumeratePhysicalDevices")))
-            enumerate(instance, &count, nullptr);
-        if (auto destroy = reinterpret_cast<Destroy>(getProc(instance, "vkDestroyInstance")))
-            destroy(instance, nullptr);
-    }
-    // No dlclose: keeping the driver loaded is the point.
-}
-
 // The driver manifests in every place the Vulkan loader looks for them.
 QFileInfoList vulkanDriverManifests()
 {
@@ -328,8 +292,6 @@ public:
         if (m_vulkan)
             QFile::remove(markerPath(QCoreApplication::applicationPid()));
     }
-
-    bool usesVulkan() const { return m_vulkan; }
 
     void firstFramePainted()
     {
@@ -727,21 +689,24 @@ int main(int argc, char *argv[])
     // disk label, as it happened). The font database and FreeType are shared
     // across threads under their own locks - only QFontCache is per-thread -
     // so doing it on a worker leaves the GUI thread ~1 ms of engine setup.
-    // The warm-up workers are joined when main() returns, whatever the path:
-    // a detached one still inside FreeType or vkCreateInstance while exit()
-    // tears the process down crashed it ("free(): invalid size" when Main.qml
-    // failed to load). Declared after app, so they finish before it goes.
-    struct Workers {
-        std::thread font, vulkan;
-        ~Workers()
+    // The worker is joined when main() returns, whatever the path: a
+    // detached one still inside FreeType while exit() tears the process down
+    // crashed it ("free(): invalid size" when Main.qml failed to load).
+    // Declared after app, so it finishes before it goes.
+    //
+    // There is deliberately no Vulkan warm-up beside it: a throwaway
+    // instance created on a worker while the render thread brings up Qt's
+    // own crashed the NVIDIA driver (null call inside libvulkan, issue #65),
+    // and on an Optimus laptop it made the first frame slower, not faster.
+    struct Worker {
+        std::thread thread;
+        ~Worker()
         {
-            if (font.joinable())
-                font.join();
-            if (vulkan.joinable())
-                vulkan.join();
+            if (thread.joinable())
+                thread.join();
         }
-    } workers;
-    workers.font = std::thread([] {
+    } fontWarmUp;
+    fontWarmUp.thread = std::thread([] {
         QFontMetricsF(QFont()).horizontalAdvance(QStringLiteral("0123456789 GB free of"));
     });
 
@@ -797,13 +762,6 @@ int main(int argc, char *argv[])
             isPrimary = ipcServer->isListening();
         }
     }
-
-    // Only once this process knows it will show a window: a launch that hands
-    // off returns from main() at once and should not wait on a driver.
-#if defined(Q_OS_LINUX) && QT_CONFIG(vulkan)
-    if (renderer.usesVulkan())
-        workers.vulkan = std::thread(warmVulkanDriver);
-#endif
 
     QQuickStyle::setStyle("Basic");
 
