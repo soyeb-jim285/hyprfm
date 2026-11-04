@@ -1,5 +1,6 @@
 set(HYPRFM_SOURCES
     main.cpp
+    services/filepicker.cpp
     services/configmanager.cpp
     services/themeloader.cpp
     services/clipboardmanager.cpp
@@ -100,6 +101,7 @@ endif()
 list(APPEND hyprfm_qml_module_args
     QML_FILES
         qml/Main.qml
+        qml/FilePicker.qml
         qml/theme/Theme.qml
         qml/components/StatusBar.qml
         qml/components/OperationsBar.qml
@@ -316,3 +318,20 @@ install(FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.svg"
     DESTINATION share/icons/hicolor/scalable/apps)
 install(FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.metainfo.xml"
     DESTINATION share/metainfo)
+
+add_executable(xdg-desktop-portal-hyprfm portal/main.cpp)
+target_link_libraries(xdg-desktop-portal-hyprfm PRIVATE Qt6::Core Qt6::DBus)
+install(TARGETS xdg-desktop-portal-hyprfm DESTINATION bin)
+
+# Register the backend with D-Bus and the portal broker. Choosing it remains
+# opt-in through the user's portals.conf; do not rewrite desktop preferences.
+configure_file(${CMAKE_SOURCE_DIR}/dist/portal/org.freedesktop.impl.portal.desktop.hyprfm.service.in
+    org.freedesktop.impl.portal.desktop.hyprfm.service @ONLY)
+configure_file(${CMAKE_SOURCE_DIR}/dist/portal/xdg-desktop-portal-hyprfm.service.in
+    xdg-desktop-portal-hyprfm.service @ONLY)
+install(FILES ${CMAKE_SOURCE_DIR}/dist/portal/hyprfm.portal
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal/portals)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/org.freedesktop.impl.portal.desktop.hyprfm.service
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/xdg-desktop-portal-hyprfm.service
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/systemd/user)

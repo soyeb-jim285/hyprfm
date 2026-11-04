@@ -31,9 +31,11 @@
 #include <unistd.h>
 #ifdef HYPRFM_HAS_KWINDOWSYSTEM
 #include <KWindowEffects>
+#include <KWindowSystem>
 #endif
 
 #include "services/configmanager.h"
+#include "services/filepicker.h"
 #include "services/themeloader.h"
 #include "services/fileoperations.h"
 #include "services/clipboardmanager.h"
@@ -388,6 +390,7 @@ void printUsage()
         "\n"
         "Options:\n"
         "  -n, --new-window   Open a separate window even when a path is given.\n"
+        "  --file-picker FILE Open the portal file chooser from a JSON request.\n"
         "  -h, --help         Show this help and exit.\n"
         "  -v, --version      Show the version and exit.\n"
         "\n"
@@ -645,10 +648,23 @@ int main(int argc, char *argv[])
     // given, i.e. it opts out of the tab handoff described below.
     QString initialOpenPath;
     bool newWindow = false;
+    QString pickerRequestPath;
+    QJsonObject pickerRequest;
     for (int i = 1; i < argc; ++i) {
         QString a = QString::fromLocal8Bit(argv[i]);
         if (a == QLatin1String("--new-window") || a == QLatin1String("-n")) {
             newWindow = true;
+            continue;
+        }
+        if (a == QLatin1String("--file-picker")) {
+            if (++i >= argc) { fprintf(stderr, "--file-picker requires a request file\n"); return 2; }
+            pickerRequestPath = QString::fromLocal8Bit(argv[i]);
+            QFile requestFile(pickerRequestPath);
+            QJsonParseError error;
+            if (!requestFile.open(QIODevice::ReadOnly)) return 2;
+            const auto doc = QJsonDocument::fromJson(requestFile.readAll(), &error);
+            if (error.error != QJsonParseError::NoError || !doc.isObject()) return 2;
+            pickerRequest = doc.object();
             continue;
         }
         if (a.startsWith('-')) continue;
@@ -728,7 +744,7 @@ int main(int argc, char *argv[])
         + QStringLiteral("/hyprfm.sock");
     QLocalServer *ipcServer = nullptr;
     bool isPrimary = false;
-    {
+    if (pickerRequestPath.isEmpty()) {
         QLocalSocket probe;
         probe.connectToServer(hyprfmSocketName);
         const bool instanceRunning = probe.waitForConnected(150);
@@ -1022,10 +1038,10 @@ int main(int argc, char *argv[])
     // with NO_CACHEGEN dropped SettingsPanel.qml from it in v0.4.14).
     mark("engine.load start");
     QQmlComponent mainComponent(&engine);
-    mainComponent.loadFromModule("HyprFM", "Main");
+    mainComponent.loadFromModule("HyprFM", pickerRequestPath.isEmpty() ? "Main" : "FilePicker");
     const QString installedMainQml = dataDir.isEmpty()
         ? QString()
-        : QDir(dataDir).filePath(QStringLiteral("HyprFM/qml/Main.qml"));
+        : QDir(dataDir).filePath(pickerRequestPath.isEmpty() ? QStringLiteral("HyprFM/qml/Main.qml") : QStringLiteral("HyprFM/qml/FilePicker.qml"));
     if (mainComponent.isError() && !installedMainQml.isEmpty() && QFile::exists(installedMainQml)) {
         qWarning() << "HyprFM: embedded QML module failed to load, falling back to" << installedMainQml
                    << mainComponent.errorString();
@@ -1152,6 +1168,18 @@ int main(int argc, char *argv[])
         context->setContextProperty("splitSearchResults", splitSearchResults);
         context->setContextProperty("splitSearchService", splitSearchService);
 
+        if (!pickerRequestPath.isEmpty()) {
+            auto *picker = new FilePicker(pickerRequest, w);
+            picker->setSourceModel(fsModel);
+            fsModel->setRootPath(picker->initialFolder());
+            context->setContextProperty("picker", picker);
+            QObject::connect(picker, &FilePicker::completed, &app, [&app](const QJsonObject &result) {
+                const QByteArray json = QJsonDocument(result).toJson(QJsonDocument::Compact);
+                fwrite(json.constData(), 1, json.size(), stdout);
+                fflush(stdout);
+                app.quit();
+            });
+        }
         QObject *root = mainComponent.create(context);
         w->window = qobject_cast<QQuickWindow *>(root);
         if (!w->window) {
@@ -1162,6 +1190,39 @@ int main(int argc, char *argv[])
         }
         root->setParent(w);
 
+        if (!pickerRequestPath.isEmpty()) {
+            w->window->setModality(pickerRequest.value("modal").toBool(true)
+                                       ? Qt::WindowModal : Qt::NonModal);
+#ifdef HYPRFM_HAS_KWINDOWSYSTEM
+            // Import the browser's parent before mapping the dialog, as other
+            // portal backends do. This preserves stacking and dialog placement.
+            const QString parent = pickerRequest.value("parent_window").toString();
+            if (parent.startsWith(QLatin1String("wayland:"))) {
+                w->window->create();
+                KWindowSystem::setMainWindow(w->window, parent.mid(8));
+            } else if (parent.startsWith(QLatin1String("x11:"))) {
+                bool valid = false;
+                const auto id = parent.mid(4).toULongLong(&valid, 16);
+                if (valid) KWindowSystem::setMainWindow(w->window, WId(id));
+            }
+#endif
+            if (!qEnvironmentVariableIsEmpty("HYPRLAND_INSTANCE_SIGNATURE")) {
+                // Hyprland tiles unparented Qt dialogs. Advertise their initial
+                // size at mapping time, then restore resizing once the dialog
+                // receives focus; no compositor rules or changes to other windows.
+                auto *window = w->window;
+                const QSize minimum = window->minimumSize();
+                const QSize maximum = window->maximumSize();
+                window->setMinimumSize(window->size());
+                window->setMaximumSize(window->size());
+                QObject::connect(window, &QWindow::activeChanged, window, [window, minimum, maximum]() {
+                    if (!window->isActive()) return;
+                    window->setMinimumSize(minimum);
+                    window->setMaximumSize(maximum);
+                }, static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
+            }
+            w->window->show();
+        }
         applyWindowEffects(w->window);
         QObject::connect(config, &ConfigManager::configChanged, w->window, [=]() {
             applyWindowEffects(w->window);

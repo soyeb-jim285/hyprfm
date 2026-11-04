@@ -7,6 +7,7 @@ Rectangle {
     Accessible.role: Accessible.ToolBar
     Accessible.name: "Navigation toolbar"
 
+    property bool filePickerMode: false
     property var activeTab: null
     property string navigationPath: ""
     property bool canGoBack: false
@@ -55,6 +56,7 @@ Rectangle {
     onSearchSizeFilterChanged: syncFilterPanelState()
     onFilterPanelOpenChanged: syncFilterPanelState()
 
+    signal newFolderRequested()
     signal searchClicked()
     signal connectRemoteRequested()
     signal homeClicked()
@@ -300,7 +302,7 @@ Rectangle {
                                 { mode: "grid",     icon: "Grid",         name: "Grid view" },
                                 { mode: "miller",   icon: "Columns3",     name: "Miller column view" },
                                 { mode: "detailed", icon: "AlignJustify", name: "Detailed view" }
-                            ]
+                            ].filter(mode => !root.filePickerMode || mode.mode !== "miller")
 
                             delegate: HoverRect {
                                 id: viewButton
@@ -343,7 +345,7 @@ Rectangle {
                     id: splitSwitcher
                     readonly property int segment: Theme.controlSize - 4
 
-                    visible: !root.searchMode
+                    visible: !root.searchMode && !root.filePickerMode
                     Layout.preferredWidth: visible ? splitModeRow.width + 4 : 0
                     Layout.preferredHeight: Theme.controlSize
                     Layout.alignment: Qt.AlignVCenter
@@ -395,6 +397,22 @@ Rectangle {
                     }
                 }
 
+                HoverRect {
+                    objectName: "pickerNewFolderButton"
+                    width: Theme.controlSize; height: Theme.controlSize
+                    visible: root.filePickerMode
+                    activeFocusOnTab: visible
+                    border.width: activeFocus ? 1 : 0
+                    border.color: Theme.accent
+                    Accessible.role: Accessible.Button
+                    Accessible.name: qsTr("New folder")
+                    onClicked: root.newFolderRequested()
+                    Keys.onReturnPressed: root.newFolderRequested()
+                    Keys.onSpacePressed: root.newFolderRequested()
+                    IconFolder { anchors.centerIn: parent; size: 18; color: Theme.text }
+                    IconPlus { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 3; size: 10; color: Theme.text }
+                }
+
                 // Restore button (only in trash view)
                 HoverRect {
                     width: restoreTrashRow.implicitWidth + 16; height: Theme.controlSize
@@ -437,7 +455,7 @@ Rectangle {
 
                 HoverRect {
                     width: Theme.controlSize; height: Theme.controlSize
-                    visible: !root.searchMode && !root.isTrashView && !root.isRemoteView
+                    visible: !root.filePickerMode && !root.searchMode && !root.isTrashView && !root.isRemoteView
                     tooltip: "Search"
                     shortcut: "search"
                     onClicked: root.searchClicked()
@@ -446,7 +464,7 @@ Rectangle {
 
                 HoverRect {
                     width: Theme.controlSize; height: Theme.controlSize
-                    visible: !root.searchMode
+                    visible: !root.filePickerMode && !root.searchMode
                     tooltip: "Keyboard shortcuts"
                     shortcut: "keyboard_shortcuts"
                     onClicked: root.keyboardShortcutsRequested()
@@ -455,7 +473,7 @@ Rectangle {
 
                 HoverRect {
                     width: Theme.controlSize; height: Theme.controlSize
-                    visible: !root.searchMode
+                    visible: !root.filePickerMode && !root.searchMode
                     tooltip: "Settings"
                     shortcut: "settings"
                     onClicked: root.settingsRequested()
@@ -521,7 +539,7 @@ Rectangle {
         Item {
             id: tabBarRow
             Layout.fillWidth: true
-            Layout.preferredHeight: tabModel.count > 1 ? Math.round(36 * Theme.uiScale) : 0
+            Layout.preferredHeight: !root.filePickerMode && tabModel.count > 1 ? Math.round(36 * Theme.uiScale) : 0
             visible: Layout.preferredHeight > 0 || tabBarHeightAnim.running
             clip: true
 
