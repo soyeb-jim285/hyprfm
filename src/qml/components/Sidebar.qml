@@ -9,6 +9,7 @@ Rectangle {
     Accessible.role: Accessible.Pane
     Accessible.name: "Sidebar navigation"
 
+    property bool filePickerMode: false
     property string currentPath: ""
     property string trashPath: fsModel.homePath() + "/.local/share/Trash/files"
     property bool isRecentsView: false
@@ -134,6 +135,7 @@ Rectangle {
                     // Entries the user hid via the sidebar context menu or
                     // Settings → Layout collapse away entirely.
                     visible: config.hiddenQuickAccess.indexOf(model.name) < 0
+                        && (!root.filePickerMode || ["Recents", "Trash", "Network"].indexOf(model.name) < 0)
 
                     readonly property string resolvedPath: {
                         const home = fsModel.homePath()
@@ -148,7 +150,7 @@ Rectangle {
 
                     width: parent.width - Theme.spacing
                     anchors.horizontalCenter: parent.horizontalCenter
-                    height: 32
+                    height: visible ? 32 : 0
                     readonly property bool isActive: {
                         if (model.name === "Recents") return root.isRecentsView
                         if (model.name === "Trash") return !root.isRecentsView && fileOps.isTrashPath(root.currentPath)

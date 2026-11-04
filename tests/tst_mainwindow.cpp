@@ -2,6 +2,8 @@
 // Main.qml headless. Used for behaviour that only shows with the full item
 // tree in place (event routing between overlays, toolbar, views).
 #include <QTest>
+#include <QJsonArray>
+#include "services/filepicker.h"
 #include <QSignalSpy>
 #include <QGuiApplication>
 #include <QDir>
@@ -60,7 +62,8 @@ class TestMainWindow : public QObject
         SearchProxyModel *searchProxy = nullptr;
         QQuickWindow *window = nullptr;
 
-        bool load()
+        FilePicker *picker = nullptr;
+        bool load(const QJsonObject &pickerRequest = {})
         {
             QDir().mkpath(moduleDir.path() + "/HyprFM");
             QFile src(QStringLiteral(TEST_MODULE_DIR "/HyprFM/qmldir"));
@@ -73,7 +76,7 @@ class TestMainWindow : public QObject
             dst.close();
             QFile::link(QStringLiteral(TEST_MODULE_DIR "/HyprFM/qml"), moduleDir.path() + "/HyprFM/qml");
 
-            QQuickStyle::setStyle("Basic");
+            if (QQuickStyle::name() != QStringLiteral("Basic")) QQuickStyle::setStyle("Basic");
             const QString configDir = home.path() + "/.config/hyprfm";
             QDir().mkpath(configDir);
             const QStringList themeDirs {QStringLiteral(TEST_SOURCE_DIR "/themes")};
@@ -153,13 +156,20 @@ class TestMainWindow : public QObject
             ctx->setContextProperty("dependencies", dependencies);
             ctx->setContextProperty("sessionState", sessionState);
 
-            engine.load(QUrl::fromLocalFile(QStringLiteral(TEST_SOURCE_DIR "/src/qml/Main.qml")));
+            if (!pickerRequest.isEmpty()) {
+                picker = new FilePicker(pickerRequest, &owner);
+                picker->setSourceModel(fsModel);
+                fsModel->setRootPath(picker->initialFolder());
+                ctx->setContextProperty("picker", picker);
+            }
+            engine.load(QUrl::fromLocalFile(picker ? QStringLiteral(TEST_SOURCE_DIR "/src/qml/FilePicker.qml")
+                                                 : QStringLiteral(TEST_SOURCE_DIR "/src/qml/Main.qml")));
             if (engine.rootObjects().isEmpty())
                 return false;
             window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
             if (!window)
                 return false;
-            window->resize(1100, 700);
+            if (!picker) window->resize(1100, 700);
             window->show();
             return QTest::qWaitForWindowExposed(window);
         }
@@ -205,6 +215,135 @@ class TestMainWindow : public QObject
     };
 
 private slots:
+    void testFilePickerSaveAndOverwrite()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QString::fromUtf8("lezione è #1.pdf"));
+        QFile existing(path);
+        QVERIFY(existing.open(QIODevice::WriteOnly));
+        existing.write("original"); existing.close();
+        App app;
+        QVERIFY(app.load(QJsonObject{{"mode", "save"}, {"current_folder", dir.path()},
+                                     {"current_name", QFileInfo(path).fileName()}}));
+        QCOMPARE(app.window->size(), QSize(980, 640));
+        QCOMPARE(app.window->type(), Qt::Dialog);
+        QVERIFY(app.window->flags().testFlag(Qt::FramelessWindowHint));
+        QSignalSpy complete(app.picker, &FilePicker::completed);
+        QSignalSpy overwrite(app.picker, &FilePicker::overwriteRequested);
+        auto *filename = app.item("pickerFilename");
+        QVERIFY(filename);
+        QCOMPARE(filename->property("text").toString(), QFileInfo(path).fileName());
+        QVERIFY(!app.picker->submit(dir.path(), "../escape", {}));
+        QVERIFY(!app.picker->submit(dir.path(), QFileInfo(path).fileName(), {}));
+        QCOMPARE(overwrite.size(), 1);
+        QCOMPARE(complete.size(), 0);
+        QVERIFY(QMetaObject::invokeMethod(app.item("pickerOverwrite"), "accept"));
+        QCOMPARE(complete.size(), 1);
+        QCOMPARE(complete.first().first().toJsonObject().value("uris").toArray().first().toString(),
+                 QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded));
+        QVERIFY(existing.open(QIODevice::ReadOnly));
+        QCOMPARE(existing.readAll(), QByteArray("original"));
+        filename->setProperty("text", "new.pdf");
+        QVERIFY(QMetaObject::invokeMethod(app.window, "submit", Q_ARG(QVariant, false)));
+        QCOMPARE(complete.size(), 2);
+        QVERIFY(!QFileInfo::exists(dir.filePath("new.pdf")));
+        if (qEnvironmentVariableIsSet("HYPRFM_TEST_GRAB")) {
+            QTRY_VERIFY(!app.item("pickerOverwrite")->isVisible());
+            app.window->grabWindow().save(qEnvironmentVariable("HYPRFM_TEST_GRAB"));
+        }
+    }
+
+    void testFilePickerCompactLayoutAndControls()
+    {
+        QTemporaryDir dir;
+        const QString downloads = dir.filePath("Downloads");
+        QVERIFY(QDir().mkpath(downloads));
+        for (const auto &name : {"Documents", "Images", "Projects"})
+            QVERIFY(QDir(downloads).mkdir(name));
+        for (const auto &name : {"Lecture notes.pdf", "Research.pdf", "Report.pdf", "Reading list.txt", "References.csv"}) {
+            QFile file(downloads + "/" + name);
+            QVERIFY(file.open(QIODevice::WriteOnly)); file.write("fixture");
+        }
+        QJsonArray filters{QJsonObject{{"name", "All files"}, {"rules", QJsonArray{QJsonObject{{"type", 0}, {"pattern", "*"}}}}},
+                           QJsonObject{{"name", "PDF documents"}, {"rules", QJsonArray{QJsonObject{{"type", 0}, {"pattern", "*.pdf"}}}}}};
+        App app;
+        QVERIFY(app.load(QJsonObject{{"mode", "save"}, {"current_folder", downloads},
+                                    {"current_name", "Lecture notes.pdf"}, {"filters", filters}}));
+        QCOMPARE(app.window->size(), QSize(980, 640));
+        auto *filename = app.item("pickerFilename");
+        auto *accept = app.item("pickerAccept");
+        auto *cancel = app.item("pickerCancel");
+        auto *toolbar = app.item("pickerToolbar");
+        QVERIFY(filename && accept && cancel && toolbar);
+        QVERIFY(toolbar->property("filePickerMode").toBool());
+        QVERIFY(!app.item("viewModeButton_miller"));
+        auto *listButton = app.item("viewModeButton_detailed");
+        QVERIFY(listButton);
+        QTest::mouseClick(app.window, Qt::LeftButton, Qt::NoModifier,
+                          listButton->mapToScene(QPointF(listButton->width()/2, listButton->height()/2)).toPoint());
+        QCOMPARE(app.window->property("viewMode").toString(), QStringLiteral("detailed"));
+        if (qEnvironmentVariableIsSet("HYPRFM_COMPACT_GRAB")) {
+            QTest::qWait(400);
+            app.window->grabWindow().save(qEnvironmentVariable("HYPRFM_COMPACT_GRAB"));
+        }
+        auto *newFolder = app.item("pickerNewFolder");
+        QVERIFY(newFolder);
+        QVERIFY(QMetaObject::invokeMethod(newFolder, "open"));
+        QTRY_VERIFY(newFolder->isVisible());
+        app.item("pickerFolderName")->setProperty("text", "New folder");
+        QVERIFY(QMetaObject::invokeMethod(newFolder, "createFolder"));
+        QVERIFY(QFileInfo(downloads + "/New folder").isDir());
+        QTRY_VERIFY(!newFolder->isVisible());
+        app.window->resize(620, 400);
+        QTest::qWait(100);
+        QVERIFY(!app.item("pickerSidebar")->isVisible());
+        const QRectF bounds(0, 0, 620, 400);
+        for (auto *item : {filename, accept, cancel, toolbar})
+            QVERIFY2(bounds.contains(item->mapRectToScene(item->boundingRect())), qPrintable(item->objectName()));
+        QVERIFY(filename->width() > 400);
+        QSignalSpy complete(app.picker, &FilePicker::completed);
+        filename->setProperty("text", "New document.pdf");
+        accept->forceActiveFocus();
+        QTest::keyClick(app.window, Qt::Key_Return);
+        QCOMPARE(complete.size(), 1);
+    }
+
+    void testFilePickerFiltersSelectionAndFolders()
+    {
+        QTemporaryDir dir;
+        for (const auto &name : {"test.pdf", "photo.png", "another.pdf"}) {
+            QFile file(dir.filePath(name)); QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(QDir(dir.path()).mkdir("subfolder"));
+        FileSystemModel fs;
+        QJsonArray filters{QJsonObject{{"name", "PDF"}, {"rules", QJsonArray{QJsonObject{{"type", 0}, {"pattern", "*.pdf"}}}}}};
+        FilePicker picker(QJsonObject{{"mode", "open"}, {"filters", filters}});
+        picker.setSourceModel(&fs);
+        QVERIFY(picker.navigate(dir.path()));
+        QTRY_COMPARE(picker.rowCount(), 3); // Two PDFs, plus navigable directories.
+        QSignalSpy complete(&picker, &FilePicker::completed);
+        QVERIFY(!picker.submit(dir.path(), {}, {dir.filePath("test.pdf"), dir.filePath("another.pdf")}));
+        QVERIFY(!picker.submit(dir.path(), {}, {dir.filePath("missing.pdf")}));
+        QVERIFY(!picker.submit(dir.path(), {}, {dir.filePath("subfolder")}));
+        QVERIFY(picker.submit(dir.path(), {}, {dir.filePath("test.pdf")}));
+        QCOMPARE(complete.size(), 1);
+        FilePicker multi(QJsonObject{{"mode", "open"}, {"multiple", true}});
+        multi.setSourceModel(&fs);
+        QVERIFY(multi.submit(dir.path(), {}, {dir.filePath("test.pdf"), dir.filePath("another.pdf")}));
+        FilePicker folder(QJsonObject{{"mode", "open"}, {"directory", true}});
+        folder.setSourceModel(&fs);
+        QTRY_COMPARE(folder.rowCount(), 1);
+        QVERIFY(folder.submit(dir.path(), {}, {}));
+        QVERIFY(!folder.navigate("network:///"));
+        FilePicker batch(QJsonObject{{"mode", "save_files"}, {"directory", true}, {"files", QJsonArray{"test.pdf", "test.pdf"}}});
+        batch.setSourceModel(&fs);
+        QSignalSpy batchComplete(&batch, &FilePicker::completed);
+        QVERIFY(batch.submit(dir.path(), {}, {}));
+        auto uris = batchComplete.first().first().toJsonObject().value("uris").toArray();
+        QCOMPARE(uris.size(), 2);
+        QVERIFY(uris[0] != uris[1]);
+        QVERIFY(!QFileInfo::exists(QUrl(uris[0].toString()).toLocalFile()));
+    }
     // Search results land in the proxy, but the view and the status bar have
     // to show them: the grid is bound to the proxy through paneModel() and
     // the item count reads the proxy's rowCount().

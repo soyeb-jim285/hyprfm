@@ -192,6 +192,7 @@ add_dependencies(tst_toolbar hyprfm)
 add_test(NAME tst_toolbar COMMAND tst_toolbar)
 
 add_executable(tst_mainwindow tst_mainwindow.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/filepicker.cpp
     ${CMAKE_SOURCE_DIR}/src/services/configmanager.cpp
     ${CMAKE_SOURCE_DIR}/src/services/themeloader.cpp
     ${CMAKE_SOURCE_DIR}/src/services/clipboardmanager.cpp
@@ -360,3 +361,29 @@ if(HYPRFM_TERMINAL)
     add_test(NAME tst_terminalview COMMAND tst_terminalview)
     set_tests_properties(tst_terminalview PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
+
+# The portal runs on an isolated bus; no changes to the user's desktop.
+find_program(DBUS_RUN_SESSION dbus-run-session)
+set(HYPRFM_PORTAL_TEST_PYTHON ${Python3_EXECUTABLE})
+execute_process(COMMAND ${HYPRFM_PORTAL_TEST_PYTHON} -c "from gi.repository import Gio, GLib"
+    RESULT_VARIABLE HYPRFM_HAVE_PYGOBJECT OUTPUT_QUIET ERROR_QUIET)
+if(NOT HYPRFM_HAVE_PYGOBJECT EQUAL 0 AND EXISTS "/usr/bin/python3")
+    set(HYPRFM_PORTAL_TEST_PYTHON /usr/bin/python3)
+    execute_process(COMMAND ${HYPRFM_PORTAL_TEST_PYTHON} -c "from gi.repository import Gio, GLib"
+        RESULT_VARIABLE HYPRFM_HAVE_PYGOBJECT OUTPUT_QUIET ERROR_QUIET)
+endif()
+if(DBUS_RUN_SESSION AND HYPRFM_HAVE_PYGOBJECT EQUAL 0)
+    add_test(NAME tst_filepicker_portal
+        COMMAND ${DBUS_RUN_SESSION} -- ${HYPRFM_PORTAL_TEST_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tst_filepicker_portal.py $<TARGET_FILE:xdg-desktop-portal-hyprfm>)
+    set_tests_properties(tst_filepicker_portal PROPERTIES TIMEOUT 30)
+endif()
+
+# Native compositor behaviour cannot be verified by the offscreen QPA.
+add_test(NAME tst_filepicker_window
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tst_filepicker_window.py $<TARGET_FILE:hyprfm>)
+set_tests_properties(tst_filepicker_window PROPERTIES
+    SKIP_RETURN_CODE 77
+    RUN_SERIAL TRUE
+    TIMEOUT 30
+)

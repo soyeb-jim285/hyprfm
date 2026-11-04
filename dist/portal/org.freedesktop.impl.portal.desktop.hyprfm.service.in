@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.freedesktop.impl.portal.desktop.hyprfm
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/xdg-desktop-portal-hyprfm
+SystemdService=xdg-desktop-portal-hyprfm.service
