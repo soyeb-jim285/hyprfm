@@ -144,6 +144,28 @@ void TabListModel::openPath(const QString &path)
         tab->navigateTo(wanted);
 }
 
+void TabListModel::openSplit(const QString &primary, const QString &secondary, const QString &orientation)
+{
+    const QString cleanPrimary = QDir::cleanPath(primary);
+    const QString cleanSecondary = QDir::cleanPath(secondary);
+    for (int i = 0; i < m_tabs.size(); ++i) {
+        if (m_tabs.at(i)->splitViewEnabled()
+            && QDir::cleanPath(m_tabs.at(i)->currentPath()) == cleanPrimary
+            && QDir::cleanPath(m_tabs.at(i)->secondaryCurrentPath()) == cleanSecondary) {
+            setActiveIndex(i);
+            return;
+        }
+    }
+    addTab();
+    if (auto *tab = activeTab()) {
+        tab->setSplitViewEnabled(true);
+        if (!orientation.isEmpty())
+            tab->setSplitOrientation(orientation);
+        tab->navigateTo(cleanPrimary);
+        tab->resetSecondaryTo(cleanSecondary);
+    }
+}
+
 void TabListModel::moveTab(int from, int to)
 {
     if (from == to || from < 0 || to < 0 || from >= m_tabs.size() || to >= m_tabs.size())

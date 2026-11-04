@@ -264,6 +264,29 @@ private slots:
         QVERIFY(split->splitViewEnabled());
     }
 
+    void testOpenSplitReusesTabAlreadyShowingIt()
+    {
+        TabListModel model;
+        const int initial = model.rowCount();
+
+        model.openSplit("/tmp", "/usr", "horizontal");
+        QCOMPARE(model.rowCount(), initial + 1);
+        QVERIFY(model.activeTab()->splitViewEnabled());
+        QCOMPARE(model.activeTab()->currentPath(), QString("/tmp"));
+        QCOMPARE(model.activeTab()->secondaryCurrentPath(), QString("/usr"));
+        QCOMPARE(model.activeTab()->splitOrientation(), QString("horizontal"));
+
+        model.addTab();
+        model.activeTab()->navigateTo("/var");
+
+        // Same split pair: switch back to existing split tab, don't add
+        model.openSplit("/tmp/", "/usr/", "horizontal");
+        QCOMPARE(model.rowCount(), initial + 2);
+        QVERIFY(model.activeTab()->splitViewEnabled());
+        QCOMPARE(model.activeTab()->currentPath(), QString("/tmp"));
+        QCOMPARE(model.activeTab()->secondaryCurrentPath(), QString("/usr"));
+    }
+
     void testMoveTabReordersAndKeepsActive()
     {
         TabListModel model;
