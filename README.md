@@ -117,6 +117,8 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 
 ### Integrations
 
+- **Optional native file chooser portal**: use HyprFM for Open/Save dialogs in portal-aware apps, with the same theme, sidebar and file views. See [setup and screenshots](docs/file-picker.md).
+
 - **udisks2** mount/unmount of removable drives
 - **gvfs / gio** for SFTP, SMB and MTP (the trash is read directly and does not need it)
 - **Git status overlays** in file lists (modified, staged, untracked, …)

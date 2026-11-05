@@ -1,0 +1,9 @@
+[Unit]
+Description=HyprFM file chooser portal
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.impl.portal.desktop.hyprfm
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/xdg-desktop-portal-hyprfm
+Restart=on-failure
+Slice=session.slice
