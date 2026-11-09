@@ -118,6 +118,7 @@ list(APPEND hyprfm_qml_module_args
         qml/components/BulkRenameDialog.qml
         qml/components/ArchivePasswordDialog.qml
         qml/components/ConfirmDialog.qml
+        qml/components/QuillThemeBinding.qml
         qml/components/RemoteConnectDialog.qml
         qml/components/PreviewLoader.qml
         qml/components/QuickPreview.qml
