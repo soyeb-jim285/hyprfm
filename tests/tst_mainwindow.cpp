@@ -308,6 +308,24 @@ private slots:
         QCOMPARE(complete.size(), 1);
     }
 
+    void testFilePickerBackReturnsToStartFolder()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkdir("sub"));
+        App app;
+        QVERIFY(app.load(QJsonObject{{"mode", "open"}, {"current_folder", dir.path()}}));
+        auto *fs = qobject_cast<FileSystemModel *>(app.picker->sourceModel());
+        QVERIFY(fs);
+        const QString start = fs->rootPath();
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "navigate",
+                                          Q_ARG(QVariant, dir.filePath("sub")), Q_ARG(QVariant, true)));
+        QCOMPARE(fs->rootPath(), dir.filePath("sub"));
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "goBack"));
+        QCOMPARE(fs->rootPath(), start);
+    }
+
     void testFilePickerStripsMarkupFromAppLabels()
     {
         const QString markup = QStringLiteral("<img src=\"http://example.invalid/x?leak=1\">");
