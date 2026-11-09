@@ -1219,7 +1219,7 @@ int main(int argc, char *argv[])
                     if (!window->isActive()) return;
                     window->setMinimumSize(minimum);
                     window->setMaximumSize(maximum);
-                }, static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
+                }, Qt::QueuedConnection);   // not single-shot: a queued check can see focus already gone
             }
             w->window->show();
         }
