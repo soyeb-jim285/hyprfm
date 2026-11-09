@@ -21,7 +21,7 @@ Window {
     property string viewMode: config.defaultView === "grid" ? "grid" : "detailed"
     property bool sidebarVisible: true
     property var selectedPaths: []
-    property var history: [fsModel.rootPath]
+    property var history: []    // seeded once below; a binding would rewrite it on navigation
     property int historyIndex: 0
     readonly property bool hasOverlay: overwriteDialog.visible || newFolder.visible
     readonly property string acceptLabel: (picker.options.accept_label
@@ -57,6 +57,7 @@ Window {
     }
 
     Component.onCompleted: {
+        history = [fsModel.rootPath]
         Q.Theme.background = Qt.binding(() => Theme.base)
         Q.Theme.backgroundAlt = Qt.binding(() => Theme.mantle)
         Q.Theme.backgroundDeep = Qt.binding(() => Theme.crust)
