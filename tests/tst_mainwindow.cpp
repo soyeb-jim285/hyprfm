@@ -308,6 +308,23 @@ private slots:
         QCOMPARE(complete.size(), 1);
     }
 
+    void testFilePickerStripsMarkupFromAppLabels()
+    {
+        const QString markup = QStringLiteral("<img src=\"http://example.invalid/x?leak=1\">");
+        const QJsonObject item{{"id", "a"}, {"label", markup}};
+        FilePicker picker(QJsonObject{
+            {"title", markup}, {"accept_label", markup},
+            {"filters", QJsonArray{QJsonObject{{"name", markup}, {"rules", QJsonArray{}}}}},
+            {"choices", QJsonArray{QJsonObject{{"id", "c"}, {"label", markup}, {"items", QJsonArray{item}}}}}});
+
+        const QString options = QString::fromUtf8(
+            QJsonDocument(QJsonObject::fromVariantMap(picker.options())).toJson());
+        QVERIFY2(!options.contains(u'<'), qPrintable(options));
+        QVERIFY(options.contains(QStringLiteral("img src"))); // the text itself survives
+        QCOMPARE(picker.options().value("choices").toList().first().toMap().value("id").toString(),
+                 QStringLiteral("c"));
+    }
+
     void testFilePickerFiltersSelectionAndFolders()
     {
         QTemporaryDir dir;
