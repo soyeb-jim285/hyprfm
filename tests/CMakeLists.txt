@@ -364,7 +364,10 @@ endif()
 
 # The portal runs on an isolated bus; no changes to the user's desktop.
 find_program(DBUS_RUN_SESSION dbus-run-session)
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
+find_package(Python3 COMPONENTS Interpreter)
+if(NOT Python3_Interpreter_FOUND)
+    return()
+endif()
 set(HYPRFM_PORTAL_TEST_PYTHON ${Python3_EXECUTABLE})
 execute_process(COMMAND ${HYPRFM_PORTAL_TEST_PYTHON} -c "from gi.repository import Gio, GLib"
     RESULT_VARIABLE HYPRFM_HAVE_PYGOBJECT OUTPUT_QUIET ERROR_QUIET)
