@@ -150,7 +150,7 @@ void TabListModel::openPath(const QString &path)
         tab->navigateTo(wanted);
 }
 
-void TabListModel::openSplit(const QString &primary, const QString &secondary, const QString &orientation)
+void TabListModel::openSplit(const QString &primary, const QString &secondary)
 {
     const QString cleanPrimary = cleanLocation(primary);
     const QString cleanSecondary = cleanLocation(secondary);
@@ -167,8 +167,6 @@ void TabListModel::openSplit(const QString &primary, const QString &secondary, c
         // Before the split turns on, or the pane copies and lists this tab's $HOME.
         tab->resetSecondaryTo(cleanSecondary);
         tab->setSplitViewEnabled(true);
-        if (!orientation.isEmpty())
-            tab->setSplitOrientation(orientation);
         tab->navigateTo(cleanPrimary);
     }
 }

@@ -269,18 +269,19 @@ private slots:
         TabListModel model;
         const int initial = model.rowCount();
 
-        model.openSplit("/tmp", "/usr", "horizontal");
+        model.openSplit("/tmp", "/usr");
         QCOMPARE(model.rowCount(), initial + 1);
         QVERIFY(model.activeTab()->splitViewEnabled());
         QCOMPARE(model.activeTab()->currentPath(), QString("/tmp"));
         QCOMPARE(model.activeTab()->secondaryCurrentPath(), QString("/usr"));
-        QCOMPARE(model.activeTab()->splitOrientation(), QString("horizontal"));
+        // Empty means "follow the configured default", like a toggled split.
+        QVERIFY(model.activeTab()->splitOrientation().isEmpty());
 
         model.addTab();
         model.activeTab()->navigateTo("/var");
 
         // Same split pair: switch back to existing split tab, don't add
-        model.openSplit("/tmp/", "/usr/", "horizontal");
+        model.openSplit("/tmp/", "/usr/");
         QCOMPARE(model.rowCount(), initial + 2);
         QVERIFY(model.activeTab()->splitViewEnabled());
         QCOMPARE(model.activeTab()->currentPath(), QString("/tmp"));
@@ -297,7 +298,7 @@ private slots:
                     [&seen, tab] { seen << tab->secondaryCurrentPath(); });
         });
 
-        model.openSplit("/tmp", "/usr", "horizontal");
+        model.openSplit("/tmp", "/usr");
 
         QCOMPARE(seen, QStringList{QStringLiteral("/usr")});
     }
@@ -309,13 +310,13 @@ private slots:
         model.openPath("sftp://host/a");
         QCOMPARE(model.activeTab()->currentPath(), QString("sftp://host/a"));
 
-        model.openSplit("sftp://host/a", "trash:///", "horizontal");
+        model.openSplit("sftp://host/a", "trash:///");
         QCOMPARE(model.activeTab()->currentPath(), QString("sftp://host/a"));
         QCOMPARE(model.activeTab()->secondaryCurrentPath(), QString("trash:///"));
 
         // The same URIs again reuse the tab, the comparison must not mangle them.
         const int rows = model.rowCount();
-        model.openSplit("sftp://host/a", "trash:///", "horizontal");
+        model.openSplit("sftp://host/a", "trash:///");
         QCOMPARE(model.rowCount(), rows);
     }
 
