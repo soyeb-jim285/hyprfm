@@ -696,6 +696,15 @@ int main(int argc, char *argv[])
         else if (initialSecondaryPath.isEmpty())
             initialSecondaryPath = a;
     }
+    // A split needs two folders. Anything else in the second slot (another
+    // file from the desktop's %F, the value of `-style fusion`, a typo) keeps
+    // the plain one-path launch.
+    // ponytail: a real folder named like a Qt option value still matches.
+    const auto isSplitLocation = [](const QString &path) {
+        return path.contains(QLatin1String("://")) || QFileInfo(path).isDir();
+    };
+    if (!isSplitLocation(initialOpenPath) || !isSplitLocation(initialSecondaryPath))
+        initialSecondaryPath.clear();
     if (!initialOpenPath.isEmpty()) {
         QFileInfo fi(initialOpenPath);
         if (fi.exists())
