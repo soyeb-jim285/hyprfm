@@ -311,7 +311,8 @@ Launching `hyprfm` while it is already running opens another independent
 window. The one exception is `hyprfm <path>`, which forwards the path to the
 running window as a new tab, so desktop launchers and `xdg-open` keep behaving
 as expected. Pass `--new-window` (or `-n`) to get a separate window for a path
-too.
+too. `hyprfm <folder> <folder>` opens the two side by side in a split view,
+reusing a tab already showing that pair.
 
 Only the first window keeps the saved session (tabs + window geometry);
 additional windows start fresh and leave it untouched.
