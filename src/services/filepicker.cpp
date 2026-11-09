@@ -4,8 +4,52 @@
 #include <QStandardPaths>
 #include <QUrl>
 
+namespace {
+
+// The requesting app may be sandboxed, and this process is not. Text items
+// default to AutoText, so markup in a label would render here and an <img>
+// would fetch a URL with this process's network access. Strip it once, on the
+// way in, instead of relying on every Text and Quill control that shows one.
+void plainLabel(QJsonObject &object, const char *key)
+{
+    object[QLatin1String(key)] = object.value(QLatin1String(key)).toString().replace(u'<', QChar(0x2039));
+}
+
+QJsonObject withPlainLabels(QJsonObject request)
+{
+    plainLabel(request, "title");
+    plainLabel(request, "accept_label");
+
+    QJsonArray filters = request.value("filters").toArray();
+    for (auto value : filters) {
+        QJsonObject filter = value.toObject();
+        plainLabel(filter, "name");
+        value = filter;
+    }
+    request["filters"] = filters;
+
+    QJsonArray choices = request.value("choices").toArray();
+    for (auto value : choices) {
+        QJsonObject choice = value.toObject();
+        plainLabel(choice, "label");
+        QJsonArray items = choice.value("items").toArray();
+        for (auto itemValue : items) {
+            QJsonObject item = itemValue.toObject();
+            plainLabel(item, "label");
+            itemValue = item;
+        }
+        choice["items"] = items;
+        value = choice;
+    }
+    request["choices"] = choices;
+    return request;
+}
+
+}
+
 FilePicker::FilePicker(const QJsonObject &request, QObject *parent)
-    : QSortFilterProxyModel(parent), m_request(request), m_filterIndex(request.value("filter_index").toInt())
+    : QSortFilterProxyModel(parent), m_request(withPlainLabels(request)),
+      m_filterIndex(request.value("filter_index").toInt())
 {
     for (const auto &value : request.value("choices").toArray()) {
         const auto choice = value.toObject();
