@@ -164,11 +164,12 @@ void TabListModel::openSplit(const QString &primary, const QString &secondary, c
     }
     addTab();
     if (auto *tab = activeTab()) {
+        // Before the split turns on, or the pane copies and lists this tab's $HOME.
+        tab->resetSecondaryTo(cleanSecondary);
         tab->setSplitViewEnabled(true);
         if (!orientation.isEmpty())
             tab->setSplitOrientation(orientation);
         tab->navigateTo(cleanPrimary);
-        tab->resetSecondaryTo(cleanSecondary);
     }
 }
 

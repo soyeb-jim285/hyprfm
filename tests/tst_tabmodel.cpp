@@ -287,6 +287,21 @@ private slots:
         QCOMPARE(model.activeTab()->secondaryCurrentPath(), QString("/usr"));
     }
 
+    void testOpenSplitNeverShowsHomeInSecondaryPane()
+    {
+        TabListModel model;
+        QStringList seen;
+        connect(&model, &TabListModel::activeIndexChanged, this, [&] {
+            TabModel *tab = model.activeTab();
+            connect(tab, &TabModel::secondaryCurrentPathChanged, tab,
+                    [&seen, tab] { seen << tab->secondaryCurrentPath(); });
+        });
+
+        model.openSplit("/tmp", "/usr", "horizontal");
+
+        QCOMPARE(seen, QStringList{QStringLiteral("/usr")});
+    }
+
     void testOpenPathsKeepUrisIntact()
     {
         TabListModel model;
