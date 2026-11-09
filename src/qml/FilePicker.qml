@@ -127,6 +127,7 @@ Window {
                     filePickerMode: true
                     currentPath: fsModel.rootPath
                     onBookmarkClicked: path => root.navigate(path)
+                    onSavedSplitClicked: split => root.navigate(split.primaryPath)
                     onCollapseClicked: root.sidebarVisible = false
                 }
 
