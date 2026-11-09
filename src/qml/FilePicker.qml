@@ -58,29 +58,8 @@ Window {
 
     Component.onCompleted: {
         history = [fsModel.rootPath]
-        Q.Theme.background = Qt.binding(() => Theme.base)
-        Q.Theme.backgroundAlt = Qt.binding(() => Theme.mantle)
-        Q.Theme.backgroundDeep = Qt.binding(() => Theme.crust)
-        Q.Theme.surface0 = Qt.binding(() => Theme.surface)
-        Q.Theme.surface1 = Qt.binding(() => Qt.rgba(
-            Theme.base.r * 0.9 + Theme.text.r * 0.1,
-            Theme.base.g * 0.9 + Theme.text.g * 0.1,
-            Theme.base.b * 0.9 + Theme.text.b * 0.1, 1))
-        Q.Theme.surface2 = Qt.binding(() => Theme.overlay)
-        Q.Theme.textPrimary = Qt.binding(() => Theme.text)
-        Q.Theme.textSecondary = Qt.binding(() => Theme.subtext)
-        Q.Theme.textTertiary = Qt.binding(() => Theme.muted)
-        Q.Theme.primary = Qt.binding(() => Theme.accent)
-        Q.Theme.error = Qt.binding(() => Theme.error)
-        Q.Theme.radiusSm = Qt.binding(() => Theme.radiusSmall)
-        Q.Theme.radius = Qt.binding(() => Theme.radiusMedium)
-        Q.Theme.radiusLg = Qt.binding(() => Theme.radiusLarge)
-        Q.Theme.fontFamily = Qt.binding(() => Qt.application.font.family)
-        Q.Theme.fontSize = Qt.binding(() => Math.round(Theme.fontNormal * Screen.logicalPixelDensity * 25.4 / 72))
-        Q.Theme.animDurationFast = Qt.binding(() => Theme.animDurationFast)
-        Q.Theme.animDuration = Qt.binding(() => Theme.animDuration)
-        Q.Theme.animDurationSlow = Qt.binding(() => Theme.animDurationSlow)
     }
+    Components.QuillThemeBinding {}
     onVisibleChanged: {
         if (!visible) return
         Qt.callLater(() => {
