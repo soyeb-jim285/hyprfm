@@ -1102,7 +1102,6 @@ int main(int argc, char *argv[])
                 tab->navigateTo(openPath);
                 if (!secondaryPath.isEmpty()) {
                     tab->setSplitViewEnabled(true);
-                    tab->setSplitOrientation(config->splitOrientation());
                     tab->resetSecondaryTo(secondaryPath);
                 }
             }
@@ -1366,7 +1365,7 @@ int main(int argc, char *argv[])
             return;
         if (!path.isEmpty()) {
             if (!secondaryPath.isEmpty())
-                target->tabModel->openSplit(path, secondaryPath, config->splitOrientation());
+                target->tabModel->openSplit(path, secondaryPath);
             else
                 target->tabModel->openPath(path);
         }
