@@ -287,6 +287,23 @@ private slots:
         QCOMPARE(model.activeTab()->secondaryCurrentPath(), QString("/usr"));
     }
 
+    void testOpenPathsKeepUrisIntact()
+    {
+        TabListModel model;
+
+        model.openPath("sftp://host/a");
+        QCOMPARE(model.activeTab()->currentPath(), QString("sftp://host/a"));
+
+        model.openSplit("sftp://host/a", "trash:///", "horizontal");
+        QCOMPARE(model.activeTab()->currentPath(), QString("sftp://host/a"));
+        QCOMPARE(model.activeTab()->secondaryCurrentPath(), QString("trash:///"));
+
+        // The same URIs again reuse the tab, the comparison must not mangle them.
+        const int rows = model.rowCount();
+        model.openSplit("sftp://host/a", "trash:///", "horizontal");
+        QCOMPARE(model.rowCount(), rows);
+    }
+
     void testMoveTabReordersAndKeepsActive()
     {
         TabListModel model;

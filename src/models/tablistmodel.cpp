@@ -29,6 +29,12 @@ QString normalizedSessionPath(const QString &path)
     return QFileInfo::exists(candidate) ? QDir(candidate).absolutePath() : QDir::homePath();
 }
 
+// QDir::cleanPath collapses the `//` of a URI, so only local paths go through it.
+QString cleanLocation(const QString &path)
+{
+    return path.contains(QLatin1String("://")) ? path : QDir::cleanPath(path);
+}
+
 }
 
 TabListModel::TabListModel(QObject *parent)
@@ -131,10 +137,10 @@ void TabListModel::setDefaultViewMode(const QString &mode)
 
 void TabListModel::openPath(const QString &path)
 {
-    const QString wanted = QDir::cleanPath(path);
+    const QString wanted = cleanLocation(path);
     for (int i = 0; i < m_tabs.size(); ++i) {
         if (!m_tabs.at(i)->splitViewEnabled()
-            && QDir::cleanPath(m_tabs.at(i)->currentPath()) == wanted) {
+            && cleanLocation(m_tabs.at(i)->currentPath()) == wanted) {
             setActiveIndex(i);
             return;
         }
@@ -146,12 +152,12 @@ void TabListModel::openPath(const QString &path)
 
 void TabListModel::openSplit(const QString &primary, const QString &secondary, const QString &orientation)
 {
-    const QString cleanPrimary = QDir::cleanPath(primary);
-    const QString cleanSecondary = QDir::cleanPath(secondary);
+    const QString cleanPrimary = cleanLocation(primary);
+    const QString cleanSecondary = cleanLocation(secondary);
     for (int i = 0; i < m_tabs.size(); ++i) {
         if (m_tabs.at(i)->splitViewEnabled()
-            && QDir::cleanPath(m_tabs.at(i)->currentPath()) == cleanPrimary
-            && QDir::cleanPath(m_tabs.at(i)->secondaryCurrentPath()) == cleanSecondary) {
+            && cleanLocation(m_tabs.at(i)->currentPath()) == cleanPrimary
+            && cleanLocation(m_tabs.at(i)->secondaryCurrentPath()) == cleanSecondary) {
             setActiveIndex(i);
             return;
         }
