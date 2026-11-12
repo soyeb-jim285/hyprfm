@@ -3,6 +3,7 @@
 // tree in place (event routing between overlays, toolbar, views).
 #include <QTest>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include "services/filepicker.h"
 #include <QSignalSpy>
 #include <QGuiApplication>
