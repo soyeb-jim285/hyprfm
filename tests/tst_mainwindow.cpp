@@ -326,6 +326,23 @@ private slots:
         QCOMPARE(fs->rootPath(), start);
     }
 
+    void testFilePickerEscapeClosesOpenDropdownFirst()
+    {
+        App app;
+        QVERIFY(app.load(QJsonObject{{"mode", "open"}}));
+        app.window->show();
+        auto *filter = app.window->findChild<QObject *>("pickerFilter");
+        QVERIFY(filter);
+        filter->setProperty("dropdownOpen", true);
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "handleEscape"));
+        QCOMPARE(filter->property("dropdownOpen").toBool(), false);
+        QVERIFY(app.window->isVisible());
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "handleEscape"));
+        QVERIFY(!app.window->isVisible());
+    }
+
     void testFilePickerStripsMarkupFromAppLabels()
     {
         const QString markup = QStringLiteral("<img src=\"http://example.invalid/x?leak=1\">");

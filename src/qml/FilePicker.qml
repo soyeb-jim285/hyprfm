@@ -51,6 +51,15 @@ Window {
         if (saving && indices.length === 1 && !picker.isDir(indices[0]))
             filename.text = picker.fileName(indices[0])
     }
+    // An open dropdown list is its own popup window and never sees the key,
+    // so Escape lands here and has to close the list before the chooser.
+    function handleEscape() {
+        const dropdowns = [filterDropdown]
+        for (let i = 0; i < choiceRows.count; ++i) dropdowns.push(choiceRows.itemAt(i).dropdown)
+        const open = dropdowns.find(dropdown => dropdown.dropdownOpen)
+        if (open) open.dropdownOpen = false
+        else root.close()
+    }
     function focusFiles() {
         const view = files.activeView()
         if (view) view.forceActiveFocus()
@@ -68,7 +77,7 @@ Window {
         })
     }
 
-    Shortcut { sequence: "Escape"; enabled: !root.hasOverlay; onActivated: root.close() }
+    Shortcut { sequence: "Escape"; enabled: !root.hasOverlay; onActivated: root.handleEscape() }
     Shortcut { sequence: "Ctrl+L"; enabled: !root.hasOverlay; onActivated: toolbar.startEditing() }
     Shortcut { sequence: "Alt+Up"; enabled: !root.hasOverlay; onActivated: root.navigate(fsModel.rootPath + "/..") }
     Shortcut { sequence: "Alt+Left"; enabled: !root.hasOverlay; onActivated: root.goBack() }
@@ -202,6 +211,7 @@ Window {
                     spacing: Theme.spacing * 2
                     Text { text: qsTr("Type"); color: Theme.subtext; font.pointSize: Theme.fontNormal; Layout.preferredWidth: 60 }
                     Q.Dropdown {
+                        id: filterDropdown
                         objectName: "pickerFilter"
                         Layout.fillWidth: true
                         model: (picker.options.filters || []).map(filter => filter.name)
@@ -211,9 +221,11 @@ Window {
                     }
                 }
                 Repeater {
+                    id: choiceRows
                     model: picker.options.choices || []
                     RowLayout {
                         required property var modelData
+                        property alias dropdown: choiceDropdown
                         Layout.fillWidth: true
                         Q.Checkbox {
                             visible: modelData.items.length === 0
@@ -231,6 +243,7 @@ Window {
                             elide: Text.ElideRight
                         }
                         Q.Dropdown {
+                            id: choiceDropdown
                             visible: modelData.items.length > 0
                             Layout.fillWidth: true
                             model: modelData.items.map(item => item.label)
