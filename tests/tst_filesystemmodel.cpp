@@ -222,6 +222,24 @@ private slots:
         QCOMPARE(model.folderCount(), 1);
     }
 
+    // A folder scan still running when the model switches to Trash must not
+    // land on top of the Trash listing (a new tab lists $HOME, then a
+    // handed-over trash:/// navigates it straight on).
+    void testStaleFolderScanDoesNotOverwriteTrash()
+    {
+        TestDir dir;
+        for (int i = 0; i < 200; ++i)
+            dir.createFile(QStringLiteral("f%1.txt").arg(i), "x");
+
+        FileSystemModel model;
+        model.setRootPath(dir.path());
+        model.setRootPath(QStringLiteral("trash:///"));
+        QTest::qWait(500);
+
+        QCOMPARE(model.rootPath(), QStringLiteral("trash:///"));
+        QCOMPARE(model.fileCount() + model.folderCount(), model.rowCount());
+    }
+
     // 4. setRootPath same path emits no signal
     void testWatcherBurstCoalescesIntoOneRefresh()
     {

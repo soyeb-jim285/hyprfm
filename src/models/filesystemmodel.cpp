@@ -1140,6 +1140,9 @@ void FileSystemModel::reload()
     setIsLoading(true);
     cancelRemoteReload();
     ++m_remoteReloadGeneration;
+    // A folder scan still in flight belongs to the previous root; Trash and
+    // remote roots never start one of their own to supersede it.
+    ++m_localReloadGeneration;
 
     if (isTrashRoot()) {
         // Trash scan runs gio synchronously already; wrap in the reset.
