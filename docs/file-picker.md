@@ -12,18 +12,16 @@ Screenshots show the real 980×640 chooser with sample files and an isolated
 configuration (the grid screenshot uses `grid_fixed_columns = true`). Both
 views use the existing HyprFM components.
 
-Build and install for the current user:
+Packages install the backend, its `.portal` descriptor, D-Bus activation file
+and systemd user unit. From source, install them the same way:
 
 ```sh
-cmake --build build --target hyprfm xdg-desktop-portal-hyprfm
-python3 scripts/install-filepicker.py
-systemctl --user daemon-reload
-systemctl --user restart xdg-desktop-portal-hyprfm xdg-desktop-portal
+cmake --build build
+sudo cmake --install build
 ```
 
-For a packaged/system installation, CMake also installs the `.portal` descriptor,
-D-Bus activation file and systemd user unit. Select the backend explicitly in
-`~/.config/xdg-desktop-portal/portals.conf`:
+The backend is opt-in. Select it in `~/.config/xdg-desktop-portal/portals.conf`,
+then restart the portal:
 
 ```ini
 [preferred]
@@ -31,11 +29,14 @@ D-Bus activation file and systemd user unit. Select the backend explicitly in
 org.freedesktop.impl.portal.FileChooser=hyprfm;gtk
 ```
 
-The installer backs up existing executables and configuration under
-`~/.local/state/hyprfm/filepicker-backups/`. It changes only the FileChooser
-preference; screen sharing and screenshot routing stay with their existing
-providers. Applications which cache portal availability may need restarting.
-Applications with their own chooser must be configured to use desktop portals.
+```sh
+systemctl --user restart xdg-desktop-portal
+```
+
+This changes only the FileChooser preference; screen sharing and screenshot
+routing stay with their existing providers. Applications which cache portal
+availability may need restarting. Applications with their own chooser must be
+configured to use desktop portals.
 
 The small Qt/D-Bus backend implements `OpenFile`, `SaveFile`, `SaveFiles` and
 request cancellation. Each request launches an independent
@@ -79,9 +80,8 @@ process to verify D-Bus serialization, results, errors and cancellation. It does
 not change desktop services. UI checks use the real HyprFM QML components and
 verify that choosing a path leaves existing contents untouched.
 
-To switch back, restore the previous `portals.conf` from the backup (or remove
-its FileChooser preference) and restart `xdg-desktop-portal`. Restore the backed
-up `~/.local/bin/hyprfm` if the earlier local executable is also wanted.
+To switch back, remove the FileChooser line from `portals.conf` and restart
+`xdg-desktop-portal`.
 
 Protocol reference:
 https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.FileChooser.html
