@@ -227,6 +227,8 @@ Window {
                             color: Theme.subtext
                             font.pointSize: Theme.fontNormal
                             Layout.preferredWidth: 140
+                            Layout.maximumWidth: 140
+                            elide: Text.ElideRight
                         }
                         Q.Dropdown {
                             visible: modelData.items.length > 0
