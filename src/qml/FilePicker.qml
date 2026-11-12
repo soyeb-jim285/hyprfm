@@ -288,6 +288,8 @@ Window {
     Q.Dialog {
         id: newFolder
         objectName: "pickerNewFolder"
+        anchors.fill: parent
+        z: 9998
         title: qsTr("New folder")
         dialogWidth: 340
         initialFocusItem: folderName.inputItem
