@@ -196,7 +196,7 @@ Or pull it into a system/home-manager flake:
 }
 ```
 
-then reference `hyprfm.packages.<system>.default` in `environment.systemPackages` / `home.packages`. The package version is parsed straight from `CMakeLists.txt`, so it always tracks the tree it's built from.
+then reference `hyprfm.packages.<system>.default` in `environment.systemPackages` / `home.packages`, or add `hyprfm.overlays.default` to `nixpkgs.overlays` and use `pkgs.hyprfm`, built against your own nixpkgs. The package version is parsed straight from `CMakeLists.txt`, so it always tracks the tree it's built from.
 
 The package bundles the tools HyprFM shells out to, including archive handling,
 previews, search and the gvfs client module, so nothing else has to be

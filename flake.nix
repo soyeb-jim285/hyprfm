@@ -187,6 +187,10 @@
         };
     in
     {
+      # For NixOS/home-manager configs: `nixpkgs.overlays = [ hyprfm.overlays.default ];`
+      # then `pkgs.hyprfm`, built against the config's own nixpkgs.
+      overlays.default = final: prev: { hyprfm = mkHyprfm final; };
+
       packages = forEachSystem (system: {
         default = self.packages.${system}.hyprfm;
         hyprfm = mkHyprfm (pkgsFor system);
