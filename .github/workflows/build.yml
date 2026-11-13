@@ -87,6 +87,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.3'
+          arch: linux_gcc_64
           # Note: 'qtwayland' is NOT a separate module for linux desktop in
           # aqtinstall — on Linux the Wayland platform plugin (libqwayland-
           # generic.so / libqwayland-egl.so) ships with the base Qt install.
@@ -98,8 +99,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            build-essential \
             cmake \
             ninja-build \
+            pkg-config \
+            python3-gi \
+            libglib2.0-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
             libgl-dev \
             libxkbcommon-dev \
             libdbus-1-dev \
@@ -107,6 +114,16 @@ jobs:
             libegl-dev \
             libgles-dev \
             libvulkan-dev \
+            libxcb-cursor0 \
+            libx11-xcb-dev \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            libxkbcommon-x11-0 \
             wayland-protocols \
             xdg-utils \
             file \
@@ -114,7 +131,15 @@ jobs:
             libglib2.0-bin \
             gvfs \
             dbus \
-            p7zip-full
+            p7zip-full \
+            zip \
+            unzip \
+            zstd \
+            libarchive-tools \
+            shared-mime-info \
+            fd-find \
+            bat \
+            poppler-utils
 
       # Markdown previews shell out to `md2html`. Debian and Ubuntu package
       # md4c's *libraries* (libmd4c0, libmd4c-dev, libmd4c-html0) but never
@@ -184,6 +209,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DHYPRFM_DATA_DIR=/usr/share/hyprfm \
+            -DHYPRFM_TERMINAL=ON \
             -DHYPRFM_ENABLE_QML_CACHEGEN=ON
           cmake --build build --parallel
 
@@ -224,12 +250,15 @@ jobs:
           # Force linuxdeploy-plugin-qt to bundle the Wayland platform plugin
           # alongside xcb. Without this, Ubuntu's GNOME Wayland session loads
           # an empty platform and the window renders black.
-          EXTRA_PLATFORM_PLUGINS: libqwayland-generic.so;libqwayland-egl.so
+          EXTRA_PLATFORM_PLUGINS: libqoffscreen.so;libqminimal.so;libqwayland-generic.so;libqwayland-egl.so
           QML_SOURCES_PATHS: src/qml
         run: |
           set -euo pipefail
           QT_PLUGIN_DIR=$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null || qmake -query QT_INSTALL_PLUGINS)
+          QT_LIB_DIR=$(qmake6 -query QT_INSTALL_LIBS 2>/dev/null || qmake -query QT_INSTALL_LIBS)
+          export LD_LIBRARY_PATH="$QT_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
+          install -m755 dist/AppRun AppDir/AppRun
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             --plugin qt \
@@ -285,6 +314,7 @@ jobs:
                   | xargs -r objdump -T 2>/dev/null || true) \
                 | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1)
           echo "Newest glibc symbol needed: $max"
+          test -n "$max" || { echo "::error::No glibc symbols found in AppDir"; exit 1; }
           if [ "$(printf '%s\n' GLIBC_2.35 "$max" | sort -V | tail -1)" != GLIBC_2.35 ]; then
             echo "::error::The AppImage needs $max, newer than Ubuntu 22.04's GLIBC_2.35"
             exit 1
@@ -303,9 +333,14 @@ jobs:
         # such gate; never again.
         run: |
           chmod +x "HyprFM-${TAG_NAME}-x86_64.AppImage"
+          smoke_dir=$(mktemp -d)
+          trap 'rm -rf "$smoke_dir"' EXIT
           set +e
-          # offscreen platform needs no display; software RHI dodges Mesa.
-          QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software \
+          # Offscreen needs no display; Qt Quick's software renderer dodges Mesa.
+          env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML_IMPORT_PATH -u QML2_IMPORT_PATH \
+            XDG_RUNTIME_DIR="$smoke_dir" XDG_CONFIG_HOME="$smoke_dir/config" \
+            XDG_CACHE_HOME="$smoke_dir/cache" \
+            QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
             timeout 10 "./HyprFM-${TAG_NAME}-x86_64.AppImage" \
             > smoke.stdout 2> smoke.stderr &
           SMOKE_PID=$!
@@ -333,6 +368,32 @@ jobs:
             exit 1
           fi
           echo "Smoke test passed."
+
+      - name: Smoke-test without the build host's Qt installation
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          docker run --rm \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/HyprFM-${TAG_NAME}-x86_64.AppImage,target=/opt/hyprfm.AppImage,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/tests/tst_filepicker_startup.py,target=/opt/tst_filepicker_startup.py,readonly" \
+            ubuntu:22.04 bash -euc '
+              apt-get update -o Acquire::Retries=3
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                libgl1 libegl1 libfontconfig1 libxkbcommon0 libdbus-1-3 fonts-dejavu-core python3
+              mkdir -m700 /tmp/hyprfm-runtime
+              export XDG_RUNTIME_DIR=/tmp/hyprfm-runtime
+              export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
+              /opt/hyprfm.AppImage --appimage-extract-and-run --version
+              set +e
+              timeout 15 /opt/hyprfm.AppImage --appimage-extract-and-run > /tmp/smoke.stdout 2> /tmp/smoke.stderr
+              status=$?
+              set -e
+              cat /tmp/smoke.stdout /tmp/smoke.stderr
+              test "$status" -eq 124
+              ! grep -E "is not a type|failed to load component|QQmlApplicationEngine failed|TypeError:|Unable to assign|Aborted|Segmentation fault|Failed to initialize graphics backend|Failed to create RHI" /tmp/smoke.stderr
+              APPIMAGE_EXTRACT_AND_RUN=1 python3 /opt/tst_filepicker_startup.py /opt/hyprfm.AppImage
+            '
 
       - name: Upload AppImage artifact
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
