@@ -38,6 +38,9 @@ QtObject {
     readonly property int toolbarRowHeight: Math.round(44 * uiScale)
     property bool transparencyEnabled: config.transparencyEnabled
     property real transparencyLevel: Math.max(0, Math.min(1, config.transparencyLevel))
+    // What containerColor() applies. One animated value, so toggling transparency
+    // fades the window in and out instead of snapping, and level changes ease too.
+    property real transparencyStrength: transparencyEnabled ? transparencyLevel : 0
     property bool animationsEnabled: config.animationsEnabled
 
     readonly property int animDurationFast: animationsEnabled ? config.animDurationFast : 0
@@ -127,8 +130,8 @@ QtObject {
         NumberAnimation { duration: root.animDurationFast; easing.type: root.animEasingEnter; easing.bezierCurve: root.animBezierCurve }
     }
 
-    Behavior on transparencyLevel {
-        NumberAnimation { duration: root.animDuration; easing.type: root.animEasingEnter; easing.bezierCurve: root.animBezierCurve }
+    Behavior on transparencyStrength {
+        NumberAnimation { duration: root.animDurationSlow; easing.type: root.animEasingTransition; easing.bezierCurve: root.animBezierCurve }
     }
 
     // Mark up a file name for Text.StyledText with every case-insensitive
@@ -157,8 +160,7 @@ QtObject {
     }
 
     function containerColor(color, defaultAlpha) {
-        var strength = transparencyEnabled ? transparencyLevel : 0
-        var alpha = 1 - strength * (1 - defaultAlpha)
+        var alpha = 1 - transparencyStrength * (1 - defaultAlpha)
         return Qt.rgba(color.r, color.g, color.b, alpha)
     }
 }
