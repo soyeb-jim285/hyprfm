@@ -1057,7 +1057,10 @@ int main(int argc, char *argv[])
     // with NO_CACHEGEN dropped SettingsPanel.qml from it in v0.4.14).
     mark("engine.load start");
     QQmlComponent mainComponent(&engine);
-    mainComponent.loadFromModule("HyprFM", pickerRequestPath.isEmpty() ? "Main" : "FilePicker");
+    // Qt 6.7 can resolve the installed module without exposing every root type.
+    mainComponent.loadUrl(QUrl(pickerRequestPath.isEmpty()
+        ? QStringLiteral("qrc:/HyprFM/qml/Main.qml")
+        : QStringLiteral("qrc:/HyprFM/qml/FilePicker.qml")));
     const QString installedMainQml = dataDir.isEmpty()
         ? QString()
         : QDir(dataDir).filePath(pickerRequestPath.isEmpty() ? QStringLiteral("HyprFM/qml/Main.qml") : QStringLiteral("HyprFM/qml/FilePicker.qml"));

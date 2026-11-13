@@ -369,6 +369,9 @@ if(NOT Python3_Interpreter_FOUND)
     return()
 endif()
 set(HYPRFM_PORTAL_TEST_PYTHON ${Python3_EXECUTABLE})
+add_test(NAME tst_filepicker_startup
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tst_filepicker_startup.py $<TARGET_FILE:hyprfm>)
+set_tests_properties(tst_filepicker_startup PROPERTIES TIMEOUT 15)
 execute_process(COMMAND ${HYPRFM_PORTAL_TEST_PYTHON} -c "from gi.repository import Gio, GLib"
     RESULT_VARIABLE HYPRFM_HAVE_PYGOBJECT OUTPUT_QUIET ERROR_QUIET)
 if(NOT HYPRFM_HAVE_PYGOBJECT EQUAL 0 AND EXISTS "/usr/bin/python3")
