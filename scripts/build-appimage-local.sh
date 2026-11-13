@@ -3,11 +3,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build-local-appimage}"
-APPDIR="${APPDIR:-$ROOT_DIR/AppDir-local}"
-TOOLS_DIR="${TOOLS_DIR:-$ROOT_DIR/appimage-tools}"
-USE_SYSTEM_NON_QT_LIBS="${USE_SYSTEM_NON_QT_LIBS:-1}"
+BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build/appimage}"
+APPDIR="${APPDIR:-$ROOT_DIR/build/AppDir}"
+TOOLS_DIR="${TOOLS_DIR:-$ROOT_DIR/build/appimage-tools}"
+USE_SYSTEM_NON_QT_LIBS="${USE_SYSTEM_NON_QT_LIBS:-0}"
 SMOKE_TEST="${SMOKE_TEST:-1}"
+JOBS="${JOBS:-2}"
 
 require_tool() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -35,7 +36,9 @@ download_file() {
 }
 
 require_tool cmake
-require_tool make
+require_tool timeout
+require_tool rg
+require_tool sha256sum
 
 QMAKE_BIN="$(command -v qmake6 || command -v qmake || true)"
 if [[ -z "$QMAKE_BIN" ]]; then
@@ -44,6 +47,7 @@ if [[ -z "$QMAKE_BIN" ]]; then
 fi
 
 QT_PLUGIN_DIR="$($QMAKE_BIN -query QT_INSTALL_PLUGINS)"
+QT_LIB_DIR="$($QMAKE_BIN -query QT_INSTALL_LIBS)"
 
 mkdir -p "$TOOLS_DIR"
 
@@ -52,24 +56,30 @@ LINUXDEPLOY_QT="$TOOLS_DIR/linuxdeploy-plugin-qt-x86_64.AppImage"
 
 if [[ ! -x "$LINUXDEPLOY" ]]; then
     download_file \
-        "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" \
+        "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage" \
         "$LINUXDEPLOY"
     chmod +x "$LINUXDEPLOY"
 fi
 
 if [[ ! -x "$LINUXDEPLOY_QT" ]]; then
     download_file \
-        "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage" \
+        "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage" \
         "$LINUXDEPLOY_QT"
     chmod +x "$LINUXDEPLOY_QT"
 fi
+
+printf '%s  %s\n' \
+    c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d "$LINUXDEPLOY" \
+    15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724 "$LINUXDEPLOY_QT" |
+    sha256sum -c -
 
 # linuxdeploy discovers plugins by basename in its own directory.
 ln -sf "$(basename "$LINUXDEPLOY_QT")" "$TOOLS_DIR/linuxdeploy-plugin-qt.AppImage"
 
 VERSION_LABEL="$(git -C "$ROOT_DIR" describe --tags --always --dirty 2>/dev/null || printf 'local')"
 VERSION_LABEL="$(printf '%s' "$VERSION_LABEL" | tr -cs 'A-Za-z0-9._-' '-')"
-APPIMAGE_NAME="${APPIMAGE_NAME:-HyprFM-${VERSION_LABEL}-x86_64.AppImage}"
+APPIMAGE_NAME="${APPIMAGE_NAME:-build/packages/HyprFM-${VERSION_LABEL}-x86_64.AppImage}"
+mkdir -p "$ROOT_DIR/build/packages"
 
 GENERATOR_ARGS=()
 if command -v ninja >/dev/null 2>&1; then
@@ -86,9 +96,10 @@ cmake -S "$ROOT_DIR" -B "$BUILD_DIR" "${GENERATOR_ARGS[@]}" \
     -DHYPRFM_ENABLE_QML_CACHEGEN=ON \
     -DBUILD_TESTS=OFF
 
-cmake --build "$BUILD_DIR" --parallel
+cmake --build "$BUILD_DIR" --parallel "$JOBS"
 
 DESTDIR="$APPDIR" cmake --install "$BUILD_DIR"
+install -m755 "$ROOT_DIR/dist/AppRun" "$APPDIR/AppRun"
 
 export QMAKE="$QMAKE_BIN"
 export QML_SOURCES_PATHS="$ROOT_DIR/src/qml"
@@ -171,7 +182,7 @@ else
 fi
 
 pushd "$ROOT_DIR" >/dev/null
-"$LINUXDEPLOY" \
+LD_LIBRARY_PATH="$QT_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$LINUXDEPLOY" \
     --appdir "$APPDIR" \
     --plugin qt \
     --desktop-file "$ROOT_DIR/dist/io.github.soyeb_jim285.HyprFM.desktop" \
@@ -194,29 +205,34 @@ done
 
 "$ROOT_DIR/scripts/prune-appdir.sh" "$APPDIR"
 
-"$LINUXDEPLOY" \
+LD_LIBRARY_PATH="$QT_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$LINUXDEPLOY" \
     --appdir "$APPDIR" \
     "${deploy_deps_args[@]}" \
     --output appimage
 
 if [[ "$SMOKE_TEST" == "1" ]]; then
+    smoke_dir="$(mktemp -d "$BUILD_DIR/smoke.XXXXXX")"
     set +e
-    QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software \
+    env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML_IMPORT_PATH -u QML2_IMPORT_PATH \
+        XDG_RUNTIME_DIR="$smoke_dir" XDG_CONFIG_HOME="$smoke_dir/config" \
+        XDG_CACHE_HOME="$smoke_dir/cache" \
+        QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
         timeout 10 "$ROOT_DIR/$APPIMAGE_NAME" \
-        > "$ROOT_DIR/appimage-smoke.stdout" \
-        2> "$ROOT_DIR/appimage-smoke.stderr"
+        > "$BUILD_DIR/smoke.stdout" \
+        2> "$BUILD_DIR/smoke.stderr"
     smoke_status=$?
     set -e
+    rm -rf "$smoke_dir"
 
-    if (( smoke_status != 0 && smoke_status != 124 && smoke_status != 137 )); then
+    if (( smoke_status != 124 )); then
         printf 'AppImage smoke test exited with status %s\n' "$smoke_status" >&2
-        cat "$ROOT_DIR/appimage-smoke.stderr" >&2 || true
-        exit "$smoke_status"
+        cat "$BUILD_DIR/smoke.stderr" >&2 || true
+        exit 1
     fi
 
-    if rg -q "is not a type|failed to load component|QQmlApplicationEngine failed|TypeError:|Unable to assign|Segmentation fault|Aborted \(core dumped\)|Failed to initialize graphics backend|Failed to create RHI" "$ROOT_DIR/appimage-smoke.stderr"; then
+    if rg -q "is not a type|failed to load component|QQmlApplicationEngine failed|TypeError:|Unable to assign|Segmentation fault|Aborted \(core dumped\)|Failed to initialize graphics backend|Failed to create RHI" "$BUILD_DIR/smoke.stderr"; then
         printf 'AppImage smoke test failed.\n' >&2
-        cat "$ROOT_DIR/appimage-smoke.stderr" >&2 || true
+        cat "$BUILD_DIR/smoke.stderr" >&2 || true
         exit 1
     fi
 fi

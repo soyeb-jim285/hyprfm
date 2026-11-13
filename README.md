@@ -236,7 +236,31 @@ To build a self-contained AppImage from the current checkout, useful for testing
 ./scripts/build-appimage-local.sh
 ```
 
-The result lands in the repo root as `HyprFM-<version>-x86_64.AppImage`. The script downloads `linuxdeploy` into `appimage-tools/` on first run, bundles Qt, and runs an offscreen smoke test before finishing. It needs `curl` or `wget` on top of the build dependencies below.
+The result lands in `build/packages/HyprFM-<version>-x86_64.AppImage`. The script downloads checksum-verified, pinned linuxdeploy tools into `build/appimage-tools/`, bundles Qt and its library dependencies, and requires the app to stay running during a ten-second offscreen startup check. It needs `curl` or `wget`, `sha256sum`, `timeout` and `rg` on top of the build dependencies below. `JOBS=2` is the default to keep memory use bounded.
+
+A local AppImage needs a glibc at least as new as its build host. Build on Ubuntu 22.04 using the existing **Build → Run workflow** CI job for the release-compatible AppImage; an Arch-built image is for testing on current distributions. Preview/archive/clipboard command-line tools still come from the host.
+
+#### Flatpak and Nix pre-release testing
+
+Run these from the checkout after `git submodule update --init --recursive`:
+
+```bash
+# KDE runtime and SDK (once); use either native flatpak-builder or org.flatpak.Builder.
+flatpak install --user flathub org.kde.Platform//6.9 org.kde.Sdk//6.9
+./scripts/build-flatpak-local.sh
+flatpak install --user ./build/packages/HyprFM-testing-x86_64.flatpak
+flatpak run --branch=testing io.github.soyeb_jim285.HyprFM
+
+# Build the local flake, not the published GitHub source.
+nix build .#hyprfm --out-link build/result-nix --max-jobs 1 --cores 2
+./build/result-nix/bin/hyprfm
+```
+
+The Flatpak script snapshots tracked working files and both submodules, including uncommitted edits, and exports an unsigned bundle on the `testing` branch. New source files must be added to Git's index before building. It leaves the release manifest's source tag intact. Build output and the local OSTree repository are under `build/`.
+
+On a non-NixOS host, if the Nix app stays running without showing a window, test with `QT_QUICK_BACKEND=software ./build/result-nix/bin/hyprfm`. Hardware rendering requires a graphics-driver setup compatible with the Nix Qt libraries.
+
+The current Flatpak and Nix recipes build without the optional built-in terminal (their build environments have no Zig). The local AppImage includes it when Zig 0.17 is installed. Test file browsing, all three views, copy/move/trash/restore, archives, previews, clipboard and opening files in host apps in each format; network mounts need the session's GVFS services. The native file chooser portal needs host-side installation/configuration and is not registered by running an AppImage or installing a Flatpak.
 
 #### Dependencies
 

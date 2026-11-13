@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+APPDIR="${APPDIR:-$(dirname "$(readlink -f "$0")")}"
+export QT_PLUGIN_PATH="$APPDIR/usr/plugins"
+export QML_IMPORT_PATH="$APPDIR/usr/qml"
+# Launch the real binary so Qt resolves qt.conf relative to usr/bin.
+exec "$APPDIR/usr/bin/hyprfm" "$@"
