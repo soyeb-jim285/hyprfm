@@ -1794,6 +1794,36 @@ private slots:
         QTRY_COMPARE(app.tabModel->activeTab()->secondaryCurrentPath(), other);
     }
 
+    // Opening a split in the other orientation used to animate the side-by-side
+    // to stacked fold while the new pane grew in, so a horizontal split first
+    // appeared on the right and then dropped down. With no split on screen the
+    // orientation must jump, so the pane grows in from below from the start.
+    void testOpeningHorizontalSplitDoesNotFold()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        QVERIFY(tab && !tab->splitViewEnabled());
+        auto *frame = app.item("primaryPaneFrame");
+        QVERIFY(frame && frame->parentItem());
+        QQuickItem *paneRow = frame->parentItem();
+        QCOMPARE(paneRow->property("orientationProgress").toReal(), 0.0);
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "toggleSplitInOrientation",
+                                          Q_ARG(QVariant, QStringLiteral("horizontal"))));
+        QVERIFY(tab->splitViewEnabled());
+        QCOMPARE(paneRow->property("orientationProgress").toReal(), 1.0);
+        auto *secondary = app.item("secondaryPaneLoader");
+        QVERIFY(secondary);
+        QCOMPARE(secondary->x(), 0.0);
+
+        // A split already on screen still folds when its orientation changes.
+        QTRY_COMPARE(app.window->property("splitTransitionProgress").toReal(), 1.0);
+        QVERIFY(QMetaObject::invokeMethod(app.window, "toggleSplitOrientation"));
+        QTRY_VERIFY(paneRow->property("orientationProgress").toReal() < 1.0
+                    && paneRow->property("orientationProgress").toReal() > 0.0);
+    }
+
     void testActiveSplitAppearsInSidebarUntilSaved()
     {
         App app;

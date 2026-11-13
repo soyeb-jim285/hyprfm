@@ -4330,7 +4330,12 @@ ApplicationWindow {
                     // drops into the bottom-right quarter, then both panes
                     // stretch to the full width. Going back runs it in reverse.
                     property real orientationProgress: root.isSplitHorizontal ? 1 : 0
+                    // Only fold a split that is on screen. Opening a split in the
+                    // other orientation sets the orientation first, and animating
+                    // that played the side-by-side-to-stacked fold while the new
+                    // pane was still growing in.
                     Behavior on orientationProgress {
+                        enabled: root.splitViewPresented
                         NumberAnimation {
                             duration: Theme.animDurationSlow
                             easing.type: Theme.animEasingTransition; easing.bezierCurve: Theme.animBezierCurve
