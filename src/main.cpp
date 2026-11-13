@@ -1076,8 +1076,13 @@ int main(int argc, char *argv[])
             return;
 
 #ifdef HYPRFM_HAS_KWINDOWSYSTEM
-        // KWin blur only shows through translucent content; Hyprland keeps
-        // using compositor rules against the same transparent window surface.
+        // KWin blur only shows through translucent content. Hyprland blurs the
+        // window through its own rules, and since 0.57 it also advertises
+        // ext-background-effect, so KWindowEffects reports blur as available;
+        // requesting it there replaced Hyprland's blur with none after the
+        // first config change (a sidebar resize, a theme switch). Leave it be.
+        if (!qEnvironmentVariableIsEmpty("HYPRLAND_INSTANCE_SIGNATURE"))
+            return;
         const bool blurRequested = config->transparencyEnabled();
         const bool blurAvailable = KWindowEffects::isEffectAvailable(KWindowEffects::BlurBehind);
         KWindowEffects::enableBlurBehind(window, blurRequested && blurAvailable);
