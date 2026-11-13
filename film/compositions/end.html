@@ -1,0 +1,44 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; background: #11111b; }
+    #end-sharp, #end-bg { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+    #end-lock { position: absolute; left: 0; top: 190px; width: 1920px; height: 200px;
+                display: flex; align-items: center; justify-content: center; gap: 36px; }
+    #end-logo { width: 170px; height: 170px; }
+    #end-name { font-family: "Outfit"; font-weight: 700; font-size: 128px; color: #fff; letter-spacing: -0.04em;
+                text-shadow: 0 6px 40px rgba(0,0,0,.45); white-space: nowrap; }
+    #end-name .v { color: #89b4fa; margin-left: 22px; }
+    #end-list { position: absolute; left: 560px; top: 470px; width: 800px; }
+    .ln { display: flex; align-items: baseline; gap: 28px; height: 72px; }
+    .lab { font-family: "Outfit"; font-weight: 400; font-size: 28px; color: #a6adc8; width: 180px; text-align: right;
+            text-shadow: 0 2px 14px rgba(0,0,0,.6); }
+    .cmd { font-family: "JetBrains Mono"; font-weight: 700; font-size: 36px; color: #fff;
+            text-shadow: 0 2px 14px rgba(0,0,0,.7); white-space: nowrap; }
+    #end-url { position: absolute; left: 0; top: 760px; width: 1920px; text-align: center; font-family: "Outfit";
+               font-weight: 600; font-size: 46px; color: #89b4fa; text-shadow: 0 2px 18px rgba(0,0,0,.6); }
+  </style>
+  <div id="root" data-composition-id="end" data-width="1920" data-height="1080">
+    <img id="end-sharp" class="clip" src="assets/last.jpg" data-start="0" data-duration="8.0" data-track-index="0" />
+    <img id="end-bg" class="clip" src="assets/last-blur.jpg" data-start="0" data-duration="8.0" data-track-index="1" />
+    <div id="end-lock">
+      <img id="end-logo" src="assets/logo.svg" />
+      <div id="end-name">HyprFM<span class="v">0.7</span></div>
+    </div>
+    <div id="end-list">
+      <div class="ln" id="end-ln0"><span class="lab">Arch</span><span class="cmd">yay -S hyprfm-git</span></div>
+      <div class="ln" id="end-ln1"><span class="lab">Nix</span><span class="cmd">nix run github:soyeb-jim285/hyprfm</span></div>
+      <div class="ln" id="end-ln2"><span class="lab">Any distro</span><span class="cmd">AppImage · Flatpak</span></div>
+    </div>
+    <div id="end-url">hyprfm.soyebjim.me</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#end-bg", {opacity: 0}, {opacity: 1, duration: 1.2, ease: "power2.inOut"}, 0.2);
+    tl.fromTo("#end-logo", {opacity: 0, scale: 0.8, filter: "blur(10px)"}, {opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.5, ease: "expo.out"}, 0.9);
+    tl.fromTo("#end-name", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "expo.out"}, 1.05);
+    for (let i = 0; i < 3; i++) tl.fromTo("#end-ln" + i, {opacity: 0, filter: "blur(6px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 1.6 + i * 0.35);
+    tl.fromTo("#end-url", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "expo.out"}, 2.8);
+    tl.set({}, {}, 8.0);
+    window.__timelines["end"] = tl;
+  </script>
+</template>

@@ -1,0 +1,36 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; background: #11111b; }
+    #title-bg, #title-blur { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+    #title-lock { position: absolute; left: 0; top: 360px; width: 1920px; height: 260px;
+                  display: flex; align-items: center; justify-content: center; gap: 44px; }
+    #title-logo { width: 220px; height: 220px; }
+    #title-name { font-family: "Outfit"; font-weight: 700; font-size: 168px; color: #fff; letter-spacing: -0.04em;
+                  text-shadow: 0 6px 40px rgba(0,0,0,.45); white-space: nowrap; }
+    #title-name .v { color: #89b4fa; margin-left: 28px; }
+    #title-sub { position: absolute; left: 0; top: 650px; width: 1920px; text-align: center; font-family: "Outfit";
+                 font-weight: 400; font-size: 44px; color: #cdd6f4; letter-spacing: 0.01em;
+                 text-shadow: 0 2px 20px rgba(0,0,0,.6); }
+  </style>
+  <div id="root" data-composition-id="title" data-width="1920" data-height="1080">
+    <img id="title-bg" class="clip" src="assets/first.jpg" data-start="0" data-duration="3.6" data-track-index="0" />
+    <img id="title-blur" class="clip" src="assets/first-blur.jpg" data-start="0" data-duration="3.6" data-track-index="1" />
+    <div id="title-lock">
+      <img id="title-logo" src="assets/logo.svg" />
+      <div id="title-name"><span id="t-l0">H</span><span id="t-l1">y</span><span id="t-l2">p</span><span id="t-l3">r</span><span id="t-l4">F</span><span id="t-l5">M</span><span class="v" id="t-v">0.7</span></div>
+    </div>
+    <div id="title-sub">a file manager for Hyprland</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#title-blur", {opacity: 0}, {opacity: 1, duration: 0.6, ease: "power2.out"}, 0);
+    tl.fromTo("#title-logo", {opacity: 0, scale: 0.8, filter: "blur(10px)"}, {opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.5, ease: "expo.out"}, 0.15);
+    for (let i = 0; i < 6; i++) tl.fromTo("#t-l" + i, {opacity: 0.3, filter: "blur(6px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power2.out"}, 0.3 + i * 0.07);
+    tl.fromTo("#t-v", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "expo.out"}, 0.85);
+    tl.fromTo("#title-sub", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "expo.out"}, 1.1);
+    tl.to(["#title-lock", "#title-sub"], {opacity: 0, filter: "blur(14px)", scale: 1.04, duration: 0.6, ease: "power2.in"}, 3.6 - 1.0);
+    tl.to("#title-blur", {opacity: 0, duration: 0.8, ease: "power2.inOut"}, 3.6 - 0.9);
+    tl.set({}, {}, 3.6);
+    window.__timelines["title"] = tl;
+  </script>
+</template>

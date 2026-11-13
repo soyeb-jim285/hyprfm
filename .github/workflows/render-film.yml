@@ -1,0 +1,23 @@
+name: render-film
+on:
+  push:
+    branches: [release-film-render]
+  workflow_dispatch:
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-color-emoji
+      - name: Render
+        working-directory: film
+        run: npx --yes hyperframes@0.9.41 render --fps 60 --quality delivery --workers auto -o renders/hyprfm-0.7-onetake.mp4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hyprfm-0.7-onetake
+          path: film/renders/hyprfm-0.7-onetake.mp4
+          retention-days: 14

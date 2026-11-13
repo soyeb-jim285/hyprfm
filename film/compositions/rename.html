@@ -1,0 +1,49 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; }
+    #rename-fx, #rename-cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    #rename-vid { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+    .cap { position: absolute; left: 0; top: 968px; width: 1920px; height: 112px; }
+    .cap-in { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 18px; }
+    .txt { font-family: "Outfit"; font-weight: 600; font-size: 40px; color: #fff; letter-spacing: -0.01em;
+           text-shadow: 0 2px 14px rgba(0,0,0,.8), 0 0 2px rgba(0,0,0,.6); white-space: nowrap; }
+    .w { opacity: 0.3; margin: 0 9px; }
+    .chip { font-family: "JetBrains Mono"; font-weight: 700; font-size: 28px; color: #11111b; background: #89b4fa;
+            padding: 5px 14px; border-radius: 10px; letter-spacing: 0.04em; white-space: nowrap;
+            box-shadow: 0 2px 10px rgba(0,0,0,.5); }
+
+    .keys { position: absolute; left: 70px; top: 470px; width: 380px; height: 140px; }
+    .keys-in { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; }
+    .key { font-family: "JetBrains Mono"; font-weight: 700; font-size: 30px; color: #cdd6f4; background: #1e1e2e;
+            border: 2px solid #89b4fa; border-bottom-width: 6px; border-radius: 12px; padding: 14px 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.55); }
+  </style>
+  <div id="root" data-composition-id="rename" data-width="1920" data-height="1080">
+    <div id="rename-fx">
+      <div id="rename-cam">
+        <video id="rename-vid" class="clip" src="assets/long/05-rename.mp4" data-start="0" data-duration="13.375"
+               data-media-start="0.0" data-playback-rate="2.0" muted playsinline data-track-index="0"></video>
+      </div>
+    </div>
+    <div id="rename-cap0" class="clip cap" data-start="1.0" data-duration="2.25" data-track-index="1"><div class="cap-in" id="rename-cap0-in"><span class="txt">Rename a whole folder. Regex included.</span></div></div>
+    <div id="rename-cap1" class="clip cap" data-start="3.3" data-duration="2.45" data-track-index="2"><div class="cap-in" id="rename-cap1-in"><span class="txt">Conflicts caught before they happen.</span></div></div>
+    <div id="rename-cap2" class="clip cap" data-start="5.8" data-duration="4.95" data-track-index="3"><div class="cap-in" id="rename-cap2-in"><span class="txt">Prefix, suffix, numbered sequence.</span></div></div>
+    <div id="rename-cap3" class="clip cap" data-start="10.8" data-duration="2.575" data-track-index="4"><div class="cap-in" id="rename-cap3-in"><span class="txt">One Ctrl+Z undoes it all.</span></div></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    
+    tl.fromTo("#rename-cap0-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 1.0);
+    tl.to("#rename-cap0-in", {opacity: 0, filter: "blur(6px)", duration: 0.2, ease: "power2.in"}, 3.05);
+    tl.fromTo("#rename-cap1-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 3.3);
+    tl.to("#rename-cap1-in", {opacity: 0, filter: "blur(6px)", duration: 0.2, ease: "power2.in"}, 5.55);
+    tl.fromTo("#rename-cap2-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 5.8);
+    tl.to("#rename-cap2-in", {opacity: 0, filter: "blur(6px)", duration: 0.2, ease: "power2.in"}, 10.55);
+    tl.fromTo("#rename-cap3-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 10.8);
+    tl.set("#rename-cam", {transformOrigin: "960px 470px"}, 1.7);
+    tl.fromTo("#rename-cam", {scale: 1}, {scale: 1.2, duration: 0.6, ease: "power2.inOut", immediateRender: false}, 1.7);
+    tl.to("#rename-cam", {scale: 1, duration: 0.6, ease: "power2.inOut"}, 10.5);
+    tl.set({}, {}, 13.375);
+    window.__timelines["rename"] = tl;
+  </script>
+</template>

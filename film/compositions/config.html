@@ -1,0 +1,37 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; }
+    #config-fx, #config-cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    #config-vid { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+    .cap { position: absolute; left: 0; top: 968px; width: 1920px; height: 112px; }
+    .cap-in { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 18px; }
+    .txt { font-family: "Outfit"; font-weight: 600; font-size: 40px; color: #fff; letter-spacing: -0.01em;
+           text-shadow: 0 2px 14px rgba(0,0,0,.8), 0 0 2px rgba(0,0,0,.6); white-space: nowrap; }
+    .w { opacity: 0.3; margin: 0 9px; }
+    .chip { font-family: "JetBrains Mono"; font-weight: 700; font-size: 28px; color: #11111b; background: #89b4fa;
+            padding: 5px 14px; border-radius: 10px; letter-spacing: 0.04em; white-space: nowrap;
+            box-shadow: 0 2px 10px rgba(0,0,0,.5); }
+
+    .keys { position: absolute; left: 70px; top: 470px; width: 380px; height: 140px; }
+    .keys-in { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; }
+    .key { font-family: "JetBrains Mono"; font-weight: 700; font-size: 30px; color: #cdd6f4; background: #1e1e2e;
+            border: 2px solid #89b4fa; border-bottom-width: 6px; border-radius: 12px; padding: 14px 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.55); }
+  </style>
+  <div id="root" data-composition-id="config" data-width="1920" data-height="1080">
+    <div id="config-fx">
+      <div id="config-cam">
+        <video id="config-vid" class="clip" src="assets/long/11-config.mp4" data-start="0" data-duration="11.219"
+               data-media-start="0.0" data-playback-rate="1.75" muted playsinline data-track-index="0"></video>
+      </div>
+    </div>
+    <div id="config-cap0" class="clip cap" data-start="0.571" data-duration="10.648" data-track-index="1"><div class="cap-in" id="config-cap0-in"><span class="txt">Everything in one file. Saved = applied.</span></div></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    
+    tl.fromTo("#config-cap0-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 0.571);
+    tl.set({}, {}, 11.219);
+    window.__timelines["config"] = tl;
+  </script>
+</template>

@@ -1,0 +1,49 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; }
+    #split-fx, #split-cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    #split-vid { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+    .cap { position: absolute; left: 0; top: 968px; width: 1920px; height: 112px; }
+    .cap-in { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 18px; }
+    .txt { font-family: "Outfit"; font-weight: 600; font-size: 40px; color: #fff; letter-spacing: -0.01em;
+           text-shadow: 0 2px 14px rgba(0,0,0,.8), 0 0 2px rgba(0,0,0,.6); white-space: nowrap; }
+    .w { opacity: 0.3; margin: 0 9px; }
+    .chip { font-family: "JetBrains Mono"; font-weight: 700; font-size: 28px; color: #11111b; background: #89b4fa;
+            padding: 5px 14px; border-radius: 10px; letter-spacing: 0.04em; white-space: nowrap;
+            box-shadow: 0 2px 10px rgba(0,0,0,.5); }
+
+    .keys { position: absolute; left: 70px; top: 470px; width: 380px; height: 140px; }
+    .keys-in { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; }
+    .key { font-family: "JetBrains Mono"; font-weight: 700; font-size: 30px; color: #cdd6f4; background: #1e1e2e;
+            border: 2px solid #89b4fa; border-bottom-width: 6px; border-radius: 12px; padding: 14px 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.55); }
+  </style>
+  <div id="root" data-composition-id="split" data-width="1920" data-height="1080">
+    <div id="split-fx">
+      <div id="split-cam">
+        <video id="split-vid" class="clip" src="assets/long/04-split.mp4" data-start="0" data-duration="13.819"
+               data-media-start="0.0" data-playback-rate="1.75" muted playsinline data-track-index="0"></video>
+      </div>
+    </div>
+    <div id="split-cap0" class="clip cap" data-start="0.171" data-duration="7.143" data-track-index="1"><div class="cap-in" id="split-cap0-in"><span class="txt">Tabs. Splits. Drag between panes.</span></div></div>
+    <div id="split-cap1" class="clip cap" data-start="7.429" data-duration="3.085" data-track-index="2"><div class="cap-in" id="split-cap1-in"><span class="txt">Window turns tall? Stack the panes.</span><span class="chip">NEW IN 0.7</span></div></div>
+    <div id="split-cap2" class="clip cap" data-start="10.571" data-duration="3.248" data-track-index="3"><div class="cap-in" id="split-cap2-in"><span class="txt">Save a split as a favourite.</span><span class="chip">NEW IN 0.7</span></div></div>
+    <div id="split-keys0" class="clip keys" data-start="7.943" data-duration="2.2" data-track-index="9"><div class="keys-in" id="split-keys0-in"><span class="key" id="split-keys0-k0">Ctrl</span><span class="key" id="split-keys0-k1">Shift</span><span class="key" id="split-keys0-k2">O</span></div></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    
+    tl.fromTo("#split-cap0-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 0.171);
+    tl.to("#split-cap0-in", {opacity: 0, filter: "blur(6px)", duration: 0.2, ease: "power2.in"}, 7.114);
+    tl.fromTo("#split-cap1-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 7.429);
+    tl.to("#split-cap1-in", {opacity: 0, filter: "blur(6px)", duration: 0.2, ease: "power2.in"}, 10.314);
+    tl.fromTo("#split-cap2-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 10.571);
+    tl.fromTo("#split-keys0-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 7.943);
+    tl.fromTo("#split-keys0-k0", {y: 0, backgroundColor: "#1e1e2e"}, {y: 5, backgroundColor: "#313244", duration: 0.08, ease: "power2.out"}, 8.193);
+    tl.fromTo("#split-keys0-k1", {y: 0, backgroundColor: "#1e1e2e"}, {y: 5, backgroundColor: "#313244", duration: 0.08, ease: "power2.out"}, 8.283);
+    tl.fromTo("#split-keys0-k2", {y: 0, backgroundColor: "#1e1e2e"}, {y: 5, backgroundColor: "#313244", duration: 0.08, ease: "power2.out"}, 8.373);
+    tl.to("#split-keys0-in", {opacity: 0, filter: "blur(6px)", duration: 0.2, ease: "power2.in"}, 9.943);
+    tl.set({}, {}, 13.819);
+    window.__timelines["split"] = tl;
+  </script>
+</template>

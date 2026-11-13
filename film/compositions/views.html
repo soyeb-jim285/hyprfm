@@ -1,0 +1,40 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; }
+    #views-fx, #views-cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    #views-vid { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+    .cap { position: absolute; left: 0; top: 968px; width: 1920px; height: 112px; }
+    .cap-in { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 18px; }
+    .txt { font-family: "Outfit"; font-weight: 600; font-size: 40px; color: #fff; letter-spacing: -0.01em;
+           text-shadow: 0 2px 14px rgba(0,0,0,.8), 0 0 2px rgba(0,0,0,.6); white-space: nowrap; }
+    .w { opacity: 0.3; margin: 0 9px; }
+    .chip { font-family: "JetBrains Mono"; font-weight: 700; font-size: 28px; color: #11111b; background: #89b4fa;
+            padding: 5px 14px; border-radius: 10px; letter-spacing: 0.04em; white-space: nowrap;
+            box-shadow: 0 2px 10px rgba(0,0,0,.5); }
+
+    .keys { position: absolute; left: 70px; top: 470px; width: 380px; height: 140px; }
+    .keys-in { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; }
+    .key { font-family: "JetBrains Mono"; font-weight: 700; font-size: 30px; color: #cdd6f4; background: #1e1e2e;
+            border: 2px solid #89b4fa; border-bottom-width: 6px; border-radius: 12px; padding: 14px 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.55); }
+  </style>
+  <div id="root" data-composition-id="views" data-width="1920" data-height="1080">
+    <div id="views-fx">
+      <div id="views-cam">
+        <video id="views-vid" class="clip" src="assets/long/01-views.mp4" data-start="0" data-duration="7.25"
+               data-media-start="0.0" data-playback-rate="1.4" muted playsinline data-track-index="0"></video>
+      </div>
+    </div>
+    <div id="views-cap0" class="clip cap" data-start="0.143" data-duration="7.107" data-track-index="1"><div class="cap-in" id="views-cap0-in"><span class="txt"><span class="w" id="views-cap0-w0">Miller columns.</span><span class="w" id="views-cap0-w1">Grid.</span><span class="w" id="views-cap0-w2">Detailed.</span></span></div></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    
+    tl.fromTo("#views-cap0-w0", {opacity: 0.3}, {opacity: 1, duration: 0.15, ease: "power2.out"}, 0.214);
+    tl.fromTo("#views-cap0-w1", {opacity: 0.3}, {opacity: 1, duration: 0.15, ease: "power2.out"}, 4.0);
+    tl.fromTo("#views-cap0-w2", {opacity: 0.3}, {opacity: 1, duration: 0.15, ease: "power2.out"}, 5.857);
+    tl.fromTo("#views-cap0-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 0.143);
+    tl.set({}, {}, 7.25);
+    window.__timelines["views"] = tl;
+  </script>
+</template>
