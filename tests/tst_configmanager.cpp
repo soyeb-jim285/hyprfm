@@ -404,17 +404,27 @@ private slots:
         // Defaults drop entries that aren't real directories, so create one of
         // the standard folders first. Without it the list could come back empty
         // and the assertions below would pass without checking anything.
+        const QString music =
+            QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
+        QVERIFY(!music.isEmpty());
+        QVERIFY(QDir().mkpath(music));
+        // Pictures and Downloads already sit in the quick-access section, so
+        // they stay out of the default bookmarks even when they exist.
         const QString pictures =
             QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
-        QVERIFY(!pictures.isEmpty());
+        const QString downloads =
+            QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
         QVERIFY(QDir().mkpath(pictures));
+        QVERIFY(QDir().mkpath(downloads));
 
         QTemporaryDir dir;
         ConfigManager mgr(dir.path() + "/config.toml");
 
         const QStringList bookmarks = mgr.bookmarks();
         QVERIFY(!bookmarks.isEmpty());
-        QVERIFY(bookmarks.contains(pictures));
+        QVERIFY(bookmarks.contains(music));
+        QVERIFY(!bookmarks.contains(pictures));
+        QVERIFY(!bookmarks.contains(downloads));
 
         // Defaults resolve through the XDG user dirs rather than hardcoded
         // English names, so every entry is an absolute path that exists.

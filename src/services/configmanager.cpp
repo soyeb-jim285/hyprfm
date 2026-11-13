@@ -135,13 +135,14 @@ QStringList iconSearchDirs()
 // Default bookmarks follow the XDG user dirs, so they keep working on systems
 // where the folders are localised (Documentos, Imagens, ...). Entries that
 // don't resolve to a real directory are dropped instead of shipping a
-// bookmark that opens an empty view.
+// bookmark that opens an empty view. Pictures and Downloads are left out:
+// the sidebar's quick-access section already lists them.
 QStringList defaultBookmarkPaths()
 {
     QStringList paths = {
         QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
-        QStandardPaths::writableLocation(QStandardPaths::DownloadLocation),
-        QStandardPaths::writableLocation(QStandardPaths::PicturesLocation),
+        QStandardPaths::writableLocation(QStandardPaths::MusicLocation),
+        QStandardPaths::writableLocation(QStandardPaths::MoviesLocation),
         QDir::homePath() + QStringLiteral("/Projects"),
     };
 
@@ -859,7 +860,7 @@ current_fraction = 0.5
 
 [bookmarks]
 # Sidebar bookmarks. Unset = the XDG user folders that exist on this machine.
-# paths = ["~/Documents", "~/Downloads", "~/Pictures", "~/Projects"]
+# paths = ["~/Documents", "~/Music", "~/Videos", "~/Projects"]
 # Custom display names, keyed by an entry of paths. Right-click a bookmark
 # and choose "Rename" to set one in-app.
 # names = { "~/Projects" = "Work" }
