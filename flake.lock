@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "ghostty": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1793041700,
+        "narHash": "sha256-MKIh9UZujaeh1nDaMjX1l2Dgm98yVZC4rzhioFpWIDI=",
+        "owner": "ghostty-org",
+        "repo": "ghostty",
+        "rev": "da5936c2287cd7f466acdad3cc000de5ce35ccaa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ghostty-org",
+        "repo": "ghostty",
+        "rev": "da5936c2287cd7f466acdad3cc000de5ce35ccaa",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1794386569,
@@ -52,6 +69,7 @@
     },
     "root": {
       "inputs": {
+        "ghostty": "ghostty",
         "nixpkgs": "nixpkgs",
         "quill": "quill",
         "quill-icons": "quill-icons"

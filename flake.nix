@@ -20,6 +20,13 @@
       url = "github:soyeb-jim285/quill/1fe3afd493838b9799ee056a7367cfd5cdc185fd";
       flake = false;
     };
+
+    # libghostty-vt, the built-in terminal's core. Same commit as the
+    # FetchContent pin in CMakeLists.txt; scripts/update-ghostty.sh moves both.
+    ghostty = {
+      url = "github:ghostty-org/ghostty/da5936c2287cd7f466acdad3cc000de5ce35ccaa";
+      flake = false;
+    };
   };
 
   outputs =
@@ -28,6 +35,7 @@
       nixpkgs,
       quill-icons,
       quill,
+      ghostty,
     }:
     let
       # aarch64 evaluates cleanly -- every dependency resolves for it, which
@@ -91,6 +99,7 @@
             ninja
             pkg-config
             kdePackages.wrapQtAppsHook
+            zig_0_17
           ];
 
           buildInputs = with pkgs; [
@@ -108,11 +117,24 @@
             rm -rf src/qml/icons src/qml/Quill
             cp -r --no-preserve=mode,ownership ${quill-icons} src/qml/icons
             cp -r --no-preserve=mode,ownership ${quill} src/qml/Quill
+            # Ghostty's zig build writes zig-out/ into its own source tree.
+            cp -r --no-preserve=mode,ownership ${ghostty} ghostty-src
+          '';
+
+          preConfigure = ''
+            export ZIG_GLOBAL_CACHE_DIR=$TMPDIR/zig-cache
+            cmakeFlagsArray+=("-DFETCHCONTENT_SOURCE_DIR_GHOSTTY=$PWD/ghostty-src")
           '';
 
           cmakeFlags = [
             "-DBUILD_TESTS=OFF"
             "-DHYPRFM_DATA_DIR=${placeholder "out"}/share/hyprfm"
+            "-DHYPRFM_TERMINAL=ON"
+            # No network in the sandbox: zig reads Ghostty's packages from
+            # the store, via the package list Ghostty generates for Nix.
+            "-DGHOSTTY_ZIG_BUILD_FLAGS=--system;${
+              pkgs.callPackage "${ghostty}/build.zig.zon.nix" { name = "ghostty-zig-deps"; }
+            };-Dcpu=baseline"
           ];
 
           qtWrapperArgs = [
