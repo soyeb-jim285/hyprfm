@@ -174,7 +174,28 @@ Item {
         return items
     }
 
+    // What the menu is open on: the same file/folder, the same empty space or
+    // the same sidebar row gives the same key.
+    function _targetKey() {
+        var d = contextData || {}
+        return [isEmptySpace, targetPath, d.kind || "", d.index !== undefined ? d.index : ""].join("|")
+    }
+    property string _openKey: ""
+    // When a right-press outside the open menu closed it. The press goes on
+    // to the view, which asks for the menu on release; that popup() must not
+    // reopen the same target.
+    // ponytail: 1 s window covers a normal click; a longer hold reopens it.
+    property double _rightPressCloseTime: 0
+
     function popup(x, y) {
+        var key = _targetKey()
+        var closedByPress = Date.now() - _rightPressCloseTime < 1000
+        _rightPressCloseTime = 0
+        if (closedByPress) {
+            if (key === _openKey)
+                return // second right-click on the same target: let it close
+        }
+        _openKey = key
         closeSubmenu(true)
         closeAnim.stop()
         // Drop an in-flight open animation: the manual opacity/scale reset
@@ -463,9 +484,21 @@ Item {
         }
     }
 
-    // Click outside to close
+    // Click outside to close. A right-press closes too, but is passed on to
+    // the view below: a different target reopens the menu there (popup()),
+    // the same target leaves it closed.
     MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onPressed: (mouse) => {
+            if (mouse.button !== Qt.RightButton)
+                return
+            mouse.accepted = false
+            if (root.visible && !closeAnim.running) {
+                root.close()
+                root._rightPressCloseTime = Date.now()
+            }
+        }
         onClicked: root.close()
         onWheel: (wheel) => { wheel.accepted = true }
     }

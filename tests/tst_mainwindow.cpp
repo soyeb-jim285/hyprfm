@@ -768,6 +768,46 @@ private slots:
                                     .arg(container->property("opacity").toReal())));
     }
 
+    // A right-click outside an open menu closes it and passes on to the view,
+    // which asks for the menu again. The same target must stay closed (a
+    // second right-click toggles the menu off); a different target reopens.
+    // Only the press is sent before popup(): the release would let the real
+    // view under the cursor open its own menu and muddle the check.
+    void testRightClickSameTargetClosesMenu()
+    {
+        App app;
+        QVERIFY(app.load());
+        QVERIFY(app.item("contextMenuLoader")->setProperty("active", true));
+        QQuickItem *menu = app.item("contextMenu");
+        QVERIFY(menu);
+        QQuickItem *container = app.item("contextMenuContainer");
+        QVERIFY(container);
+
+        auto open = [&](const QString &target) {
+            menu->setProperty("targetPath", target);
+            menu->setProperty("isEmptySpace", false);
+            return QMetaObject::invokeMethod(menu, "popup", Q_ARG(QVariant, 20), Q_ARG(QVariant, 20));
+        };
+        const QPoint outside(app.window->width() - 40, app.window->height() - 40);
+
+        QVERIFY(open("/tmp/a"));
+        QTRY_COMPARE(container->property("opacity").toReal(), 1.0);
+        QTest::mousePress(app.window, Qt::RightButton, {}, outside);
+        QVERIFY(open("/tmp/a"));
+        QTRY_VERIFY(!menu->isVisible());
+        QTest::mouseRelease(app.window, Qt::RightButton, {}, outside);
+
+        app.item("contextMenuLoader")->setProperty("active", true);
+        QVERIFY(open("/tmp/a"));
+        QTRY_COMPARE(container->property("opacity").toReal(), 1.0);
+        QTest::mousePress(app.window, Qt::RightButton, {}, outside);
+        QVERIFY(open("/tmp/b"));
+        QTRY_COMPARE(container->property("opacity").toReal(), 1.0);
+        QVERIFY(menu->isVisible());
+        QCOMPARE(menu->property("targetPath").toString(), QStringLiteral("/tmp/b"));
+        QTest::mouseRelease(app.window, Qt::RightButton, {}, outside);
+    }
+
     // The late-relayout guard in ContextMenu's onHeightChanged only runs once
     // _pendingPopup is already cleared, so it stayed unexercised: `&&`
     // short-circuits while a popup is pending. Growing an open menu takes that
