@@ -657,8 +657,9 @@ GridView {
                 : delegateItem.hasPdfPreview
                     ? ("image://pdfpreview/" + encodeURIComponent(delegateItem.filePath)
                        + "?page=0")
-                    : ("image://thumbnail/" + delegateItem.filePath
-                       + "?mtime=" + new Date(delegateItem.fileModified).getTime())
+                    : ("image://thumbnail/" + encodeURIComponent(delegateItem.filePath)
+                       + "?mtime=" + new Date(delegateItem.fileModified).getTime()
+                       + (delegateItem.isDir ? "&theme=" + config.iconTheme : ""))
             sourceSize: Qt.size(root.thumbnailRequestSize,
                                 root.thumbnailRequestSize)
             asynchronous: true

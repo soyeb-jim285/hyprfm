@@ -914,8 +914,9 @@ FocusScope {
                                          && implicitWidth > 0
                                 fillMode: Image.PreserveAspectFit
                                 source: parent.hasThumbnail
-                                    ? ("image://thumbnail/" + currentDelegate.filePath
-                                       + "?mtime=" + new Date(currentDelegate.fileModified).getTime())
+                                    ? ("image://thumbnail/" + encodeURIComponent(currentDelegate.filePath)
+                                       + "?mtime=" + new Date(currentDelegate.fileModified).getTime()
+                                       + (currentDelegate.isDir ? "&theme=" + config.iconTheme : ""))
                                     : ""
                                 sourceSize: Qt.size(64 * Screen.devicePixelRatio, 64 * Screen.devicePixelRatio)
                                 asynchronous: true
@@ -1314,7 +1315,7 @@ FocusScope {
             readonly property bool hasVisualPreview: isImage || (isVideo && videoPreviewAvailable)
             readonly property string visualSource: {
                 if (!hasVisualPreview || previewFilePath === "") return ""
-                if (isVideo || isTrashUri || isSvg) return "image://thumbnail/" + previewFilePath
+                if (isVideo || isTrashUri || isSvg) return "image://thumbnail/" + encodeURIComponent(previewFilePath)
                 return "file://" + previewFilePath
             }
             readonly property string pdfImageSource: {

@@ -1085,8 +1085,9 @@ FocusScope {
                                     : detRow.hasPdfPreview
                                         ? ("image://pdfpreview/" + encodeURIComponent(detRow.filePath)
                                            + "?page=0")
-                                        : ("image://thumbnail/" + detRow.filePath
-                                           + "?mtime=" + new Date(detRow.fileModified).getTime())
+                                        : ("image://thumbnail/" + encodeURIComponent(detRow.filePath)
+                                           + "?mtime=" + new Date(detRow.fileModified).getTime()
+                                           + (detRow.isDir ? "&theme=" + config.iconTheme : ""))
                                 sourceSize: Qt.size(64 * Screen.devicePixelRatio, 64 * Screen.devicePixelRatio)
                                 asynchronous: true
                             }

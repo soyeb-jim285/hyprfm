@@ -9,8 +9,9 @@
 #include <QStandardPaths>
 #include <QUrl>
 #include <QUuid>
-#include "providers/iconprovider.h"
 #include "providers/thumbnailprovider.h"
+#include <QQmlComponent>
+#include <QQmlEngine>
 #include <memory>
 #include "testdir.h"
 
@@ -36,9 +37,10 @@ private:
             spy.wait(5000);
     }
 
-    static QImage folderImage(const QString &dir, IconProvider *icons = nullptr)
+    static QImage folderImage(const QString &dir, const QString &theme = {})
     {
-        ThumbnailResponse response(dir + "?mtime=1", QSize(64, 64), icons);
+        ThumbnailResponse response(dir + "?mtime=1" + (theme.isEmpty() ? QString() : "&theme=" + theme),
+                                   QSize(64, 64));
         waitFinished(response);
         std::unique_ptr<QQuickTextureFactory> factory(response.textureFactory());
         return factory ? factory->image() : QImage();
@@ -275,6 +277,71 @@ private slots:
         QVERIFY(!folderImage(dir.path()).isNull());
     }
 
+    static bool writeGzip(const QString &path, const QByteArray &data)
+    {
+        QProcess gz;
+        gz.setStandardOutputFile(path);
+        gz.start("gzip", {"-c"});
+        if (!gz.waitForStarted(5000))
+            return false;
+        gz.write(data);
+        gz.closeWriteChannel();
+        return gz.waitForFinished(30000) && gz.exitCode() == 0;
+    }
+
+    void testSvgzStillRenders()
+    {
+        TestDir dir;
+        QVERIFY(writeGzip(dir.path() + "/icon.svgz",
+            "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'>"
+            "<rect width='16' height='16' fill='red'/></svg>"));
+        ThumbnailResponse response(dir.path() + "/icon.svgz", QSize(64, 64));
+        waitFinished(response);
+        std::unique_ptr<QQuickTextureFactory> factory(response.textureFactory());
+        QVERIFY(factory && !factory->image().isNull());
+    }
+
+    // A .svgz that inflates past 32 MB is refused before QSvgRenderer sees
+    // it (it would inflate the whole thing: 2 MB -> 2 GB of RAM). Reachable
+    // through a hidden Icon= target as well as a visible file.
+    void testSvgzBombIsRefused()
+    {
+        TestDir dir;
+        QByteArray svg = "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'>";
+        svg += QByteArray(33 * 1024 * 1024, ' ');
+        svg += "</svg>";
+        QVERIFY(writeGzip(dir.path() + "/.b.svgz", svg));
+        QVERIFY(QFileInfo(dir.path() + "/.b.svgz").size() < 1024 * 1024);
+        dir.createFile(".directory", "[Desktop Entry]\nIcon=./.b.svgz\n");
+        QVERIFY(folderImage(dir.path()).isNull());
+
+        // gzip inside gzip: QSvgRenderer would inflate the inner one too.
+        QVERIFY(writeGzip(dir.path() + "/inner.svgz", "<svg/>"));
+        QFile inner(dir.path() + "/inner.svgz");
+        QVERIFY(inner.open(QIODevice::ReadOnly));
+        QVERIFY(writeGzip(dir.path() + "/nested.svgz", inner.readAll()));
+        ThumbnailResponse nested(dir.path() + "/nested.svgz", QSize(64, 64));
+        waitFinished(nested);
+        QVERIFY(nested.textureFactory() == nullptr);
+    }
+
+    // The path is percent-encoded by QML; a '?' in a name must not cut the
+    // path short and pick up a sibling's icon.
+    void testFolderNameWithQuestionMark()
+    {
+        TestDir dir;
+        QVERIFY(QDir(dir.path()).mkdir("Docs"));
+        createTestImage(dir, "Docs/cover.png", 100, 100);
+        QVERIFY(QDir(dir.path()).mkdir("Docs?x"));
+        const QString encoded = QString::fromUtf8(QUrl::toPercentEncoding(dir.path() + "/Docs?x"));
+        ThumbnailResponse response(encoded + "?mtime=1", QSize(64, 64));
+        waitFinished(response);
+        QVERIFY(response.textureFactory() == nullptr);
+
+        createTestImage(dir, "Docs?x/folder.png", 100, 100);
+        QVERIFY(!folderImage(encoded).isNull());
+    }
+
     void testFolderNamedLikeImage()
     {
         TestDir dir;
@@ -309,18 +376,66 @@ private slots:
         svg.write("<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'>"
                   "<rect width='16' height='16' fill='red'/></svg>");
         svg.close();
+        // The lookup for a theme is built on its first use, in the pool.
         const QByteArray oldDirs = qgetenv("XDG_DATA_DIRS");
         qputenv("XDG_DATA_DIRS", data.path().toUtf8());
-        IconProvider icons(QStringLiteral("HyprfmTestTheme"));
-        qputenv("XDG_DATA_DIRS", oldDirs);
 
         TestDir dir;
         dir.createFile(".directory", "[Desktop Entry]\nIcon=hyprfm-test-folder\n");
-        QVERIFY(!folderImage(dir.path(), &icons).isNull());
+        const QImage found = folderImage(dir.path(), QStringLiteral("HyprfmTestTheme"));
+        qputenv("XDG_DATA_DIRS", oldDirs);
+        QVERIFY(!found.isNull());
 
         // A name no theme has must not turn into a generic file icon.
         dir.createFile(".directory", "[Desktop Entry]\nIcon=hyprfm-no-such-icon\n");
-        QVERIFY(folderImage(dir.path(), &icons).isNull());
+        QVERIFY(folderImage(dir.path(), QStringLiteral("HyprfmTestTheme")).isNull());
+
+        // Without a theme in the id, a name is not looked up at all.
+        dir.createFile(".directory", "[Desktop Entry]\nIcon=hyprfm-test-folder\n");
+        QVERIFY(folderImage(dir.path()).isNull());
+    }
+
+    // Folder images created and destroyed mid-load through a real engine:
+    // Qt cancels and deletes the responses while pool jobs still run.
+    // Meant for ASan/LSan runs (build-asan); passes trivially otherwise.
+    void testFolderImagesDestroyedWhileLoading()
+    {
+        TestDir dir;
+        QImage img(300, 300, QImage::Format_RGB32);
+        img.fill(Qt::red);
+        for (int i = 0; i < 20; ++i) {
+            QVERIFY(QDir(dir.path()).mkdir(QString("a%1").arg(i)));
+            QVERIFY(img.save(dir.path() + QString("/a%1/cover.jpg").arg(i), "JPG"));
+            QVERIFY(QDir(dir.path()).mkdir(QString("b%1").arg(i)));
+            dir.createFile(QString("b%1/.directory").arg(i), "[Desktop Entry]\nIcon=folder\n");
+        }
+        {
+            QQmlEngine engine;
+            engine.addImageProvider("thumbnail", new ThumbnailProvider);
+            QQmlComponent component(&engine);
+            component.setData(
+                "import QtQuick\n"
+                "Item {\n"
+                "    property string root\n"
+                "    property int round\n"
+                "    Repeater {\n"
+                "        model: 40\n"
+                "        Image {\n"
+                "            asynchronous: true\n"
+                "            sourceSize: Qt.size(64, 64)\n"
+                "            source: 'image://thumbnail/' + encodeURIComponent(root + (index % 2 ? '/a' : '/b')\n"
+                "                    + Math.floor(index / 2)) + '?mtime=' + round + '&theme=Adwaita'\n"
+                "        }\n"
+                "    }\n"
+                "}\n", QUrl());
+            for (int round = 0; round < 15; ++round) {
+                std::unique_ptr<QObject> item(component.createWithInitialProperties(
+                    {{"root", dir.path()}, {"round", round}}));
+                QVERIFY2(item, qPrintable(component.errorString()));
+                QTest::qWait(round % 3 * 20);   // destroy at different points
+            }
+        }
+        QTest::qWait(500);   // let cancelled pool jobs finish before dir goes
     }
 
     void testProviderCreatesResponse()

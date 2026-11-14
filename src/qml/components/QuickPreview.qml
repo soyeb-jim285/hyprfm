@@ -203,7 +203,7 @@ Item {
         if (!hasVisualPreview || filePath === "")
             return ""
         if (isVideo || isTrashUri || isSvg)
-            return "image://thumbnail/" + filePath
+            return "image://thumbnail/" + encodeURIComponent(filePath)
         return "file://" + filePath
     }
     readonly property string visualStatusText: {

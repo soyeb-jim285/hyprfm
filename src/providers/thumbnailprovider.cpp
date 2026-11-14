@@ -1,5 +1,6 @@
 #include "thumbnailprovider.h"
 #include "iconprovider.h"
+#include "services/cloudmounts.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -15,6 +16,9 @@
 #include <QQuickTextureFactory>
 #include <QProcess>
 #include <QFileInfo>
+#include <QHash>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QStandardPaths>
 #include <QSvgRenderer>
 #include <QSaveFile>
@@ -30,12 +34,14 @@ static bool isTrashUri(const QString &path)
     return QUrl(path).scheme() == "trash";
 }
 
+// QML encodes the path (encodeURIComponent), so a '?' or '#' in a file or
+// folder name cannot end the path early; the first '?' starts the query.
 static QString sourcePathFromId(QString id)
 {
     const int queryIndex = id.indexOf(QLatin1Char('?'));
     if (queryIndex >= 0)
         id.truncate(queryIndex);
-    return id;
+    return QUrl::fromPercentEncoding(id.toUtf8());
 }
 
 static bool runningInFlatpak()
@@ -281,7 +287,37 @@ static QString gioCustomIcon(const QString &dir)
     return uri;
 }
 
-static QString folderIconPath(const QString &dir, IconProvider *icons, int size)
+// Theme lookups for .directory Icon=<name>, one per theme, never deleted:
+// pool jobs can still be running while the app exits, so they must not use
+// the engine-owned IconProvider (it is freed with the engine).
+static QString themeIconPath(const QString &theme, const QString &name, int size)
+{
+    // Heap-allocated and never destroyed, so no static destructor runs
+    // under a job at exit. Bounded: one entry per icon theme the user picks.
+    static QBasicMutex mutex;
+    static auto *lookups = new QHash<QString, IconProvider *>;
+    IconProvider *lookup;
+    {
+        QMutexLocker locker(&mutex);
+        lookup = lookups->value(theme);
+        if (!lookup) {
+            lookup = new IconProvider(theme);
+            lookups->insert(theme, lookup);
+        }
+    }
+    return lookup->findIconPath(name, size);
+}
+
+// An icon file the folder points at may live elsewhere; keep the same rule
+// the views apply to folders and skip rclone mounts (string check: like the
+// views' gate, a symlink can still lead into one).
+static bool usableIconFile(const QString &path)
+{
+    return !path.isEmpty() && !isCloudMountPath(QDir::cleanPath(path))
+        && QFileInfo(path).isFile();
+}
+
+static QString folderIconPath(const QString &dir, const QString &theme, int size)
 {
     const QString icon = directoryFileIcon(dir);
     if (!icon.isEmpty()) {
@@ -292,16 +328,16 @@ static QString folderIconPath(const QString &dir, IconProvider *icons, int size)
             path = icon;
         else if (icon.startsWith(QLatin1String("file:")))
             path = QUrl(icon).toLocalFile();
-        else if (icons && !icon.contains(QLatin1Char('/')))
-            path = icons->findIconPath(icon, size);
-        if (!path.isEmpty() && QFileInfo(path).isFile())
+        else if (!theme.isEmpty() && !icon.contains(QLatin1Char('/')))
+            path = themeIconPath(theme, icon, size);
+        if (usableIconFile(path))
             return path;
     }
 
     const QString uri = gioCustomIcon(dir);
     if (!uri.isEmpty()) {
         const QString path = QUrl(uri).toLocalFile();
-        if (!path.isEmpty() && QFileInfo(path).isFile())
+        if (usableIconFile(path))
             return path;
     }
 
@@ -317,12 +353,17 @@ static QString folderIconPath(const QString &dir, IconProvider *icons, int size)
 // ThumbnailResponse
 // ---------------------------------------------------------------------------
 
-ThumbnailResponse::ThumbnailResponse(const QString &id, const QSize &requestedSize,
-                                     IconProvider *icons)
+ThumbnailResponse::ThumbnailResponse(const QString &id, const QSize &requestedSize)
     : m_id(sourcePathFromId(id))
     , m_requestedSize(requestedSize)
-    , m_icons(icons)
 {
+    const int query = id.indexOf(QLatin1Char('?'));
+    if (query >= 0) {
+        for (const QString &param : id.mid(query + 1).split(QLatin1Char('&'))) {
+            if (param.startsWith(QLatin1String("theme=")))
+                m_iconTheme = param.mid(6);
+        }
+    }
     setAutoDelete(false);
     thumbnailPool()->start(this);
 }
@@ -336,7 +377,7 @@ void ThumbnailResponse::run()
     // pipeline (disk cache keyed on that file, SVG/image render) handles it.
     const QUrl idUrl(m_id);
     if ((idUrl.scheme().isEmpty() || idUrl.isLocalFile()) && QFileInfo(m_id).isDir()) {
-        m_id = folderIconPath(m_id, m_icons, std::max(targetSize.width(), targetSize.height()));
+        m_id = folderIconPath(m_id, m_iconTheme, std::max(targetSize.width(), targetSize.height()));
         if (m_id.isEmpty()) {
             emit finished();
             return;
@@ -366,6 +407,43 @@ void ThumbnailResponse::run()
     emit finished();
 }
 
+// SVG bytes for QSvgRenderer with a hard size cap. QSvgRenderer inflates
+// .svgz itself with no limit: a 2 MB file inflated to 2 GB and took 2 GB of
+// RAM per pool thread. Inflate here, in chunks, and give up past the cap; a
+// gzip inside the gzip is refused, or QSvgRenderer would inflate that too.
+static constexpr qsizetype kMaxSvgBytes = 32 * 1024 * 1024;
+
+static QByteArray cappedSvgBytes(const QByteArray &raw)
+{
+    if (raw.size() > kMaxSvgBytes)
+        return {};
+    if (!raw.startsWith("\x1f\x8b"))
+        return raw;
+
+    GInputStream *source = g_memory_input_stream_new_from_data(raw.constData(), raw.size(), nullptr);
+    GZlibDecompressor *gunzip = g_zlib_decompressor_new(G_ZLIB_COMPRESSOR_FORMAT_GZIP);
+    GInputStream *stream = g_converter_input_stream_new(source, G_CONVERTER(gunzip));
+    QByteArray out;
+    char chunk[64 * 1024];
+    bool ok = true;
+    for (;;) {
+        const gssize n = g_input_stream_read(stream, chunk, sizeof chunk, nullptr, nullptr);
+        if (n == 0)
+            break;
+        if (n < 0 || out.size() + n > kMaxSvgBytes) {
+            ok = false;
+            break;
+        }
+        out.append(chunk, n);
+    }
+    g_object_unref(stream);
+    g_object_unref(gunzip);
+    g_object_unref(source);
+    if (!ok || out.startsWith("\x1f\x8b"))
+        return {};
+    return out;
+}
+
 void ThumbnailResponse::generateSvgThumbnail()
 {
     const QSize targetSize = m_requestedSize.isValid() ? m_requestedSize
@@ -374,12 +452,18 @@ void ThumbnailResponse::generateSvgThumbnail()
     QSvgRenderer renderer;
     bool loaded = false;
     if (isTrashUri(m_id)) {
-        const QByteArray data = readTrashUriData(m_id);
+        const QByteArray data = cappedSvgBytes(readTrashUriData(m_id));
         if (data.isEmpty())
             return;
         loaded = renderer.load(data);
     } else {
-        loaded = renderer.load(m_id);
+        QFile file(m_id);
+        if (!file.open(QIODevice::ReadOnly))
+            return;
+        const QByteArray data = cappedSvgBytes(file.read(kMaxSvgBytes + 1));
+        if (data.isEmpty())
+            return;
+        loaded = renderer.load(data);
     }
     if (!loaded || !renderer.isValid())
         return;
@@ -482,5 +566,5 @@ QString ThumbnailResponse::errorString() const
 QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id,
                                                               const QSize &requestedSize)
 {
-    return new ThumbnailResponse(id, requestedSize, m_icons);
+    return new ThumbnailResponse(id, requestedSize);
 }

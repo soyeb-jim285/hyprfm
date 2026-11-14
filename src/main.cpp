@@ -1015,7 +1015,7 @@ int main(int argc, char *argv[])
 
     // Register image providers (keep pointer to IconProvider for DragHelper)
     auto *iconProvider = new IconProvider(config->iconTheme());
-    engine.addImageProvider("thumbnail", new ThumbnailProvider(iconProvider));
+    engine.addImageProvider("thumbnail", new ThumbnailProvider);
     engine.addImageProvider("icon", iconProvider);
     engine.addImageProvider("pdfpreview", new PdfPreviewProvider);
 

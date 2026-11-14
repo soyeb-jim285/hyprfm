@@ -256,7 +256,7 @@ add_executable(tst_thumbnailprovider tst_thumbnailprovider.cpp
     ${CMAKE_SOURCE_DIR}/src/providers/thumbnailprovider.cpp
 )
 target_include_directories(tst_thumbnailprovider PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_thumbnailprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick Qt6::Svg PkgConfig::GIO)
+target_link_libraries(tst_thumbnailprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Svg PkgConfig::GIO)
 add_test(NAME tst_thumbnailprovider COMMAND tst_thumbnailprovider)
 
 add_executable(tst_pdfpreviewprovider tst_pdfpreviewprovider.cpp

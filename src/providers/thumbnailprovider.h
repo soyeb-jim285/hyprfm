@@ -7,15 +7,12 @@
 #include <QRunnable>
 #include <QImage>
 
-class IconProvider;
 
 class ThumbnailResponse : public QQuickImageResponse, public QRunnable
 {
     Q_OBJECT
 public:
-    // icons resolves theme-name folder icons (.directory Icon=name); may be null.
-    ThumbnailResponse(const QString &id, const QSize &requestedSize,
-                      IconProvider *icons = nullptr);
+    ThumbnailResponse(const QString &id, const QSize &requestedSize);
 
     void run() override;
     QQuickTextureFactory *textureFactory() const override;
@@ -32,16 +29,12 @@ private:
     QString m_id;
     QSize m_requestedSize;
     QImage m_image;
-    IconProvider *m_icons;
+    QString m_iconTheme;   // "theme=" in the id, for .directory Icon=<name>
 };
 
 class ThumbnailProvider : public QQuickAsyncImageProvider
 {
 public:
-    explicit ThumbnailProvider(IconProvider *icons = nullptr) : m_icons(icons) {}
     QQuickImageResponse *requestImageResponse(const QString &id,
                                               const QSize &requestedSize) override;
-
-private:
-    IconProvider *m_icons;
 };
