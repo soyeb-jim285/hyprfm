@@ -31,4 +31,11 @@ for plugin in libqmng libqjp2 libqtga libqwbmp libqicns; do
 done
 rm -f "$appdir"/usr/lib/libmng.so* "$appdir"/usr/lib/libjasper.so*
 
+# glib comes from the host (see LINUXDEPLOY_EXCLUDED_LIBRARIES in
+# build-appimage-local.sh). linuxdeploy-plugin-qt deploys without that list
+# and copies libglib in anyway; a bundled 22.04 glib under the host's newer
+# libgobject/gvfs fails with undefined symbols on current distros.
+rm -f "$appdir"/usr/lib/lib{glib,gobject,gio,gmodule,gthread}-2.0.so*
+rm -rf "$appdir"/usr/share/doc/libglib2.0-0
+
 du -sh "$appdir" | sed 's/^/AppDir after prune: /'

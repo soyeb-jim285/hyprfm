@@ -107,11 +107,23 @@ export NO_STRIP="${NO_STRIP:-1}"
 export OUTPUT="$APPIMAGE_NAME"
 export PATH="$TOOLS_DIR:$PATH"
 
+# glib comes from the host: GIO loads the host's gvfs modules, which need the
+# host's glib (a bundled 22.04 glib makes them fail with undefined symbols on
+# newer distros, breaking trash, network places and mounts). Every distro the
+# AppImage supports has glib, and newer ones are backward compatible.
+excluded_libraries=(
+    'libglib-2.0.so.*'
+    'libgobject-2.0.so.*'
+    'libgio-2.0.so.*'
+    'libgmodule-2.0.so.*'
+    'libgthread-2.0.so.*'
+)
+
 if [[ "$USE_SYSTEM_NON_QT_LIBS" == "1" ]]; then
     # linuxdeploy's patched copies of modern Arch system libraries can crash
     # before main() (e.g. libleancrypto via the media/poppler stack). For a
     # local test build, prefer bundling Qt and using host non-Qt libraries.
-    excluded_libraries=(
+    excluded_libraries+=(
         'libavformat.so.*'
         'libavcodec.so.*'
         'libavutil.so.*'
@@ -120,10 +132,6 @@ if [[ "$USE_SYSTEM_NON_QT_LIBS" == "1" ]]; then
         'libpoppler-qt6.so.*'
         'libexif.so.*'
         'libtag.so.*'
-        'libgio-2.0.so.*'
-        'libgobject-2.0.so.*'
-        'libglib-2.0.so.*'
-        'libgmodule-2.0.so.*'
         'libmount.so.*'
         'libffi.so.*'
         'libproxy.so.*'
@@ -155,10 +163,10 @@ if [[ "$USE_SYSTEM_NON_QT_LIBS" == "1" ]]; then
         'libp11-kit.so.*'
     )
 
-    LINUXDEPLOY_EXCLUDED_LIBRARIES="$(IFS=';'; printf '%s' "${excluded_libraries[*]}")"
-    export LINUXDEPLOY_EXCLUDED_LIBRARIES
     printf 'Using host non-Qt libraries for local build.\n'
 fi
+LINUXDEPLOY_EXCLUDED_LIBRARIES="$(IFS=';'; printf '%s' "${excluded_libraries[*]}")"
+export LINUXDEPLOY_EXCLUDED_LIBRARIES
 
 platform_plugins=()
 for plugin in \
