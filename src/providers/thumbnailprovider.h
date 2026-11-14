@@ -30,6 +30,7 @@ private:
     QSize m_requestedSize;
     QImage m_image;
     QString m_iconTheme;   // "theme=" in the id, for .directory Icon=<name>
+    bool m_folderWithoutIcon = false;   // plain folder: empty, but not an error
 };
 
 class ThumbnailProvider : public QQuickAsyncImageProvider

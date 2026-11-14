@@ -379,6 +379,7 @@ void ThumbnailResponse::run()
     if ((idUrl.scheme().isEmpty() || idUrl.isLocalFile()) && QFileInfo(m_id).isDir()) {
         m_id = folderIconPath(m_id, m_iconTheme, std::max(targetSize.width(), targetSize.height()));
         if (m_id.isEmpty()) {
+            m_folderWithoutIcon = true;
             emit finished();
             return;
         }
@@ -556,7 +557,11 @@ QQuickTextureFactory *ThumbnailResponse::textureFactory() const
 
 QString ThumbnailResponse::errorString() const
 {
-    return m_image.isNull() ? QStringLiteral("No thumbnail for %1").arg(m_id) : QString();
+    // A plain folder ends Ready with a zero-size image instead: the views
+    // already show the theme icon for that, and Qt logs every error.
+    if (m_image.isNull() && !m_folderWithoutIcon)
+        return QStringLiteral("No thumbnail for %1").arg(m_id);
+    return {};
 }
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@
 #include "providers/thumbnailprovider.h"
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QRegularExpression>
 #include <memory>
 #include "testdir.h"
 
@@ -350,13 +351,29 @@ private slots:
         QVERIFY(!folderImage(dir.path() + "/album.png").isNull());
     }
 
-    void testFolderWithoutIconReportsError()
+    // Most folders have no custom icon: that is not an error, or QML logs
+    // "No thumbnail for" once per folder. The views show the theme icon for
+    // a Ready image of zero size.
+    void testFolderWithoutIconIsQuiet()
     {
         TestDir dir;
         ThumbnailResponse response(dir.path() + "?mtime=1", QSize(64, 64));
         waitFinished(response);
         QVERIFY(response.textureFactory() == nullptr);
-        QVERIFY(!response.errorString().isEmpty());
+        QVERIFY(response.errorString().isEmpty());
+
+        QTest::failOnWarning(QRegularExpression("No thumbnail"));
+        QQmlEngine engine;
+        engine.addImageProvider("thumbnail", new ThumbnailProvider);
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Image { property string dir; asynchronous: true\n"
+                          "        source: 'image://thumbnail/' + encodeURIComponent(dir) + '?mtime=1' }\n",
+                          QUrl());
+        std::unique_ptr<QObject> image(component.createWithInitialProperties({{"dir", dir.path()}}));
+        QVERIFY2(image, qPrintable(component.errorString()));
+        QTRY_COMPARE(image->property("status").toInt(), 1 /* Image.Ready */);
+        QCOMPARE(image->property("implicitWidth").toReal(), 0.0);
     }
 
     void testFolderIgnoresIconOutsideDesktopEntry()
