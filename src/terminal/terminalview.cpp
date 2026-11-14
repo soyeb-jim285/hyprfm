@@ -665,7 +665,11 @@ void TerminalView::start()
                    "--env=TERM=xterm-256color", "--env=COLORTERM=truecolor",
                    hostDir.constData(), "sh", "-c",
                    // Flatpak sets SHELL=/bin/sh in here, so look it up there.
-                   "s=${SHELL:-$(getent passwd \"$(id -u)\" | cut -d: -f7)}; exec \"${s:-/bin/sh}\"",
+                   // Our pty belongs to the sandbox's /dev/pts, which the host
+                   // cannot name (`tty` fails, so GPG_TTY and pinentry do), so
+                   // `script` gives the shell a host pty and relays to ours.
+                   "s=${SHELL:-$(getent passwd \"$(id -u)\" | cut -d: -f7)}; export SHELL=${s:-/bin/sh}; "
+                   "command -v script >/dev/null && exec script -qef /dev/null; exec \"$SHELL\"",
                    static_cast<char *>(nullptr));
             _exit(127);
         }
