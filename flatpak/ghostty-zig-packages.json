@@ -1,0 +1,50 @@
+[
+  {
+    "type": "git",
+    "url": "https://codeberg.org/ziglang/arocc",
+    "commit": "d0c8c4d9c55daa7ef6e40cf0f630a5b5e900989b",
+    "dest": "vendor/p/aro-0.0.0-JSD1QtuBNwCASyBtNF3pqTl_W3oAJQGEVyFAtrBSE_Pa"
+  },
+  {
+    "type": "archive",
+    "url": "https://deps.files.ghostty.org/highway-66486a10623fa0d72fe91260f96c892e41aceb06.tar.gz",
+    "dest": "vendor/p/N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE",
+    "sha256": "87d4f8893ef4e08f224973608ffebf94268a81380ba79c12e8841968c80aa212"
+  },
+  {
+    "type": "archive",
+    "url": "https://deps.files.ghostty.org/ghostty-themes-release-20261019-151001-86a776d.tgz",
+    "dest": "vendor/p/N-V-__8AAJ3vBQAq1fLMh5J8uWLkeDLS6WAdR2x5KcrmEyz6",
+    "sha256": "ab2513e316372c45c9f86e3e511aebdbfa6c39fa03c210096b19152fe288505b"
+  },
+  {
+    "type": "archive",
+    "url": "https://deps.files.ghostty.org/pixels-12207ff340169c7d40c570b4b6a97db614fe47e0d83b5801a932dcd44917424c8806.tar.gz",
+    "dest": "vendor/p/N-V-__8AADYiAAB_80AWnH1AxXC0tql9thT-R-DYO1gBqTLc",
+    "sha256": "55e83b16d091082502bf149bf457f31f42092c5982650e3ffbae7b48871bf11a"
+  },
+  {
+    "type": "archive",
+    "url": "https://deps.files.ghostty.org/translate_c-02ff0c523fb92a38939b04d0145c4a9602a74d56.tar.gz",
+    "dest": "vendor/p/translate_c-2.0.0-Q_BUWltOBwBYABF84EUL208pIFeUIwbBs29FmVBaafN5",
+    "sha256": "e344433bcce14759529e58ea600e67d7c39846b1775b122f88db7cb4dad58591"
+  },
+  {
+    "type": "archive",
+    "url": "https://deps.files.ghostty.org/uucode-ea62149739404a73c202b48a33bf6dd2af4bd9b0.tar.gz",
+    "dest": "vendor/p/uucode-0.2.0-ZZjBPoGFVgCiflJNFc6Io8xzC67B6PA5bUkk4LT0kCxg",
+    "sha256": "f37c4071a217853450d084cb9c12b6d4b68f887eb9cb42fe77a84f86056eacbf"
+  },
+  {
+    "type": "archive",
+    "url": "https://deps.files.ghostty.org/wuffs-7411f488fe2e2c205c3d3b3d28638b7356522930.tar.gz",
+    "dest": "vendor/p/N-V-__8AAP5JWgCGP_AD0teWpa4krRvE9VPZzvviGdbmN4jI",
+    "sha256": "17877d346f7988651d6c62e45b2e3b05c86809a6442c5e34612374b2a9719a1c"
+  },
+  {
+    "type": "archive",
+    "url": "https://deps.files.ghostty.org/zlib-1220fed0c74e1019b3ee29edae2051788b080cd96e90d56836eea857b0b966742efb.tar.gz",
+    "dest": "vendor/p/N-V-__8AAB0eQwD-0MdOEBmz7intriBReIsIDNlukNVoNu6o",
+    "sha256": "17e88863f3600672ab49182f217281b6fc4d3c762bde361935e436a95214d05c"
+  }
+]

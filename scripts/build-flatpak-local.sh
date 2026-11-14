@@ -17,8 +17,10 @@ git ls-files --recurse-submodules -z | tar --null -T - -cf - | tar -xf - -C "$SO
 import json, sys
 manifest = json.load(sys.stdin)
 module = next(m for m in manifest["modules"] if m["name"] == "hyprfm")
-module["sources"] = [{"type": "dir", "path": sys.argv[1]}]
-assert len(module["sources"]) == 1
+# Swap only the hyprfm git source; keep Ghostty and its Zig packages.
+module["sources"] = [{"type": "dir", "path": sys.argv[1]} if s.get("url", "").endswith("soyeb-jim285/hyprfm.git") else s
+                  for s in module["sources"]]
+assert module["sources"][0]["type"] == "dir"
 json.dump(manifest, sys.stdout, indent=2)
 ' "$SOURCE_DIR" > build/flatpak-local.json
 "${BUILDER[@]}" --force-clean --user --jobs="${JOBS:-2}" \

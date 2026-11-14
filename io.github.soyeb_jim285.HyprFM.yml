@@ -206,8 +206,35 @@ modules:
         url: https://github.com/mity/md4c/archive/refs/tags/release-0.5.3.tar.gz
         sha256: 353c346f376b87c954a13f3415ede2d51264cc61dc5abcd38ff1d2aa0d059b9e
 
+  # ── Zig (build only) ───────────────────────────────────────────────────
+  # The built-in terminal is libghostty-vt, which builds with Zig 0.17. The
+  # SDK has no Zig, so take the official release; cleanup drops it from the
+  # app. Same approach as Ghostty's own Flatpak.
+  - name: zig
+    buildsystem: simple
+    cleanup:
+      - '*'
+    build-commands:
+      - mkdir -p /app/zig
+      - cp -r ./* /app/zig
+    sources:
+      - type: archive
+        only-arches:
+          - x86_64
+        url: https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz
+        sha256: 3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a
+      - type: archive
+        only-arches:
+          - aarch64
+        url: https://ziglang.org/download/0.17.1/zig-aarch64-linux-0.17.1.tar.xz
+        sha256: a1546d5646eb184437918d6635ca6b762a0e889eac09cef720ee7a1ed3fe7795
+
   - name: hyprfm
     buildsystem: cmake-ninja
+    build-options:
+      append-path: /app/zig
+      env:
+        ZIG_GLOBAL_CACHE_DIR: /run/build/hyprfm/.zig-cache
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_PREFIX=/app
@@ -215,6 +242,11 @@ modules:
       - -DBUILD_TESTS=OFF
       - -DHYPRFM_ENABLE_PCH=OFF
       - -DHYPRFM_ENABLE_UNITY_BUILD=OFF
+      # The build has no network: Ghostty and its Zig packages come in as
+      # sources below, and zig reads the packages from vendor/p.
+      - -DHYPRFM_TERMINAL=ON
+      - -DFETCHCONTENT_SOURCE_DIR_GHOSTTY=/run/build/hyprfm/ghostty
+      - -DGHOSTTY_ZIG_BUILD_FLAGS=--system;/run/build/hyprfm/vendor/p;-Dcpu=baseline
     post-install:
       # Required by Flathub: every app must install its license file to
       # $FLATPAK_DEST/share/licenses/$FLATPAK_ID.
@@ -231,3 +263,12 @@ modules:
       # revert before tagging a new release.
       # - type: dir
       #   path: .
+
+      # ── Ghostty (built-in terminal) ──
+      # Keep in step with the pin in CMakeLists.txt: scripts/update-ghostty.sh
+      # changes both, and regenerates the Zig package list beside this file.
+      - type: archive
+        url: https://github.com/ghostty-org/ghostty/archive/da5936c2287cd7f466acdad3cc000de5ce35ccaa.tar.gz
+        sha256: aba3c7bd4488cf2915edc8abe03c06e0057c2a8d820dbb34ee424d527bc88855
+        dest: ghostty
+      - flatpak/ghostty-zig-packages.json
