@@ -21,20 +21,20 @@
   <div id="root" data-composition-id="views" data-width="1920" data-height="1080">
     <div id="views-fx">
       <div id="views-cam">
-        <video id="views-vid" class="clip" src="assets/long/01-views.mp4" data-start="0" data-duration="7.25"
+        <video id="views-vid" class="clip" src="assets/long/02-views.mp4" data-start="0" data-duration="8.048"
                data-media-start="0.0" data-playback-rate="1.4" muted playsinline data-track-index="0"></video>
       </div>
     </div>
-    <div id="views-cap0" class="clip cap" data-start="0.143" data-duration="7.107" data-track-index="1"><div class="cap-in" id="views-cap0-in"><span class="txt"><span class="w" id="views-cap0-w0">Miller columns.</span><span class="w" id="views-cap0-w1">Grid.</span><span class="w" id="views-cap0-w2">Detailed.</span></span></div></div>
+    <div id="views-cap0" class="clip cap" data-start="0.857" data-duration="7.191" data-track-index="1"><div class="cap-in" id="views-cap0-in"><span class="txt"><span class="w" id="views-cap0-w0">Miller columns.</span><span class="w" id="views-cap0-w1">Grid.</span><span class="w" id="views-cap0-w2">Detailed.</span></span></div></div>
   </div>
   <script>
     const tl = gsap.timeline({ paused: true });
     
-    tl.fromTo("#views-cap0-w0", {opacity: 0.3}, {opacity: 1, duration: 0.15, ease: "power2.out"}, 0.214);
-    tl.fromTo("#views-cap0-w1", {opacity: 0.3}, {opacity: 1, duration: 0.15, ease: "power2.out"}, 4.0);
-    tl.fromTo("#views-cap0-w2", {opacity: 0.3}, {opacity: 1, duration: 0.15, ease: "power2.out"}, 5.857);
-    tl.fromTo("#views-cap0-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 0.143);
-    tl.set({}, {}, 7.25);
+    tl.fromTo("#views-cap0-w0", {opacity: 0.3}, {opacity: 1, duration: 0.15, ease: "power2.out"}, 1.0);
+    tl.fromTo("#views-cap0-w1", {opacity: 0.3}, {opacity: 1, duration: 0.15, ease: "power2.out"}, 4.786);
+    tl.fromTo("#views-cap0-w2", {opacity: 0.3}, {opacity: 1, duration: 0.15, ease: "power2.out"}, 6.643);
+    tl.fromTo("#views-cap0-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 0.857);
+    tl.set({}, {}, 8.048);
     window.__timelines["views"] = tl;
   </script>
 </template>

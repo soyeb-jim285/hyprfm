@@ -21,11 +21,11 @@
   <div id="root" data-composition-id="code" data-width="1920" data-height="1080">
     <div id="code-fx">
       <div id="code-cam">
-        <video id="code-vid" class="clip" src="assets/long/02-code.mp4" data-start="0" data-duration="7.417"
+        <video id="code-vid" class="clip" src="assets/long/03-code.mp4" data-start="0" data-duration="9.679"
                data-media-start="0.0" data-playback-rate="1.4" muted playsinline data-track-index="0"></video>
       </div>
     </div>
-    <div id="code-cap0" class="clip cap" data-start="0.214" data-duration="7.203" data-track-index="1"><div class="cap-in" id="code-cap0-in"><span class="txt">Code, highlighted, as you move.</span></div></div>
+    <div id="code-cap0" class="clip cap" data-start="0.214" data-duration="9.465" data-track-index="1"><div class="cap-in" id="code-cap0-in"><span class="txt">Code, highlighted, as you move.</span></div></div>
   </div>
   <script>
     const tl = gsap.timeline({ paused: true });
@@ -34,7 +34,7 @@
     tl.set("#code-cam", {transformOrigin: "1450px 330px"}, 0.714);
     tl.fromTo("#code-cam", {scale: 1}, {scale: 1.35, duration: 0.6, ease: "power2.inOut", immediateRender: false}, 0.714);
     tl.to("#code-cam", {scale: 1, duration: 0.6, ease: "power2.inOut"}, 6.714);
-    tl.set({}, {}, 7.417);
+    tl.set({}, {}, 9.679);
     window.__timelines["code"] = tl;
   </script>
 </template>
