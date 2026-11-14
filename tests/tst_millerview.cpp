@@ -1,5 +1,7 @@
 // Headless interaction test for the Miller view's draggable column dividers.
 #include <QTest>
+#include <QQmlComponent>
+#include <memory>
 #include "viewharness.h"
 #include "services/metadataextractor.h"
 #include "services/previewservice.h"
@@ -74,6 +76,36 @@ private slots:
         QVERIFY(divider);
         h.drag(h.center(divider), h.center(divider) + QPoint(-400, 0));
         QVERIFY(h.config->millerFractions().value("parent").toDouble() >= ConfigManager::kMillerMinFraction - 1e-9);
+    }
+
+    // The owner calls reload() while PreviewLoader.path still holds the
+    // previous value (the binding updates after the owner's handler). Going
+    // from no selection to a file -- entering a folder auto-selects its first
+    // item -- used to bail out on that stale "" and never load the file.
+    void testPreviewLoaderLoadsWhenReloadSeesStaleEmptyPath()
+    {
+        TestDir files;
+        files.createFiles({"a.txt"});
+        QFile f(files.path() + "/a.txt");
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("hello preview\n");
+        f.close();
+
+        QQmlEngine engine;
+        PreviewService previewService;
+        engine.rootContext()->setContextProperty("previewService", &previewService);
+        QQmlComponent component(&engine, QUrl::fromLocalFile(
+            QStringLiteral(TEST_SOURCE_DIR "/src/qml/components/PreviewLoader.qml")));
+        std::unique_ptr<QObject> loader(component.create());
+        QVERIFY2(loader, qPrintable(component.errorString()));
+        loader->setProperty("requester", "test");
+        loader->setProperty("kind", "text");
+
+        QMetaObject::invokeMethod(loader.get(), "reload");   // path still ""
+        loader->setProperty("path", files.path() + "/a.txt");
+
+        QTRY_VERIFY(loader->property("textPreview").toMap()
+                        .value("content").toString().contains("hello preview"));
     }
 };
 

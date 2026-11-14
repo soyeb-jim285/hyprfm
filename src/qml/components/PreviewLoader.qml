@@ -59,13 +59,9 @@ QtObject {
     function reload() {
         _debounce.stop()
         clear()
-
-        if (path === "") {
-            previewService.cancelPreview(requester)
-            loading = false
-            return
-        }
-
+        // Not `path === ""` here: path is still the previous file's at this
+        // point (see above), so going from no selection straight to a file --
+        // entering a folder auto-selects its first item -- skipped the load.
         // Dispatch even when there is no body to load: metadata alone costs
         // ~120 ms of exiftool/ffprobe and must not run on the GUI thread.
         loading = true
@@ -78,6 +74,11 @@ QtObject {
     property Timer _debounce: Timer {
         interval: 80
         onTriggered: {
+            if (loader.path === "") {
+                previewService.cancelPreview(loader.requester)
+                loader.loading = false
+                return
+            }
             loader.loading = loader.kind !== ""
             previewService.requestPreview(loader.requester, loader.path, loader.kind,
                                           loader.password)
