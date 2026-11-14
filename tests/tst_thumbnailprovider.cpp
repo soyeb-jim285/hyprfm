@@ -265,6 +265,16 @@ private slots:
         QVERIFY(!folderImage(dir.path() + "/album").isNull());
     }
 
+    void testFolderDirectoryFifoDoesNotBlock()
+    {
+        TestDir dir;
+        QImage img(100, 100, QImage::Format_RGB32);
+        img.fill(Qt::red);
+        QVERIFY(img.save(dir.path() + "/cover.jpg", "JPG"));
+        QCOMPARE(QProcess::execute("mkfifo", {dir.path() + "/.directory"}), 0);
+        QVERIFY(!folderImage(dir.path()).isNull());
+    }
+
     void testFolderNamedLikeImage()
     {
         TestDir dir;

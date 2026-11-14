@@ -246,7 +246,13 @@ static QThreadPool *thumbnailPool()
 
 static QString directoryFileIcon(const QString &dir)
 {
-    QFile file(dir + QStringLiteral("/.directory"));
+    // Regular files only: a FIFO named .directory would block a pool thread
+    // forever on open(). Real ones are a few lines; skip anything large.
+    const QString path = dir + QStringLiteral("/.directory");
+    const QFileInfo info(path);
+    if (!info.isFile() || info.size() > 64 * 1024)
+        return {};
+    QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return {};
     bool inDesktopEntry = false;
