@@ -94,6 +94,7 @@ cmake -S "$ROOT_DIR" -B "$BUILD_DIR" "${GENERATOR_ARGS[@]}" \
     -DCMAKE_INSTALL_PREFIX=/usr \
     -DHYPRFM_DATA_DIR=/usr/share/hyprfm \
     -DHYPRFM_ENABLE_QML_CACHEGEN=ON \
+    -DOpenGL_GL_PREFERENCE=LEGACY \
     -DBUILD_TESTS=OFF
 
 cmake --build "$BUILD_DIR" --parallel "$JOBS"

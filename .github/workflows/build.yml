@@ -205,12 +205,16 @@ jobs:
           # files into the binary. The NO_CACHEGEN code path in Qt 6.7.3 was
           # silently dropping qml/components/SettingsPanel.qml from the qrc;
           # cachegen uses a different rcc path that's more reliable.
+          # OpenGL_GL_PREFERENCE=LEGACY: link libGL.so.1 like the bundled Qt
+          # does. GLVND would add libOpenGL.so.0, which AppImages never bundle
+          # and a plain libgl1 system (the 22.04 smoke test) does not have.
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DHYPRFM_DATA_DIR=/usr/share/hyprfm \
             -DHYPRFM_TERMINAL=ON \
-            -DHYPRFM_ENABLE_QML_CACHEGEN=ON
+            -DHYPRFM_ENABLE_QML_CACHEGEN=ON \
+            -DOpenGL_GL_PREFERENCE=LEGACY
           cmake --build build --parallel
 
       - name: Run tests
