@@ -266,6 +266,35 @@ private slots:
         qunsetenv("TERMINAL");
     }
 
+    // Without $TERMINAL, the first common terminal installed is used, so
+    // Ubuntu's gnome-terminal works out of the box (kitty used to be assumed).
+    // The pick is cached per process, so this is the only test leaving
+    // $TERMINAL unset when a terminal is opened.
+    void testOpenInTerminalFallsBackToAnInstalledTerminal()
+    {
+        QTemporaryDir dir;
+        const QString marker = dir.filePath("argv");
+        const QString term = dir.filePath("gnome-terminal");
+        {
+            QFile f(term);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(QStringLiteral("#!/bin/sh\nprintf '%s ' \"$@\" > \"%1\"\n").arg(marker).toUtf8());
+        }
+        QFile::setPermissions(term, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        qunsetenv("TERMINAL");
+        const QByteArray oldPath = qgetenv("PATH");
+        qputenv("PATH", dir.path().toUtf8());   // only the fake terminal
+
+        FileOperations ops;
+        ops.openInTerminal(dir.path());
+        qputenv("PATH", oldPath);
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(marker), 5000);
+        QFile f(marker);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(f.readAll()).trimmed(),
+                 QStringLiteral("--working-directory %1").arg(dir.path()));
+    }
+
     void testRunExecutableRunsInItsFolderOrTerminal()
     {
         QTemporaryDir dir;

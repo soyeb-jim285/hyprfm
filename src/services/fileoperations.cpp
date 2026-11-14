@@ -46,6 +46,45 @@ bool runningInFlatpak()
     return inSandbox;
 }
 
+// The external terminal: $TERMINAL split like a shell ("kitty -1"), else the
+// first common one installed, so Ubuntu's gnome-terminal or ptyxis work
+// without configuring anything. In a Flatpak it is found and run on the host,
+// through the flatpak-spawn prefix. Empty when there is no terminal at all.
+QStringList terminalCommand()
+{
+    QStringList command = QProcess::splitCommand(qEnvironmentVariable("TERMINAL"));
+    if (command.isEmpty()) {
+        static const QString found = [] {
+            const QString candidates = QStringLiteral(
+                "kitty ghostty foot alacritty wezterm konsole ptyxis gnome-terminal kgx "
+                "xfce4-terminal tilix x-terminal-emulator xterm");
+            if (!runningInFlatpak()) {
+                for (const QString &name : candidates.split(QLatin1Char(' ')))
+                    if (!QStandardPaths::findExecutable(name).isEmpty())
+                        return name;
+                return QString();
+            }
+            QProcess proc;
+            proc.start(QStringLiteral("flatpak-spawn"),
+                       {QStringLiteral("--host"), QStringLiteral("sh"), QStringLiteral("-c"),
+                        QStringLiteral("for t in %1; do command -v \"$t\" >/dev/null && "
+                                       "{ echo \"$t\"; exit; }; done").arg(candidates)});
+            proc.waitForFinished(3000);
+            return QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+        }();
+        if (!found.isEmpty())
+            command << found;
+    }
+    if (!command.isEmpty() && runningInFlatpak())
+        command = QStringList{QStringLiteral("flatpak-spawn"), QStringLiteral("--host")} + command;
+    return command;
+}
+
+QString noTerminalMessage()
+{
+    return QStringLiteral("No terminal emulator found — set $TERMINAL to yours");
+}
+
 // Total size of all regular files under a directory, used to turn raw
 // extraction output into smooth byte-based progress (7z prints no per-file
 // lines, only an in-place percentage that stalls near the end).
@@ -1893,9 +1932,10 @@ void FileOperations::openFileWith(const QString &path, const QString &desktopFil
 
     QString program;
     QStringList args;
+    const bool inTerminal = entry.value(QStringLiteral("Terminal")).toString()
+            .compare(QLatin1String("true"), Qt::CaseInsensitive) == 0;
 
-    if (entry.value(QStringLiteral("Terminal")).toString()
-            .compare(QLatin1String("true"), Qt::CaseInsensitive) == 0) {
+    if (inTerminal) {
         // GLib refuses to launch Terminal=true entries unless it recognises an
         // installed terminal ("Unable to find terminal required for
         // application"), which silently rules out micro, nvim, nano and every
@@ -1907,8 +1947,14 @@ void FileOperations::openFileWith(const QString &path, const QString &desktopFil
                 QStringLiteral("'%1' has no runnable Exec line").arg(desktopFile));
             return;
         }
-        program = qEnvironmentVariable("TERMINAL", QStringLiteral("kitty"));
-        args = QStringList{QStringLiteral("-e")} + command;
+        args = terminalCommand();
+        if (args.isEmpty()) {
+            emit operationFinished(false, noTerminalMessage());
+            return;
+        }
+        program = args.takeFirst();
+        args += QStringLiteral("-e");
+        args += command;
     } else {
         // `gio launch` comes from glib2, which HyprFM already requires; the
         // gtk-launch this used to call lives in gtk3 and is often absent.
@@ -1919,7 +1965,8 @@ void FileOperations::openFileWith(const QString &path, const QString &desktopFil
         args = {QStringLiteral("launch"), hostEntryPath, normalized};
     }
 
-    if (runningInFlatpak()) {
+    // terminalCommand() already runs the terminal on the host.
+    if (runningInFlatpak() && !inTerminal) {
         args.prepend(program);
         args.prepend(QStringLiteral("--host"));
         program = QStringLiteral("flatpak-spawn");
@@ -1953,7 +2000,7 @@ void FileOperations::openFileWith(const QString &path, const QString &desktopFil
     // A terminal stays alive for as long as its window is open, and the TUI's
     // own exit code would be misread as a launch failure, so only spawn errors
     // are interesting there.
-    if (program == qEnvironmentVariable("TERMINAL", QStringLiteral("kitty"))) {
+    if (inTerminal) {
         proc->startDetached(program, args);
         proc->deleteLater();
         return;
@@ -1976,8 +2023,13 @@ void FileOperations::openInEditor(const QString &path)
         return;
     }
 
-    const QString terminal = qEnvironmentVariable("TERMINAL", QStringLiteral("kitty"));
-    QStringList args{QStringLiteral("-e")};
+    QStringList args = terminalCommand();
+    if (args.isEmpty()) {
+        emit operationFinished(false, noTerminalMessage());
+        return;
+    }
+    const QString terminal = args.takeFirst();
+    args << QStringLiteral("-e");
     args += QProcess::splitCommand(editor);
     args << path;
     if (!QProcess::startDetached(terminal, args)) {
@@ -2123,17 +2175,21 @@ void FileOperations::runExecutable(const QString &path, bool inTerminal)
 // Opens $TERMINAL in dirPath, running command (e.g. {"-e", prog}) if given.
 void FileOperations::startTerminal(const QString &dirPath, const QStringList &command)
 {
-    // $TERMINAL may carry flags ("kitty -1"); split like a shell would.
-    QStringList args = QProcess::splitCommand(qEnvironmentVariable("TERMINAL", "kitty"));
-    if (args.isEmpty())
-        args << QStringLiteral("kitty");
+    QStringList args = terminalCommand();
+    if (args.isEmpty()) {
+        emit operationFinished(false, noTerminalMessage());
+        return;
+    }
+    // On the host, the sandbox's working directory means nothing.
+    if (runningInFlatpak())
+        args.insert(2, QStringLiteral("--directory=") + dirPath);
     const QString program = args.takeFirst();
 
     // Inherited cwd is not enough for single-instance terminals: a bare
     // "ghostty" hands the launch to the running instance, whose new window
     // opens in that process's cwd (home). Pass the directory explicitly to
     // every terminal we know the flag for; unknown ones still get the cwd.
-    const QString exe = QFileInfo(program).fileName();
+    const QString exe = QFileInfo(runningInFlatpak() ? args.value(2) : program).fileName();
     if (exe == QLatin1String("ghostty"))
         args << QStringLiteral("--gtk-single-instance=false")
              << QStringLiteral("--working-directory=") + dirPath;
