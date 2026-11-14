@@ -268,6 +268,12 @@ public:
         }
         if (fields.at(1) != "vulkan")
             return;
+        // The cache is shared by every HyprFM build on the machine: a Nix or
+        // Flatpak copy brings its own Vulkan loader, while an AppImage on a
+        // host without libvulkan would ask Qt for Vulkan and crash. Left open:
+        // Qt loads the same library next.
+        if (!dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL))
+            return;
 
         QDir().mkpath(m_dir);
         QFile marker(markerPath(QCoreApplication::applicationPid()));
