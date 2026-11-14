@@ -618,6 +618,10 @@ void TerminalView::start()
         shell = pw && pw->pw_shell && *pw->pw_shell ? QByteArray(pw->pw_shell) : QByteArray("/bin/sh");
     }
     const QByteArray dir = QFile::encodeName(m_workingDirectory);
+    // A Flatpak sandbox has none of the user's programs, so the shell runs on
+    // the host. flatpak-spawn hands the pty over as its stdin/out/err.
+    static const bool inFlatpak = QFile::exists(QStringLiteral("/.flatpak-info"));
+    const QByteArray hostDir = "--directory=" + (dir.isEmpty() ? QByteArray("/") : dir);
     winsize ws{m_rowCount, m_cols, uint16_t(m_cols * m_cellWidth), uint16_t(m_rowCount * m_cellHeight)};
 
     int fd = -1;
@@ -650,6 +654,21 @@ void TerminalView::start()
                                 "VTE_VERSION", "KITTY_WINDOW_ID", "KITTY_PID", "KITTY_LISTEN_ON",
                                 "WEZTERM_PANE", "ALACRITTY_WINDOW_ID", "KONSOLE_VERSION"})
             unsetenv(var);
+        if (inFlatpak) {
+            // forkpty made the pty our controlling tty. Let it go, so the host
+            // side can take it: without one the shell has no job control and
+            // Ctrl+C reaches nothing. Letting go hangs up our own group.
+            signal(SIGHUP, SIG_IGN);
+            ioctl(STDIN_FILENO, TIOCNOTTY);
+            signal(SIGHUP, SIG_DFL);
+            execlp("flatpak-spawn", "flatpak-spawn", "--host", "--watch-bus",
+                   "--env=TERM=xterm-256color", "--env=COLORTERM=truecolor",
+                   hostDir.constData(), "sh", "-c",
+                   // Flatpak sets SHELL=/bin/sh in here, so look it up there.
+                   "s=${SHELL:-$(getent passwd \"$(id -u)\" | cut -d: -f7)}; exec \"${s:-/bin/sh}\"",
+                   static_cast<char *>(nullptr));
+            _exit(127);
+        }
         const char *name = strrchr(shell.constData(), '/');
         execl(shell.constData(), name ? name + 1 : shell.constData(), static_cast<char *>(nullptr));
         _exit(127);
