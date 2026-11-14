@@ -33,6 +33,15 @@ if(HYPRFM_TERMINAL)
     if(NOT CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo|MinSizeRel)$")
         set(GHOSTTY_ZIG_BUILD_FLAGS "-Doptimize=ReleaseFast" CACHE STRING "" FORCE)
     endif()
+    # Without an explicit version Ghostty asks git, and git finds HyprFM's
+    # checkout around build/_deps: on a release tag (v0.7.0) Ghostty panics
+    # "tagged releases must be in vX.Y.Z format matching build.zig". The
+    # value is cosmetic; it only has to be a semantic version.
+    set(_ghostty_flags "${GHOSTTY_ZIG_BUILD_FLAGS}")
+    if(NOT _ghostty_flags MATCHES "-Dversion-string=")
+        list(APPEND _ghostty_flags "-Dversion-string=1.3.2-dev")
+        set(GHOSTTY_ZIG_BUILD_FLAGS "${_ghostty_flags}" CACHE STRING "" FORCE)
+    endif()
     FetchContent_Declare(ghostty
         URL https://github.com/ghostty-org/ghostty/archive/da5936c2287cd7f466acdad3cc000de5ce35ccaa.tar.gz
         URL_HASH SHA256=aba3c7bd4488cf2915edc8abe03c06e0057c2a8d820dbb34ee424d527bc88855
