@@ -3359,6 +3359,8 @@ ApplicationWindow {
 
                 property var sidebarItem: ({})
 
+                onEmptyTrashRequested: root.openDialog(emptyTrashConfirmDialogLoader)
+
                 onOpenRequested: (path) => {
                     if (sidebarItem.isRecents) {
                         root.setPaneRecents(root.activePane, true)
@@ -3395,8 +3397,6 @@ ApplicationWindow {
                 onCustomActionRequested: (action) => {
                     if (action === "open_saved_split") {
                         root.restoreSavedSplit(bookmarks.splitAt(sidebarItem.index))
-                    } else if (action === "emptytrash") {
-                        root.openDialog(emptyTrashConfirmDialogLoader)
                     } else if (action === "renamebookmark") {
                         if ((sidebarItem.kind === "bookmark" || sidebarItem.kind === "savedSplit") && sidebarItem.index >= 0)
                             sidebarPanel.startBookmarkRename(sidebarItem.index)

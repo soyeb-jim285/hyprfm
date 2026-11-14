@@ -1231,6 +1231,21 @@ private slots:
         QVERIFY(app.bookmarks->savedSplits().isEmpty());
     }
 
+    // #69: "Empty Trash" in the sidebar's Trash menu did nothing.
+    void testSidebarEmptyTrashAsksForConfirmation()
+    {
+        App app;
+        QVERIFY(app.load());
+        QVERIFY(app.item("sidebarContextMenuLoader")->setProperty("active", true));
+        QObject *menu = app.item("sidebarContextMenuLoader")->property("item").value<QObject *>();
+        QVERIFY(menu);
+        QVERIFY(menu->setProperty("sidebarItem", QVariantMap{{"kind", "quickAccess"}, {"path", "trash:///"}}));
+        QVERIFY(QMetaObject::invokeMethod(menu, "executeAction",
+                                          Q_ARG(QVariant, QStringLiteral("emptytrash")),
+                                          Q_ARG(QVariant, QVariant()), Q_ARG(QVariant, QVariant())));
+        QVERIFY(app.item("emptyTrashConfirmDialogLoader")->property("active").toBool());
+    }
+
     void testClickingPathBarEditsAndEscapeCancels()
     {
         App app;
