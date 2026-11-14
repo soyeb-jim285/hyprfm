@@ -21,17 +21,17 @@
   <div id="root" data-composition-id="open" data-width="1920" data-height="1080">
     <div id="open-fx">
       <div id="open-cam">
-        <video id="open-vid" class="clip" src="assets/long/00-open.mp4" data-start="0" data-duration="7.944"
+        <video id="open-vid" class="clip" src="assets/long/00-open.mp4" data-start="0" data-duration="2.156"
                data-media-start="0.0" data-playback-rate="1.5" muted playsinline data-track-index="0"></video>
       </div>
     </div>
-    <div id="open-cap0" class="clip cap" data-start="1.6" data-duration="6.344" data-track-index="1"><div class="cap-in" id="open-cap0-in"><span class="txt">See-through, with Hyprland's blur.</span></div></div>
+
   </div>
   <script>
     const tl = gsap.timeline({ paused: true });
     
-    tl.fromTo("#open-cap0-in", {opacity: 0, filter: "blur(8px)"}, {opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "expo.out"}, 1.6);
-    tl.set({}, {}, 7.944);
+    
+    tl.set({}, {}, 2.156);
     window.__timelines["open"] = tl;
   </script>
 </template>
