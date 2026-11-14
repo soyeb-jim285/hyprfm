@@ -1,24 +1,34 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <!-- Shadow -->
-  <rect x="14" y="42" width="104" height="72" rx="10" ry="10" fill="#11111b" opacity="0.4"/>
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#313244"/>
+      <stop offset="1" stop-color="#1e1e2e"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#89b4fa"/>
+      <stop offset="1" stop-color="#cba6f7"/>
+    </linearGradient>
+  </defs>
 
-  <!-- Folder body -->
-  <rect x="10" y="38" width="108" height="74" rx="10" ry="10" fill="#1e1e2e"/>
-  <rect x="10" y="38" width="108" height="74" rx="10" ry="10" fill="none" stroke="#89b4fa" stroke-width="2.5" opacity="0.7"/>
 
-  <!-- Folder tab -->
-  <path d="M10 38 L10 28 Q10 20 18 20 L44 20 Q50 20 54 26 L58 34 Q59 38 56 38 Z" fill="#1e1e2e"/>
-  <path d="M10 38 L10 28 Q10 20 18 20 L44 20 Q50 20 54 26 L58 34 Q59 38 56 38" fill="none" stroke="#89b4fa" stroke-width="2.5" opacity="0.7"/>
+  <!-- Folder (tab + body as one shape) -->
+  <path d="M10 30a10 10 0 0 1 10-10h22a8 8 0 0 1 6.4 3.2L54 30h56a8 8 0 0 1 8 8v66a8 8 0 0 1-8 8H18a8 8 0 0 1-8-8z" fill="url(#body)" stroke="url(#edge)" stroke-width="3" stroke-linejoin="round"/>
+  <!-- Tab divider -->
+  <path d="M11.5 40h105" stroke="url(#edge)" stroke-width="2" opacity="0.35"/>
 
   <!-- File lines -->
-  <rect x="28" y="56" width="40" height="3" rx="1.5" fill="#89b4fa" opacity="0.5"/>
-  <rect x="28" y="65" width="52" height="3" rx="1.5" fill="#cba6f7" opacity="0.4"/>
-  <rect x="28" y="74" width="34" height="3" rx="1.5" fill="#89b4fa" opacity="0.3"/>
-  <rect x="28" y="83" width="46" height="3" rx="1.5" fill="#cba6f7" opacity="0.25"/>
+  <g stroke-linecap="round" stroke-width="5">
+    <path d="M28 58h36" stroke="#89b4fa"/>
+    <path d="M28 71h48" stroke="#cba6f7" opacity="0.8"/>
+    <path d="M28 84h30" stroke="#89b4fa" opacity="0.6"/>
+    <path d="M28 97h40" stroke="#cba6f7" opacity="0.4"/>
+  </g>
 
   <!-- Grid dots -->
-  <circle cx="88" cy="58" r="3.5" fill="#94e2d5" opacity="0.5"/>
-  <circle cx="100" cy="58" r="3.5" fill="#94e2d5" opacity="0.4"/>
-  <circle cx="88" cy="70" r="3.5" fill="#94e2d5" opacity="0.35"/>
-  <circle cx="100" cy="70" r="3.5" fill="#94e2d5" opacity="0.3"/>
+  <g fill="#94e2d5">
+    <rect x="86" y="54" width="9" height="9" rx="2.5"/>
+    <rect x="99" y="54" width="9" height="9" rx="2.5" opacity="0.75"/>
+    <rect x="86" y="67" width="9" height="9" rx="2.5" opacity="0.75"/>
+    <rect x="99" y="67" width="9" height="9" rx="2.5" opacity="0.5"/>
+  </g>
 </svg>
