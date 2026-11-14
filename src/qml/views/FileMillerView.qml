@@ -1806,14 +1806,27 @@ FocusScope {
                         interactive: true
                         boundsMovement: Flickable.StopAtBounds
                         boundsBehavior: Flickable.StopAtBounds
-                        contentWidth: previewColumn.isMarkdown ? width : Math.max(width, textArea.implicitWidth)
+                        contentWidth: previewColumn.isMarkdown ? markdownWidth : Math.max(width, textArea.implicitWidth)
                         contentHeight: Math.max(height, textArea.implicitHeight)
+
+                        // The width Markdown is laid out at, caught up once the
+                        // panel stops resizing. Opening a split animates this
+                        // column every frame, and each new width rebuilt the
+                        // HTML (image limits) and re-laid out the whole
+                        // document: long READMEs made the animation crawl.
+                        property real markdownWidth: width
+                        onWidthChanged: markdownSettle.restart()
+                        Timer {
+                            id: markdownSettle
+                            interval: 150
+                            onTriggered: textPreviewFlick.markdownWidth = textPreviewFlick.width
+                        }
 
                         TextEdit {
                             id: textArea
                             readOnly: true
                             selectByMouse: true
-                            width: previewColumn.isMarkdown ? textPreviewFlick.width : Math.max(implicitWidth, textPreviewFlick.width)
+                            width: previewColumn.isMarkdown ? textPreviewFlick.markdownWidth : Math.max(implicitWidth, textPreviewFlick.width)
                             baseUrl: previewColumn.markdownBaseUrl
                             height: Math.max(implicitHeight, textPreviewFlick.height)
                             textFormat: previewColumn.textPreview.usesBat && previewColumn.textPreview.html !== ""
@@ -1827,7 +1840,7 @@ FocusScope {
                                         ? (previewColumn.isMarkdown
                                             ? previewColumn.fitMarkdownImages(
                                                   previewColumn.textPreview.html,
-                                                  textPreviewFlick.width - 24)
+                                                  textPreviewFlick.markdownWidth - 24)
                                             : previewColumn.textPreview.html)
                                         : previewColumn.textPreview.content))
                             color: Theme.text
