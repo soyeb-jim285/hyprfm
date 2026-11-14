@@ -7,8 +7,11 @@
 #include <QImage>
 #include <QQuickTextureFactory>
 #include <QStandardPaths>
+#include <QUrl>
 #include <QUuid>
+#include "providers/iconprovider.h"
 #include "providers/thumbnailprovider.h"
+#include <memory>
 #include "testdir.h"
 
 class TestThumbnailProvider : public QObject
@@ -23,6 +26,22 @@ private:
         QString path = dir.path() + "/" + name;
         img.save(path, "PNG");
         return path;
+    }
+
+    static void waitFinished(ThumbnailResponse &response)
+    {
+        // Same pattern as the tests below: run() starts in the constructor.
+        QSignalSpy spy(&response, &QQuickImageResponse::finished);
+        if (spy.isEmpty())
+            spy.wait(5000);
+    }
+
+    static QImage folderImage(const QString &dir, IconProvider *icons = nullptr)
+    {
+        ThumbnailResponse response(dir + "?mtime=1", QSize(64, 64), icons);
+        waitFinished(response);
+        std::unique_ptr<QQuickTextureFactory> factory(response.textureFactory());
+        return factory ? factory->image() : QImage();
     }
 
     QString findTrashEntryUri(const QString &originalPath)
@@ -210,6 +229,88 @@ private slots:
         QVERIFY(result.height() <= 120);
 
         delete factory;
+    }
+
+    // Custom folder icons (#68): a folder id resolves to a picture file.
+    void testFolderDirectoryFileRelativeIcon()
+    {
+        TestDir dir;
+        createTestImage(dir, "art.png", 100, 100);
+        dir.createFile(".directory", "[Desktop Entry]\nIcon=./art.png\n");
+        QVERIFY(!folderImage(dir.path()).isNull());
+    }
+
+    void testFolderCoverFallback()
+    {
+        TestDir dir;
+        QImage img(100, 100, QImage::Format_RGB32);
+        img.fill(Qt::red);
+        QVERIFY(img.save(dir.path() + "/cover.jpg", "JPG"));
+        QVERIFY(!folderImage(dir.path()).isNull());
+
+        // An Icon= that points nowhere falls through to the cover.
+        dir.createFile(".directory", "[Desktop Entry]\nIcon=./missing.png\n");
+        QVERIFY(!folderImage(dir.path()).isNull());
+    }
+
+    void testFolderGioCustomIcon()
+    {
+        TestDir dir;
+        QVERIFY(QDir(dir.path()).mkdir("album"));
+        const QString art = createTestImage(dir, "art.png", 100, 100);
+        const int rc = QProcess::execute("gio", {"set", dir.path() + "/album",
+            "metadata::custom-icon", QUrl::fromLocalFile(art).toString()});
+        if (rc != 0)
+            QSKIP("gio set metadata unavailable (no gvfs)");
+        QVERIFY(!folderImage(dir.path() + "/album").isNull());
+    }
+
+    void testFolderNamedLikeImage()
+    {
+        TestDir dir;
+        QVERIFY(QDir(dir.path()).mkdir("album.png"));
+        createTestImage(dir, "album.png/folder.png", 100, 100);
+        QVERIFY(!folderImage(dir.path() + "/album.png").isNull());
+    }
+
+    void testFolderWithoutIconReportsError()
+    {
+        TestDir dir;
+        ThumbnailResponse response(dir.path() + "?mtime=1", QSize(64, 64));
+        waitFinished(response);
+        QVERIFY(response.textureFactory() == nullptr);
+        QVERIFY(!response.errorString().isEmpty());
+    }
+
+    void testFolderIgnoresIconOutsideDesktopEntry()
+    {
+        TestDir dir;
+        createTestImage(dir, "art.png", 100, 100);
+        dir.createFile(".directory", "[Dolphin]\nIcon=./art.png\n");
+        QVERIFY(folderImage(dir.path()).isNull());
+    }
+
+    void testFolderThemeIconName()
+    {
+        TestDir data;
+        QVERIFY(QDir().mkpath(data.path() + "/icons/HyprfmTestTheme/scalable/places"));
+        QFile svg(data.path() + "/icons/HyprfmTestTheme/scalable/places/hyprfm-test-folder.svg");
+        QVERIFY(svg.open(QIODevice::WriteOnly));
+        svg.write("<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'>"
+                  "<rect width='16' height='16' fill='red'/></svg>");
+        svg.close();
+        const QByteArray oldDirs = qgetenv("XDG_DATA_DIRS");
+        qputenv("XDG_DATA_DIRS", data.path().toUtf8());
+        IconProvider icons(QStringLiteral("HyprfmTestTheme"));
+        qputenv("XDG_DATA_DIRS", oldDirs);
+
+        TestDir dir;
+        dir.createFile(".directory", "[Desktop Entry]\nIcon=hyprfm-test-folder\n");
+        QVERIFY(!folderImage(dir.path(), &icons).isNull());
+
+        // A name no theme has must not turn into a generic file icon.
+        dir.createFile(".directory", "[Desktop Entry]\nIcon=hyprfm-no-such-icon\n");
+        QVERIFY(folderImage(dir.path(), &icons).isNull());
     }
 
     void testProviderCreatesResponse()

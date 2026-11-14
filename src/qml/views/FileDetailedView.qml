@@ -1056,7 +1056,7 @@ FocusScope {
                             anchors.verticalCenter: parent.verticalCenter
 
                             readonly property bool hasThumbnail: !fileOps.isRemotePath(detRow.filePath) && !fileOps.isSlowPath(detRow.filePath)
-                                && (detRow.hasImagePreview || detRow.hasVideoPreview
+                                && (detRow.isDir || detRow.hasImagePreview || detRow.hasVideoPreview
                                     || detRow.hasPdfPreview)
 
                             Image {

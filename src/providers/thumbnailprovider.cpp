@@ -1,4 +1,5 @@
 #include "thumbnailprovider.h"
+#include "iconprovider.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -19,6 +20,10 @@
 #include <QSaveFile>
 #include <QTemporaryFile>
 #include <QUrl>
+
+#undef signals
+#include <gio/gio.h>
+#define signals Q_SIGNALS
 
 static bool isTrashUri(const QString &path)
 {
@@ -230,12 +235,87 @@ static QThreadPool *thumbnailPool()
 }
 
 // ---------------------------------------------------------------------------
+// Custom folder icons (#68): the picture a folder shows instead of the theme
+// folder icon. First existing hit wins:
+//   1. <dir>/.directory [Desktop Entry] Icon= (KDE/Dolphin): ./relative,
+//      absolute, file:// URI, or a theme icon name
+//   2. GIO metadata::custom-icon (Nautilus, Nemo, Thunar)
+//   3. cover.jpg / cover.png / folder.jpg / folder.png
+// Empty when none applies, so the view keeps the theme icon.
+// ---------------------------------------------------------------------------
+
+static QString directoryFileIcon(const QString &dir)
+{
+    QFile file(dir + QStringLiteral("/.directory"));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+    bool inDesktopEntry = false;
+    while (!file.atEnd()) {
+        const QString line = QString::fromUtf8(file.readLine()).trimmed();
+        if (line.startsWith(QLatin1Char('[')))
+            inDesktopEntry = line == QLatin1String("[Desktop Entry]");
+        else if (inDesktopEntry && line.startsWith(QLatin1String("Icon=")))
+            return line.mid(5).trimmed();
+    }
+    return {};
+}
+
+static QString gioCustomIcon(const QString &dir)
+{
+    GFile *file = g_file_new_for_path(QFile::encodeName(dir).constData());
+    GFileInfo *info = g_file_query_info(file, "metadata::custom-icon",
+                                        G_FILE_QUERY_INFO_NONE, nullptr, nullptr);
+    QString uri;
+    if (info) {
+        if (const char *value = g_file_info_get_attribute_string(info, "metadata::custom-icon"))
+            uri = QString::fromUtf8(value);
+        g_object_unref(info);
+    }
+    g_object_unref(file);
+    return uri;
+}
+
+static QString folderIconPath(const QString &dir, IconProvider *icons, int size)
+{
+    const QString icon = directoryFileIcon(dir);
+    if (!icon.isEmpty()) {
+        QString path;
+        if (icon.startsWith(QLatin1String("./")))
+            path = dir + icon.mid(1);
+        else if (icon.startsWith(QLatin1Char('/')))
+            path = icon;
+        else if (icon.startsWith(QLatin1String("file:")))
+            path = QUrl(icon).toLocalFile();
+        else if (icons && !icon.contains(QLatin1Char('/')))
+            path = icons->findIconPath(icon, size);
+        if (!path.isEmpty() && QFileInfo(path).isFile())
+            return path;
+    }
+
+    const QString uri = gioCustomIcon(dir);
+    if (!uri.isEmpty()) {
+        const QString path = QUrl(uri).toLocalFile();
+        if (!path.isEmpty() && QFileInfo(path).isFile())
+            return path;
+    }
+
+    for (const char *name : {"cover.jpg", "cover.png", "folder.jpg", "folder.png"}) {
+        const QString path = dir + QLatin1Char('/') + QLatin1String(name);
+        if (QFileInfo(path).isFile())
+            return path;
+    }
+    return {};
+}
+
+// ---------------------------------------------------------------------------
 // ThumbnailResponse
 // ---------------------------------------------------------------------------
 
-ThumbnailResponse::ThumbnailResponse(const QString &id, const QSize &requestedSize)
+ThumbnailResponse::ThumbnailResponse(const QString &id, const QSize &requestedSize,
+                                     IconProvider *icons)
     : m_id(sourcePathFromId(id))
     , m_requestedSize(requestedSize)
+    , m_icons(icons)
 {
     setAutoDelete(false);
     thumbnailPool()->start(this);
@@ -245,6 +325,17 @@ void ThumbnailResponse::run()
 {
     const QSize targetSize = m_requestedSize.isValid()
         ? m_requestedSize : QSize(128, 128);
+
+    // A folder stands in for its custom icon file; from here on the normal
+    // pipeline (disk cache keyed on that file, SVG/image render) handles it.
+    const QUrl idUrl(m_id);
+    if ((idUrl.scheme().isEmpty() || idUrl.isLocalFile()) && QFileInfo(m_id).isDir()) {
+        m_id = folderIconPath(m_id, m_icons, std::max(targetSize.width(), targetSize.height()));
+        if (m_id.isEmpty()) {
+            emit finished();
+            return;
+        }
+    }
 
     QString cachePath;
     const bool cacheable = isCacheableLocalPath(m_id);
@@ -385,5 +476,5 @@ QString ThumbnailResponse::errorString() const
 QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id,
                                                               const QSize &requestedSize)
 {
-    return new ThumbnailResponse(id, requestedSize);
+    return new ThumbnailResponse(id, requestedSize, m_icons);
 }

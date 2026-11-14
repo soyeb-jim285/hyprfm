@@ -894,7 +894,7 @@ FocusScope {
                             anchors.verticalCenter: parent.verticalCenter
 
                             readonly property bool hasThumbnail: !fileOps.isRemotePath(currentDelegate.filePath) && !fileOps.isSlowPath(currentDelegate.filePath)
-                                && (currentDelegate.hasImagePreview || currentDelegate.hasVideoPreview)
+                                && (currentDelegate.isDir || currentDelegate.hasImagePreview || currentDelegate.hasVideoPreview)
 
                             Image {
                                 anchors.fill: parent

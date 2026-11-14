@@ -242,6 +242,20 @@ public:
         return img;
     }
 
+    // Path of a theme icon in the primary theme or its fallbacks; empty when
+    // none has it (no generic-file substitute). Safe from worker threads.
+    QString findIconPath(const QString &name, int size) const
+    {
+        QStringList primaryDirs, fallbackDirs;
+        {
+            QMutexLocker locker(&m_cacheMutex);
+            primaryDirs = m_primaryDirs;
+            fallbackDirs = m_fallbackDirs;
+        }
+        const QString path = findIconIn(name, size, primaryDirs);
+        return path.isEmpty() ? findIconIn(name, size, fallbackDirs) : path;
+    }
+
 private:
     void remember(const QString &key, const QImage &image)
     {
@@ -367,5 +381,5 @@ private:
     // hundreds of MB that were never freed. ponytail: 24 MB, about fifteen
     // 640px icons; QML's own pixmap cache keeps what is on screen anyway.
     QCache<QString, QImage> m_cache{24 * 1024 * 1024};
-    QMutex m_cacheMutex;
+    mutable QMutex m_cacheMutex;
 };
