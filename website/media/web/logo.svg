@@ -10,8 +10,6 @@
     </linearGradient>
   </defs>
 
-  <!-- Shadow -->
-  <path d="M12 32a10 10 0 0 1 10-10h22a8 8 0 0 1 6.4 3.2L56 32h52a10 10 0 0 1 10 10v62a10 10 0 0 1-10 10H22a10 10 0 0 1-10-10z" fill="#11111b" opacity="0.35" transform="translate(2 4)"/>
 
   <!-- Folder (tab + body as one shape) -->
   <path d="M10 30a10 10 0 0 1 10-10h22a8 8 0 0 1 6.4 3.2L54 30h56a8 8 0 0 1 8 8v66a8 8 0 0 1-8 8H18a8 8 0 0 1-8-8z" fill="url(#body)" stroke="url(#edge)" stroke-width="3" stroke-linejoin="round"/>
