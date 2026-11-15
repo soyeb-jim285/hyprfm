@@ -2,6 +2,7 @@ set(HYPRFM_SOURCES
     main.cpp
     services/filepicker.cpp
     services/configmanager.cpp
+    services/desktopcolorscheme.cpp
     services/themeloader.cpp
     services/clipboardmanager.cpp
     services/fileoperations.cpp

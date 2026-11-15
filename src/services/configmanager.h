@@ -78,7 +78,7 @@ class ConfigManager : public QObject
 public:
     explicit ConfigManager(const QString &configPath, QObject *parent = nullptr,
                            const QStringList &themesDirs = QStringList(),
-                           const QString &defaultTheme = QStringLiteral("catppuccin-mocha"));
+                           bool desktopDark = true);
 
     QStringList availableMonospaceFonts() const;
     QStringList availableFonts() const;
@@ -206,7 +206,8 @@ private:
 
     QString m_configPath;
     QStringList m_themesDirs;
-    QString m_defaultThemeName;
+    // Picks dark_theme over light_theme while the file sets no "theme".
+    bool m_desktopDark = true;
     QFileSystemWatcher m_watcher;
     QFileSystemWatcher m_iconWatcher;
     QTimer m_iconRefreshTimer;

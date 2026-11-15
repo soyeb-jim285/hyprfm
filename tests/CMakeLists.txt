@@ -2,12 +2,13 @@
 
 add_executable(tst_configmanager tst_configmanager.cpp
     ${CMAKE_SOURCE_DIR}/src/services/configmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/desktopcolorscheme.cpp
 )
 target_include_directories(tst_configmanager PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/third_party
 )
-target_link_libraries(tst_configmanager PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+target_link_libraries(tst_configmanager PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::DBus)
 add_test(NAME tst_configmanager COMMAND tst_configmanager)
 
 add_executable(tst_themeloader tst_themeloader.cpp

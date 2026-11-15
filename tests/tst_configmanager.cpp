@@ -6,6 +6,7 @@
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include "services/configmanager.h"
+#include "services/desktopcolorscheme.h"
 
 class TestConfigManager : public QObject
 {
@@ -365,9 +366,58 @@ private slots:
     void testCustomDefaultTheme()
     {
         QTemporaryDir dir;
-        ConfigManager mgr(dir.path() + "/config.toml", nullptr, QStringList(), "catppuccin-latte");
+        ConfigManager mgr(dir.path() + "/config.toml", nullptr, QStringList(), /*desktopDark=*/false);
 
         QCOMPARE(mgr.theme(), QString("catppuccin-latte"));
+    }
+
+    // Without "theme" the pair decides, by the desktop's light/dark; a set
+    // "theme" always wins.
+    void testUnsetThemeFollowsThePair()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.path() + "/config.toml";
+        auto write = [&](const QByteArray &body) {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            f.write(body);
+        };
+        write("[general]\nlight_theme = \"rose-pine-dawn\"\ndark_theme = \"rose-pine\"\n");
+        QCOMPARE(ConfigManager(path, nullptr, {}, true).theme(), QString("rose-pine"));
+        QCOMPARE(ConfigManager(path, nullptr, {}, false).theme(), QString("rose-pine-dawn"));
+
+        write("[general]\ntheme = \"nord\"\nlight_theme = \"rose-pine-dawn\"\ndark_theme = \"rose-pine\"\n");
+        QCOMPARE(ConfigManager(path, nullptr, {}, true).theme(), QString("nord"));
+        QCOMPARE(ConfigManager(path, nullptr, {}, false).theme(), QString("nord"));
+    }
+
+    void testDesktopColorSchemeFromSettingsFiles()
+    {
+        using DesktopColorScheme::darkFromSettingsFiles;
+        QTemporaryDir dir;
+        auto write = [&](const QString &rel, const QByteArray &body) {
+            QDir().mkpath(QFileInfo(dir.path() + "/" + rel).absolutePath());
+            QFile f(dir.path() + "/" + rel);
+            QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            f.write(body);
+        };
+
+        QCOMPARE(darkFromSettingsFiles(dir.path()), std::nullopt);   // nothing set
+
+        write("kdeglobals", "[General]\nColorScheme=BreezeDark\n");
+        QCOMPARE(darkFromSettingsFiles(dir.path()), std::optional<bool>(true));
+        write("kdeglobals", "[General]\nColorScheme=BreezeLight\n");
+        QCOMPARE(darkFromSettingsFiles(dir.path()), std::optional<bool>(false));
+
+        // GTK is asked before KDE.
+        write("gtk-3.0/settings.ini", "[Settings]\ngtk-theme-name=catppuccin-mocha-lavender-standard+default\n");
+        QCOMPARE(darkFromSettingsFiles(dir.path()), std::optional<bool>(false));   // no "dark" in the name
+        write("gtk-3.0/settings.ini", "[Settings]\ngtk-theme-name=Adwaita-dark\n");
+        QCOMPARE(darkFromSettingsFiles(dir.path()), std::optional<bool>(true));
+        write("gtk-3.0/settings.ini", "[Settings]\ngtk-theme-name=Adwaita\ngtk-application-prefer-dark-theme=1\n");
+        QCOMPARE(darkFromSettingsFiles(dir.path()), std::optional<bool>(true));
+        write("gtk-4.0/settings.ini", "[Settings]\ngtk-theme-name=Adwaita\n");
+        QCOMPARE(darkFromSettingsFiles(dir.path()), std::optional<bool>(false));  // gtk-4.0 first
     }
 
     void testAvailableThemes()

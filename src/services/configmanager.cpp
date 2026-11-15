@@ -207,11 +207,11 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
 };
 
 ConfigManager::ConfigManager(const QString &configPath, QObject *parent, const QStringList &themesDirs,
-                             const QString &defaultTheme)
+                             bool desktopDark)
     : QObject(parent)
     , m_configPath(configPath)
     , m_themesDirs(themesDirs)
-    , m_defaultThemeName(defaultTheme)
+    , m_desktopDark(desktopDark)
 {
     setDefaults();
     seedDocumentedConfig();
@@ -323,11 +323,9 @@ QStringList ConfigManager::availableIconThemes() const
 
 void ConfigManager::setDefaults()
 {
-    m_theme = m_defaultThemeName.trimmed().isEmpty()
-        ? QStringLiteral("catppuccin-mocha")
-        : m_defaultThemeName.trimmed();
     m_lightTheme = QStringLiteral("catppuccin-latte");
     m_darkTheme = QStringLiteral("catppuccin-mocha");
+    m_theme = m_desktopDark ? m_darkTheme : m_lightTheme;
     // Empty means "whatever the desktop is set to": main.cpp asks the XDG
     // portal and hands the answer to setIconThemeFallback(). Adwaita ships 47
     // mimetype icons, so pinning it here made most file types fall through to
@@ -433,12 +431,14 @@ void ConfigManager::loadConfig()
         m_showWindowControls = m_showWindowControlsRuntimeDefault;
 
 
-        if (auto v = config["general"]["theme"].value<std::string>())
-            m_theme = QString::fromStdString(*v);
         if (auto v = config["general"]["light_theme"].value<std::string>())
             m_lightTheme = QString::fromStdString(*v);
         if (auto v = config["general"]["dark_theme"].value<std::string>())
             m_darkTheme = QString::fromStdString(*v);
+        // No "theme": the half of the pair that matches the desktop.
+        m_theme = m_desktopDark ? m_darkTheme : m_lightTheme;
+        if (auto v = config["general"]["theme"].value<std::string>())
+            m_theme = QString::fromStdString(*v);
         if (auto v = config["general"]["auto_refresh_icons"].value<bool>())
             m_autoRefreshIcons = *v;
         if (auto v = config["general"]["icon_theme"].value<std::string>())
