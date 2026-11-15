@@ -118,8 +118,14 @@ excluded_libraries=(
     'libgio-2.0.so.*'
     'libgmodule-2.0.so.*'
     'libgthread-2.0.so.*'
-    # Host dbus too: bundled libdbus drags in an old libsystemd that host
-    # libmount (via host glib) rejects. See prune-appdir.sh.
+    # The rest of glib's closure, and dbus (it drags in an old libsystemd
+    # that host libmount rejects). Pruning alone is not enough: the final
+    # linuxdeploy pass re-adds them from ldd of the host glib. See prune-appdir.sh.
+    'libmount.so.*'
+    'libblkid.so.*'
+    'libselinux.so.*'
+    'libpcre2-8.so.*'
+    'libffi.so.*'
     'libdbus-1.so.*'
     'libsystemd.so.*'
 )
