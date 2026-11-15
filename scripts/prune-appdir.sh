@@ -37,5 +37,10 @@ rm -f "$appdir"/usr/lib/libmng.so* "$appdir"/usr/lib/libjasper.so*
 # libgobject/gvfs fails with undefined symbols on current distros.
 rm -f "$appdir"/usr/lib/lib{glib,gobject,gio,gmodule,gthread}-2.0.so*
 rm -rf "$appdir"/usr/share/doc/libglib2.0-0
+# The rest of host glib's dependency closure must be the host's too. Bundled
+# 22.04 copies win the soname lookup and break the host's newer libs: on
+# Fedora, host libmount needs LIBSYSTEMD_251 but got the bundled 249 (pulled
+# in by bundled libdbus). libgcrypt/lz4/lzma/cap were only libsystemd's deps.
+rm -f "$appdir"/usr/lib/lib{mount,blkid,selinux,pcre2-8,pcre,ffi,dbus-1,systemd,gcrypt,lz4,lzma,cap}.so*
 
 du -sh "$appdir" | sed 's/^/AppDir after prune: /'

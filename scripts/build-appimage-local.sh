@@ -118,6 +118,10 @@ excluded_libraries=(
     'libgio-2.0.so.*'
     'libgmodule-2.0.so.*'
     'libgthread-2.0.so.*'
+    # Host dbus too: bundled libdbus drags in an old libsystemd that host
+    # libmount (via host glib) rejects. See prune-appdir.sh.
+    'libdbus-1.so.*'
+    'libsystemd.so.*'
 )
 
 if [[ "$USE_SYSTEM_NON_QT_LIBS" == "1" ]]; then
