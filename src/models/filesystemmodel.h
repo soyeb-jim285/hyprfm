@@ -31,6 +31,9 @@ class FileSystemModel : public QAbstractListModel
     Q_PROPERTY(qint64 diskFree READ diskFree NOTIFY countsChanged)
     Q_PROPERTY(qint64 diskTotal READ diskTotal NOTIFY countsChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
+    // Why the folder could not be listed ("" when it could). Without it an
+    // unreadable folder looks the same as an empty one (#74).
+    Q_PROPERTY(QString loadError READ loadError NOTIFY loadErrorChanged)
 
 public:
     enum Roles {
@@ -76,6 +79,7 @@ public:
     int fileCount() const;
     int folderCount() const;
     bool isLoading() const;
+    QString loadError() const { return m_loadError; }
 
     Q_INVOKABLE void setRootPath(const QString &path);
     void setHiddenLast(bool last);
@@ -114,6 +118,7 @@ signals:
     void showHiddenChanged();
     void countsChanged();
     void isLoadingChanged();
+    void loadErrorChanged();
     void watchedDirectoryChanged(const QString &path);
     // The full properties of a remote location fileProperties() answered
     // with a pending placeholder.
@@ -162,7 +167,8 @@ private:
         mutable std::shared_ptr<Details> details;
     };
     static Entry entryFromInfo(const QFileInfo &info, bool statted);
-    static QList<Entry> readLocalEntries(const QString &rootPath, bool showHidden, bool wantStat);
+    static QList<Entry> readLocalEntries(const QString &rootPath, bool showHidden, bool wantStat,
+                                         int *error = nullptr);
     static void sortEntries(QList<Entry> &entries, QDir::SortFlags flags, bool hiddenLast = false);
     static QVariantMap countFolderItems(const QStringList &paths);
     void ensureStat(const Entry &entry, const QFileInfo &info) const;
@@ -176,6 +182,7 @@ private:
     struct LocalReloadResult {
         quint64 generation = 0;
         QList<Entry> entries;
+        int error = 0;   // errno from opening the folder
     };
 
     void ensurePopulated(const Entry &entry) const;
@@ -237,4 +244,6 @@ private:
     QString m_sortColumn = "name";
     bool m_sortAscending = true;
     bool m_isLoading = false;
+    QString m_loadError;
+    void setLoadError(int error);
 };

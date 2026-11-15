@@ -8,6 +8,8 @@ Item {
     property string viewMode: "grid"
     property var fileModel: null
     property string currentPath: ""
+    // Why the folder could not be listed; shown instead of an empty view (#74).
+    property string loadError: ""
     // How much wider this view will be once a running pane animation ends
     // (negative when it is shrinking). The grid is laid out at that width
     // and clipped by the pane, so its columns do not reflow every frame.
@@ -167,5 +169,17 @@ Item {
                 }
             }
         }
+    }
+
+    Text {
+        objectName: "loadErrorText"
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 48, 420)
+        visible: root.loadError !== ""
+        text: root.loadError
+        color: Theme.subtext
+        font.pointSize: Theme.fontNormal
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.Wrap
     }
 }

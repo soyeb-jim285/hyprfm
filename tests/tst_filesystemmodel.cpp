@@ -223,6 +223,38 @@ private slots:
         QCOMPARE(model.folderCount(), 1);
     }
 
+    // #74: a folder that cannot be listed says why instead of looking empty,
+    // and the message goes away once a readable folder loads.
+    void testUnreadableFolderReportsLoadError()
+    {
+        TestDir dir;
+        dir.createFile("locked/secret.txt");
+        const QString locked = dir.path() + "/locked";
+        QVERIFY(QFile::setPermissions(locked, QFileDevice::Permissions()));
+        if (QDir(locked).isReadable()) {
+            QFile::setPermissions(locked, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+            QSKIP("running as root: permissions are not enforced");
+        }
+
+        FileSystemModel model;
+        model.setSynchronousReload(true);
+        QSignalSpy errorSpy(&model, &FileSystemModel::loadErrorChanged);
+
+        model.setRootPath(locked);
+        QCOMPARE(model.rowCount(), 0);
+        QVERIFY(model.loadError().contains(QStringLiteral("permission")));
+        QCOMPARE(errorSpy.count(), 1);
+
+        model.setRootPath(dir.path() + "/missing");
+        QVERIFY(!model.loadError().isEmpty());
+
+        model.setRootPath(dir.path());
+        QCOMPARE(model.loadError(), QString());
+        QCOMPARE(model.rowCount(), 1);
+
+        QFile::setPermissions(locked, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+    }
+
     // A folder scan still running when the model switches to Trash must not
     // land on top of the Trash listing (a new tab lists $HOME, then a
     // handed-over trash:/// navigates it straight on).

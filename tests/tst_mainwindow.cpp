@@ -397,6 +397,35 @@ private slots:
         QVERIFY(uris[0] != uris[1]);
         QVERIFY(!QFileInfo::exists(QUrl(uris[0].toString()).toLocalFile()));
     }
+    // #74: an unreadable folder shows why in the view, not an empty grid.
+    void testUnreadableFolderShowsLoadError()
+    {
+        App app;
+        QVERIFY(app.load());
+
+        QTemporaryDir dir;
+        const QString locked = dir.path() + "/locked";
+        QVERIFY(QDir().mkpath(locked));
+        QVERIFY(QFile::setPermissions(locked, QFileDevice::Permissions()));
+        auto restore = qScopeGuard([&] {
+            QFile::setPermissions(locked, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+        });
+        if (QDir(locked).isReadable())
+            QSKIP("running as root: permissions are not enforced");
+
+        QQuickItem *view = app.item(QStringLiteral("primaryFileView"));
+        QVERIFY(view);
+        QQuickItem *errorText = view->findChild<QQuickItem *>(QStringLiteral("loadErrorText"));
+        QVERIFY(errorText);
+
+        app.tabModel->activeTab()->navigateTo(locked);
+        QTRY_VERIFY(errorText->isVisible());
+        QVERIFY(errorText->property("text").toString().contains(QStringLiteral("permission")));
+
+        app.tabModel->activeTab()->navigateTo(dir.path());
+        QTRY_VERIFY(!errorText->isVisible());
+    }
+
     // Search results land in the proxy, but the view and the status bar have
     // to show them: the grid is bound to the proxy through paneModel() and
     // the item count reads the proxy's rowCount().

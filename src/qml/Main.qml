@@ -4383,6 +4383,8 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 fileModel: root.paneModel("primary")
+                                loadError: root.paneIsRecents("primary") || root.paneShowsSearchResults("primary")
+                                    ? "" : root.paneBaseModel("primary").loadError
                                 viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                                 currentPath: root.panePath("primary")
 
@@ -4479,6 +4481,8 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     fileModel: root.paneModel("secondary")
+                                    loadError: root.paneIsRecents("secondary") || root.paneShowsSearchResults("secondary")
+                                        ? "" : root.paneBaseModel("secondary").loadError
                                     viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                                     currentPath: root.panePath("secondary")
 

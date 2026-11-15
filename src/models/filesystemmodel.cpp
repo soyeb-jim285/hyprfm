@@ -1,6 +1,8 @@
 #include "models/filesystemmodel.h"
 
 #include <dirent.h>
+#include <cerrno>
+#include <cstring>
 #include <sys/stat.h>
 #include "services/cloudmounts.h"
 #include "services/gitstatusservice.h"
@@ -969,6 +971,19 @@ void FileSystemModel::setIsLoading(bool loading)
     emit isLoadingChanged();
 }
 
+void FileSystemModel::setLoadError(int error)
+{
+    QString message;
+    if (error == EACCES || error == EPERM)
+        message = tr("You don't have permission to view this folder");
+    else if (error)
+        message = QString::fromLocal8Bit(std::strerror(error));
+    if (m_loadError == message)
+        return;
+    m_loadError = message;
+    emit loadErrorChanged();
+}
+
 bool FileSystemModel::isTrashRoot() const
 {
     return isTrashUri(m_rootPath);
@@ -1146,6 +1161,7 @@ void FileSystemModel::reload()
 
     if (isTrashRoot()) {
         // Trash scan runs gio synchronously already; wrap in the reset.
+        setLoadError(0);
         beginResetModel();
         m_entries.clear();
         m_remoteEntries.clear();
@@ -1214,7 +1230,7 @@ FileSystemModel::LocalReloadResult FileSystemModel::scanLocalEntries(
 
     const int sortBy = sortFlags & QDir::SortByMask;
     const bool wantStat = sortBy == QDir::Size || sortBy == QDir::Time;
-    result.entries = readLocalEntries(rootPath, showHidden, wantStat);
+    result.entries = readLocalEntries(rootPath, showHidden, wantStat, &result.error);
     sortEntries(result.entries, sortFlags, hiddenLast);
     return result;
 }
@@ -1227,13 +1243,17 @@ FileSystemModel::LocalReloadResult FileSystemModel::scanLocalEntries(
 // filesystem that reports DT_UNKNOWN, and every entry when the listing is
 // ordered by size or time.
 QList<FileSystemModel::Entry> FileSystemModel::readLocalEntries(const QString &rootPath,
-                                                                bool showHidden, bool wantStat)
+                                                                bool showHidden, bool wantStat,
+                                                                int *error)
 {
     QList<Entry> entries;
     const QByteArray nativeRoot = QFile::encodeName(rootPath);
     DIR *dir = ::opendir(nativeRoot.constData());
-    if (!dir)
+    if (!dir) {
+        if (error)
+            *error = errno;
         return entries;
+    }
 
     QByteArray path = nativeRoot;
     if (!path.endsWith('/'))
@@ -1395,6 +1415,8 @@ void FileSystemModel::applyLocalReload(LocalReloadResult result, bool tryDiff)
     if (result.generation != m_localReloadGeneration)
         return;
 
+    setLoadError(result.error);
+
     if (tryDiff && applyLocalDiff(result.entries)) {
         setIsLoading(false);
         return;
@@ -1411,6 +1433,7 @@ void FileSystemModel::applyLocalReload(LocalReloadResult result, bool tryDiff)
 
 void FileSystemModel::reloadRemote()
 {
+    setLoadError(0);
     if (m_rootPath.isEmpty()) {
         m_fileCount = 0;
         m_folderCount = 0;
