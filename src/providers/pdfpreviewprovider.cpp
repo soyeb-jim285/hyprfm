@@ -289,16 +289,21 @@ void PdfPreviewResponse::writeDiskCache(const QString &key, const QByteArray &jp
     pruneDiskCacheOnce();
 }
 
+void PdfPreviewResponse::finish()
+{
+    QMetaObject::invokeMethod(this, &QQuickImageResponse::finished, Qt::QueuedConnection);
+}
+
 void PdfPreviewResponse::run()
 {
     const PdfRequest request = parseRequest(m_id);
     if (request.path.isEmpty() || !QFileInfo::exists(request.path)) {
-        emit finished();
+        finish();
         return;
     }
 
     if (QStandardPaths::findExecutable(QStringLiteral("pdftoppm")).isEmpty()) {
-        emit finished();
+        finish();
         return;
     }
 
@@ -309,7 +314,7 @@ void PdfPreviewResponse::run()
     // extension when the content says nothing) used to start pdftoppm for
     // every one of them, serialised behind renderLock().
     if (!looksLikePdf(request.path)) {
-        emit finished();
+        finish();
         return;
     }
 
@@ -318,11 +323,11 @@ void PdfPreviewResponse::run()
     const QString key = renderKey(request.path, request.page, dpi);
 
     if (tryCache(key)) {
-        emit finished();
+        finish();
         return;
     }
     if (tryDiskCache(key)) {
-        emit finished();
+        finish();
         return;
     }
 
@@ -332,13 +337,13 @@ void PdfPreviewResponse::run()
     // were queued behind it. This is the check that actually collapses the
     // duplicate first-paint requests.
     if (tryCache(key)) {
-        emit finished();
+        finish();
         return;
     }
     {
         QMutexLocker locker(&renderCacheMutex());
         if (failedRenders().contains(key)) {
-            emit finished();
+            finish();
             return;
         }
     }
@@ -368,7 +373,7 @@ void PdfPreviewResponse::run()
     if (jpeg.isEmpty()) {
         QMutexLocker locker(&renderCacheMutex());
         failedRenders().insert(key);
-        emit finished();
+        finish();
         return;
     }
 
@@ -383,7 +388,7 @@ void PdfPreviewResponse::run()
         writeDiskCache(key, jpeg);
     }
 
-    emit finished();
+    finish();
 }
 
 QQuickTextureFactory *PdfPreviewResponse::textureFactory() const

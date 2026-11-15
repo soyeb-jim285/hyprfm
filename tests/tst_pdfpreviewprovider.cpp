@@ -1,5 +1,6 @@
 #include <QElapsedTimer>
 #include <QTest>
+#include <QThread>
 #include <QPainter>
 #include <QPdfWriter>
 #include <QQuickTextureFactory>
@@ -114,6 +115,34 @@ private slots:
         QCOMPARE(ia, ib);
 
         delete fa; delete fb; delete a; delete b;
+    }
+
+    // finished() must reach a listener that connects after
+    // requestImageResponse() returns, as QML's pixmap reader does. A cache hit
+    // finishes on the worker thread at once; emitting there directly lost the
+    // signal (an image that never arrives; the CI flake behind a 15 s "warm"
+    // render). Sleep past the worker before connecting to force that order.
+    void testFinishedReachesALateListener()
+    {
+        if (QStandardPaths::findExecutable("pdftoppm").isEmpty()
+            || QStandardPaths::findExecutable("pdfinfo").isEmpty())
+            QSKIP("poppler-utils (pdftoppm/pdfinfo) not installed");
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString id = QString::fromLatin1(QUrl::toPercentEncoding(createPdf(dir.path())))
+                           + "?page=0";
+        PdfPreviewProvider provider;
+        QVERIFY(!renderAndWait(provider, id, QSize(400, 500)).isNull());   // warm the cache
+
+        QQuickImageResponse *response = provider.requestImageResponse(id, QSize(400, 500));
+        QThread::msleep(200);
+        QSignalSpy spy(response, &QQuickImageResponse::finished);
+        QVERIFY(spy.wait(2000));
+        QQuickTextureFactory *factory = response->textureFactory();
+        QVERIFY(factory && !factory->image().isNull());
+        delete factory;
+        delete response;
     }
 
     // A page flip must come back from the cache rather than re-running

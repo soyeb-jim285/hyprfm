@@ -18,6 +18,11 @@ public:
     QQuickTextureFactory *textureFactory() const override;
 
 private:
+    // Emits finished() on this object's own thread, never from run(). On a
+    // cache hit run() is done in microseconds, so a direct emit could land
+    // before the caller of requestImageResponse() has connected to it, and
+    // the image would never arrive.
+    void finish();
     // Returns true and fills m_image when this page is already rendered.
     bool tryCache(const QString &key);
     // Same, from the on-disk cache of rendered pages; fills the memory cache

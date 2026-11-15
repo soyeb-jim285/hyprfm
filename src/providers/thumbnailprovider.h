@@ -22,6 +22,11 @@ public:
     QString errorString() const override;
 
 private:
+    // Emits finished() on this object's own thread, never from run(). On a
+    // cache hit run() is done in microseconds, so a direct emit could land
+    // before the caller of requestImageResponse() has connected to it, and
+    // the image would never arrive.
+    void finish();
     void generateImageThumbnail();
     void generateSvgThumbnail();
     void generateVideoThumbnail();

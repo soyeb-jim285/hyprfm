@@ -368,6 +368,11 @@ ThumbnailResponse::ThumbnailResponse(const QString &id, const QSize &requestedSi
     thumbnailPool()->start(this);
 }
 
+void ThumbnailResponse::finish()
+{
+    QMetaObject::invokeMethod(this, &QQuickImageResponse::finished, Qt::QueuedConnection);
+}
+
 void ThumbnailResponse::run()
 {
     const QSize targetSize = m_requestedSize.isValid()
@@ -380,7 +385,7 @@ void ThumbnailResponse::run()
         m_id = folderIconPath(m_id, m_iconTheme, std::max(targetSize.width(), targetSize.height()));
         if (m_id.isEmpty()) {
             m_folderWithoutIcon = true;
-            emit finished();
+            finish();
             return;
         }
     }
@@ -390,7 +395,7 @@ void ThumbnailResponse::run()
     if (cacheable) {
         cachePath = thumbnailCachePath(m_id, targetSize);
         if (loadCachedThumbnail(m_id, cachePath, &m_image)) {
-            emit finished();
+            finish();
             return;
         }
     }
@@ -405,7 +410,7 @@ void ThumbnailResponse::run()
     if (cacheable && !m_image.isNull())
         saveCachedThumbnail(m_id, cachePath, m_image);
 
-    emit finished();
+    finish();
 }
 
 // SVG bytes for QSvgRenderer with a hard size cap. QSvgRenderer inflates
