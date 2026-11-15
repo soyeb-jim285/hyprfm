@@ -299,9 +299,16 @@ jobs:
           # the one inside the checksummed linuxdeploy.
           scripts/prune-appdir.sh AppDir
           ./linuxdeploy-x86_64.AppImage --appimage-extract >/dev/null
+          # Update information lets AppImageUpdate (and Gear Lever etc.) fetch
+          # only the changed blocks of the newest release. appimagetool also
+          # writes the matching .zsync, which the release uploads beside it.
           ARCH=x86_64 squashfs-root/plugins/linuxdeploy-plugin-appimage/appimagetool-prefix/AppRun \
+            -u "gh-releases-zsync|soyeb-jim285|hyprfm|latest|HyprFM-*-x86_64.AppImage.zsync" \
             AppDir "HyprFM-${TAG_NAME}-x86_64.AppImage"
           rm -rf squashfs-root
+          test -s "HyprFM-${TAG_NAME}-x86_64.AppImage.zsync"
+          "./HyprFM-${TAG_NAME}-x86_64.AppImage" --appimage-updateinformation | tee /dev/stderr \
+            | grep -qx "gh-releases-zsync|soyeb-jim285|hyprfm|latest|HyprFM-\*-x86_64.AppImage.zsync"
 
       - name: Verify bundled Wayland client integrations
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -467,7 +474,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hyprfm-appimage
-          path: HyprFM-${{ github.ref_name }}-x86_64.AppImage
+          path: |
+            HyprFM-${{ github.ref_name }}-x86_64.AppImage
+            HyprFM-${{ github.ref_name }}-x86_64.AppImage.zsync
           if-no-files-found: error
 
   # The flake can't fetch git submodules, so it pins Quill and quill-icons by
@@ -703,6 +712,7 @@ jobs:
         with:
           files: |
             HyprFM-${{ github.ref_name }}-x86_64.AppImage
+            HyprFM-${{ github.ref_name }}-x86_64.AppImage.zsync
             HyprFM-${{ github.ref_name }}-x86_64.flatpak
           body_path: release-notes.md
 
