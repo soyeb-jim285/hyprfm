@@ -449,6 +449,14 @@ private slots:
             QTest::qWait(800);   // let the add transition finish
             app.window->grabWindow().save(qEnvironmentVariable("HYPRFM_TEST_GRAB"));
         }
+
+        // #72: emptying the field keeps search open but shows the folder
+        // again (4 entries), not the cleared results.
+        QVERIFY(QMetaObject::invokeMethod(app.window, "handleSearchQuery",
+                                          Q_ARG(QVariant, QString())));
+        QVERIFY(app.window->property("searchMode").toBool());
+        QTRY_COMPARE(grid->property("count").toInt(), 4);
+        QTRY_COMPARE(statusBar->property("itemCount").toInt(), 4);
     }
 
     // Clicking the current folder or the empty space in the breadcrumb edits

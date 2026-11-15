@@ -548,6 +548,11 @@ ApplicationWindow {
             primaryPaneSearchMode = enabled
     }
 
+    // Search mode with an empty query shows the folder, not the empty results (#72).
+    function paneShowsSearchResults(pane) {
+        return paneSearchMode(pane) && searchProxyForPane(pane).searchQuery !== ""
+    }
+
     function paneFilterPanelOpen(pane) {
         return pane === "secondary" ? secondaryPaneFilterPanelOpen : primaryPaneFilterPanelOpen
     }
@@ -577,7 +582,7 @@ ApplicationWindow {
         if (root.paneIsRecents(pane))
             return recentFiles
 
-        if (root.paneSearchMode(pane))
+        if (root.paneShowsSearchResults(pane))
             return searchProxyForPane(pane)
 
         return paneBaseModel(pane)
@@ -1059,7 +1064,7 @@ ApplicationWindow {
     function activeItemCount() {
         if (root.paneIsRecents(activePane))
             return recentFiles.count
-        if (root.paneSearchMode(activePane))
+        if (root.paneShowsSearchResults(activePane))
             return searchProxyForPane(activePane).count
 
         var model = paneBaseModel(activePane)
@@ -1067,7 +1072,7 @@ ApplicationWindow {
     }
 
     function activeFolderCount() {
-        if (root.paneIsRecents(activePane) || root.paneSearchMode(activePane))
+        if (root.paneIsRecents(activePane) || root.paneShowsSearchResults(activePane))
             return 0
 
         return paneBaseModel(activePane).folderCount
@@ -1211,7 +1216,7 @@ ApplicationWindow {
         if (items.length === 1 && items[0].isDir)
             return items[0].path
 
-        if (!root.paneIsRecents(root.activePane) && !root.paneSearchMode(root.activePane))
+        if (!root.paneIsRecents(root.activePane) && !root.paneShowsSearchResults(root.activePane))
             return root.panePath(root.activePane)
 
         return ""
@@ -1222,7 +1227,7 @@ ApplicationWindow {
         if (items.length === 1)
             return items[0].path
 
-        if (!root.paneIsRecents(root.activePane) && !root.paneSearchMode(root.activePane))
+        if (!root.paneIsRecents(root.activePane) && !root.paneShowsSearchResults(root.activePane))
             return root.panePath(root.activePane)
 
         return ""
@@ -1233,7 +1238,7 @@ ApplicationWindow {
         if (items.length === 1)
             return items[0].isDir ? items[0].path : fileOps.parentPath(items[0].path)
 
-        if (!root.paneIsRecents(root.activePane) && !root.paneSearchMode(root.activePane))
+        if (!root.paneIsRecents(root.activePane) && !root.paneShowsSearchResults(root.activePane))
             return root.panePath(root.activePane)
 
         return ""
@@ -1389,7 +1394,7 @@ ApplicationWindow {
             return
         }
 
-        if (!root.paneIsRecents(root.activePane) && !root.paneSearchMode(root.activePane)) {
+        if (!root.paneIsRecents(root.activePane) && !root.paneShowsSearchResults(root.activePane)) {
             var firstPath = paths[0]
             if (root.parentDirForPath(firstPath) === panePath(root.activePane)) {
                 Qt.callLater(function() {
@@ -4555,7 +4560,7 @@ ApplicationWindow {
                     folderCount: root.activeFolderCount()
                     searchStatus: root.searchMode && root.searchServiceForPane(activePane).isSearching
                         ? "Searching... " + root.searchServiceForPane(activePane).resultCount + " results"
-                        : (root.searchMode && root.searchProxyForPane(activePane).searchActive
+                        : (root.paneShowsSearchResults(activePane)
                             ? root.searchProxyForPane(activePane).count + " results"
                             : "")
                     selectedCount: root.currentSelectedCount
