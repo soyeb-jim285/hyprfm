@@ -197,15 +197,31 @@ private slots:
 
     // #71: a Wine prefix links dosdevices/z: to /. Following it walked the
     // whole filesystem and kept fd busy until the search was closed.
+    void testSearchDoesNotFollowSymlinks_data()
+    {
+        QTest::addColumn<bool>("withFd");
+        QTest::newRow("fd") << true;
+        QTest::newRow("built-in iterator") << false;
+    }
+
     void testSearchDoesNotFollowSymlinks()
     {
 #ifdef Q_OS_UNIX
+        QFETCH(bool, withFd);
         TestDir dir;
         dir.createFile("pfx/drive_c/readme.txt");
         QVERIFY(QFile::link(QStringLiteral("/"), dir.path() + "/pfx/dosdevices-z"));
 
+        // The service looks for fd once, when it is created.
+        const QByteArray path = qgetenv("PATH");
+        if (!withFd)
+            qputenv("PATH", "/nonexistent");
         SearchResultsModel model;
         SearchService service;
+        qputenv("PATH", path);
+        if (withFd && !service.hasFd())
+            QSKIP("fd is not installed");
+        QCOMPARE(service.hasFd(), withFd);
         service.setResultsModel(&model);
 
         QSignalSpy finishedSpy(&service, &SearchService::searchFinished);
