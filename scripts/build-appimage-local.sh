@@ -105,33 +105,11 @@ install -m755 "$ROOT_DIR/dist/AppRun" "$APPDIR/AppRun"
 export QMAKE="$QMAKE_BIN"
 export QML_SOURCES_PATHS="$ROOT_DIR/src/qml"
 export NO_STRIP="${NO_STRIP:-1}"
-export OUTPUT="$APPIMAGE_NAME"
 export PATH="$TOOLS_DIR:$PATH"
 
-# glib comes from the host: GIO loads the host's gvfs modules, which need the
-# host's glib (a bundled 22.04 glib makes them fail with undefined symbols on
-# newer distros, breaking trash, network places and mounts). Every distro the
-# AppImage supports has glib, and newer ones are backward compatible.
-excluded_libraries=(
-    'libglib-2.0.so.*'
-    'libgobject-2.0.so.*'
-    'libgio-2.0.so.*'
-    'libgmodule-2.0.so.*'
-    'libgthread-2.0.so.*'
-    # The rest of glib's closure, and dbus (it drags in an old libsystemd
-    # that host libmount rejects). Pruning alone is not enough: the final
-    # linuxdeploy pass re-adds them from ldd of the host glib. See prune-appdir.sh.
-    'libmount.so.*'
-    'libblkid.so.*'
-    'libselinux.so.*'
-    'libpcre2-8.so.*'
-    'libffi.so.*'
-    'libdbus-1.so.*'
-    'libsystemd.so.*'
-    # xkbcommon reads the host's /usr/share/X11/locale Compose files; a 22.04
-    # copy rejects newer keysyms there ("unrecognized keysym dead_hamza").
-    'libxkbcommon.so.*'
-)
+# Libraries that must come from the host (glib, dbus, xkbcommon, ...) are
+# removed by prune-appdir.sh, not excluded here: see the comment there.
+excluded_libraries=()
 
 if [[ "$USE_SYSTEM_NON_QT_LIBS" == "1" ]]; then
     # linuxdeploy's patched copies of modern Arch system libraries can crash
@@ -179,8 +157,10 @@ if [[ "$USE_SYSTEM_NON_QT_LIBS" == "1" ]]; then
 
     printf 'Using host non-Qt libraries for local build.\n'
 fi
-LINUXDEPLOY_EXCLUDED_LIBRARIES="$(IFS=';'; printf '%s' "${excluded_libraries[*]}")"
-export LINUXDEPLOY_EXCLUDED_LIBRARIES
+if (( ${#excluded_libraries[@]} > 0 )); then
+    LINUXDEPLOY_EXCLUDED_LIBRARIES="$(IFS=';'; printf '%s' "${excluded_libraries[*]}")"
+    export LINUXDEPLOY_EXCLUDED_LIBRARIES
+fi
 
 platform_plugins=()
 for plugin in \
@@ -225,12 +205,21 @@ do
     fi
 done
 
-"$ROOT_DIR/scripts/prune-appdir.sh" "$APPDIR"
+if (( ${#deploy_deps_args[@]} > 0 )); then
+    LD_LIBRARY_PATH="$QT_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$LINUXDEPLOY" \
+        --appdir "$APPDIR" \
+        "${deploy_deps_args[@]}"
+fi
 
-LD_LIBRARY_PATH="$QT_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$LINUXDEPLOY" \
-    --appdir "$APPDIR" \
-    "${deploy_deps_args[@]}" \
-    --output appimage
+# Prune after the last linuxdeploy call and package with appimagetool, not
+# `linuxdeploy --output appimage`: that redeploys and copies the pruned host
+# libraries back. appimagetool comes from the checksummed linuxdeploy.
+"$ROOT_DIR/scripts/prune-appdir.sh" "$APPDIR"
+rm -rf "$TOOLS_DIR/squashfs-root"
+(cd "$TOOLS_DIR" && "$LINUXDEPLOY" --appimage-extract >/dev/null)
+ARCH=x86_64 "$TOOLS_DIR/squashfs-root/plugins/linuxdeploy-plugin-appimage/appimagetool-prefix/AppRun" \
+    "$APPDIR" "$ROOT_DIR/$APPIMAGE_NAME"
+rm -rf "$TOOLS_DIR/squashfs-root"
 
 if [[ "$SMOKE_TEST" == "1" ]]; then
     smoke_dir="$(mktemp -d "$BUILD_DIR/smoke.XXXXXX")"

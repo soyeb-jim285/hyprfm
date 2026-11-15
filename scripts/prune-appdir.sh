@@ -1,6 +1,6 @@
 #!/bin/bash
-# Drop Qt payload linuxdeploy-plugin-qt bundles but HyprFM never loads.
-# Run after the first linuxdeploy pass, before `--output appimage`.
+# Drop what HyprFM never loads, and the libraries that must come from the host.
+# Run after the last linuxdeploy call, then package with appimagetool.
 # Every removal here is covered by the AppImage smoke test.
 set -euo pipefail
 appdir="${1:?usage: prune-appdir.sh <AppDir>}"
@@ -31,20 +31,51 @@ for plugin in libqmng libqjp2 libqtga libqwbmp libqicns; do
 done
 rm -f "$appdir"/usr/lib/libmng.so* "$appdir"/usr/lib/libjasper.so*
 
-# glib comes from the host (see LINUXDEPLOY_EXCLUDED_LIBRARIES in
-# build-appimage-local.sh). linuxdeploy-plugin-qt deploys without that list
-# and copies libglib in anyway; a bundled 22.04 glib under the host's newer
-# libgobject/gvfs fails with undefined symbols on current distros.
-rm -f "$appdir"/usr/lib/lib{glib,gobject,gio,gmodule,gthread}-2.0.so*
+# Libraries that must come from the host. This is the only list: run this
+# after the last linuxdeploy call and package with appimagetool, because any
+# later linuxdeploy pass copies them back (it bundles the ldd closure, host
+# libraries' dependencies included).
+#
+# - glib: GIO loads the host's gvfs modules, which need the host's glib; a
+#   bundled 22.04 glib breaks trash, network places and mounts on newer distros.
+# - glib's own dependencies, and dbus with its libsystemd: a bundled copy wins
+#   the soname lookup under the host's newer libs. On Fedora 45 the host
+#   libmount needs LIBSYSTEMD_251 and got the bundled 249 (#73).
+# - xkbcommon: it parses the host's Compose files and must be as new as they
+#   are (22.04's printed "unrecognized keysym dead_hamza" on Arch). Only the
+#   core library: libxkbcommon-x11 stays bundled (a separate package on Arch).
+# Every desktop distro the AppImage supports ships all of these.
+host_libs=(
+    glib-2.0 gobject-2.0 gio-2.0 gmodule-2.0 gthread-2.0
+    mount blkid selinux pcre2-8 ffi
+    dbus-1 systemd
+    xkbcommon
+)
+for lib in "${host_libs[@]}"; do
+    rm -f "$appdir/usr/lib/lib$lib.so"*
+done
 rm -rf "$appdir"/usr/share/doc/libglib2.0-0
-# The rest of host glib's dependency closure must be the host's too. Bundled
-# 22.04 copies win the soname lookup and break the host's newer libs: on
-# Fedora, host libmount needs LIBSYSTEMD_251 but got the bundled 249 (pulled
-# in by bundled libdbus). libgcrypt/lz4/lzma/cap were only libsystemd's deps.
-rm -f "$appdir"/usr/lib/lib{mount,blkid,selinux,pcre2-8,pcre,ffi,dbus-1,systemd,gcrypt,lz4,lzma,cap}.so*
-# xkbcommon parses the host's Compose files, so it must be as new as they are:
-# 22.04's copy printed "unrecognized keysym dead_hamza" on Arch. Only the core
-# library; libxkbcommon-x11 stays bundled (a separate package on Arch).
-rm -f "$appdir"/usr/lib/libxkbcommon.so*
+
+# Then drop every library nothing in the AppDir links to any more. linuxdeploy
+# bundles the whole ldd closure, so the dependencies of host libraries come
+# along (libsystemd's libgcrypt, libxcb's libXau, ...): dead weight at best,
+# and at worst an old copy that shadows the one the host library wants.
+# Repeat until stable, since removing one can orphan the next. Qt's own
+# libraries are exempt: QML plugins and Qt itself load some by name.
+while :; do
+    # readelf fails on the scripts and data files among them; that is fine.
+    needed=$({ find "$appdir" -type f \( -name '*.so*' -o -path '*/bin/*' \) \
+                   -exec readelf -d {} + 2>/dev/null || true; } \
+             | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort -u)
+    orphans=()
+    for lib in "$appdir"/usr/lib/*.so*; do
+        name=${lib##*/}
+        [[ $name == libQt6* ]] && continue
+        grep -qxF "$name" <<<"$needed" || orphans+=("$lib")
+    done
+    (( ${#orphans[@]} )) || break
+    printf 'Unused, removed: %s\n' "${orphans[@]##*/}"
+    rm -f "${orphans[@]}"
+done
 
 du -sh "$appdir" | sed 's/^/AppDir after prune: /'

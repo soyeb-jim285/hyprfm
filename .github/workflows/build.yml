@@ -256,9 +256,6 @@ jobs:
           # an empty platform and the window renders black.
           EXTRA_PLATFORM_PLUGINS: libqoffscreen.so;libqminimal.so;libqwayland-generic.so;libqwayland-egl.so
           QML_SOURCES_PATHS: src/qml
-          # glib from the host, so the host's gvfs GIO modules load (see
-          # scripts/build-appimage-local.sh).
-          LINUXDEPLOY_EXCLUDED_LIBRARIES: libglib-2.0.so.*;libgobject-2.0.so.*;libgio-2.0.so.*;libgmodule-2.0.so.*;libgthread-2.0.so.*;libmount.so.*;libblkid.so.*;libselinux.so.*;libpcre2-8.so.*;libffi.so.*;libdbus-1.so.*;libsystemd.so.*;libxkbcommon.so.*
         run: |
           set -euo pipefail
           QT_PLUGIN_DIR=$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null || qmake -query QT_INSTALL_PLUGINS)
@@ -292,13 +289,19 @@ jobs:
           echo "=== wayland-graphics-integration-client ==="
           ls AppDir/usr/plugins/wayland-graphics-integration-client/ || true
 
-          scripts/prune-appdir.sh AppDir
+          if [ ${#deploy_deps_args[@]} -gt 0 ]; then
+            ./linuxdeploy-x86_64.AppImage --appdir AppDir "${deploy_deps_args[@]}"
+          fi
 
-          OUTPUT="HyprFM-${TAG_NAME}-x86_64.AppImage" \
-          ./linuxdeploy-x86_64.AppImage \
-            --appdir AppDir \
-            "${deploy_deps_args[@]}" \
-            --output appimage
+          # Prune after the last linuxdeploy call and package with appimagetool:
+          # `linuxdeploy --output appimage` redeploys and copies the pruned
+          # host libraries (glib, dbus, xkbcommon, ...) back. appimagetool is
+          # the one inside the checksummed linuxdeploy.
+          scripts/prune-appdir.sh AppDir
+          ./linuxdeploy-x86_64.AppImage --appimage-extract >/dev/null
+          ARCH=x86_64 squashfs-root/plugins/linuxdeploy-plugin-appimage/appimagetool-prefix/AppRun \
+            AppDir "HyprFM-${TAG_NAME}-x86_64.AppImage"
+          rm -rf squashfs-root
 
       - name: Verify bundled Wayland client integrations
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
