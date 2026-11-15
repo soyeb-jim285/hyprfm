@@ -405,6 +405,63 @@ jobs:
               APPIMAGE_EXTRACT_AND_RUN=1 python3 /opt/tst_filepicker_startup.py /opt/hyprfm.AppImage
             '
 
+      # The 22.04 test above proves the AppImage is not too new. This one proves
+      # it is not too old: the libraries left to the host (glib, dbus,
+      # xkbcommon, ...) are much newer here, and a stale bundled copy of one of
+      # their dependencies stops the app before main(). v0.7.0 passed on 22.04
+      # and failed on Fedora and Arch with "LIBSYSTEMD_251 not found" (#73).
+      - name: Smoke-test on current distros
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          smoke() {   # image, install command
+            docker run --rm \
+              --mount "type=bind,source=$GITHUB_WORKSPACE/HyprFM-${TAG_NAME}-x86_64.AppImage,target=/opt/hyprfm.AppImage,readonly" \
+              "$1" bash -euc "$2"'
+                mkdir -m700 /tmp/hyprfm-runtime
+                export XDG_RUNTIME_DIR=/tmp/hyprfm-runtime
+                export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
+                set +e
+                timeout 15 /opt/hyprfm.AppImage --appimage-extract-and-run > /tmp/smoke.out 2>&1
+                status=$?
+                set -e
+                cat /tmp/smoke.out
+                test "$status" -eq 124
+                ! grep -E "version .* not found|undefined symbol|cannot open shared object|is not a type|failed to load component|Aborted|Segmentation fault" /tmp/smoke.out
+              '
+          }
+          smoke fedora:latest 'dnf -y -q install glib2 dbus-libs fontconfig freetype libglvnd-glx libglvnd-egl libxkbcommon dejavu-sans-fonts'
+          smoke archlinux:latest 'pacman -Sy --noconfirm --needed glib2 dbus fontconfig libglvnd libxkbcommon ttf-dejavu'
+
+      # The runner's CPU has AVX-512, so nothing above notices code built for
+      # it. v0.7.0 died with SIGILL on every CPU without AVX-512 because Zig
+      # targeted the build machine. QEMU plays a 2008 CPU with no AVX at all.
+      - name: Smoke-test on an old CPU
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends qemu-user-static
+          rm -rf squashfs-root
+          "./HyprFM-${TAG_NAME}-x86_64.AppImage" --appimage-extract >/dev/null
+          smoke_dir=$(mktemp -d)
+          set +e
+          env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML_IMPORT_PATH -u QML2_IMPORT_PATH \
+            XDG_RUNTIME_DIR="$smoke_dir" XDG_CONFIG_HOME="$smoke_dir/config" \
+            XDG_CACHE_HOME="$smoke_dir/cache" \
+            QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+            timeout 120 qemu-x86_64-static -cpu Nehalem squashfs-root/usr/bin/hyprfm \
+            > old-cpu.out 2>&1
+          status=$?
+          set -e
+          cat old-cpu.out
+          rm -rf squashfs-root "$smoke_dir"
+          # 124: still running after two emulated minutes. 132 is SIGILL.
+          test "$status" -eq 124
+
       - name: Upload AppImage artifact
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
