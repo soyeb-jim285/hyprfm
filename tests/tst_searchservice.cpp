@@ -194,6 +194,28 @@ private slots:
         QVERIFY(paths.contains(dir.path() + "/iasa/nested"));
         QVERIFY(paths.contains(dir.path() + "/iasa/nested/file.txt"));
     }
+
+    // #71: a Wine prefix links dosdevices/z: to /. Following it walked the
+    // whole filesystem and kept fd busy until the search was closed.
+    void testSearchDoesNotFollowSymlinks()
+    {
+#ifdef Q_OS_UNIX
+        TestDir dir;
+        dir.createFile("pfx/drive_c/readme.txt");
+        QVERIFY(QFile::link(QStringLiteral("/"), dir.path() + "/pfx/dosdevices-z"));
+
+        SearchResultsModel model;
+        SearchService service;
+        service.setResultsModel(&model);
+
+        QSignalSpy finishedSpy(&service, &SearchService::searchFinished);
+        service.startSearch(dir.path(), "zzqq-no-such-name", false);
+        QVERIFY(finishedSpy.wait(5000));
+        QCOMPARE(model.rowCount(), 0);
+#else
+        QSKIP("symlinks need privileges on Windows");
+#endif
+    }
 };
 
 QTEST_MAIN(TestSearchService)

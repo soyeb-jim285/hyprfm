@@ -5,6 +5,9 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QDebug>
+#ifdef Q_OS_UNIX
+#include <unistd.h>
+#endif
 
 // ── SearchWorker (runs in separate thread) ──
 
@@ -19,7 +22,8 @@ void SearchWorker::search(const QString &rootPath, const QString &pattern, bool 
     QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot;
     if (showHidden) filters |= QDir::Hidden;
 
-    QDirIterator it(rootPath, filters, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+    // No FollowSymlinks: see startFdSearch.
+    QDirIterator it(rootPath, filters, QDirIterator::Subdirectories);
 
     bool isGlob = pattern.contains('*') || pattern.contains('?') || pattern.contains('[');
     QRegularExpression regex;
@@ -155,7 +159,10 @@ void SearchService::startFdSearch(const QString &rootPath, const QString &patter
     m_fdRootPath = rootPath;
 
     QStringList args;
-    args << "--color" << "never" << "--follow";
+    // No --follow (#71): Wine/Proton prefixes link dosdevices/z: to /, so
+    // following links walked the whole filesystem and never finished.
+    // Linked files and folders still match by their own name.
+    args << "--color" << "never";
     if (showHidden) args << "--hidden";
     args << "--max-results" << QString::number(m_maxResults);
 
@@ -177,6 +184,10 @@ void SearchService::startFdSearch(const QString &rootPath, const QString &patter
     m_fdProcess->setProgram(m_fdPath);
     m_fdProcess->setArguments(args);
     m_fdProcess->setWorkingDirectory(rootPath);
+#ifdef Q_OS_UNIX
+    // A big tree still keeps every core busy for a while; keep the desktop responsive.
+    m_fdProcess->setChildProcessModifier([] { (void)::nice(10); });
+#endif
     m_fdProcess->start();
 }
 
