@@ -258,7 +258,7 @@ jobs:
           QML_SOURCES_PATHS: src/qml
           # glib from the host, so the host's gvfs GIO modules load (see
           # scripts/build-appimage-local.sh).
-          LINUXDEPLOY_EXCLUDED_LIBRARIES: libglib-2.0.so.*;libgobject-2.0.so.*;libgio-2.0.so.*;libgmodule-2.0.so.*;libgthread-2.0.so.*;libmount.so.*;libblkid.so.*;libselinux.so.*;libpcre2-8.so.*;libffi.so.*;libdbus-1.so.*;libsystemd.so.*
+          LINUXDEPLOY_EXCLUDED_LIBRARIES: libglib-2.0.so.*;libgobject-2.0.so.*;libgio-2.0.so.*;libgmodule-2.0.so.*;libgthread-2.0.so.*;libmount.so.*;libblkid.so.*;libselinux.so.*;libpcre2-8.so.*;libffi.so.*;libdbus-1.so.*;libsystemd.so.*;libxkbcommon.so.*
         run: |
           set -euo pipefail
           QT_PLUGIN_DIR=$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null || qmake -query QT_INSTALL_PLUGINS)

@@ -128,6 +128,9 @@ excluded_libraries=(
     'libffi.so.*'
     'libdbus-1.so.*'
     'libsystemd.so.*'
+    # xkbcommon reads the host's /usr/share/X11/locale Compose files; a 22.04
+    # copy rejects newer keysyms there ("unrecognized keysym dead_hamza").
+    'libxkbcommon.so.*'
 )
 
 if [[ "$USE_SYSTEM_NON_QT_LIBS" == "1" ]]; then

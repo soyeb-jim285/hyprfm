@@ -42,5 +42,9 @@ rm -rf "$appdir"/usr/share/doc/libglib2.0-0
 # Fedora, host libmount needs LIBSYSTEMD_251 but got the bundled 249 (pulled
 # in by bundled libdbus). libgcrypt/lz4/lzma/cap were only libsystemd's deps.
 rm -f "$appdir"/usr/lib/lib{mount,blkid,selinux,pcre2-8,pcre,ffi,dbus-1,systemd,gcrypt,lz4,lzma,cap}.so*
+# xkbcommon parses the host's Compose files, so it must be as new as they are:
+# 22.04's copy printed "unrecognized keysym dead_hamza" on Arch. Only the core
+# library; libxkbcommon-x11 stays bundled (a separate package on Arch).
+rm -f "$appdir"/usr/lib/libxkbcommon.so*
 
 du -sh "$appdir" | sed 's/^/AppDir after prune: /'
