@@ -238,6 +238,7 @@ qt_add_qml_module(quill ${quill_qml_module_args}
         qml/Quill/components/Slider.qml
         qml/Quill/components/TextField.qml
         qml/Quill/components/Dropdown.qml
+        qml/Quill/components/Glyph.qml
         qml/Quill/components/Checkbox.qml
         qml/Quill/components/RadioButton.qml
         qml/Quill/components/RadioGroup.qml

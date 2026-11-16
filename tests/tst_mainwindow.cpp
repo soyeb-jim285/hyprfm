@@ -742,6 +742,38 @@ private slots:
         QTest::keyClick(panel, Qt::Key_Escape);
         QTRY_VERIFY(!secondPopup->property("visible").toBool());
         QVERIFY(!second->property("dropdownOpen").toBool());
+
+        // Clicking a row picks it. A press on the list once counted as
+        // outside the field and closed the list before the click landed.
+        QTest::mouseClick(panel, Qt::LeftButton, {}, fieldPoint(second));
+        QTRY_VERIFY(secondPopup->property("opened").toBool());
+        QSignalSpy picked(second, SIGNAL(selected(int,QString)));
+        const int before = second->property("currentIndex").toInt();
+        const int target = before == 0 ? 1 : 0;
+        QQuickItem *list = secondPopup->property("contentItem").value<QQuickItem *>();
+        QVERIFY(list);
+        QTest::qWait(250);   // let the open animation settle
+        // Rows are 32 px under a 5 px margin, scrolled so the current one is
+        // centred; find the target row's delegate instead of guessing.
+        QQuickItem *row = nullptr;
+        std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+            if (item->property("modelData").isValid() && item->property("index").toInt() == target
+                && item->isVisible())
+                row = item;
+            for (QQuickItem *child : item->childItems())
+                walk(child);
+        };
+        walk(list);
+        QVERIFY(row);
+        QTest::mouseClick(panel, Qt::LeftButton, {},
+                          row->mapToScene(QPointF(row->width() / 2, row->height() / 2)).toPoint());
+        QTRY_COMPARE(picked.count(), 1);
+        QCOMPARE(picked.at(0).at(0).toInt(), target);
+        QTRY_VERIFY(!secondPopup->property("visible").toBool());
+
+        // The top dropdown is Theme: the pick has to reach the config.
+        auto *config = app.engine.rootContext()->contextProperty("config").value<QObject *>();
+        QTRY_COMPARE(config->property("theme").toString(), picked.at(0).at(1).toString());
     }
 
     // "Default sort" sits low on the Layout page. Its list has to open inside
@@ -789,6 +821,40 @@ private slots:
             QTest::qWait(300);
             panel->grabWindow().save(qEnvironmentVariable("HYPRFM_TEST_GRAB") + QStringLiteral("-sort.png"));
         }
+    }
+
+    // Picking the dark half of the pair while in dark mode (or the light half
+    // in light mode) is picking the theme on screen, so it applies at once.
+    void testPickingTheActiveHalfOfThePairAppliesIt()
+    {
+        App app;
+        QVERIFY(app.load());
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
+        QObject *panel = app.window->findChild<QObject *>(QStringLiteral("settingsPanel"));
+        QVERIFY(panel);
+        auto *config = app.engine.rootContext()->contextProperty("config").value<QObject *>();
+
+        QQuickItem *dark = nullptr;
+        QQuickItem *light = nullptr;
+        for (QQuickItem *item : app.window->findChildren<QQuickItem *>()) {
+            if (item->property("label").toString() == QLatin1String("Dark theme")) dark = item;
+            if (item->property("label").toString() == QLatin1String("Light theme")) light = item;
+        }
+        QVERIFY(dark && light);
+
+        const bool darkMode = panel->property("draftDarkMode").toBool();
+        QQuickItem *active = darkMode ? dark : light;
+        QQuickItem *other = darkMode ? light : dark;
+        const QString before = config->property("theme").toString();
+
+        // The other half only changes the pair.
+        QVERIFY(QMetaObject::invokeMethod(other, "selected", Q_ARG(int, 0),
+                                          Q_ARG(QString, QStringLiteral("nord"))));
+        QCOMPARE(config->property("theme").toString(), before);
+
+        QVERIFY(QMetaObject::invokeMethod(active, "selected", Q_ARG(int, 0),
+                                          Q_ARG(QString, QStringLiteral("dracula"))));
+        QTRY_COMPARE(config->property("theme").toString(), QStringLiteral("dracula"));
     }
 
     // Issue #13: menus used a fixed width, so long rows overflowed the popup.

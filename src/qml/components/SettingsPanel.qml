@@ -592,6 +592,9 @@ Window {
                 currentIndex: root.optionIndex(root.lightThemeOptions, root.draftLightTheme, 0)
                 onSelected: (_, value) => {
                     root.draftLightTheme = value
+                    // The half of the pair in use shows straight away.
+                    if (!root.draftDarkMode)
+                        root.setDraftTheme(value)
                     root.applySettingsNow()
                 }
             }
@@ -603,6 +606,8 @@ Window {
                 currentIndex: root.optionIndex(root.darkThemeOptions, root.draftDarkTheme, 0)
                 onSelected: (_, value) => {
                     root.draftDarkTheme = value
+                    if (root.draftDarkMode)
+                        root.setDraftTheme(value)
                     root.applySettingsNow()
                 }
             }
