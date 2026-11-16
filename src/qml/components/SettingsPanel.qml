@@ -93,7 +93,7 @@ Window {
     property int draftTerminalScrollbackLines: config.terminalScrollbackLines
     property bool draftDependencyStartupCheck: config.dependencyStartupCheck
     property bool draftSidebarVisible: currentSidebarVisible
-    property bool draftSidebarShowTitle: config.sidebarShowTitle
+    property string draftSidebarHeader: config.sidebarHeader
     // Must stay in sync with the quick-access entries in Sidebar.qml.
     readonly property var quickAccessNames: ["Home", "Recents", "Trash", "Network", "Pictures", "Downloads"]
     property var draftHiddenQuickAccess: config.hiddenQuickAccess
@@ -295,7 +295,7 @@ Window {
         draftTerminalCursorBlink = true
         draftDependencyStartupCheck = true
         draftSidebarVisible = true
-        draftSidebarShowTitle = true
+        draftSidebarHeader = "name"
         draftHiddenQuickAccess = []
         draftSidebarPosition = defaultSidebarPosition
         draftSplitOrientation = "vertical"
@@ -354,7 +354,7 @@ Window {
             draftTerminalScrollbackLines = config.terminalScrollbackLines
             draftDependencyStartupCheck = config.dependencyStartupCheck
             draftSidebarVisible = currentSidebarVisible
-            draftSidebarShowTitle = config.sidebarShowTitle
+            draftSidebarHeader = config.sidebarHeader
             draftHiddenQuickAccess = config.hiddenQuickAccess
             draftSidebarPosition = config.sidebarPosition
             draftSplitOrientation = config.splitOrientation
@@ -439,7 +439,7 @@ Window {
             terminalScrollbackLines: draftTerminalScrollbackLines,
             dependencyStartupCheck: draftDependencyStartupCheck,
             sidebarVisible: draftSidebarVisible,
-            sidebarShowTitle: draftSidebarShowTitle,
+            sidebarHeader: draftSidebarHeader,
             hiddenQuickAccess: draftHiddenQuickAccess,
             sidebarPosition: draftSidebarPosition,
             splitOrientation: draftSplitOrientation,
@@ -900,13 +900,15 @@ Window {
                 }
             }
 
-            Q.Toggle {
+            Q.Dropdown {
                 Layout.fillWidth: true
-                label: "Show app name in sidebar"
+                readonly property var values: ["name", "logo", "button", "none"]
+                label: "Sidebar header"
                 enabled: root.draftSidebarVisible
-                checked: root.draftSidebarShowTitle
-                onToggled: (value) => {
-                    root.draftSidebarShowTitle = value
+                model: ["App name", "Logo", "Collapse button only", "None (button in toolbar)"]
+                currentIndex: Math.max(0, values.indexOf(root.draftSidebarHeader))
+                onSelected: (index, _) => {
+                    root.draftSidebarHeader = values[index]
                     root.applySettingsNow()
                 }
             }

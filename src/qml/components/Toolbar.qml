@@ -130,7 +130,7 @@ Rectangle {
             HoverRect {
                 id: sidebarReveal
                 objectName: "sidebarToggleButton"
-                readonly property bool shown: !root.sidebarVisible || !config.sidebarShowTitle
+                readonly property bool shown: !root.sidebarVisible || config.sidebarHeader === "none"
                 readonly property real reservedWidth: shown ? Theme.controlSize + 4 : 0
 
                 width: Theme.controlSize

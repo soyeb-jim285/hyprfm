@@ -291,7 +291,7 @@ private slots:
         QCOMPARE(fromTemplate.sidebarPosition(), defaults.sidebarPosition());
         QCOMPARE(fromTemplate.sidebarWidth(), defaults.sidebarWidth());
         QCOMPARE(fromTemplate.sidebarVisible(), defaults.sidebarVisible());
-        QCOMPARE(fromTemplate.sidebarShowTitle(), defaults.sidebarShowTitle());
+        QCOMPARE(fromTemplate.sidebarHeader(), defaults.sidebarHeader());
         QCOMPARE(fromTemplate.hiddenQuickAccess(), defaults.hiddenQuickAccess());
         QCOMPARE(fromTemplate.radiusSmall(), defaults.radiusSmall());
         QCOMPARE(fromTemplate.radiusMedium(), defaults.radiusMedium());
@@ -966,7 +966,7 @@ private slots:
         settings.insert("iconTheme", "Papirus");
         settings.insert("showHidden", true);
         settings.insert("sidebarVisible", false);
-        settings.insert("sidebarShowTitle", false);
+        settings.insert("sidebarHeader", "logo");
         settings.insert("sidebarWidth", 420);
         settings.insert("radiusSmall", 6);
         settings.insert("radiusMedium", 12);
@@ -990,10 +990,31 @@ private slots:
         QCOMPARE(mgr.transparencyLevel(), 0.3);
         QCOMPARE(mgr.animationsEnabled(), false);
         QCOMPARE(mgr.bookmarks(), QStringList({"~/Documents"}));
-        QCOMPARE(mgr.sidebarShowTitle(), false);
+        QCOMPARE(mgr.sidebarHeader(), QString("logo"));
 
         ConfigManager reloaded(path);
-        QCOMPARE(reloaded.sidebarShowTitle(), false);
+        QCOMPARE(reloaded.sidebarHeader(), QString("logo"));
+
+        // Anything else is refused and leaves the value alone.
+        mgr.saveSettings({{"sidebarHeader", "banner"}});
+        QCOMPARE(mgr.sidebarHeader(), QString("logo"));
+    }
+
+    void testSidebarHeaderFromConfig()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.path() + "/config.toml";
+        auto load = [&](const QByteArray &toml) {
+            QFile f(path);
+            f.open(QIODevice::WriteOnly | QIODevice::Truncate);
+            f.write(toml);
+            f.close();
+            return ConfigManager(path).sidebarHeader();
+        };
+        QCOMPARE(load(""), QString("name"));
+        QCOMPARE(load("[sidebar]\nheader = \"button\"\n"), QString("button"));
+        QCOMPARE(load("[sidebar]\nheader = \"banner\"\n"), QString("name"));
+        QCOMPARE(load("[sidebar]\nshow_title = false\n"), QString("none"));
     }
 
     void testSaveShortcuts()

@@ -85,17 +85,29 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
+        // Without the header, centre the first row on the toolbar's row.
+        anchors.topMargin: config.sidebarHeader !== "none" ? 0 : Math.round((Theme.toolbarRowHeight - 32) / 2)
         spacing: 0
 
-        // App header: "hyprfm" + collapse button. Without the title the
-        // whole row goes and the toolbar carries the collapse button.
+        // App header: name, logo or nothing, + collapse button. With
+        // header = "none" the row goes and the toolbar carries the button.
         Item {
             objectName: "sidebarHeader"
-            visible: config.sidebarShowTitle
+            visible: config.sidebarHeader !== "none"
             Layout.fillWidth: true
             height: 44
 
+            Image {
+                objectName: "sidebarLogo"
+                visible: config.sidebarHeader === "logo"
+                anchors.centerIn: parent
+                source: visible ? "qrc:/HyprFM/io.github.soyeb_jim285.HyprFM.svg" : ""
+                sourceSize: Qt.size(24, 24)
+            }
+
             Text {
+                objectName: "sidebarTitle"
+                visible: config.sidebarHeader === "name"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Hyprfm"

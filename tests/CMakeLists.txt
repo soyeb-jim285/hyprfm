@@ -235,6 +235,10 @@ target_compile_definitions(tst_mainwindow PRIVATE
 )
 target_link_libraries(tst_mainwindow PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Svg Qt6::Network Qt6::Concurrent PkgConfig::GIO)
 add_dependencies(tst_mainwindow hyprfm)
+qt_add_resources(tst_mainwindow "logo"
+    PREFIX "/HyprFM"
+    BASE "${CMAKE_SOURCE_DIR}/dist"
+    FILES "${CMAKE_SOURCE_DIR}/dist/io.github.soyeb_jim285.HyprFM.svg")
 add_test(NAME tst_mainwindow COMMAND tst_mainwindow)
 
 # The view harnesses assert pixel geometry of a 900x600 window; a tiling

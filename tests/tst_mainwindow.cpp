@@ -2011,26 +2011,42 @@ private slots:
         }
     }
 
-    void testHiddenSidebarTitleMovesTheToggleToTheToolbar()
+    void testSidebarHeaderChoices()
     {
         App app;
         QVERIFY(app.load());
         QQuickWindow *window = app.window;
         auto *config = app.engine.rootContext()->contextProperty("config").value<QObject *>();
-        QQuickItem *header = App::findItem(window->contentItem(), QStringLiteral("sidebarHeader"));
-        QQuickItem *toggle = App::findItem(window->contentItem(), QStringLiteral("sidebarToggleButton"));
-        QVERIFY(header && toggle);
+        QQuickItem *root = window->contentItem();
+        QQuickItem *header = App::findItem(root, QStringLiteral("sidebarHeader"));
+        QQuickItem *title = App::findItem(root, QStringLiteral("sidebarTitle"));
+        QQuickItem *logo = App::findItem(root, QStringLiteral("sidebarLogo"));
+        QQuickItem *toggle = App::findItem(root, QStringLiteral("sidebarToggleButton"));
+        QVERIFY(header && title && logo && toggle);
 
-        QVERIFY(header->isVisible());
+        auto choose = [&](const char *value) {
+            QVariantMap settings;
+            settings.insert(QStringLiteral("sidebarHeader"), QString::fromLatin1(value));
+            QMetaObject::invokeMethod(config, "saveSettings", Q_ARG(QVariantMap, settings));
+        };
+
+        QVERIFY(header->isVisible() && title->isVisible() && !logo->isVisible());
         QVERIFY(!toggle->property("shown").toBool());
 
-        QVariantMap settings;
-        settings.insert(QStringLiteral("sidebarShowTitle"), false);
-        QMetaObject::invokeMethod(config, "saveSettings", Q_ARG(QVariantMap, settings));
+        choose("logo");
+        QTRY_VERIFY(logo->isVisible());
+        QVERIFY(header->isVisible() && !title->isVisible());
+        QTRY_VERIFY(logo->property("status").toInt() == 1);   // Image.Ready
+
+        choose("button");
+        QTRY_VERIFY(!logo->isVisible());
+        QVERIFY(header->isVisible() && !title->isVisible());
+        QVERIFY(!toggle->property("shown").toBool());
+
+        // No header: the toolbar button closes the sidebar, and opens it again.
+        choose("none");
         QTRY_VERIFY(!header->isVisible());
         QVERIFY(toggle->property("shown").toBool());
-
-        // The toolbar button now closes the sidebar, and opens it again.
         QVERIFY(window->property("sidebarVisible").toBool());
         QMetaObject::invokeMethod(toggle, "clicked");
         QTRY_VERIFY(!window->property("sidebarVisible").toBool());
