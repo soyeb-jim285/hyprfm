@@ -83,11 +83,9 @@ private slots:
     // Markdown file from anywhere untrusted could report back that it had been
     // previewed and hand over the reader's IP. Remote images never reach the
     // rendered HTML; local ones stay, since they cost no network request.
+    // tst_previewservice_no_md2html runs this again with Qt's renderer.
     void testMarkdownPreviewDropsRemoteImages()
     {
-        if (QStandardPaths::findExecutable(QStringLiteral("md2html")).isEmpty())
-            QSKIP("md2html not found in PATH");
-
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
 
@@ -201,9 +199,6 @@ private slots:
 
     void testMarkdownPreviewHonoursTheLineCap()
     {
-        if (QStandardPaths::findExecutable(QStringLiteral("md2html")).isEmpty())
-            QSKIP("md2html not found in PATH");
-
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
 

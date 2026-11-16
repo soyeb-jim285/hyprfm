@@ -238,14 +238,15 @@ void DependencyChecker::populate()
     });
 
     // md4c: Markdown previews are rendered by piping the file through
-    // md2html. Debian and Ubuntu ship md4c's libraries but not its CLI, so
+    // md2html, or by Qt's own reader without it, which handles raw HTML in a
+    // README less well. Debian and Ubuntu ship md4c's libraries but not its CLI, so
     // telling those users to install a package would send them in circles —
     // they get a build-from-source hint instead. Fedora has no md4c binary
     // package either.
     m_deps.append({
         QStringLiteral("md4c"),
         QStringLiteral("md4c (md2html)"),
-        QStringLiteral("Render Markdown files as a document instead of raw source."),
+        QStringLiteral("Better Markdown previews: raw HTML in READMEs (centred banners, comments) renders properly."),
         Kind::Tool, false, hasExecutable(QStringLiteral("md2html")),
         {QStringLiteral("md2html")},
         buildHints(QStringLiteral("md4c"), {

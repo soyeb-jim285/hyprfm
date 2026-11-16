@@ -15,6 +15,7 @@
 #include <QRegularExpression>
 #include <QRawFont>
 #include <QStandardPaths>
+#include <QTextDocument>
 #include <QThreadPool>
 #include <QUrl>
 
@@ -503,9 +504,27 @@ bool isJsonPath(const QString &path)
     return QFileInfo(path).suffix().compare(QLatin1String("json"), Qt::CaseInsensitive) == 0;
 }
 
-// Render Markdown to HTML via `md2html` (md4c). Reads the data on stdin so the
-// path never has to be quoted, and never touches a shell. Returns empty and
-// sets `error` when md2html is missing, times out, or fails.
+// Qt's own Markdown reader (md4c is built into QtGui), for systems without
+// md2html: Debian and Ubuntu package md4c's libraries but not its CLI. Only
+// the body is kept: the <body> tag pins the document's font and size, which
+// the preview sets itself.
+QString qtMarkdownToHtml(const QByteArray &markdown)
+{
+    QTextDocument doc;
+    doc.setMarkdown(QString::fromUtf8(markdown), QTextDocument::MarkdownDialectGitHub);
+    const QString html = doc.toHtml();
+    const qsizetype bodyTag = html.indexOf(QLatin1String("<body"));
+    const qsizetype start = bodyTag < 0 ? -1 : html.indexOf(QLatin1Char('>'), bodyTag);
+    const qsizetype end = html.lastIndexOf(QLatin1String("</body>"));
+    if (start < 0 || end < start)
+        return html;
+    return html.mid(start + 1, end - start - 1);
+}
+
+// Render Markdown to HTML via `md2html` (md4c), or Qt's reader without it.
+// md2html reads the data on stdin so the path never has to be quoted, and
+// never touches a shell. Returns empty and sets `error` when md2html times
+// out or fails.
 QByteArray markdownToHtml(const QByteArray &markdown, QString *error)
 {
     if (error)
@@ -515,37 +534,36 @@ QByteArray markdownToHtml(const QByteArray &markdown, QString *error)
     // Markdown file the selection lands on.
     static const QString executable =
         QStandardPaths::findExecutable(QStringLiteral("md2html"));
+    QString html;
     if (executable.isEmpty()) {
-        if (error)
-            *error = QStringLiteral("md2html not found");
-        return {};
-    }
+        html = qtMarkdownToHtml(markdown);
+    } else {
+        QProcess proc;
+        // GFM (--github) enables GitHub-flavoured tables plus strikethrough,
+        // autolinks and task lists. Qt's rich-text engine renders all of them
+        // (minus the checkbox glyphs on task list items).
+        proc.start(executable, {QStringLiteral("--github")});
+        if (!proc.waitForStarted(2000)) {
+            if (error)
+                *error = proc.errorString();
+            return {};
+        }
+        proc.write(markdown);
+        proc.closeWriteChannel();
+        if (!proc.waitForFinished(5000)) {
+            proc.kill();
+            if (error)
+                *error = QStringLiteral("md2html preview timed out");
+            return {};
+        }
+        if (proc.exitCode() != 0) {
+            if (error)
+                *error = QString::fromUtf8(proc.readAllStandardError()).trimmed();
+            return {};
+        }
 
-    QProcess proc;
-    // GFM (--github) enables GitHub-flavoured tables plus strikethrough,
-    // autolinks and task lists. Qt's rich-text engine renders all of them
-    // (minus the checkbox glyphs on task list items).
-    proc.start(executable, {QStringLiteral("--github")});
-    if (!proc.waitForStarted(2000)) {
-        if (error)
-            *error = proc.errorString();
-        return {};
+        html = QString::fromUtf8(proc.readAllStandardOutput());
     }
-    proc.write(markdown);
-    proc.closeWriteChannel();
-    if (!proc.waitForFinished(5000)) {
-        proc.kill();
-        if (error)
-            *error = QStringLiteral("md2html preview timed out");
-        return {};
-    }
-    if (proc.exitCode() != 0) {
-        if (error)
-            *error = QString::fromUtf8(proc.readAllStandardError()).trimmed();
-        return {};
-    }
-
-    QString html = QString::fromUtf8(proc.readAllStandardOutput());
     // Qt's rich-text engine only draws an HTML <table> as a bordered grid when
     // the tag carries a border attribute; otherwise it flattens the cells into
     // run-on text. md2html emits a bare <table>, so inject the attributes here

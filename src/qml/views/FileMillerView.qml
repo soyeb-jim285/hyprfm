@@ -1362,8 +1362,8 @@ FocusScope {
                 return textExt.indexOf(ext) >= 0
             }
 
-            // The service decides what it rendered: md2html missing or failing
-            // falls back to bat, and highlighted source must keep the monospace
+            // The service decides what it rendered: md2html failing falls
+            // back to bat, and highlighted source must keep the monospace
             // no-wrap treatment rather than be laid out as a document on the
             // strength of an extension alone.
             readonly property bool isMarkdown: previewColumn.textPreview.markdown === true

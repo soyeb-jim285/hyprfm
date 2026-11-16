@@ -78,6 +78,10 @@ add_executable(tst_previewservice tst_previewservice.cpp
 target_include_directories(tst_previewservice PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_previewservice PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
 add_test(NAME tst_previewservice COMMAND tst_previewservice)
+# Without md2html on PATH, Markdown goes through Qt's own renderer.
+add_test(NAME tst_previewservice_no_md2html COMMAND tst_previewservice
+    testMarkdownPreviewDropsRemoteImages testMarkdownPreviewHonoursTheLineCap)
+set_tests_properties(tst_previewservice_no_md2html PROPERTIES ENVIRONMENT "PATH=/nonexistent")
 
 add_executable(tst_rcloneservice tst_rcloneservice.cpp
     ${CMAKE_SOURCE_DIR}/src/services/rcloneservice.cpp

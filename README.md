@@ -124,7 +124,7 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 - **Git status overlays** in file lists (modified, staged, untracked, …)
 - **wl-clipboard** for the system clipboard on Wayland
 - **bat** for syntax-highlighted text previews
-- **md4c** for rendered Markdown previews (via `md2html`)
+- **md4c** for better Markdown previews (via `md2html`; without it Qt's own renderer is used, which handles raw HTML less well)
 - **ffmpeg** for video poster thumbnails
 - **Poppler** for PDF page previews
 
