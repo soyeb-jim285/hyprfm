@@ -123,12 +123,14 @@ Rectangle {
             Layout.preferredHeight: Theme.toolbarRowHeight
 
             // Sidebar reveal: the sidebar's own collapse button goes away with
-            // it, so this is the only pointer route back once it is hidden. It
+            // it (or with its header, when the title is turned off), so this
+            // is the only pointer route to it then. It
             // sits on whichever edge the sidebar occupies and animates in from
             // off-window; the row below reserves its width so nothing jumps.
             HoverRect {
                 id: sidebarReveal
-                readonly property bool shown: !root.sidebarVisible
+                objectName: "sidebarToggleButton"
+                readonly property bool shown: !root.sidebarVisible || !config.sidebarShowTitle
                 readonly property real reservedWidth: shown ? Theme.controlSize + 4 : 0
 
                 width: Theme.controlSize
@@ -142,7 +144,7 @@ Rectangle {
                 visible: opacity > 0.01
                 hoverEnabled: shown
                 Accessible.role: Accessible.Button
-                tooltip: "Show sidebar"
+                tooltip: root.sidebarVisible ? "Hide sidebar" : "Show sidebar"
                 shortcut: "toggle_sidebar"
                 onClicked: root.sidebarToggleRequested()
 

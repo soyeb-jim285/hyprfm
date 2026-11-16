@@ -87,16 +87,17 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        // App header: "hyprfm" + collapse button
+        // App header: "hyprfm" + collapse button. Without the title the
+        // whole row goes and the toolbar carries the collapse button.
         Item {
+            objectName: "sidebarHeader"
+            visible: config.sidebarShowTitle
             Layout.fillWidth: true
             height: 44
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: parent.verticalCenter
-                objectName: "sidebarTitle"
-                visible: config.sidebarShowTitle
                 text: "Hyprfm"
                 color: Theme.text
                 font.pointSize: Theme.fontLarge

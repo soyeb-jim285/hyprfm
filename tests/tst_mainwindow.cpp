@@ -2011,6 +2011,33 @@ private slots:
         }
     }
 
+    void testHiddenSidebarTitleMovesTheToggleToTheToolbar()
+    {
+        App app;
+        QVERIFY(app.load());
+        QQuickWindow *window = app.window;
+        auto *config = app.engine.rootContext()->contextProperty("config").value<QObject *>();
+        QQuickItem *header = App::findItem(window->contentItem(), QStringLiteral("sidebarHeader"));
+        QQuickItem *toggle = App::findItem(window->contentItem(), QStringLiteral("sidebarToggleButton"));
+        QVERIFY(header && toggle);
+
+        QVERIFY(header->isVisible());
+        QVERIFY(!toggle->property("shown").toBool());
+
+        QVariantMap settings;
+        settings.insert(QStringLiteral("sidebarShowTitle"), false);
+        QMetaObject::invokeMethod(config, "saveSettings", Q_ARG(QVariantMap, settings));
+        QTRY_VERIFY(!header->isVisible());
+        QVERIFY(toggle->property("shown").toBool());
+
+        // The toolbar button now closes the sidebar, and opens it again.
+        QVERIFY(window->property("sidebarVisible").toBool());
+        QMetaObject::invokeMethod(toggle, "clicked");
+        QTRY_VERIFY(!window->property("sidebarVisible").toBool());
+        QMetaObject::invokeMethod(toggle, "clicked");
+        QTRY_VERIFY(window->property("sidebarVisible").toBool());
+    }
+
     void testStatusBarDiskMeterTracksUsage()
     {
         App app;
