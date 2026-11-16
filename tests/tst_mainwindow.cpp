@@ -707,6 +707,11 @@ private slots:
             return d->mapToScene(QPointF(d->width() - 20, 17)).toPoint();
         };
 
+        if (qEnvironmentVariableIsSet("HYPRFM_TEST_GRAB")) {
+            QTest::qWait(300);
+            panel->grabWindow().save(qEnvironmentVariable("HYPRFM_TEST_GRAB") + QStringLiteral("-dropdown-closed.png"));
+        }
+
         QTest::mouseClick(panel, Qt::LeftButton, {}, fieldPoint(first));
         QTRY_VERIFY(firstPopup->property("opened").toBool());
         // Right under the field: field bottom (34) plus the 6 px gap, or above it.
@@ -737,6 +742,53 @@ private slots:
         QTest::keyClick(panel, Qt::Key_Escape);
         QTRY_VERIFY(!secondPopup->property("visible").toBool());
         QVERIFY(!second->property("dropdownOpen").toBool());
+    }
+
+    // "Default sort" sits low on the Layout page. Its list has to open inside
+    // the settings window, flipping above the field when there is no room.
+    void testLowSettingsDropdownStaysInsideTheWindow()
+    {
+        App app;
+        QVERIFY(app.load());
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
+        auto *panel = qobject_cast<QQuickWindow *>(
+            app.window->findChild<QObject *>(QStringLiteral("settingsPanel")));
+        QVERIFY(panel);
+        QTRY_VERIFY(panel->isExposed());
+        QVERIFY(QMetaObject::invokeMethod(panel, "showSection", Q_ARG(QVariant, 1)));
+
+        QQuickItem *sort = nullptr;
+        QTRY_VERIFY([&] {
+            for (QQuickItem *item : app.window->findChildren<QQuickItem *>()) {
+                if (item->window() == panel && item->property("label").toString() == QLatin1String("Default sort"))
+                    sort = item;
+            }
+            return sort != nullptr;
+        }());
+        // Bring it to the bottom edge of the page, the worst case.
+        QQuickItem *flick = sort->parentItem();
+        while (flick && flick->metaObject()->indexOfProperty("contentY") < 0)
+            flick = flick->parentItem();
+        QVERIFY(flick);
+        const qreal sortY = sort->mapToItem(flick->property("contentItem").value<QQuickItem *>(), QPointF()).y();
+        flick->setProperty("contentY", qMax<qreal>(0, sortY + sort->height() - flick->height()));
+        QTRY_VERIFY(sort->mapToScene(QPointF(0, sort->height())).y() <= panel->height());
+
+        QTest::mouseClick(panel, Qt::LeftButton, {},
+                          sort->mapToScene(QPointF(sort->width() - 20, 17)).toPoint());
+        auto *popup = sort->findChild<QObject *>(QStringLiteral("dropdownPopup"));
+        QVERIFY(popup);
+        QTRY_VERIFY(popup->property("opened").toBool());
+        QQuickItem *content = popup->property("contentItem").value<QQuickItem *>();
+        QVERIFY(content);
+        const QRectF inScene = content->mapRectToScene(QRectF(0, 0, content->width(), content->height()));
+        QVERIFY2(inScene.top() >= 0 && inScene.bottom() <= panel->height(),
+                 qPrintable(QStringLiteral("popup %1..%2 in a %3 tall window")
+                                .arg(inScene.top()).arg(inScene.bottom()).arg(panel->height())));
+        if (qEnvironmentVariableIsSet("HYPRFM_TEST_GRAB")) {
+            QTest::qWait(300);
+            panel->grabWindow().save(qEnvironmentVariable("HYPRFM_TEST_GRAB") + QStringLiteral("-sort.png"));
+        }
     }
 
     // Issue #13: menus used a fixed width, so long rows overflowed the popup.

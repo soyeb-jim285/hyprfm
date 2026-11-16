@@ -17,7 +17,7 @@
       flake = false;
     };
     quill = {
-      url = "github:soyeb-jim285/quill/7d191ecd53a487c2ff02a4f1174995cf6e39efa2";
+      url = "github:soyeb-jim285/quill/eb6728852aad589b5a01c959632d1efcb123cb7e";
       flake = false;
     };
 

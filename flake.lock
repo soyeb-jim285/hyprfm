@@ -36,17 +36,17 @@
     "quill": {
       "flake": false,
       "locked": {
-        "lastModified": 1794831408,
-        "narHash": "sha256-nvJmwx/1iaW6XwGsEmzXa+PPp7gtproSP85ZplOg4O4=",
+        "lastModified": 1794831935,
+        "narHash": "sha256-IgI3ThG2L6nXugjizwTQ/FGv8ldD9layd7e81K4vP7o=",
         "owner": "soyeb-jim285",
         "repo": "quill",
-        "rev": "7d191ecd53a487c2ff02a4f1174995cf6e39efa2",
+        "rev": "eb6728852aad589b5a01c959632d1efcb123cb7e",
         "type": "github"
       },
       "original": {
         "owner": "soyeb-jim285",
         "repo": "quill",
-        "rev": "7d191ecd53a487c2ff02a4f1174995cf6e39efa2",
+        "rev": "eb6728852aad589b5a01c959632d1efcb123cb7e",
         "type": "github"
       }
     },
