@@ -668,6 +668,77 @@ private slots:
         QCOMPARE(dropdown->property("currentIndex").toInt(), otherIndex);
     }
 
+    // The list used to be its own native window placed by screen
+    // coordinates, which Wayland does not expose: on GNOME it opened far
+    // below the field. It now lives in the settings window, right under the
+    // field, and opening a second dropdown closes the first.
+    void testSettingsDropdownOpensAtItsFieldAndClosesTheOther()
+    {
+        App app;
+        QVERIFY(app.load());
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
+        auto *panel = qobject_cast<QQuickWindow *>(
+            app.window->findChild<QObject *>(QStringLiteral("settingsPanel")));
+        QVERIFY(panel);
+        QTRY_VERIFY(panel->isExposed());
+
+        QList<QQuickItem *> dropdowns;
+        for (QQuickItem *item : app.window->findChildren<QQuickItem *>()) {
+            if (item->metaObject()->indexOfProperty("dropdownOpen") >= 0
+                && item->window() == panel && item->isVisible() && item->width() > 0)
+                dropdowns.append(item);
+        }
+        // Top to bottom.
+        std::sort(dropdowns.begin(), dropdowns.end(), [](QQuickItem *a, QQuickItem *b) {
+            return a->mapToScene(QPointF()).y() < b->mapToScene(QPointF()).y();
+        });
+        QVERIFY2(dropdowns.size() >= 2, "the first settings page has two dropdowns");
+        // Open the lower one first: its list hangs below it, so the upper
+        // field stays clickable.
+        QQuickItem *first = dropdowns.at(1);
+        QQuickItem *second = dropdowns.at(0);
+        auto popupOf = [](QQuickItem *d) { return d->findChild<QObject *>(QStringLiteral("dropdownPopup")); };
+        QObject *firstPopup = popupOf(first);
+        QObject *secondPopup = popupOf(second);
+        QVERIFY(firstPopup && secondPopup);
+
+        // The field is the right-hand part of the row; click near its end.
+        auto fieldPoint = [](QQuickItem *d) {
+            return d->mapToScene(QPointF(d->width() - 20, 17)).toPoint();
+        };
+
+        QTest::mouseClick(panel, Qt::LeftButton, {}, fieldPoint(first));
+        QTRY_VERIFY(firstPopup->property("opened").toBool());
+        // Right under the field: field bottom (34) plus the 6 px gap, or above it.
+        const qreal y = firstPopup->property("y").toReal();
+        const qreal h = firstPopup->property("height").toReal();
+        QVERIFY2(qFuzzyCompare(y, 40.0) || qFuzzyCompare(y, -h - 6),
+                 qPrintable(QStringLiteral("popup y %1").arg(y)));
+
+        if (qEnvironmentVariableIsSet("HYPRFM_TEST_GRAB")) {
+            QTest::qWait(300);
+            panel->grabWindow().save(qEnvironmentVariable("HYPRFM_TEST_GRAB") + QStringLiteral("-dropdown.png"));
+        }
+
+        // One click on the other field closes this one and opens that one.
+        QTest::mouseClick(panel, Qt::LeftButton, {}, fieldPoint(second));
+        QTRY_VERIFY(secondPopup->property("opened").toBool());
+        QTRY_VERIFY(!firstPopup->property("visible").toBool());
+        QVERIFY(!first->property("dropdownOpen").toBool());
+
+        // Clicking its own field again closes it.
+        QTest::mouseClick(panel, Qt::LeftButton, {}, fieldPoint(second));
+        QTRY_VERIFY(!secondPopup->property("visible").toBool());
+        QVERIFY(!second->property("dropdownOpen").toBool());
+
+        // And it opens again after closing itself.
+        QTest::mouseClick(panel, Qt::LeftButton, {}, fieldPoint(second));
+        QTRY_VERIFY(secondPopup->property("opened").toBool());
+        QTest::keyClick(panel, Qt::Key_Escape);
+        QTRY_VERIFY(!secondPopup->property("visible").toBool());
+        QVERIFY(!second->property("dropdownOpen").toBool());
+    }
+
     // Issue #13: menus used a fixed width, so long rows overflowed the popup.
     void testContextMenuWidensForLongLabels()
     {
