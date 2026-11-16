@@ -95,6 +95,8 @@ Rectangle {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: parent.verticalCenter
+                objectName: "sidebarTitle"
+                visible: config.sidebarShowTitle
                 text: "Hyprfm"
                 color: Theme.text
                 font.pointSize: Theme.fontLarge

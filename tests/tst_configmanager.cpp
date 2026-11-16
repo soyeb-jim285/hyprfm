@@ -291,6 +291,7 @@ private slots:
         QCOMPARE(fromTemplate.sidebarPosition(), defaults.sidebarPosition());
         QCOMPARE(fromTemplate.sidebarWidth(), defaults.sidebarWidth());
         QCOMPARE(fromTemplate.sidebarVisible(), defaults.sidebarVisible());
+        QCOMPARE(fromTemplate.sidebarShowTitle(), defaults.sidebarShowTitle());
         QCOMPARE(fromTemplate.hiddenQuickAccess(), defaults.hiddenQuickAccess());
         QCOMPARE(fromTemplate.radiusSmall(), defaults.radiusSmall());
         QCOMPARE(fromTemplate.radiusMedium(), defaults.radiusMedium());
@@ -965,6 +966,7 @@ private slots:
         settings.insert("iconTheme", "Papirus");
         settings.insert("showHidden", true);
         settings.insert("sidebarVisible", false);
+        settings.insert("sidebarShowTitle", false);
         settings.insert("sidebarWidth", 420);
         settings.insert("radiusSmall", 6);
         settings.insert("radiusMedium", 12);
@@ -988,6 +990,10 @@ private slots:
         QCOMPARE(mgr.transparencyLevel(), 0.3);
         QCOMPARE(mgr.animationsEnabled(), false);
         QCOMPARE(mgr.bookmarks(), QStringList({"~/Documents"}));
+        QCOMPARE(mgr.sidebarShowTitle(), false);
+
+        ConfigManager reloaded(path);
+        QCOMPARE(reloaded.sidebarShowTitle(), false);
     }
 
     void testSaveShortcuts()

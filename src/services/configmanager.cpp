@@ -356,6 +356,7 @@ void ConfigManager::setDefaults()
     m_sidebarWidth = 200;
     m_dependencyStartupCheck = true;
     m_sidebarVisible = true;
+    m_sidebarShowTitle = true;
     m_sidebarAutoHideWidth = 700;
     m_hiddenQuickAccess.clear();
     setListColumnsNormalized({}, {});
@@ -499,6 +500,8 @@ void ConfigManager::loadConfig()
             m_sidebarWidth = static_cast<int>(*v);
         if (auto v = config["sidebar"]["visible"].value<bool>())
             m_sidebarVisible = *v;
+        if (auto v = config["sidebar"]["show_title"].value<bool>())
+            m_sidebarShowTitle = *v;
         if (auto v = config["sidebar"]["auto_hide_width"].value<int64_t>())
             m_sidebarAutoHideWidth = clampedAutoHideWidth(static_cast<int>(*v));
 
@@ -806,6 +809,8 @@ scrollback_lines = 10000
 position = "left"
 width = 200
 visible = true
+# The "Hyprfm" title at the top of the sidebar.
+show_title = true
 # Fold the sidebar away when the window is narrower than this many pixels.
 # It stays toggleable by hand, and comes back when the window grows again.
 # 0 turns it off; anything else is clamped to 320-2000.
@@ -1074,6 +1079,7 @@ bool ConfigManager::rememberSortPerFolder() const { return m_rememberSortPerFold
 QString ConfigManager::sidebarPosition() const { return m_sidebarPosition; }
 int ConfigManager::sidebarWidth() const { return m_sidebarWidth; }
 bool ConfigManager::sidebarVisible() const { return m_sidebarVisible; }
+bool ConfigManager::sidebarShowTitle() const { return m_sidebarShowTitle; }
 int ConfigManager::sidebarAutoHideWidth() const { return m_sidebarAutoHideWidth; }
 QStringList ConfigManager::hiddenQuickAccess() const { return m_hiddenQuickAccess; }
 QStringList ConfigManager::bookmarks() const { return m_bookmarks; }
@@ -1379,6 +1385,11 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
     if (settings.contains("sidebarVisible")) {
         m_sidebarVisible = settings.value("sidebarVisible").toBool();
         sidebar.insert_or_assign("visible", m_sidebarVisible);
+    }
+
+    if (settings.contains("sidebarShowTitle")) {
+        m_sidebarShowTitle = settings.value("sidebarShowTitle").toBool();
+        sidebar.insert_or_assign("show_title", m_sidebarShowTitle);
     }
 
     if (settings.contains("sidebarAutoHideWidth")) {

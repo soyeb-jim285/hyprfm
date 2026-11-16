@@ -93,6 +93,7 @@ Window {
     property int draftTerminalScrollbackLines: config.terminalScrollbackLines
     property bool draftDependencyStartupCheck: config.dependencyStartupCheck
     property bool draftSidebarVisible: currentSidebarVisible
+    property bool draftSidebarShowTitle: config.sidebarShowTitle
     // Must stay in sync with the quick-access entries in Sidebar.qml.
     readonly property var quickAccessNames: ["Home", "Recents", "Trash", "Network", "Pictures", "Downloads"]
     property var draftHiddenQuickAccess: config.hiddenQuickAccess
@@ -294,6 +295,7 @@ Window {
         draftTerminalCursorBlink = true
         draftDependencyStartupCheck = true
         draftSidebarVisible = true
+        draftSidebarShowTitle = true
         draftHiddenQuickAccess = []
         draftSidebarPosition = defaultSidebarPosition
         draftSplitOrientation = "vertical"
@@ -352,6 +354,7 @@ Window {
             draftTerminalScrollbackLines = config.terminalScrollbackLines
             draftDependencyStartupCheck = config.dependencyStartupCheck
             draftSidebarVisible = currentSidebarVisible
+            draftSidebarShowTitle = config.sidebarShowTitle
             draftHiddenQuickAccess = config.hiddenQuickAccess
             draftSidebarPosition = config.sidebarPosition
             draftSplitOrientation = config.splitOrientation
@@ -436,6 +439,7 @@ Window {
             terminalScrollbackLines: draftTerminalScrollbackLines,
             dependencyStartupCheck: draftDependencyStartupCheck,
             sidebarVisible: draftSidebarVisible,
+            sidebarShowTitle: draftSidebarShowTitle,
             hiddenQuickAccess: draftHiddenQuickAccess,
             sidebarPosition: draftSidebarPosition,
             splitOrientation: draftSplitOrientation,
@@ -892,6 +896,17 @@ Window {
                 checked: root.draftSidebarVisible
                 onToggled: (value) => {
                     root.draftSidebarVisible = value
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Toggle {
+                Layout.fillWidth: true
+                label: "Show app name in sidebar"
+                enabled: root.draftSidebarVisible
+                checked: root.draftSidebarShowTitle
+                onToggled: (value) => {
+                    root.draftSidebarShowTitle = value
                     root.applySettingsNow()
                 }
             }
