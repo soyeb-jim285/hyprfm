@@ -1236,37 +1236,83 @@ private slots:
                                                                     .arg(focusName())), 2000);
     }
 
-    void testHomeQuickAccessClosesSplit_data()
+    void testSidebarNavigationKeepsSplit_data()
     {
         QTest::addColumn<QString>("orientation");
-        QTest::newRow("top-bottom") << QStringLiteral("horizontal");
-        QTest::newRow("side-by-side") << QStringLiteral("vertical");
+        QTest::addColumn<QString>("pane");
+        QTest::addColumn<QString>("viewMode");
+        for (const QString &orientation : {QString("vertical"), QString("horizontal")})
+            for (const QString &pane : {QString("primary"), QString("secondary")})
+                for (const QString &view : {QString("grid"), QString("detailed"), QString("miller"), QString("compact")})
+                    QTest::newRow(qPrintable(orientation + "-" + pane + "-" + view)) << orientation << pane << view;
     }
 
-    void testHomeQuickAccessClosesSplit()
+    void testSidebarNavigationKeepsSplit()
     {
         QFETCH(QString, orientation);
+        QFETCH(QString, pane);
+        QFETCH(QString, viewMode);
         App app;
         QVERIFY(app.load());
         auto *tab = app.tabModel->activeTab();
         QVERIFY(tab);
-        const QString other = app.home.path() + "/other";
-        QVERIFY(QDir().mkpath(other));
-        tab->resetSecondaryTo(other);
+        const QString primary = app.home.path() + "/primary";
+        const QString secondary = app.home.path() + "/secondary";
+        const QString bookmark = app.home.path() + "/bookmark";
+        const QString mounted = app.home.path() + "/mounted";
+        for (const auto &path : {primary, secondary, bookmark, mounted})
+            QVERIFY(QDir().mkpath(path));
+        tab->navigateTo(primary);
+        tab->resetSecondaryTo(secondary);
+        tab->setViewMode(viewMode);
         tab->setSplitOrientation(orientation);
         tab->setSplitViewEnabled(true);
-        QObject *root = app.window->contentItem()->parent();
-        QVERIFY(root);
-        QVERIFY(QMetaObject::invokeMethod(root, "setActivePane", Q_ARG(QVariant, QStringLiteral("secondary"))));
-
-        QQuickItem *home = app.item("quickAccess_Home");
-        QVERIFY(home);
-        QTest::mouseClick(app.window, Qt::LeftButton, {},
-                         home->mapToScene(QPointF(home->width() / 2, home->height() / 2)).toPoint());
-        QTRY_VERIFY(!tab->splitViewEnabled());
-        QCOMPARE(tab->currentPath(), QDir::homePath());
-        QCOMPARE(root->property("activePane").toString(), QStringLiteral("primary"));
-        QTRY_COMPARE(root->property("splitTransitionProgress").toReal(), 0.0);
+        app.bookmarks->setBookmarks({QDir::homePath(), bookmark});
+        QObject *root = app.window;
+        const QString other = pane == "primary" ? "secondary" : "primary";
+        const QString starting = pane == "primary" ? primary : secondary;
+        const auto currentPath = [&]() { return pane == "primary" ? tab->currentPath() : tab->secondaryCurrentPath(); };
+        auto *sidebar = app.item("sidebarPanel");
+        QVERIFY(sidebar);
+        for (const QString &action : {QString("Home"), QString("Recents"), QString("Trash"), QString("Network"),
+                                      QString("Pictures"), QString("Downloads"), QString("bookmark_0"),
+                                      QString("bookmark_1"), QString("mounted")}) {
+            QVERIFY(QMetaObject::invokeMethod(root, "setActivePane", Q_ARG(QVariant, pane)));
+            QVERIFY(QMetaObject::invokeMethod(root, "navigateActivePaneTo", Q_ARG(QVariant, starting)));
+            // Sidebar navigation must leave the other pane's search intact.
+            QVERIFY(QMetaObject::invokeMethod(root, "setPaneSearchMode", Q_ARG(QVariant, other), Q_ARG(QVariant, true)));
+            QVERIFY(QMetaObject::invokeMethod(root, "openSearch"));
+            QString expected = starting;
+            if (action == "mounted") {
+                expected = mounted;
+                auto *devices = app.engine.rootContext()->contextProperty("devices").value<QObject *>();
+                QVERIFY(devices);
+                // Exercise the sidebar's mount-completion route without mounting a real device.
+                QVERIFY(QMetaObject::invokeMethod(devices, "deviceMounted", Q_ARG(QString, mounted)));
+            } else {
+                auto *item = app.item(action.startsWith("bookmark_") ? action : "quickAccess_" + action);
+                QVERIFY2(item, qPrintable(action));
+                QTRY_VERIFY(item->isVisible());
+                if (action.startsWith("bookmark_"))
+                    expected = action == "bookmark_0" ? QDir::homePath() : bookmark;
+                else if (action != "Recents")
+                    expected = item->property("resolvedPath").toString();
+                QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(item));
+            }
+            QTRY_VERIFY2(tab->splitViewEnabled(), qPrintable(action));
+            QTRY_COMPARE(currentPath(), expected);
+            QCOMPARE(tab->currentPath(), pane == "primary" ? expected : primary);
+            QCOMPARE(tab->secondaryCurrentPath(), pane == "secondary" ? expected : secondary);
+            QCOMPARE(root->property("activePane").toString(), pane);
+            QCOMPARE(tab->splitOrientation(), orientation);
+            QCOMPARE(tab->viewMode(), viewMode);
+            const char *searchProperty = pane == "primary" ? "primaryPaneSearchMode" : "secondaryPaneSearchMode";
+            const char *otherSearchProperty = pane == "primary" ? "secondaryPaneSearchMode" : "primaryPaneSearchMode";
+            const char *recentsProperty = pane == "primary" ? "primaryPaneIsRecents" : "secondaryPaneIsRecents";
+            QTRY_VERIFY2(!root->property(searchProperty).toBool(), qPrintable(action));
+            QVERIFY2(root->property(otherSearchProperty).toBool(), qPrintable(action));
+            QCOMPARE(root->property(recentsProperty).toBool(), action == "Recents");
+        }
     }
 
     // Both panes get about half the space in either orientation. The
@@ -1580,9 +1626,9 @@ private slots:
         }
     }
 
-    // Only Home itself closes a split. Reaching ~ any other way (breadcrumb,
-    // typed path, a terminal link) navigates the active pane and keeps it.
-    void testOnlyHomeClosesTheSplit()
+    // The explicit toolbar/keyboard Home action closes the split; ordinary
+    // navigation to ~, including the sidebar, keeps the other pane.
+    void testExplicitHomeActionClosesTheSplit()
     {
         App app;
         QVERIFY(app.load());
