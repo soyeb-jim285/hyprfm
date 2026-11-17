@@ -510,6 +510,17 @@ jobs:
       - name: Build flake
         run: nix build .#hyprfm --print-build-logs
 
+      # Users on stable NixOS consume the overlay against their own nixpkgs,
+      # which lags unstable (zig_0_17 was unstable-only and broke evaluation
+      # for them). Building there also catches a Qt API the stable Qt lacks.
+      # Pick up each new release by bumping this channel.
+      - name: Build overlay on stable nixpkgs
+        run: |
+          nix build --impure --print-build-logs --expr '
+            let f = builtins.getFlake "path:${{ github.workspace }}"; in
+            (import (builtins.fetchTarball "https://channels.nixos.org/nixos-26.05/nixexprs.tar.xz")
+              { overlays = [ f.overlays.default ]; }).hyprfm'
+
   # "Run workflow" also builds the Flatpak, from this commit instead of the
   # release tag the manifest pins, and uploads the bundle as an artifact:
   # the release job's Flatpak build without the signing and publishing.
