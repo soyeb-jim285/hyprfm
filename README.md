@@ -198,6 +198,8 @@ Or pull it into a system/home-manager flake:
 
 then reference `hyprfm.packages.<system>.default` in `environment.systemPackages` / `home.packages`, or add `hyprfm.overlays.default` to `nixpkgs.overlays` and use `pkgs.hyprfm`, built against your own nixpkgs. The package version is parsed straight from `CMakeLists.txt`, so it always tracks the tree it's built from.
 
+Both work on stable NixOS as well as unstable. The built-in terminal needs Zig 0.17, which only nixos-unstable has; on a stable nixpkgs the flake takes Zig from its own pinned nixpkgs. If you also set `inputs.hyprfm.inputs.nixpkgs.follows` to a stable nixpkgs, Zig 0.17 isn't available anywhere, so HyprFM builds without the terminal and Nix prints a warning.
+
 The package bundles the tools HyprFM shells out to, including archive handling,
 previews, search and the gvfs client module, so nothing else has to be
 installed alongside it.
@@ -260,7 +262,7 @@ The Flatpak script snapshots tracked working files and both submodules, includin
 
 On a non-NixOS host, if the Nix app stays running without showing a window, test with `QT_QUICK_BACKEND=software ./build/result-nix/bin/hyprfm`. Hardware rendering requires a graphics-driver setup compatible with the Nix Qt libraries.
 
-The current Flatpak and Nix recipes build without the optional built-in terminal (their build environments have no Zig). The local AppImage includes it when Zig 0.17 is installed. Test file browsing, all three views, copy/move/trash/restore, archives, previews, clipboard and opening files in host apps in each format; network mounts need the session's GVFS services. The native file chooser portal needs host-side installation/configuration and is not registered by running an AppImage or installing a Flatpak.
+The Flatpak and Nix recipes build the built-in terminal (they bring their own Zig 0.17). The local AppImage includes it when Zig 0.17 is installed. Test file browsing, all three views, copy/move/trash/restore, archives, previews, clipboard and opening files in host apps in each format; network mounts need the session's GVFS services. The native file chooser portal needs host-side installation/configuration and is not registered by running an AppImage or installing a Flatpak.
 
 #### Dependencies
 
