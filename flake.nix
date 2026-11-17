@@ -88,7 +88,21 @@
 
       mkHyprfm =
         pkgs:
-        pkgs.stdenv.mkDerivation {
+        let
+          inherit (pkgs) lib;
+          # zig_0_17 is unstable-only. Overlay users on a stable nixpkgs get
+          # it from this flake's own pin instead (build-time only, so mixing is
+          # harmless). If that pin was also pointed at stable via
+          # `inputs.nixpkgs.follows`, build without the terminal rather than
+          # failing evaluation.
+          zig =
+            pkgs.zig_0_17 or (nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system}.zig_0_17 or null);
+          terminal = zig != null;
+        in
+        lib.warnIf (!terminal)
+          "hyprfm: this nixpkgs has no zig_0_17; building without the built-in terminal"
+          pkgs.stdenv.mkDerivation
+        {
           pname = "hyprfm";
           inherit version;
 
@@ -99,8 +113,8 @@
             ninja
             pkg-config
             kdePackages.wrapQtAppsHook
-            zig_0_17
-          ];
+          ]
+          ++ lib.optional terminal zig;
 
           buildInputs = with pkgs; [
             kdePackages.qtbase
@@ -117,11 +131,13 @@
             rm -rf src/qml/icons src/qml/Quill
             cp -r --no-preserve=mode,ownership ${quill-icons} src/qml/icons
             cp -r --no-preserve=mode,ownership ${quill} src/qml/Quill
+          ''
+          + lib.optionalString terminal ''
             # Ghostty's zig build writes zig-out/ into its own source tree.
             cp -r --no-preserve=mode,ownership ${ghostty} ghostty-src
           '';
 
-          preConfigure = ''
+          preConfigure = lib.optionalString terminal ''
             export ZIG_GLOBAL_CACHE_DIR=$TMPDIR/zig-cache
             cmakeFlagsArray+=("-DFETCHCONTENT_SOURCE_DIR_GHOSTTY=$PWD/ghostty-src")
           '';
@@ -129,13 +145,17 @@
           cmakeFlags = [
             "-DBUILD_TESTS=OFF"
             "-DHYPRFM_DATA_DIR=${placeholder "out"}/share/hyprfm"
-            "-DHYPRFM_TERMINAL=ON"
+            "-DHYPRFM_TERMINAL=${if terminal then "ON" else "OFF"}"
+          ]
+          ++ lib.optional terminal
             # No network in the sandbox: zig reads Ghostty's packages from
             # the store, via the package list Ghostty generates for Nix.
             "-DGHOSTTY_ZIG_BUILD_FLAGS=--system;${
-              pkgs.callPackage "${ghostty}/build.zig.zon.nix" { name = "ghostty-zig-deps"; }
-            };-Dcpu=baseline"
-          ];
+              pkgs.callPackage "${ghostty}/build.zig.zon.nix" {
+                name = "ghostty-zig-deps";
+                zig_0_17 = zig;
+              }
+            };-Dcpu=baseline";
 
           qtWrapperArgs = [
             "--prefix"
