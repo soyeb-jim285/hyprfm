@@ -34,6 +34,16 @@ Item {
     readonly property var millerViewItem: millerLoader.item
     readonly property var compactViewItem: compactLoader.item
     readonly property var computerViewItem: computerLoader.item
+    readonly property var interfaceZoom: interfaceZoomControls
+
+    InterfaceZoom {
+        id: interfaceZoomControls
+        anchors.fill: parent
+        z: 100
+        fileView: root.activeView()
+        thumbnailsEnabled: !root.showComputer && root.viewMode === "grid"
+        previewControls: !root.showComputer && root.viewMode === "miller" && root.millerViewItem ? root.millerViewItem.previewControls : null
+    }
 
     function clamp(value, lo, hi) {
         return Math.max(lo, Math.min(hi, value))
@@ -72,6 +82,10 @@ Item {
         function onRowHeightMillerChanged() { root.applyZoom() }
         function onRowHeightCompactChanged() { root.applyZoom() }
     }
+    Connections {
+        target: Theme
+        function onFontNormalChanged() { root.applyZoom() }
+    }
 
     function activeView() {
         if (showComputer) return computerViewItem
@@ -79,6 +93,32 @@ Item {
         if (viewMode === "miller") return millerViewItem
         if (viewMode === "compact") return compactViewItem
         return detailedViewItem
+    }
+    property var pendingSelection: null
+    function restoreSelection(paths, cursorPath, destination) {
+        pendingSelection = {paths: paths, cursor: cursorPath, destination: destination}
+        Qt.callLater(applyPendingSelection)
+    }
+    function applyPendingSelection() {
+        const pending = pendingSelection
+        const view = activeView()
+        if (!pending || !view || !fileModel || fileModel.isLoading) return
+        if (fileModel.rootPath !== undefined && fileModel.rootPath !== pending.destination) return
+        if (view.rowForPath && view.restoreSelection) {
+            var indices = []
+            for (var i = 0; i < pending.paths.length; ++i) {
+                const row = view.rowForPath(pending.paths[i])
+                if (row >= 0) indices.push(row)
+            }
+            view.restoreSelection(indices, view.rowForPath(pending.cursor))
+        }
+        pendingSelection = null
+    }
+    Connections {
+        target: root.fileModel
+        ignoreUnknownSignals: true
+        function onModelReset() { Qt.callLater(root.applyPendingSelection) }
+        function onIsLoadingChanged() { Qt.callLater(root.applyPendingSelection) }
     }
 
     function selectAll() {

@@ -56,6 +56,7 @@ QtObject {
     property int radiusMedium: config.radiusMedium
     property int radiusLarge: config.radiusLarge
     readonly property real baseFontSize: {
+        if (config.fontSize > 0) return config.fontSize
         var pointSize = Qt.application.font.pointSize
         return pointSize > 0 ? pointSize : 10
     }
@@ -63,9 +64,9 @@ QtObject {
     readonly property real hiddenIconOpacity: 0.55
     readonly property real uiScale: Math.max(1.0, baseFontSize / 10.0)
     readonly property int spacing: Math.round(8 * uiScale)
-    readonly property int fontSmall: Math.max(9, Math.round(baseFontSize - 1))
-    readonly property int fontNormal: Math.max(10, Math.round(baseFontSize))
-    readonly property int fontLarge: Math.max(12, Math.round(baseFontSize + 2))
+    readonly property int fontSmall: Math.max(7, Math.round(baseFontSize - 1))
+    readonly property int fontNormal: Math.max(8, Math.round(baseFontSize))
+    readonly property int fontLarge: Math.max(10, Math.round(baseFontSize + 2))
     readonly property int controlSize: Math.round(32 * uiScale)
     readonly property int compactControlSize: Math.round(28 * uiScale)
     readonly property int titleBarHeight: Math.round(34 * uiScale)

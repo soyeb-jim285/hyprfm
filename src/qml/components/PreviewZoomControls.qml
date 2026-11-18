@@ -97,23 +97,28 @@ Item {
         z: 100
         enabled: root.available
         WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             acceptedModifiers: Qt.ControlModifier
             onWheel: wheel => { blocking = root.wheelZoom(wheel) }
         }
         WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             acceptedModifiers: Qt.ControlModifier | Qt.ShiftModifier
             onWheel: wheel => { blocking = root.wheelZoom(wheel) }
         }
         WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             acceptedModifiers: Qt.NoModifier
             onWheel: wheel => { blocking = root.scrollContent(wheel) }
         }
         WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             acceptedModifiers: Qt.NoModifier
             orientation: Qt.Horizontal
             onWheel: wheel => { blocking = root.scrollContent(wheel) }
         }
         WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             acceptedModifiers: Qt.ShiftModifier
             onWheel: wheel => { blocking = root.scrollContent(wheel) }
         }

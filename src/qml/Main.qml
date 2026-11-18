@@ -216,7 +216,7 @@ ApplicationWindow {
         if (root.terminalPanelOpen)
             root.closeTerminalPanel()
         else
-            root.openTerminalPanel("")
+            root.openTerminalPanel(root.isLocalPath(root.panePath(root.activePane)) ? root.panePath(root.activePane) : fsModel.homePath())
     }
 
     // Shows the panel. A new shell starts in `path` (or the active folder);
@@ -725,8 +725,52 @@ ApplicationWindow {
     function focusNextPane() {
         if (!splitViewEnabled())
             return
-
+        if (root.quickPreview && root.quickPreview.active) root.quickPreview.closePreview()
         root.setActivePane(activePane === "primary" ? "secondary" : "primary")
+    }
+
+    function previewOwnsFocus() {
+        if (root.quickPreview && root.quickPreview.active && root.quickPreview.activeFocus) return true
+        const view = root.activeSubView()
+        return view && view.previewControls && view.previewControls.scope.activeFocus
+    }
+
+    function paneCommandsEnabled() {
+        const focus = root.activeFocusItem
+        if (focus && focus.text !== undefined && focus.readOnly === false) return false
+        if (terminalPanelLoader.item && terminalPanelLoader.item.terminal.activeFocus) return false
+        if (toolbar.pathEditing || sidebarPanel.renamingBookmarkIndex >= 0) return false
+        const dialogs = [root.renameDialog, root.bulkRenameDialog, root.newFolderDialog,
+            root.newFileDialog, root.settingsPanel, root.shortcutsDialog, root.propertiesDialog,
+            root.deleteConfirmDialog, root.conflictDialog, root.emptyTrashConfirmDialog,
+            root.remoteConnectDialog, root.customActionConfirmDialog, root.terminalPasteConfirmDialog,
+            root.runExecutableDialog]
+        for (var i = 0; i < dialogs.length; ++i) if (root.isShown(dialogs[i])) return false
+        return true
+    }
+
+    function focusColumn(direction) {
+        if (root.quickPreview && root.quickPreview.active) {
+            if (direction < 0) { root.quickPreview.closePreview(); root.scheduleActivePaneFocus() }
+            return
+        }
+        const view = root.activeSubView()
+        if (!view) return
+        if (direction < 0 && view.focusPreviousColumn) view.focusPreviousColumn()
+        else if (direction > 0 && view.focusNextColumn) view.focusNextColumn()
+    }
+
+    function transferToOtherPane(move, paths) {
+        if (!root.splitViewEnabled() || !root.paneCommandsEnabled()) return
+        const targetPane = activePane === "primary" ? "secondary" : "primary"
+        if (root.paneIsRecents(targetPane) || root.paneIsComputer(targetPane)) return
+        root.beginTransfer(paths || root.getSelectedPaths(), root.panePath(targetPane), move, false)
+    }
+    function resizeGridIcons(steps) {
+        const view = root.activeSubView()
+        if (!view || !tabModel.activeTab || tabModel.activeTab.viewMode !== "grid" || root.paneIsComputer(activePane)) return
+        if (steps === 0) view.columnCount = view.defaultColumnCount
+        else view.zoomByWheel(-steps * 42)
     }
 
     function ensureMountedAndRun(path, callback) {
@@ -1012,6 +1056,14 @@ ApplicationWindow {
         }
 
         if (!enable) {
+            if (activePane === "secondary") {
+                const selected = root.getSelectedPaths("secondary")
+                const view = root.activeSubView()
+                const cursorPath = view ? root.filePathFromModel(root.paneModel("secondary"), view.cursorIndex) : ""
+                tabModel.activeTab.navigateTo(tabModel.activeTab.secondaryCurrentPath)
+                root.setPaneRecents("primary", root.paneIsRecents("secondary"))
+                primaryFileViewContainer.restoreSelection(selected, cursorPath, tabModel.activeTab.currentPath)
+            }
             root.clearPaneSearch("secondary")
             root.setPaneRecents("secondary", false)
             if (activePane === "secondary")
@@ -3396,6 +3448,8 @@ ApplicationWindow {
                         root.toggleSplitView()
                     else if (action === "save_current_split")
                         root.saveCurrentSplit()
+                    else if (action === "copy_other_pane" || action === "move_other_pane")
+                        root.transferToOtherPane(action === "move_other_pane", root.contextMenu.selectedPaths)
                 }
 
                 onViewModeRequested: (mode) => {
@@ -3649,6 +3703,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: config.shortcutMap["split_view"]
+        enabled: root.paneCommandsEnabled()
         onActivated: root.toggleSplitView()
     }
 
@@ -3683,12 +3738,63 @@ ApplicationWindow {
 
     Shortcut {
         sequence: config.shortcutMap["focus_next_pane"]
+        enabled: root.paneCommandsEnabled()
         onActivated: root.focusNextPane()
     }
 
     Shortcut {
         sequence: config.shortcutMap["focus_previous_pane"]
+        enabled: root.paneCommandsEnabled()
         onActivated: root.focusNextPane()
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["focus_previous_column"]
+        enabled: root.paneCommandsEnabled()
+        onActivated: root.focusColumn(-1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["focus_next_column"]
+        enabled: root.paneCommandsEnabled()
+        onActivated: root.focusColumn(1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["copy_to_other_pane"]
+        enabled: root.paneCommandsEnabled() && !root.previewOwnsFocus()
+        onActivated: root.transferToOtherPane(false)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["move_to_other_pane"]
+        enabled: root.paneCommandsEnabled() && !root.previewOwnsFocus()
+        onActivated: root.transferToOtherPane(true)
+    }
+    Shortcut {
+        sequences: [config.shortcutMap["text_larger"], "Ctrl+="]
+        onActivated: primaryFileViewContainer.interfaceZoom.adjust(1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["text_smaller"]
+        onActivated: primaryFileViewContainer.interfaceZoom.adjust(-1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["text_reset"]
+        enabled: !root.previewOwnsFocus()
+        onActivated: primaryFileViewContainer.interfaceZoom.reset()
+    }
+    Shortcut {
+        sequences: [config.shortcutMap["icons_larger"], "Ctrl+Alt+="]
+        enabled: root.paneCommandsEnabled()
+        onActivated: root.resizeGridIcons(1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["icons_smaller"]
+        enabled: root.paneCommandsEnabled()
+        onActivated: root.resizeGridIcons(-1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["icons_reset"]
+        enabled: root.paneCommandsEnabled()
+        onActivated: root.resizeGridIcons(0)
     }
 
     // View mode switching

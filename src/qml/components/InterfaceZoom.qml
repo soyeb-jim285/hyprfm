@@ -1,0 +1,61 @@
+import QtQuick
+import HyprFM
+
+// Shared by the sidebar and both file panes. Preview magnification and icon
+// density keep their own state; interface text size is a saved preference.
+Item {
+    id: root
+    property Item previewControls: null
+    property Item fileView: null
+    property bool thumbnailsEnabled: false
+    property real pendingSteps: 0
+    property int previousDirection: 0
+
+    function adjust(steps) {
+        config.saveSettings({ fontSize: Math.max(8, Math.min(24, Theme.baseFontSize + steps)) })
+    }
+    function reset() { config.saveSettings({ fontSize: 0 }) }
+
+    function handleWheel(wheel) {
+        if (previewControls && previewControls.scope && previewControls.scope.visible) {
+            const point = previewControls.scope.mapFromItem(root, wheel.x, wheel.y)
+            if (point.x >= 0 && point.y >= 0 && point.x < previewControls.scope.width && point.y < previewControls.scope.height) {
+                if (previewControls.available) previewControls.wheelZoom(wheel)
+                return true
+            }
+        }
+        const horizontal = !!(wheel.modifiers & Qt.ShiftModifier)
+        const pixels = wheel.pixelDelta.y || (horizontal ? wheel.pixelDelta.x : 0)
+        const angle = wheel.angleDelta.y || (horizontal ? wheel.angleDelta.x : 0)
+        const steps = (pixels ? pixels / 10 : angle / 120) * (wheel.inverted ? -1 : 1)
+        if (!steps) return false
+        if (horizontal) {
+            if (!thumbnailsEnabled || !fileView || !fileView.zoomByWheel) return false
+            fileView.zoomByWheel(-steps * 42)
+            return true
+        }
+        const direction = steps > 0 ? 1 : -1
+        if (direction !== previousDirection) pendingSteps = 0
+        previousDirection = direction
+        pendingSteps += steps
+        const whole = Math.trunc(pendingSteps)
+        if (whole) { pendingSteps -= whole; adjust(whole) }
+        return true
+    }
+    WheelHandler {
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        acceptedModifiers: Qt.ControlModifier
+        onWheel: wheel => { blocking = root.handleWheel(wheel) }
+    }
+    WheelHandler {
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        acceptedModifiers: Qt.ControlModifier | Qt.ShiftModifier
+        onWheel: wheel => { blocking = root.handleWheel(wheel) }
+    }
+    WheelHandler {
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        acceptedModifiers: Qt.ControlModifier | Qt.ShiftModifier
+        orientation: Qt.Horizontal
+        onWheel: wheel => { blocking = root.handleWheel(wheel) }
+    }
+}

@@ -133,7 +133,7 @@ FocusScope {
             onReleased: config.saveMillerFractions(root.parentFraction, root.currentFraction)
         }
     }
-    readonly property int minRowHeight: 22
+    readonly property int minRowHeight: Math.max(22, Math.ceil(Theme.fontNormal * 4 / 3) + 8)
     readonly property int maxRowHeight: 56
     readonly property int millerIconSize: Math.round(rowHeight * 0.571)  // 16 at default 28
 
@@ -163,6 +163,25 @@ FocusScope {
 
     function focusPath(path, reveal) {
         currentColumn.focusPath(path, reveal)
+    }
+    property alias previewControls: zoomControls
+    function rowForPath(path) { return currentColumn.rowForPath(path) }
+    function restoreSelection(indices, cursor) {
+        currentColumn.selectedIndices = indices
+        currentColumn.cursorIndex = cursor
+        currentColumn.lastSelectedIndex = indices.length ? indices[0] : -1
+        if (cursor >= 0) currentColumn.positionViewAtIndex(cursor, ListView.Contain)
+        root.updatePreview()
+        root.selectionChanged()
+    }
+    function focusPreviousColumn() {
+        if (previewColumn.activeFocus) { currentColumn.forceActiveFocus(); return }
+        if (parentColumn.activeFocus) return
+        if (root.parentPath) parentColumn.forceActiveFocus()
+    }
+    function focusNextColumn() {
+        if (parentColumn.activeFocus) { root.ensureCurrentColumnFocus(); return }
+        if (previewColumn.previewFilePath !== "") previewColumn.forceActiveFocus()
     }
 
     function clearSelection() {
@@ -1280,7 +1299,6 @@ FocusScope {
 
             PreviewLoader {
                 id: previewLoader
-                requester: "miller"
                 path: previewColumn.isRemoteUri ? "" : previewColumn.previewFilePath
                 kind: previewColumn.previewKind
                 onPdfPageCountChanged: {
@@ -1846,6 +1864,15 @@ FocusScope {
                         TextEdit {
                             id: textArea
                             objectName: "millerPreviewText"
+                            Keys.onShortcutOverride: event => {
+                                if (config.keyEventMatches("focus_previous_column", event.key, event.modifiers)) event.accepted = true
+                            }
+                            Keys.onPressed: event => {
+                                if (config.keyEventMatches("focus_previous_column", event.key, event.modifiers)) {
+                                    root.ensureCurrentColumnFocus()
+                                    event.accepted = true
+                                }
+                            }
                             readOnly: true
                             selectByMouse: true
                             width: previewColumn.isMarkdown ? textPreviewFlick.markdownWidth : Math.max(implicitWidth, textPreviewFlick.width)

@@ -10,7 +10,7 @@ GridView {
 
     property bool compactMode: false
     property int rowHeight: 28
-    readonly property int minRowHeight: 22
+    readonly property int minRowHeight: Math.max(22, Math.ceil(Theme.fontNormal * 4 / 3) + 8)
     readonly property int maxRowHeight: 56
     readonly property int rowsPerColumn: Math.max(1, Math.floor(height / cellHeight))
     property real compactNameWidth: 0
@@ -95,7 +95,8 @@ GridView {
     // that many columns, so the default looks as it did on a typical window.
     // grid_fixed_columns brings back the old way: zoom is the column count
     // and the icons stretch to fill the width.
-    property int columnCount: 7
+    readonly property int defaultColumnCount: 7
+    property int columnCount: defaultColumnCount
     readonly property int minColumns: 2
     readonly property int maxColumns: 12
     readonly property int minCellWidth: 140
@@ -516,6 +517,12 @@ GridView {
         if (reveal !== false)
             positionViewAtIndex(idx, GridView.Contain)
         return true
+    }
+    function restoreSelection(indices, cursor) {
+        selectedIndices = indices
+        cursorIndex = cursor
+        lastSelectedIndex = indices.length ? indices[0] : -1
+        if (cursor >= 0) positionViewAtIndex(cursor, GridView.Contain)
     }
 
     function selectAll() {

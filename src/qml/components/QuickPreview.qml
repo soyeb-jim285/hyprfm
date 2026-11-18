@@ -176,7 +176,6 @@ FocusScope {
 
     PreviewLoader {
         id: previewLoader
-        requester: "quick"
         path: root.isRemoteUri ? "" : root.filePath
         kind: root.previewKind
         onPdfPageCountChanged: {
@@ -895,6 +894,15 @@ FocusScope {
                             TextEdit {
                                 id: textArea
                                 objectName: "quickPreviewText"
+                                Keys.onShortcutOverride: event => {
+                                    if (config.keyEventMatches("focus_previous_column", event.key, event.modifiers)) event.accepted = true
+                                }
+                                Keys.onPressed: event => {
+                                    if (config.keyEventMatches("focus_previous_column", event.key, event.modifiers)) {
+                                        root.closePreview()
+                                        event.accepted = true
+                                    }
+                                }
                                 readOnly: true
                                 selectByMouse: true
                                 width: root.isMarkdown ? textPreviewFlick.width : Math.max(implicitWidth, textPreviewFlick.width)

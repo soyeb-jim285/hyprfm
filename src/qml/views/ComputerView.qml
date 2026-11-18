@@ -160,7 +160,7 @@ FocusScope {
                 required property string deviceIcon
                 required property int sourceIndex
                 readonly property bool selected: root.selectedDevices.indexOf(index) >= 0
-                width: grid.cellWidth - 8
+                width: grid.rows ? Math.min(grid.cellWidth - 8, 480 * Theme.uiScale) : grid.cellWidth - 8
                 height: grid.cellHeight - 8
                 radius: Theme.radiusMedium
                 color: selected ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : Theme.surface
@@ -187,7 +187,7 @@ FocusScope {
                         Layout.preferredHeight: 5
                         radius: 2
                         visible: card.capacityKnown
-                        color: Theme.overlay
+                        color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
                         Rectangle {
                             width: parent.width * (card.freeSpace < card.totalSize ? Math.max(0.02, card.usagePercent / 100) : 0)
                             height: parent.height

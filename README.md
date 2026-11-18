@@ -313,7 +313,9 @@ install is needed there.
 | `Ctrl+2` | Miller column view |
 | `Ctrl+3` | Detailed view |
 | `Ctrl+4` | Compact view |
-| `Ctrl+Scroll` | Zoom (icon size or row height); also Settings → Layout → Icon Size |
+| `Ctrl+Scroll` | Resize interface text over sidebar/file columns; zoom content over a preview |
+| `Ctrl++` / `Ctrl+-` / `Ctrl+0` | Increase / decrease / reset interface text size; Ctrl+0 in a focused preview resets preview zoom |
+| `Ctrl+Shift+Scroll` | Resize Grid icons; also `Ctrl+Alt++` / `Ctrl+Alt+-`, and `Ctrl+Alt+0` to reset |
 | `Space` | Quick preview |
 | `F3` | Toggle split pane |
 | `F4` | Toggle the built-in terminal |
@@ -321,10 +323,22 @@ install is needed there.
 | `Ctrl+H` | Toggle hidden files |
 | `Ctrl+Shift+B` | Toggle transparency |
 | `F6` / `Shift+F6` | Focus next / previous pane |
+| `Ctrl+Left` / `Ctrl+Right` | Move focus between Miller columns; Ctrl+Left returns from preview without changing the folder |
+| `Ctrl+Shift+C` / `Ctrl+Shift+X` | Copy / move the selection into the other split pane |
 | `Ctrl+Alt+Left` / `Ctrl+Alt+Right` | Focus left / right pane |
 | `Ctrl+,` | Settings |
 | `Ctrl+Shift+,` | Open `config.toml` in your editor |
 | `Ctrl+?` | Keyboard shortcut reference |
+
+These controls follow the local Strata development: mouse and touchpad wheel input,
+independent preview zoom, Compact's sideways scrolling, extra-pane transfers, and
+terminal-aware key routing. Pane shortcuts leave editors and dialogs alone. Closing
+the active extra pane keeps its folder and file selection, and reopening the terminal
+follows the active folder. Explicit shortcut customizations remain in effect.
+
+Code previews choose a light or dark syntax palette with the app theme and refresh
+when the theme changes. Computer's List and Column drive cards have a bounded width,
+and their capacity bars use the sidebar's track and warning colors.
 
 ### Tabs & windows
 
@@ -395,6 +409,7 @@ dark_theme = "catppuccin-mocha"   # Mode switch in Settings flip between these
 icon_theme = "Strata"          # bundled icons; installed icon packs also work
 file_icon_colors = "brand"      # Strata file icons: brand | theme
 font_family = ""               # UI font; empty = desktop font
+font_size = 0                  # UI text size in points; 0 = desktop size
 default_view = "grid"          # grid | detailed | miller | compact
 compact_full_names = false    # widen Compact columns to show complete filenames
 show_hidden = false

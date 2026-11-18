@@ -82,6 +82,16 @@ const ShortcutSpec kShortcutSpecs[] = {
     {"reopen_tab", "Reopen Closed Tab"},
     {"open_in_new_tab", "Open in New Tab"},
     {"open_in_split", "Open in Split View"},
+    {"copy_to_other_pane", "Copy to Other Pane"},
+    {"move_to_other_pane", "Move to Other Pane"},
+    {"focus_previous_column", "Focus Previous Column"},
+    {"focus_next_column", "Focus Next Column"},
+    {"text_larger", "Increase Interface Text Size"},
+    {"text_smaller", "Decrease Interface Text Size"},
+    {"text_reset", "Reset Interface Text Size"},
+    {"icons_larger", "Increase Grid Icon Size"},
+    {"icons_smaller", "Decrease Grid Icon Size"},
+    {"icons_reset", "Reset Grid Icon Size"},
     {"copy", "Copy"},
     {"cut", "Cut"},
     {"paste", "Paste"},
@@ -176,6 +186,16 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"reopen_tab", "Ctrl+Shift+T"},
     {"open_in_new_tab", "Ctrl+Return"},
     {"open_in_split", "Ctrl+Shift+Return"},
+    {"copy_to_other_pane", "Ctrl+Shift+C"},
+    {"move_to_other_pane", "Ctrl+Shift+X"},
+    {"focus_previous_column", "Ctrl+Left"},
+    {"focus_next_column", "Ctrl+Right"},
+    {"text_larger", "Ctrl++"},
+    {"text_smaller", "Ctrl+-"},
+    {"text_reset", "Ctrl+0"},
+    {"icons_larger", "Ctrl+Alt++"},
+    {"icons_smaller", "Ctrl+Alt+-"},
+    {"icons_reset", "Ctrl+Alt+0"},
     {"copy", "Ctrl+C"},
     {"cut", "Ctrl+X"},
     {"paste", "Ctrl+V"},
@@ -341,6 +361,7 @@ void ConfigManager::setDefaults()
     m_autoRefreshIcons = true;
     m_iconThemeFallback = QStringLiteral("Adwaita");
     m_fontFamily.clear();
+    m_fontSize = 0;
     m_defaultView = "grid";
     m_splitOrientation = QStringLiteral("vertical");
     m_showHidden = false;
@@ -455,6 +476,8 @@ void ConfigManager::loadConfig()
             m_iconTheme = QString::fromStdString(*v);
         if (auto v = config["general"]["font_family"].value<std::string>())
             m_fontFamily = QString::fromStdString(*v);
+        if (auto v = config["general"]["font_size"].value<double>())
+            m_fontSize = *v > 0 ? qBound(8.0, *v, 24.0) : 0;
         if (auto v = config["general"]["default_view"].value<std::string>())
             m_defaultView = QString::fromStdString(*v);
         if (auto v = config["general"]["split_orientation"].value<std::string>()) {
@@ -769,6 +792,8 @@ auto_refresh_icons = true
 
 # UI font family. Empty = the desktop's UI font.
 font_family = ""
+# Interface text size in points; 0 follows the desktop. Ctrl+wheel or Ctrl+plus/minus adjusts it.
+font_size = 0
 
 # View for new tabs: "grid" | "detailed" | "miller" | "compact"
 default_view = "grid"
@@ -1343,6 +1368,11 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
     if (settings.contains("fontFamily")) {
         m_fontFamily = settings.value("fontFamily").toString().trimmed();
         general.insert_or_assign("font_family", m_fontFamily.toStdString());
+    }
+    if (settings.contains("fontSize")) {
+        const double value = settings.value("fontSize").toDouble();
+        m_fontSize = value > 0 ? qBound(8.0, value, 24.0) : 0;
+        general.insert_or_assign("font_size", m_fontSize);
     }
 
     if (settings.contains("splitOrientation")) {

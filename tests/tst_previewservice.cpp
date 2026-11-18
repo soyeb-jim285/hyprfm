@@ -56,6 +56,24 @@ private:
     }
 
 private slots:
+    void testSyntaxPaletteFollowsLightBackground()
+    {
+        if (!batAvailable()) QSKIP("bat not installed");
+        QTemporaryDir dir;
+        const QString path = dir.filePath("sample.rs");
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("// A comment\nfn main() { let value = 42; println!(\"hello\"); }\n");
+        file.close();
+        PreviewService service;
+        const auto dark = service.loadTextPreview(path, 131072, 400, false);
+        const auto light = service.loadTextPreview(path, 131072, 400, true);
+        QVERIFY(dark.value("usesBat").toBool());
+        QVERIFY(light.value("usesBat").toBool());
+        QCOMPARE(dark.value("content"), light.value("content"));
+        QVERIFY(dark.value("html") != light.value("html"));
+    }
+
     void testLoadTextPreview()
     {
         QTemporaryDir dir;

@@ -13,6 +13,22 @@ class TestConfigManager : public QObject
     Q_OBJECT
 
 private slots:
+    void testInterfaceFontSizePersistsAndClamps()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("config.toml");
+        ConfigManager config(path);
+        QCOMPARE(config.fontSize(), 0.0);
+        config.saveSettings({{"fontSize", 12.5}});
+        ConfigManager restored(path);
+        QCOMPARE(restored.fontSize(), 12.5);
+        config.saveSettings({{"fontSize", 100}});
+        QCOMPARE(config.fontSize(), 24.0);
+        config.saveSettings({{"fontSize", 0}});
+        ConfigManager reset(path);
+        QCOMPARE(reset.fontSize(), 0.0);
+    }
+
     void testSplitBookmarkPositionSurvivesReload()
     {
         QTemporaryDir dir;

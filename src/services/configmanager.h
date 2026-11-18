@@ -23,6 +23,7 @@ class ConfigManager : public QObject
     Q_PROPERTY(bool autoRefreshIcons READ autoRefreshIcons NOTIFY configChanged)
     Q_PROPERTY(int iconRevision READ iconRevision NOTIFY iconRevisionChanged)
     Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY configChanged)
+    Q_PROPERTY(double fontSize READ fontSize NOTIFY configChanged)
     Q_PROPERTY(QString defaultView READ defaultView NOTIFY configChanged)
     Q_PROPERTY(QString splitOrientation READ splitOrientation NOTIFY configChanged)
     Q_PROPERTY(bool showHidden READ showHidden NOTIFY configChanged)
@@ -99,6 +100,7 @@ public:
     // only main.cpp can ask the portal for. Set once at startup.
     void setIconThemeFallback(const QString &theme);
     QString fontFamily() const;
+    double fontSize() const { return m_fontSize; }
     QString defaultView() const;
     QString splitOrientation() const;
     bool showHidden() const;
@@ -229,6 +231,7 @@ private:
     QString m_fileIconColors;          // as configured; empty means follow the desktop
     QString m_iconThemeFallback;  // what empty resolves to
     QString m_fontFamily;
+    double m_fontSize = 0;
     QString m_defaultView;
     QString m_splitOrientation;
     bool m_showHidden;

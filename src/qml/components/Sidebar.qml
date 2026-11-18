@@ -36,6 +36,8 @@ Rectangle {
     color: Theme.mantle
     clip: false
 
+    InterfaceZoom { anchors.fill: parent; z: 20 }
+
     Component { id: iconHome; IconHome { size: 18; color: Theme.subtext } }
     Component { id: iconMonitor; IconMonitor { size: 18; color: Theme.subtext } }
     Component { id: iconClock; IconClock { size: 18; color: Theme.subtext } }

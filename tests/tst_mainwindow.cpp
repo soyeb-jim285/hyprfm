@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QFont>
 #include <QPainter>
+#include <QPointingDevice>
 #include <QPdfWriter>
 #include <QQuickTextDocument>
 #include <QTextDocument>
@@ -283,13 +284,17 @@ private slots:
     void testPreviewZoomIsLocalAndFollowsContent_data()
     {
         QTest::addColumn<bool>("quick");
-        QTest::newRow("quick-preview") << true;
-        QTest::newRow("miller-pane") << false;
+        QTest::addColumn<bool>("touchpad");
+        for (bool quick : {true, false}) {
+            QTest::newRow(quick ? "quick-mouse" : "miller-mouse") << quick << false;
+            QTest::newRow(quick ? "quick-touchpad" : "miller-touchpad") << quick << true;
+        }
     }
 
     void testPreviewZoomIsLocalAndFollowsContent()
     {
         QFETCH(bool, quick);
+        QFETCH(bool, touchpad);
         App app;
         const QString first = app.home.filePath("first.txt");
         const QString second = app.home.filePath("second.txt");
@@ -347,6 +352,22 @@ private slots:
         QCoreApplication::sendEvent(app.window, &wheel);
         QTRY_VERIFY(controls->property("factor").toReal() > 1.0);
         QCOMPARE(app.sessionState->rowHeightMiller(), fileRowSize);
+        auto *content = controls->property("scrollTarget").value<QQuickItem *>();
+        QVERIFY(content && content->isVisible());
+        const QPoint contentPoint = app.center(content);
+        const qreal beforeContentWheel = controls->property("factor").toReal();
+        const QPointingDevice touchpadDevice("Preview touchpad", 8102, QInputDevice::DeviceType::TouchPad,
+                                             QPointingDevice::PointerType::Finger,
+                                             QInputDevice::Capability::Position | QInputDevice::Capability::Scroll,
+                                             2, 0);
+        QTest::keyPress(app.window, Qt::Key_Control);
+        QWheelEvent contentWheel(contentPoint, app.window->mapToGlobal(contentPoint), touchpad ? QPoint(0, 10) : QPoint(), QPoint(0, 120),
+                                 Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false,
+                                 Qt::MouseEventNotSynthesized, touchpad ? &touchpadDevice : QPointingDevice::primaryPointingDevice());
+        QCoreApplication::sendEvent(app.window, &contentWheel);
+        QTest::keyRelease(app.window, Qt::Key_Control);
+        QVERIFY(controls->property("factor").toReal() > beforeContentWheel);
+        QCOMPARE(app.sessionState->rowHeightMiller(), fileRowSize);
         QVERIFY(QMetaObject::invokeMethod(controls, "setFactor", Q_ARG(QVariant, 2.5)));
         QVERIFY(preview(second));
         QTRY_COMPARE(scope->property(quick ? "filePath" : "previewFilePath").toString(), second);
@@ -376,6 +397,206 @@ private slots:
         app.wheel(point, QPoint(0, -120));
         QTRY_VERIFY(image->property("contentY").toReal() > 0);
         QCOMPARE(controls->property("factor").toReal(), 3.0);
+    }
+
+    void testPlainWheelStillScrollsFileViews_data()
+    {
+        QTest::addColumn<QString>("mode");
+        for (const QString &mode : {QString("grid"), QString("compact"), QString("detailed"), QString("miller")})
+            QTest::newRow(qPrintable(mode)) << mode;
+    }
+    void testPlainWheelStillScrollsFileViews()
+    {
+        QFETCH(QString, mode);
+        App app;
+        for (int i = 0; i < 200; ++i) {
+            QFile file(app.home.filePath(QString("file%1.txt").arg(i, 3, 10, QLatin1Char('0'))));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("scroll fixture\n");
+        }
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        tab->navigateTo(app.home.path());
+        tab->setViewMode(mode);
+        auto *container = app.item("primaryFileView");
+        QVERIFY(container);
+        const QByteArray viewProperty = (mode + "ViewItem").toLatin1();
+        QTRY_VERIFY(container->property(viewProperty).value<QQuickItem *>());
+        auto *view = container->property(viewProperty).value<QQuickItem *>();
+        auto *scroll = mode == "detailed" ? App::findItem(view, "listView")
+            : mode == "miller" ? App::findItem(view, "millerCurrentColumn") : view;
+        QVERIFY(scroll);
+        const bool horizontal = mode == "compact";
+        QTRY_VERIFY(scroll->property(horizontal ? "contentWidth" : "contentHeight").toReal()
+                    > (horizontal ? scroll->width() : scroll->height()));
+        scroll->setProperty(horizontal ? "contentX" : "contentY", 0);
+        app.wheel(app.center(scroll), QPoint(0, -120));
+        QTRY_VERIFY_WITH_TIMEOUT(scroll->property(horizontal ? "contentX" : "contentY").toReal() > 0, 2000);
+    }
+
+    void testPreviewThemeAndFocus_data()
+    {
+        QTest::addColumn<bool>("quick");
+        QTest::addColumn<QString>("extension");
+        for (bool quick : {true, false})
+            for (const QString &ext : {QString("rs"), QString("py"), QString("js")})
+                QTest::newRow(qPrintable((quick ? "quick-" : "miller-") + ext)) << quick << ext;
+    }
+
+    void testPreviewThemeAndFocus()
+    {
+        if (QStandardPaths::findExecutable("bat").isEmpty() && QStandardPaths::findExecutable("batcat").isEmpty())
+            QSKIP("bat not installed");
+        QFETCH(bool, quick);
+        QFETCH(QString, extension);
+        App app;
+        const QString path = app.home.filePath("source." + extension);
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(extension == "rs" ? "// Comment\nfn main() { let value = 42; }\n"
+            : extension == "py" ? "# Comment\ndef main():\n    value = 42\n" : "// Comment\nfunction main() { const value = 42; }\n");
+        file.close();
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        tab->navigateTo(app.home.path());
+        tab->setViewMode("miller");
+        auto *model = app.engine.rootContext()->contextProperty("fsModel").value<QObject *>();
+        QTRY_COMPARE(model->property("rootPath").toString(), app.home.path());
+        QTRY_VERIFY(!model->property("isLoading").toBool());
+        QVERIFY(QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("primary")),
+                                          Q_ARG(QVariant, path), Q_ARG(QVariant, true)));
+        if (quick) QVERIFY(QMetaObject::invokeMethod(app.window, "showQuickPreview", Q_ARG(QVariant, path)));
+        QTRY_VERIFY(app.item(quick ? "quickPreviewText" : "millerPreviewText"));
+        auto *text = app.item(quick ? "quickPreviewText" : "millerPreviewText");
+        QTRY_VERIFY(text->property("text").toString().contains("value"));
+        const QString dark = text->property("text").toString();
+        auto *theme = qobject_cast<ThemeLoader *>(app.engine.rootContext()->contextProperty("theme").value<QObject *>());
+        QVERIFY(theme);
+        theme->loadTheme("strata-nord-light", {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+        QTRY_VERIFY(text->property("text").toString().contains("value") && text->property("text").toString() != dark);
+        const QString light = text->property("text").toString();
+        theme->loadTheme("catppuccin-mocha", {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+        QTRY_VERIFY(text->property("text").toString().contains("value") && text->property("text").toString() != light);
+        text->forceActiveFocus();
+        QTest::keyClick(app.window, Qt::Key_Left, Qt::ControlModifier);
+        auto *previewScope = quick ? app.window->property("quickPreview").value<QQuickItem *>() : app.item("millerPreviewColumn");
+        QVERIFY(previewScope);
+        if (quick) QTRY_VERIFY(!previewScope->property("active").toBool());
+        QTRY_VERIFY(!previewScope->hasActiveFocus());
+        QCOMPARE(tab->currentPath(), app.home.path());
+        if (!quick) {
+            QTest::keyClick(app.window, Qt::Key_Right, Qt::ControlModifier);
+            QTRY_VERIFY(previewScope->hasActiveFocus());
+            QCOMPARE(tab->currentPath(), app.home.path());
+        }
+    }
+
+    void testStrataPaneControls_data()
+    {
+        QTest::addColumn<QString>("mode");
+        for (const QString &mode : {QString("grid"), QString("detailed"), QString("miller"), QString("compact")})
+            QTest::newRow(qPrintable(mode)) << mode;
+    }
+    void testStrataPaneControls()
+    {
+        QFETCH(QString, mode);
+        App app;
+        const QString source = app.home.filePath("source");
+        const QString target = app.home.filePath("target");
+        QVERIFY(QDir().mkpath(source));
+        QVERIFY(QDir().mkpath(target));
+        for (const auto &name : {"copy.txt", "move.txt", "untouched.txt"}) {
+            QFile file(source + "/" + name);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(name);
+        }
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        tab->setViewMode(mode);
+        tab->navigateTo(source);
+        tab->resetSecondaryTo(target);
+        tab->setSplitViewEnabled(true);
+        auto focusFile = [&](const QString &name) {
+            return QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("primary")),
+                                             Q_ARG(QVariant, source + "/" + name), Q_ARG(QVariant, true));
+        };
+        QVERIFY(focusFile("copy.txt"));
+        QTRY_COMPARE(app.window->property("currentSelectedCount").toInt(), 1);
+        QTest::keyClick(app.window, Qt::Key_C, Qt::ControlModifier | Qt::ShiftModifier);
+        QTRY_VERIFY(QFile::exists(target + "/copy.txt"));
+        QVERIFY(QFile::exists(source + "/copy.txt"));
+        QVERIFY(focusFile("move.txt"));
+        QTRY_COMPARE(app.window->property("currentSelectedCount").toInt(), 1);
+        QTest::keyClick(app.window, Qt::Key_X, Qt::ControlModifier | Qt::ShiftModifier);
+        QTRY_VERIFY(QFile::exists(target + "/move.txt"));
+        QVERIFY(!QFile::exists(source + "/move.txt"));
+        QVERIFY(focusFile("untouched.txt"));
+        QTest::keyClick(app.window, Qt::Key_L, Qt::ControlModifier);
+        QTest::keyClick(app.window, Qt::Key_X, Qt::ControlModifier | Qt::ShiftModifier);
+        QTest::keyClick(app.window, Qt::Key_F3);
+        QVERIFY(tab->splitViewEnabled());
+        QVERIFY(QFile::exists(source + "/untouched.txt"));
+        QVERIFY(!QFile::exists(target + "/untouched.txt"));
+        QTest::keyClick(app.window, Qt::Key_Escape);
+        QTest::keyClick(app.window, Qt::Key_F6);
+        QTRY_COMPARE(app.window->property("activePane").toString(), QString("secondary"));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("secondary")),
+                                          Q_ARG(QVariant, target + "/copy.txt"), Q_ARG(QVariant, true)));
+        QTRY_COMPARE(app.window->property("currentSelectedCount").toInt(), 1);
+        QTest::keyClick(app.window, Qt::Key_F3);
+        QTRY_VERIFY(!tab->splitViewEnabled());
+        QCOMPARE(tab->currentPath(), target);
+        QTRY_COMPARE(app.window->property("currentSelectedCount").toInt(), 1);
+        QVariant selection;
+        QVERIFY(QMetaObject::invokeMethod(app.window, "getSelectedPaths", Q_RETURN_ARG(QVariant, selection),
+                                          Q_ARG(QVariant, QString("primary"))));
+        QCOMPARE(selection.toStringList(), QStringList{target + "/copy.txt"});
+    }
+
+    void testInterfaceWheelZoomAcrossColumns()
+    {
+        App app;
+        QVERIFY(app.load());
+        app.tabModel->activeTab()->navigateTo(app.home.path());
+        app.tabModel->activeTab()->setViewMode("miller");
+        auto *config = qobject_cast<ConfigManager *>(app.engine.rootContext()->contextProperty("config").value<QObject *>());
+        QVERIFY(config);
+        auto *container = app.item("primaryFileView");
+        QVERIFY(container);
+        QTRY_VERIFY(container->property("millerViewItem").value<QQuickItem *>());
+        auto *miller = container->property("millerViewItem").value<QQuickItem *>();
+        const int rowHeight = app.sessionState->rowHeightMiller();
+        // Sidebar, parent column and current column use the shared text-size preference.
+        const QPoint points[] = {app.center(app.item("quickAccess_Home")),
+            miller->mapToScene(QPointF(miller->width() * 0.1, 80)).toPoint(),
+            miller->mapToScene(QPointF(miller->width() * 0.45, 80)).toPoint()};
+        for (const QPoint &point : points) {
+            config->saveSettings({{"fontSize", 10}});
+            QWheelEvent wheel(point, app.window->mapToGlobal(point), {}, QPoint(0,120), Qt::NoButton,
+                              Qt::ControlModifier, Qt::NoScrollPhase, false);
+            QCoreApplication::sendEvent(app.window, &wheel);
+            QTRY_COMPARE(config->fontSize(), 11.0);
+        }
+        QCOMPARE(app.sessionState->rowHeightMiller(), rowHeight);
+        QTest::keyClick(app.window, Qt::Key_Minus, Qt::ControlModifier);
+        QTRY_COMPARE(config->fontSize(), 10.0);
+        QTest::keyClick(app.window, Qt::Key_0, Qt::ControlModifier);
+        QTRY_COMPARE(config->fontSize(), 0.0);
+        app.tabModel->activeTab()->setViewMode("grid");
+        QTRY_VERIFY(container->property("gridViewItem").value<QQuickItem *>());
+        auto *grid = container->property("gridViewItem").value<QQuickItem *>();
+        grid->setProperty("columnCount", 7);
+        const QPoint gridPoint = app.center(grid);
+        QWheelEvent iconsWheel(gridPoint, app.window->mapToGlobal(gridPoint), {}, QPoint(0, 120), Qt::NoButton,
+                               Qt::ControlModifier | Qt::ShiftModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(app.window, &iconsWheel);
+        QTRY_COMPARE(grid->property("columnCount").toInt(), 6);
+        QCOMPARE(config->fontSize(), 0.0);
+        QTest::keyClick(app.window, Qt::Key_Minus, Qt::ControlModifier | Qt::AltModifier);
+        QTRY_COMPARE(grid->property("columnCount").toInt(), 7);
+        grid->setProperty("columnCount", 5);
+        QTest::keyClick(app.window, Qt::Key_0, Qt::ControlModifier | Qt::AltModifier);
+        QTRY_COMPARE(grid->property("columnCount").toInt(), 7);
     }
 
     void testPdfAndTablePreviewZoom_data()
@@ -1606,6 +1827,24 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(app.window, "goActivePaneBack"));
         QTRY_COMPARE(tab->secondaryCurrentPath(), app.home.path());
         QTRY_VERIFY(!view->isVisible());
+        // A wide monitor keeps List/Column drive cards readable rather than
+        // stretching a usage meter across the whole window.
+        tab->setSplitViewEnabled(false);
+        tab->navigateTo("computer:///");
+        app.window->resize(1800, 700);
+        auto *primaryContainer = app.item("primaryFileView");
+        QVERIFY(primaryContainer);
+        QTRY_VERIFY(primaryContainer->property("computerViewItem").value<QQuickItem *>());
+        auto *primaryView = primaryContainer->property("computerViewItem").value<QQuickItem *>();
+        QTRY_VERIFY(App::findItem(primaryView, "computerDrive_0"));
+        if (viewMode == "detailed" || viewMode == "miller")
+            QTRY_VERIFY(App::findItem(primaryView, "computerDrive_0")->width() < 900);
+        if (qEnvironmentVariableIsSet("HYPRFM_COMPUTER_GRAB")) {
+            auto *theme = qobject_cast<ThemeLoader *>(app.engine.rootContext()->contextProperty("theme").value<QObject *>());
+            theme->loadTheme("strata-nord-light", {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+            QTest::qWait(350);
+            app.window->grabWindow().save(qEnvironmentVariable("HYPRFM_COMPUTER_GRAB") + "-wide-" + viewMode + ".png");
+        }
     }
 
     // Both panes get about half the space in either orientation. The

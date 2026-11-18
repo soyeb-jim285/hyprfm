@@ -726,6 +726,10 @@ Item {
                 })
             } else if (splitViewEnabled) {
                 items.push({ text: "Close Split View", shortcut: keys("split_view"), action: "close_split", icon: "SquareSplitHorizontal" })
+                if (!isTrashView) {
+                    items.push({ text: "Copy to Other Pane", shortcut: keys("copy_to_other_pane"), action: "copy_other_pane", icon: "Copy" })
+                    items.push({ text: "Move to Other Pane", shortcut: keys("move_to_other_pane"), action: "move_other_pane", icon: "Scissors" })
+                }
             }
             var mime = ""
             if (!targetIsDir && fileModel) {
@@ -885,6 +889,8 @@ Item {
         case "split_open": splitViewRequested(targetPath); break
         case "split_here": splitViewRequested(effectiveDir); break
         case "close_split": customActionRequested("close_split"); break
+        case "copy_other_pane": customActionRequested("copy_other_pane"); break
+        case "move_other_pane": customActionRequested("move_other_pane"); break
         case "save_current_split": customActionRequested("save_current_split"); break
         case "view_grid": viewModeRequested("grid"); break
         case "view_miller": viewModeRequested("miller"); break

@@ -46,7 +46,7 @@ FocusScope {
     property string typeAheadBuffer: ""
 
     property int rowHeight: 28
-    readonly property int minRowHeight: 22
+    readonly property int minRowHeight: Math.max(22, Math.ceil(Theme.fontNormal * 4 / 3) + 8)
     readonly property int maxRowHeight: 56
     readonly property int detailIconSize: Math.round(rowHeight * 0.571)  // 16 at default 28
 
@@ -380,6 +380,12 @@ FocusScope {
         var all = []
         for (var i = 0; i < listView.count; i++) all.push(i)
         selectedIndices = all
+    }
+    function restoreSelection(indices, cursor) {
+        selectedIndices = indices
+        cursorIndex = cursor
+        lastSelectedIndex = indices.length ? indices[0] : -1
+        if (cursor >= 0) listView.positionViewAtIndex(cursor, ListView.Contain)
     }
 
     function clickHeader(col) {
