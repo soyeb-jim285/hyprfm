@@ -8,12 +8,46 @@ Item {
     property string viewMode: "grid"
     property var fileModel: null
     property string currentPath: ""
+    property bool previewPanelVisible: true
     // Why the folder could not be listed; shown instead of an empty view (#74).
     property string loadError: ""
     // How much wider this view will be once a running pane animation ends
     // (negative when it is shrinking). The grid is laid out at that width
     // and clipped by the pane, so its columns do not reflow every frame.
     property real settledWidthOffset: 0
+    readonly property bool sidePreviewApplicable: viewMode === "grid" || viewMode === "detailed"
+    readonly property bool sidePreviewRequested: previewPanelVisible && sidePreviewApplicable
+    readonly property int sidePreviewFullWidth: Math.max(280, Math.floor(width * 0.32))
+    property real sidePreviewWidth: sidePreviewRequested ? sidePreviewFullWidth : 0
+    readonly property bool sidePreviewActive: sidePreviewApplicable
+        && (sidePreviewRequested || sidePreviewWidth > 0.5)
+    readonly property real sidePreviewOpacity: sidePreviewFullWidth > 0
+        ? Math.min(1, sidePreviewWidth / sidePreviewFullWidth) : 0
+
+    Behavior on sidePreviewWidth {
+        NumberAnimation {
+            duration: Theme.animDuration
+            easing.type: Theme.animEasingTransition
+            easing.bezierCurve: Theme.animBezierCurve
+        }
+    }
+
+    readonly property int contentViewWidth: Math.max(0,
+        width + settledWidthOffset - sidePreviewWidth - (sidePreviewActive ? 1 : 0))
+
+    function previewIndex(view) {
+        if (!view) return -1
+        if (view.cursorIndex >= 0) return view.cursorIndex
+        return view.selectedIndices.length > 0
+            ? view.selectedIndices[view.selectedIndices.length - 1] : -1
+    }
+
+    readonly property var previewSourceView: viewMode === "grid" ? gridViewItem : detailedViewItem
+    readonly property int previewSourceIndex: sidePreviewActive ? previewIndex(previewSourceView) : -1
+    readonly property string sidePreviewPath: previewSourceIndex >= 0
+        ? previewSourceView.pathForRow(previewSourceIndex) : ""
+    readonly property bool sidePreviewIsDir: previewSourceIndex >= 0
+        ? previewSourceView.isDirForRow(previewSourceIndex) : false
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
@@ -88,7 +122,7 @@ Item {
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        width: Math.max(0, parent.width + root.settledWidthOffset)
+        width: root.contentViewWidth
         active: root.viewMode === "grid" || item !== null
         sourceComponent: Component {
             FileGridView {
@@ -116,7 +150,10 @@ Item {
 
     Loader {
         id: detailedLoader
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: root.contentViewWidth
         active: root.viewMode === "detailed" || item !== null
         sourceComponent: Component {
             FileDetailedView {
@@ -167,6 +204,33 @@ Item {
                     sessionState.rowHeightMiller = rowHeight
                     zoomReady = true
                 }
+            }
+        }
+    }
+
+    Rectangle {
+        visible: root.sidePreviewActive
+        x: root.contentViewWidth
+        width: visible ? 1 : 0
+        height: parent.height
+        opacity: root.sidePreviewOpacity
+        color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+    }
+
+    Loader {
+        id: sidePreviewLoader
+        visible: active
+        active: root.sidePreviewActive
+        x: root.contentViewWidth + 1
+        width: root.sidePreviewWidth
+        height: parent.height
+        opacity: root.sidePreviewOpacity
+        sourceComponent: Component {
+            FilePreviewPanel {
+                directoryModel: millerPreviewModel
+                requester: "side-panel"
+                previewFilePath: root.sidePreviewPath
+                previewIsDir: root.sidePreviewIsDir
             }
         }
     }

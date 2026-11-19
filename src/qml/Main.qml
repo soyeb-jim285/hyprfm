@@ -203,6 +203,14 @@ ApplicationWindow {
         root.sidebarWaitingForWidth = false
     }
 
+    // Grid and detailed views share one right-side preview visibility state
+    // per window, matching the sidebar toggle's window-wide behavior.
+    property bool previewPanelVisible: true
+
+    function togglePreviewPanel() {
+        root.previewPanelVisible = !root.previewPanelVisible
+    }
+
     // ── Built-in terminal panel ──────────────────────────────────────────────
     property bool terminalPanelOpen: false
     // The panel is created on first open and kept while hidden, so the shell
@@ -4212,6 +4220,7 @@ ApplicationWindow {
                 searchMode: root.searchMode
                 sidebarVisible: root.sidebarVisible
                 sidebarOnRight: config.sidebarPosition === "right"
+                previewPanelVisible: root.previewPanelVisible
                 showWindowControls: root.useIntegratedWindowControls
                 windowButtonLayout: config.windowButtonLayout
                 currentSearchQuery: root.searchProxyForPane(activePane).searchQuery
@@ -4224,6 +4233,7 @@ ApplicationWindow {
                     if (tabModel.activeTab) tabModel.activeTab.viewMode = mode
                 }
                 onSidebarToggleRequested: root.toggleSidebar()
+                onPreviewPanelToggleRequested: root.togglePreviewPanel()
                 onBackRequested: root.goActivePaneBack()
                 onForwardRequested: root.goActivePaneForward()
                 onUpRequested: root.goActivePaneUp()
@@ -4387,6 +4397,7 @@ ApplicationWindow {
                                     ? "" : root.paneBaseModel("primary").loadError
                                 viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                                 currentPath: root.panePath("primary")
+                                previewPanelVisible: root.previewPanelVisible
 
                                 onInteractionStarted: root.setActivePane("primary")
                                 onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("primary", filePath, isDirectory)
@@ -4485,6 +4496,7 @@ ApplicationWindow {
                                         ? "" : root.paneBaseModel("secondary").loadError
                                     viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                                     currentPath: root.panePath("secondary")
+                                    previewPanelVisible: root.previewPanelVisible
 
                                     onInteractionStarted: root.setActivePane("secondary")
                                     onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("secondary", filePath, isDirectory)
