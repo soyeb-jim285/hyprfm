@@ -314,7 +314,7 @@ install is needed there.
 | `Ctrl+2` | Miller column view |
 | `Ctrl+3` | Detailed view |
 | `Ctrl+4` | Compact view |
-| `Ctrl+Scroll` | Resize interface text over sidebar/file columns; zoom content over a preview |
+| `Ctrl+Scroll` | Resize interface text over sidebar/file columns (Grid icons keep their size; the cells grow with the text); zoom content over a preview |
 | `Ctrl++` / `Ctrl+-` / `Ctrl+0` | Increase / decrease / reset interface text size; in a focused preview they zoom the preview instead |
 | `Ctrl+Shift+Scroll` | Resize Grid icons, or row height in Compact, Detailed and Miller; Grid icons also `Ctrl+Alt++` / `Ctrl+Alt+-`, and `Ctrl+Alt+0` to reset |
 | `Space` | Quick preview |

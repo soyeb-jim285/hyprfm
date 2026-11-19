@@ -108,7 +108,8 @@ GridView {
         : Math.max(1, Math.floor(width / targetCellSize))
     // Two lines of the label font, so a larger desktop font does not get
     // clipped: 32 px was exactly two lines at 10 pt and nothing more.
-    readonly property int labelHeight: Math.round(32 * Theme.uiScale)
+    readonly property int labelHeight: Math.round(baseLabelHeight * Theme.uiScale)
+    readonly property int baseLabelHeight: 32
     // Ask for exactly the size the icon is drawn at. A fixed 96 was being
     // stretched to iconSize (~229 at seven columns on a 1080p window), and
     // 32 px buckets still shrank a 96 px render to 87, which blurred thin
@@ -127,8 +128,14 @@ GridView {
 
     // Spare width is shared out between the columns.
     cellWidth: compactMode ? compactColumnWidth : Math.floor(width / effectiveColumnCount)
-    cellHeight: compactMode ? Math.max(rowHeight, Math.ceil(nameMetrics.height) + 8) : targetCellSize
-    readonly property int iconSize: compactMode ? Math.max(16, rowHeight - 8) : cellHeight - 8 - labelHeight - 5  // 8px top, 0px gap, 5px bottom
+    // The zoom step (Ctrl+Shift+Wheel) sizes the icon: the cell's height at the
+    // 10 pt label. Larger interface text (Ctrl+Wheel) makes the cell taller by
+    // what the label gains, as Strata's Icons view does, rather than taking
+    // that room from the icon -- which shrank icons as the text grew.
+    cellHeight: compactMode ? Math.max(rowHeight, Math.ceil(nameMetrics.height) + 8)
+                            : targetCellSize + labelHeight - baseLabelHeight
+    readonly property int iconSize: compactMode ? Math.max(16, rowHeight - 8)
+                                                : targetCellSize - 8 - baseLabelHeight - 5  // 8px top, 0px gap, 5px bottom
 
     focus: visible
     keyNavigationEnabled: false

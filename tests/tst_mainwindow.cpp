@@ -632,6 +632,54 @@ private slots:
         QTRY_COMPARE(grid->property("columnCount").toInt(), 7);
     }
 
+    // Ctrl+Wheel over the Icons view sizes the text only: a bigger label makes
+    // the cell taller instead of shrinking the icon (it used to shrink as the
+    // text grew, and grow back as it shrank). Ctrl+Shift+Wheel sizes icons.
+    void testIconsKeepTheirSizeWhenInterfaceTextGrows()
+    {
+        App app;
+        QVERIFY(app.load());
+        for (const char *name : {"alpha.txt", "beta.txt", "gamma.txt"})
+            QVERIFY(QFile(app.home.path() + "/" + name).open(QIODevice::WriteOnly));
+        app.tabModel->activeTab()->navigateTo(app.home.path());
+        app.tabModel->activeTab()->setViewMode("grid");
+        auto *config = qobject_cast<ConfigManager *>(app.engine.rootContext()->contextProperty("config").value<QObject *>());
+        QVERIFY(config);
+        config->saveSettings({{"fontSize", 10}});
+        auto *container = app.item("primaryFileView");
+        QVERIFY(container);
+        QTRY_VERIFY(container->property("gridViewItem").value<QQuickItem *>());
+        auto *grid = container->property("gridViewItem").value<QQuickItem *>();
+        QTRY_VERIFY(grid->property("count").toInt() >= 3);
+        const QPoint point = app.center(grid);
+        auto ctrlWheel = [&](int notches, Qt::KeyboardModifiers mods) {
+            for (int i = 0; i < qAbs(notches); ++i) {
+                QWheelEvent wheel(point, app.window->mapToGlobal(point), {}, QPoint(0, notches > 0 ? 120 : -120),
+                                  Qt::NoButton, mods, Qt::NoScrollPhase, false);
+                QCoreApplication::sendEvent(app.window, &wheel);
+            }
+        };
+        const int icon = grid->property("iconSize").toInt();
+        const int label = grid->property("labelHeight").toInt();
+        const qreal cell = grid->property("cellHeight").toReal();
+
+        ctrlWheel(4, Qt::ControlModifier);                       // text 10 -> 14 pt
+        QTRY_COMPARE(config->fontSize(), 14.0);
+        QTRY_VERIFY(grid->property("labelHeight").toInt() > label);
+        QCOMPARE(grid->property("iconSize").toInt(), icon);
+        QCOMPARE(grid->property("cellHeight").toReal(),
+                 cell + grid->property("labelHeight").toInt() - label);
+
+        ctrlWheel(-6, Qt::ControlModifier);                      // 14 -> 8 pt
+        QTRY_COMPARE(config->fontSize(), 8.0);
+        QTRY_COMPARE(grid->property("labelHeight").toInt(), label);
+        QCOMPARE(grid->property("iconSize").toInt(), icon);
+
+        ctrlWheel(1, Qt::ControlModifier | Qt::ShiftModifier);   // icons, not text
+        QTRY_VERIFY(grid->property("iconSize").toInt() > icon);
+        QCOMPARE(config->fontSize(), 8.0);
+    }
+
     void testPdfAndTablePreviewZoom_data()
     {
         QTest::addColumn<bool>("quick");
