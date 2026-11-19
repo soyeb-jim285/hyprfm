@@ -248,7 +248,7 @@ Run these from the checkout after `git submodule update --init --recursive`:
 
 ```bash
 # KDE runtime and SDK (once); use either native flatpak-builder or org.flatpak.Builder.
-flatpak install --user flathub org.kde.Platform//6.9 org.kde.Sdk//6.9
+flatpak install --user flathub org.kde.Platform//6.11 org.kde.Sdk//6.11
 ./scripts/build-flatpak-local.sh
 flatpak install --user ./build/packages/HyprFM-testing-x86_64.flatpak
 flatpak run --branch=testing io.github.soyeb_jim285.HyprFM

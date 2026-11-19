@@ -15,7 +15,7 @@
 
 app-id: io.github.soyeb_jim285.HyprFM
 runtime: org.kde.Platform
-runtime-version: '6.9'
+runtime-version: '6.11'
 sdk: org.kde.Sdk
 command: hyprfm
 
