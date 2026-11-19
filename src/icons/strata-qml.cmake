@@ -43,6 +43,7 @@ set(HYPRFM_STRATA_QML_OVERRIDES
     IconMaximize.qml
     IconMinus.qml
     IconMonitor.qml
+    IconMoon.qml
     IconMusic.qml
     IconPackageOpen.qml
     IconPalette.qml
@@ -54,13 +55,16 @@ set(HYPRFM_STRATA_QML_OVERRIDES
     IconPlus.qml
     IconPrinter.qml
     IconRefreshCw.qml
+    IconRocket.qml
     IconScissors.qml
     IconSearch.qml
     IconSettings.qml
     IconSkipBack.qml
     IconSkipForward.qml
     IconSlidersH.qml
+    IconSquare.qml
     IconSquareSplitHorizontal.qml
+    IconSun.qml
     IconTerminal.qml
     IconTrash.qml
     IconTriangleAlert.qml

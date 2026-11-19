@@ -23,8 +23,12 @@ file_icon_colors = "brand" # or "theme"
 
 The palette threshold, translucent folder fill, stroke scaling and file-icon
 palette resolution follow Strata's `src/assets.rs`. Compatible HyprFM QML icon
-types wrap the bundled Lucide artwork; controls with no Strata counterpart keep
-their existing vector icon. All imported SVGs can also be requested by their
+types wrap the bundled Lucide artwork. Strata has no sun, moon, rocket or square,
+so `actions/strata-sun.svg`, `strata-moon.svg`, `strata-rocket.svg` and
+`strata-square.svg` are HyprFM's own (the same Lucide shapes as the vector
+icons, in Strata's SVG form): every interface icon is drawn in the same colour,
+which `tst_mainwindow` checks. `scripts/import-strata-icons.py` leaves them in
+place and maps them like the rest. All imported SVGs can also be requested by their
 `strata-*` names from the icon image provider. System application logos continue
 to resolve through installed icon packs.
 

@@ -74,6 +74,7 @@
     <file alias="actions/strata-minus-symbolic.svg">strata/actions/strata-minus-symbolic.svg</file>
     <file alias="actions/strata-minus.svg">strata/actions/strata-minus.svg</file>
     <file alias="actions/strata-monitor.svg">strata/actions/strata-monitor.svg</file>
+    <file alias="actions/strata-moon.svg">strata/actions/strata-moon.svg</file>
     <file alias="actions/strata-music-2.svg">strata/actions/strata-music-2.svg</file>
     <file alias="actions/strata-network.svg">strata/actions/strata-network.svg</file>
     <file alias="actions/strata-nixos.svg">strata/actions/strata-nixos.svg</file>
@@ -92,6 +93,7 @@
     <file alias="actions/strata-printer.svg">strata/actions/strata-printer.svg</file>
     <file alias="actions/strata-proton-drive.svg">strata/actions/strata-proton-drive.svg</file>
     <file alias="actions/strata-refresh.svg">strata/actions/strata-refresh.svg</file>
+    <file alias="actions/strata-rocket.svg">strata/actions/strata-rocket.svg</file>
     <file alias="actions/strata-route.svg">strata/actions/strata-route.svg</file>
     <file alias="actions/strata-scale.svg">strata/actions/strata-scale.svg</file>
     <file alias="actions/strata-scissors.svg">strata/actions/strata-scissors.svg</file>
@@ -106,7 +108,9 @@
     <file alias="actions/strata-skip-forward.svg">strata/actions/strata-skip-forward.svg</file>
     <file alias="actions/strata-sliders-horizontal.svg">strata/actions/strata-sliders-horizontal.svg</file>
     <file alias="actions/strata-smartphone.svg">strata/actions/strata-smartphone.svg</file>
+    <file alias="actions/strata-square.svg">strata/actions/strata-square.svg</file>
     <file alias="actions/strata-stethoscope.svg">strata/actions/strata-stethoscope.svg</file>
+    <file alias="actions/strata-sun.svg">strata/actions/strata-sun.svg</file>
     <file alias="actions/strata-terminal.svg">strata/actions/strata-terminal.svg</file>
     <file alias="actions/strata-trash.svg">strata/actions/strata-trash.svg</file>
     <file alias="actions/strata-triangle-alert.svg">strata/actions/strata-triangle-alert.svg</file>

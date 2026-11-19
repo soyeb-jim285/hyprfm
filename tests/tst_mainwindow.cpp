@@ -8,6 +8,8 @@
 #include <QSignalSpy>
 #include <QGuiApplication>
 #include <QDir>
+#include <QDirIterator>
+#include <QRegularExpression>
 #include <QFile>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -2533,6 +2535,43 @@ private slots:
     // The toolbar's sun/moon button flips between the Light and Dark themes
     // chosen in Settings; an open Settings window follows it and does not
     // save the old theme back on its next change.
+    void testEveryInterfaceIconHasAStrataVersion()
+    {
+        // With the Strata icon theme (the default) icons come from the
+        // Strata set, in the accent colour. One missing there falls back to
+        // a plain text-coloured icon and stands out, as the toolbar's
+        // sun/moon and the Projects breadcrumb's rocket did.
+        QFile mapping(TEST_SOURCE_DIR "/src/qml/strataicons/IconMapping.js");
+        QVERIFY(mapping.open(QIODevice::ReadOnly));
+        const QString strata = QString::fromUtf8(mapping.readAll());
+        static const QRegularExpression use(
+            QStringLiteral(R"re(\b(Icon[A-Z]\w*)\s*\{|iconComponentSource\("(Icon[A-Z]\w*)"\))re"));
+        QStringList missing;
+        int checked = 0;
+        QDirIterator it(TEST_SOURCE_DIR "/src/qml", {"*.qml"}, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next();
+            if (path.contains("/qml/icons/") || path.contains("/qml/strataicons/") || path.contains("/qml/Quill/"))
+                continue;
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            auto matches = use.globalMatch(QString::fromUtf8(file.readAll()));
+            while (matches.hasNext()) {
+                const auto match = matches.next();
+                const QString type = match.captured(1).isEmpty() ? match.captured(2) : match.captured(1);
+                // Git status icons keep their own status colours.
+                if (type.startsWith("IconGit") || !QFile::exists(TEST_SOURCE_DIR "/src/qml/icons/" + type + ".qml"))
+                    continue;
+                ++checked;
+                if (!strata.contains('"' + type + "\": true"))
+                    missing << type + " (" + QFileInfo(path).fileName() + ")";
+            }
+        }
+        missing.removeDuplicates();
+        QVERIFY(checked > 50);
+        QVERIFY2(missing.isEmpty(), qPrintable("No Strata icon for: " + missing.join(", ")));
+    }
+
     void testToolbarDarkModeToggleUsesThePresets()
     {
         App app;
@@ -2552,11 +2591,23 @@ private slots:
         QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to light theme"));
         app.window->grabWindow();
         QTRY_VERIFY(app.center(button).x() > 0);
+        // The sun and moon are Strata icons like the rest of the toolbar,
+        // drawn in the accent colour; plain ones were text-coloured and
+        // stood out (user report).
+        QCOMPARE(config->iconTheme(), QString("Strata"));
+        const auto toggleIconColor = [button] {
+            for (QQuickItem *child : button->childItems())
+                if (child->isVisible() && child->property("effectiveColor").isValid())
+                    return child->property("effectiveColor").value<QColor>();
+            return QColor();
+        };
+        QTRY_COMPARE(toggleIconColor(), theme->accent());
 
         QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
         QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
         QTRY_VERIFY(luminance(theme->base()) > 0.5);
         QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to dark theme"));
+        QTRY_COMPARE(toggleIconColor(), theme->accent());
         QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
         QTRY_COMPARE(config->theme(), QString("rose-pine"));
         QTRY_VERIFY(luminance(theme->base()) < 0.5);
