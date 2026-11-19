@@ -539,7 +539,7 @@ jobs:
           flatpak remote-add --user --if-not-exists flathub \
               https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install -y --user flathub \
-              org.kde.Platform//6.9 org.kde.Sdk//6.9
+              org.kde.Platform//6.11 org.kde.Sdk//6.11
 
       - name: Build Flatpak bundle from this commit
         env:
