@@ -165,6 +165,8 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconGlobe.qml
         qml/icons/IconRocket.qml
         qml/icons/IconSettings.qml
+        qml/icons/IconSun.qml
+        qml/icons/IconMoon.qml
         qml/icons/IconFilter.qml
         qml/icons/IconHardDrive.qml
         qml/icons/IconHardDriveOff.qml

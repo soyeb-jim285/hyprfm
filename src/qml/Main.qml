@@ -1218,6 +1218,17 @@ ApplicationWindow {
         return items
     }
 
+    // Dark Mode, shared by the toolbar's sun/moon toggle and Settings: the
+    // configured dark theme is dark and the light theme light; any other
+    // theme counts by its own background.
+    readonly property bool darkModeActive: config.theme === config.darkTheme
+        || (config.theme !== config.lightTheme && Theme.isDark)
+    function toggleDarkMode() {
+        const target = root.darkModeActive ? config.lightTheme : config.darkTheme
+        if (target && target !== config.theme)
+            config.saveSettings({ theme: target })
+    }
+
     function currentOrSelectedDirectoryPath() {
         var items = root.getSelectedItems(root.activePane)
         if (items.length === 1 && items[0].isDir)
@@ -4236,6 +4247,8 @@ ApplicationWindow {
                 onConnectRemoteRequested: root.openRemoteConnectDialog()
                 onSettingsRequested: root.openSettingsPanel()
                 onKeyboardShortcutsRequested: root.openKeyboardShortcutsDialog()
+                darkMode: root.darkModeActive
+                onDarkModeToggleRequested: root.toggleDarkMode()
                 onCloseRequested: root.close()
                 onMinimizeRequested: root.showMinimized()
                 onMaximizeRequested: root.visibility === Window.Maximized ? root.showNormal() : root.showMaximized()

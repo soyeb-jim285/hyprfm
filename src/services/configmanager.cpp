@@ -751,8 +751,9 @@ QString ConfigManager::documentedConfigTemplate()
 # light/dark preference (catppuccin-latte / catppuccin-mocha).
 # theme = "catppuccin-mocha"
 
-# The pair the Dark Mode switch in Settings flips between. Point them at any
-# two themes; a script can also just rewrite "theme" above and HyprFM reloads.
+# The pair Dark Mode flips between: the sun/moon button in the toolbar or the
+# switch in Settings. Point them at any two themes; a script can also just
+# rewrite "theme" above and HyprFM reloads.
 light_theme = "catppuccin-latte"
 dark_theme = "catppuccin-mocha"
 

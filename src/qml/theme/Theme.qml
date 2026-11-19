@@ -6,6 +6,8 @@ QtObject {
     id: root
 
     property color base: theme.base
+    // Whether the loaded theme reads as dark (relative luminance of its base).
+    readonly property bool isDark: 0.2126 * base.r + 0.7152 * base.g + 0.0722 * base.b < 0.5
     property color mantle: theme.mantle
     property color crust: theme.crust
     property color surface: theme.surface

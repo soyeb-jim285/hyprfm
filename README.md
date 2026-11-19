@@ -388,8 +388,8 @@ Config lives at `~/.config/hyprfm/config.toml`. On first run HyprFM writes it fu
 [general]
 # theme = "catppuccin-mocha"   # active theme; filename in themes/ without .toml
                                # "pywal" follows ~/.cache/wal/colors.json live
-light_theme = "catppuccin-latte"  # the Dark Mode switch in Settings flips
-dark_theme = "catppuccin-mocha"   # between these two
+light_theme = "catppuccin-latte"  # the toolbar sun/moon button and the Dark
+dark_theme = "catppuccin-mocha"   # Mode switch in Settings flip between these
 icon_theme = "Strata"          # bundled icons; installed icon packs also work
 file_icon_colors = "brand"      # Strata file icons: brand | theme
 font_family = ""               # UI font; empty = desktop font
@@ -514,8 +514,8 @@ Themes reload live on save.
 
 ### Light and dark
 
-Name two themes as a pair and the Dark Mode switch in Settings flips between
-them:
+Name two themes as a pair, and the sun/moon button in the toolbar (or the Dark
+Mode switch in Settings) flips between them:
 
 ```toml
 [general]

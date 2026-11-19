@@ -79,7 +79,9 @@ Window {
     property bool draftAutoRefreshIcons: config.autoRefreshIcons
     property string draftIconTheme: config.iconTheme
     property string draftFileIconColors: config.fileIconColors
-    property bool draftDarkMode: true
+    // Same rule as Main.qml darkModeActive, for the theme being edited.
+    readonly property bool draftDarkMode: draftTheme === draftDarkTheme
+        || (draftTheme !== draftLightTheme && Theme.isDark)
     property bool draftShowHidden: currentShowHidden
     property bool draftHiddenLast: config.hiddenLast
     property bool draftGridFixedColumns: config.gridFixedColumns
@@ -248,14 +250,19 @@ Window {
     property var lightThemeOptions: []
     property var darkThemeOptions: []
 
-    function isDarkTheme(themeName) {
-        return (0.2126 * Theme.base.r + 0.7152 * Theme.base.g
-                + 0.0722 * Theme.base.b) < 0.5
-    }
-
     function setDraftTheme(themeName) {
         draftTheme = themeName
-        draftDarkMode = isDarkTheme(themeName)
+    }
+
+    // The toolbar's Dark Mode toggle can change the theme while this window
+    // is open. Follow it, or the next change made here would save the old
+    // theme back over it.
+    Connections {
+        target: config
+        function onConfigChanged() {
+            if (root.draftTheme !== config.theme)
+                root.draftTheme = config.theme
+        }
     }
 
     function bindAppearancePreview() {
@@ -329,7 +336,6 @@ Window {
         syncingFromConfig = true
         try {
             draftTheme = config.theme
-            draftDarkMode = isDarkTheme(draftTheme)
             themeOptions = buildOptions(availableThemeValues, draftTheme, "catppuccin-mocha")
             draftLightTheme = config.lightTheme
             draftDarkTheme = config.darkTheme
@@ -546,8 +552,11 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 Q.Toggle {
+                    objectName: "darkModeSwitch"
                     label: ""
-                    checked: root.draftDarkMode
+                    // Toggle assigns checked itself on click, which would drop a
+                    // plain binding; Binding keeps it following draftDarkMode.
+                    Binding on checked { value: root.draftDarkMode }
                     onToggled: (value) => {
                         root.setDraftTheme(value ? root.draftDarkTheme : root.draftLightTheme)
                         root.applySettingsNow()
@@ -583,7 +592,7 @@ Window {
             // element reasserts itself whenever draftTheme changes, which is
             // what the Dark Mode switch does without touching the dropdown.
             Text {
-                text: "The Dark Mode switch above flips between these two."
+                text: "The Dark Mode switch above and the sun/moon button in the toolbar flip between these two."
                 color: Theme.subtext
                 font.pointSize: Theme.fontSmall
                 wrapMode: Text.WordWrap

@@ -2522,6 +2522,73 @@ private slots:
         statusBar->setProperty("diskFree", -1.0);
         QTRY_VERIFY(!meter->isVisible());
     }
+
+    // ── Light and dark ─────────────────────────────────────────────────
+
+    static qreal luminance(const QColor &color)
+    {
+        return 0.2126 * color.redF() + 0.7152 * color.greenF() + 0.0722 * color.blueF();
+    }
+
+    // The toolbar's sun/moon button flips between the Light and Dark themes
+    // chosen in Settings; an open Settings window follows it and does not
+    // save the old theme back on its next change.
+    void testToolbarDarkModeToggleUsesThePresets()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *config = qobject_cast<ConfigManager *>(app.engine.rootContext()->contextProperty("config").value<QObject *>());
+        auto *theme = app.engine.rootContext()->contextProperty("theme").value<ThemeLoader *>();
+        QVERIFY(config && theme);
+        // main.cpp reloads the theme whenever the config changes; the harness does not.
+        QObject::connect(config, &ConfigManager::configChanged, theme, [config, theme] {
+            theme->loadTheme(config->theme(), {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+        });
+        config->saveSettings({{"lightTheme", "rose-pine-dawn"}, {"darkTheme", "rose-pine"}, {"theme", "rose-pine"}});
+        QTRY_COMPARE(config->theme(), QString("rose-pine"));
+        auto *button = app.item("darkModeButton");
+        QVERIFY(button);
+        QTRY_VERIFY(button->isVisible());
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to light theme"));
+        app.window->grabWindow();
+        QTRY_VERIFY(app.center(button).x() > 0);
+
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
+        QTRY_VERIFY(luminance(theme->base()) > 0.5);
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to dark theme"));
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine"));
+        QTRY_VERIFY(luminance(theme->base()) < 0.5);
+
+        // A theme outside the pair counts by its own background.
+        config->saveSettings({{"theme", "dracula"}});
+        QTRY_COMPARE(config->theme(), QString("dracula"));
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to light theme"));
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
+
+        // Settings shows the same state and keeps up with the toolbar.
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
+        auto *panel = app.window->findChild<QObject *>("settingsPanel");
+        QVERIFY(panel);
+        QTRY_VERIFY(panel->findChild<QObject *>("darkModeSwitch"));
+        auto *darkSwitch = panel->findChild<QObject *>("darkModeSwitch");
+        QTRY_VERIFY(!darkSwitch->property("checked").toBool());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine"));
+        QTRY_VERIFY(darkSwitch->property("checked").toBool());
+        QVERIFY(QMetaObject::invokeMethod(panel, "applySettingsNow"));
+        QTest::qWait(50);
+        QCOMPARE(config->theme(), QString("rose-pine"));
+
+        // And its own switch still flips the pair.
+        darkSwitch->setProperty("checked", false);
+        QVERIFY(QMetaObject::invokeMethod(darkSwitch, "toggled", Q_ARG(bool, false)));
+        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
+        QTRY_VERIFY(!darkSwitch->property("checked").toBool());
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to dark theme"));
+    }
 };
 
 QTEST_MAIN(TestMainWindow)
