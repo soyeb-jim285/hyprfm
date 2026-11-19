@@ -1216,16 +1216,24 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(d, "reject"));
         QTRY_VERIFY(!d->isVisible());
 
-        QQuickItem *focused = app.window->activeFocusItem();
-        QVERIFY2(focused, "nothing has keyboard focus after closing the overlay");
-        bool insideView = false;
-        for (QQuickItem *i = focused; i; i = i->parentItem())
-            if (i == view)
-                insideView = true;
-        QVERIFY2(insideView, qPrintable(QStringLiteral("focus went to %1, not the file view")
-                                            .arg(focused->objectName().isEmpty()
-                                                 ? QString::fromLatin1(focused->metaObject()->className())
-                                                 : focused->objectName())));
+        // The pane takes focus back on the next event-loop turn
+        // (scheduleActivePaneFocus), so wait for it rather than look at once:
+        // under a loaded machine the check could run before that turn.
+        auto focusInsideView = [&] {
+            for (QQuickItem *i = app.window->activeFocusItem(); i; i = i->parentItem())
+                if (i == view)
+                    return true;
+            return false;
+        };
+        auto focusName = [&] {
+            QQuickItem *focused = app.window->activeFocusItem();
+            if (!focused)
+                return QStringLiteral("nothing");
+            return focused->objectName().isEmpty()
+                ? QString::fromLatin1(focused->metaObject()->className()) : focused->objectName();
+        };
+        QTRY_VERIFY2_WITH_TIMEOUT(focusInsideView(), qPrintable(QStringLiteral("focus went to %1, not the file view")
+                                                                    .arg(focusName())), 2000);
     }
 
     void testHomeQuickAccessClosesSplit_data()
