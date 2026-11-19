@@ -20,6 +20,7 @@ Rectangle {
     property bool searchMode: false
     property bool sidebarVisible: true
     property bool sidebarOnRight: false
+    property bool previewPanelVisible: true
     property string currentViewMode: "grid"
     property bool showWindowControls: false
     property string windowButtonLayout: ":minimize,maximize,close"
@@ -66,6 +67,7 @@ Rectangle {
     signal searchEnterPressed()
     signal searchNavigateDown()
     signal sidebarToggleRequested()
+    signal previewPanelToggleRequested()
     signal backRequested()
     signal forwardRequested()
     signal upRequested()
@@ -451,6 +453,24 @@ Rectangle {
                             color: Theme.error
                             font.pointSize: Theme.fontNormal
                             font.weight: Font.Medium
+                        }
+                    }
+                }
+
+                HoverRect {
+                    objectName: "previewPanelToggleButton"
+                    width: Theme.controlSize; height: Theme.controlSize
+                    visible: !root.filePickerMode && !root.searchMode
+                        && (root.currentViewMode === "grid" || root.currentViewMode === "detailed")
+                    tooltip: root.previewPanelVisible ? "Hide preview panel" : "Show preview panel"
+                    onClicked: root.previewPanelToggleRequested()
+                    IconPanelLeft {
+                        anchors.centerIn: parent
+                        size: 18
+                        color: parent.hovered ? Theme.accent : Theme.text
+                        transform: Scale {
+                            origin.x: 9
+                            xScale: -1
                         }
                     }
                 }
