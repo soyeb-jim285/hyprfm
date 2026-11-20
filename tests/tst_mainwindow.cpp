@@ -2537,8 +2537,10 @@ private slots:
             : inputKind == "completion" ? target.left(target.size() - 3)
             : target + "/";
         input->setProperty("text", typed);
-        if (inputKind == "completion")
+        if (inputKind == "completion") {
+            QTRY_VERIFY(!bar->property("suggestionItems").toList().isEmpty());
             QTest::keyClick(app.window, Qt::Key_Tab);
+        }
         QTest::keyClick(app.window, Qt::Key_Return);
         const QString expected = inputKind == "tilde" ? QDir::homePath() : target;
         QTRY_COMPARE(QDir::cleanPath(inputKind == "secondary" ? tab->secondaryCurrentPath() : tab->currentPath()), expected);
@@ -2586,7 +2588,7 @@ private slots:
         QQuickItem *bar = app.item("breadcrumb");
         QTRY_VERIFY(bar->property("editMode").toBool());
         app.item("pathInput")->setProperty("text", app.home.path() + "/D");
-        QCOMPARE(bar->property("suggestionItems").toList().size(), 3);
+        QTRY_COMPARE(bar->property("suggestionItems").toList().size(), 3);
         QTest::keyClick(app.window, Qt::Key_Down);
         QTest::keyClick(app.window, Qt::Key_Down);
         QTest::keyClick(app.window, Qt::Key_Down);
@@ -2604,7 +2606,11 @@ private slots:
         QTest::keyClick(app.window, Qt::Key_L, Qt::ControlModifier);
         QQuickItem *bar = app.item("breadcrumb");
         QTRY_VERIFY(bar->property("editMode").toBool());
+        auto *fsModel = app.owner.findChild<FileSystemModel *>();
+        QVERIFY(fsModel);
+        QSignalSpy suggestions(fsModel, &FileSystemModel::pathSuggestionsReady);
         app.item("pathInput")->setProperty("text", "~/");
+        QTRY_VERIFY(!suggestions.isEmpty());
         const QVariantList items = bar->property("suggestionItems").toList();
         if (items.isEmpty())
             QSKIP("home has no folders to suggest");
