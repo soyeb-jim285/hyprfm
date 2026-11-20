@@ -64,6 +64,7 @@ private:
     static bool hasHostExecutable(const QString &name);
     static bool inFlatpakSandbox();
     static bool udisks2Reachable();
+    static bool gvfsReachable(const QString &service);
 
     QVariantMap toVariant(const Dependency &dep) const;
 
