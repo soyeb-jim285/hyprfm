@@ -3448,8 +3448,8 @@ private slots:
         QQuickItem *fill = App::findItem(statusBar, QStringLiteral("diskMeterFill"));
         QVERIFY(meter && fill);
 
-        // A real directory is on screen, so the meter is showing something.
-        QVERIFY(meter->isVisible());
+        // A real directory is on screen. Its capacity arrives from a worker.
+        QTRY_VERIFY(meter->isVisible());
 
         auto show = [&](qint64 total, qint64 free) {
             statusBar->setProperty("diskTotal", double(total));
