@@ -345,8 +345,9 @@ reusing a tab already showing that pair.
 Only the first window keeps the saved session (tabs + window geometry);
 additional windows start fresh and leave it untouched.
 
-Home (toolbar button, shortcut or sidebar entry) closes an open split and
-shows Home across the full window.
+Home in the sidebar, other quick-access entries, bookmarks, and mounted drives
+open in the active pane and keep an existing split. The toolbar Home button
+and Home keyboard shortcut show Home across the full window.
 
 Right-click empty space in a split and choose **Save Split to Bookmarks**, or
 select two folders and choose **Save as Split View**, to keep both paths and
