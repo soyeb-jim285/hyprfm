@@ -111,6 +111,7 @@ const ShortcutSpec kShortcutSpecs[] = {
     {"grid_view", "Grid View"},
     {"miller_view", "Miller View"},
     {"detailed_view", "Detailed View"},
+    {"compact_view", "Compact View"},
     {"select_all", "Select All"},
     {"undo", "Undo"},
     {"redo", "Redo"},
@@ -204,6 +205,7 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"grid_view", "Ctrl+1"},
     {"miller_view", "Ctrl+2"},
     {"detailed_view", "Ctrl+3"},
+    {"compact_view", "Ctrl+4"},
     {"select_all", "Ctrl+A"},
     {"undo", "Ctrl+Z"},
     {"redo", "Ctrl+Shift+Z"},
@@ -309,7 +311,7 @@ QStringList ConfigManager::availableMonospaceFonts() const
 
 QStringList ConfigManager::availableIconThemes() const
 {
-    QStringList themes;
+    QStringList themes{QStringLiteral("Strata")};
     for (const QString &baseDir : iconSearchDirs()) {
         QDir dir(baseDir);
         const QFileInfoList entries = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
@@ -332,12 +334,10 @@ void ConfigManager::setDefaults()
     m_lightTheme = QStringLiteral("catppuccin-latte");
     m_darkTheme = QStringLiteral("catppuccin-mocha");
     m_theme = m_desktopDark ? m_darkTheme : m_lightTheme;
-    // Empty means "whatever the desktop is set to": main.cpp asks the XDG
-    // portal and hands the answer to setIconThemeFallback(). Adwaita ships 47
-    // mimetype icons, so pinning it here made most file types fall through to
-    // whichever fallback theme happened to have them - and it stays the
-    // built-in answer for a desktop that publishes nothing.
-    m_iconTheme.clear();
+    // The bundled pack is the default; an explicitly empty setting still
+    // follows the desktop through setIconThemeFallback().
+    m_iconTheme = QStringLiteral("Strata");
+    m_fileIconColors = QStringLiteral("brand");
     m_autoRefreshIcons = true;
     m_iconThemeFallback = QStringLiteral("Adwaita");
     m_fontFamily.clear();
@@ -346,6 +346,7 @@ void ConfigManager::setDefaults()
     m_showHidden = false;
     m_hiddenLast = false;
     m_gridFixedColumns = false;
+    m_compactFullNames = false;
     m_rightClickToEditPath = true;
     m_singleClickOpensFolders = false;
     m_builtinTerminal = false;
@@ -448,6 +449,8 @@ void ConfigManager::loadConfig()
             m_theme = QString::fromStdString(*v);
         if (auto v = config["general"]["auto_refresh_icons"].value<bool>())
             m_autoRefreshIcons = *v;
+        if (auto v = config["general"]["file_icon_colors"].value<std::string>())
+            m_fileIconColors = *v == "theme" ? QStringLiteral("theme") : QStringLiteral("brand");
         if (auto v = config["general"]["icon_theme"].value<std::string>())
             m_iconTheme = QString::fromStdString(*v);
         if (auto v = config["general"]["font_family"].value<std::string>())
@@ -467,6 +470,8 @@ void ConfigManager::loadConfig()
             m_hiddenLast = *v;
         if (auto v = config["general"]["grid_fixed_columns"].value<bool>())
             m_gridFixedColumns = *v;
+        if (auto v = config["general"]["compact_full_names"].value<bool>())
+            m_compactFullNames = *v;
         if (auto v = config["general"]["right_click_to_edit_path"].value<bool>())
             m_rightClickToEditPath = *v;
         if (auto v = config["general"]["single_click_opens_folders"].value<bool>())
@@ -746,15 +751,18 @@ QString ConfigManager::documentedConfigTemplate()
 # light/dark preference (catppuccin-latte / catppuccin-mocha).
 # theme = "catppuccin-mocha"
 
-# The pair the Dark Mode switch in Settings flips between. Point them at any
-# two themes; a script can also just rewrite "theme" above and HyprFM reloads.
+# The pair Dark Mode flips between: the sun/moon button in the toolbar or the
+# switch in Settings. Point them at any two themes; a script can also just
+# rewrite "theme" above and HyprFM reloads.
 light_theme = "catppuccin-latte"
 dark_theme = "catppuccin-mocha"
 
-# Icon theme for file and folder icons (a directory name under
-# /usr/share/icons or ~/.icons). Toolbar and sidebar icons are built in.
-# Empty follows the desktop's own icon theme.
-icon_theme = ""
+# Built-in Strata icons follow the color theme. Other values select an
+# installed icon pack under /usr/share/icons or ~/.icons; empty follows the desktop.
+icon_theme = "Strata"
+
+# Strata file icons: "brand" = Mocha/Latte palettes, "theme" = theme accent.
+file_icon_colors = "brand"
 
 # Reload icons when the selected local icon theme is updated.
 auto_refresh_icons = true
@@ -762,7 +770,7 @@ auto_refresh_icons = true
 # UI font family. Empty = the desktop's UI font.
 font_family = ""
 
-# View for new tabs: "grid" | "detailed" | "miller"
+# View for new tabs: "grid" | "detailed" | "miller" | "compact"
 default_view = "grid"
 
 # Split view orientation when opening a folder in split: "vertical" | "horizontal"
@@ -778,6 +786,9 @@ hidden_last = false
 # window, instead of keeping their size and fitting as many columns as the
 # window allows.
 grid_fixed_columns = false
+
+# Show complete filenames in Compact view instead of limiting column width.
+compact_full_names = false
 
 # Right click anywhere on the address bar enters path edit mode with the
 # whole path selected, just like Ctrl+L. Left clicks on breadcrumb segments
@@ -953,6 +964,7 @@ current_fraction = 0.5
 # grid_view         = "Ctrl+1"
 # miller_view       = "Ctrl+2"
 # detailed_view     = "Ctrl+3"
+# compact_view      = "Ctrl+4"
 # select_all        = "Ctrl+A"
 # undo              = "Ctrl+Z"
 # redo              = "Ctrl+Shift+Z"
@@ -1060,6 +1072,7 @@ void ConfigManager::saveListColumns(const QStringList &columns, const QVariantMa
 QString ConfigManager::theme() const { return m_theme; }
 QString ConfigManager::lightTheme() const { return m_lightTheme; }
 QString ConfigManager::darkTheme() const { return m_darkTheme; }
+QString ConfigManager::fileIconColors() const { return m_fileIconColors; }
 QString ConfigManager::iconTheme() const
 {
     return m_iconTheme.isEmpty() ? m_iconThemeFallback : m_iconTheme;
@@ -1082,6 +1095,7 @@ bool ConfigManager::showHidden() const { return m_showHidden; }
 
 bool ConfigManager::hiddenLast() const { return m_hiddenLast; }
 bool ConfigManager::gridFixedColumns() const { return m_gridFixedColumns; }
+bool ConfigManager::compactFullNames() const { return m_compactFullNames; }
 bool ConfigManager::rightClickToEditPath() const { return m_rightClickToEditPath; }
 bool ConfigManager::singleClickOpensFolders() const { return m_singleClickOpensFolders; }
 bool ConfigManager::builtinTerminal() const { return m_builtinTerminal; }
@@ -1314,6 +1328,10 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
         m_autoRefreshIcons = settings.value("autoRefreshIcons").toBool();
         general.insert_or_assign("auto_refresh_icons", m_autoRefreshIcons);
     }
+    if (settings.contains("fileIconColors")) {
+        m_fileIconColors = settings.value("fileIconColors").toString() == "theme" ? "theme" : "brand";
+        general.insert_or_assign("file_icon_colors", m_fileIconColors.toStdString());
+    }
     if (settings.contains("iconTheme")) {
         const QString iconTheme = settings.value("iconTheme").toString().trimmed();
         if (!iconTheme.isEmpty()) {
@@ -1345,6 +1363,10 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
         general.insert_or_assign("hidden_last", m_hiddenLast);
     }
 
+    if (settings.contains("compactFullNames")) {
+        m_compactFullNames = settings.value("compactFullNames").toBool();
+        general.insert_or_assign("compact_full_names", m_compactFullNames);
+    }
     if (settings.contains("gridFixedColumns")) {
         m_gridFixedColumns = settings.value("gridFixedColumns").toBool();
         general.insert_or_assign("grid_fixed_columns", m_gridFixedColumns);

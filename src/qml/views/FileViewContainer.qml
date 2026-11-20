@@ -4,7 +4,7 @@ import HyprFM
 Item {
     id: root
 
-    // "grid" | "detailed" | "miller"
+    // "grid" | "detailed" | "miller" | "compact"
     property string viewMode: "grid"
     property var fileModel: null
     property string currentPath: ""
@@ -23,11 +23,12 @@ Item {
     signal sortRequested(string column, bool ascending)
 
     // Each view is built the first time it is shown and kept after that, so
-    // switching back is instant. Building all three at startup cost the time
-    // of two views nobody was looking at. Null until built.
+    // switching back is instant without building unseen views at startup.
+    // Null until built.
     readonly property var gridViewItem: gridLoader.item
     readonly property var detailedViewItem: detailedLoader.item
     readonly property var millerViewItem: millerLoader.item
+    readonly property var compactViewItem: compactLoader.item
 
     function clamp(value, lo, hi) {
         return Math.max(lo, Math.min(hi, value))
@@ -46,6 +47,9 @@ Item {
         const grid = root.gridViewItem
         const detailed = root.detailedViewItem
         const miller = root.millerViewItem
+        const compact = root.compactViewItem
+        if (compact && sessionState.rowHeightCompact > 0)
+            compact.rowHeight = clamp(sessionState.rowHeightCompact, compact.minRowHeight, compact.maxRowHeight)
         if (grid && sessionState.gridColumns > 0)
             grid.columnCount = clamp(sessionState.gridColumns, grid.minColumns, grid.maxColumns)
         if (detailed && sessionState.rowHeightDetailed > 0)
@@ -61,11 +65,13 @@ Item {
         function onGridColumnsChanged() { root.applyZoom() }
         function onRowHeightDetailedChanged() { root.applyZoom() }
         function onRowHeightMillerChanged() { root.applyZoom() }
+        function onRowHeightCompactChanged() { root.applyZoom() }
     }
 
     function activeView() {
         if (viewMode === "grid") return gridViewItem
         if (viewMode === "miller") return millerViewItem
+        if (viewMode === "compact") return compactViewItem
         return detailedViewItem
     }
 
@@ -165,6 +171,34 @@ Item {
                     if (sessionState.rowHeightMiller > 0)
                         rowHeight = root.clamp(sessionState.rowHeightMiller, minRowHeight, maxRowHeight)
                     sessionState.rowHeightMiller = rowHeight
+                    zoomReady = true
+                }
+            }
+        }
+    }
+
+    Loader {
+        id: compactLoader
+        anchors.fill: parent
+        active: root.viewMode === "compact" || item !== null
+        sourceComponent: Component {
+            FileCompactView {
+                property bool zoomReady: false
+                visible: root.viewMode === "compact"
+                model: visible ? root.fileModel : null
+                currentPath: root.currentPath
+
+                onFileActivated: (fp, isDir) => root.fileActivated(fp, isDir)
+                onContextMenuRequested: (fp, isDir, pos) => root.contextMenuRequested(fp, isDir, pos)
+                onSelectedIndicesChanged: root.selectionChanged()
+                onInteractionStarted: root.interactionStarted()
+                onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
+                onRowHeightChanged: if (zoomReady) sessionState.rowHeightCompact = rowHeight
+
+                Component.onCompleted: {
+                    if (sessionState.rowHeightCompact > 0)
+                        rowHeight = root.clamp(sessionState.rowHeightCompact, minRowHeight, maxRowHeight)
+                    sessionState.rowHeightCompact = rowHeight
                     zoomReady = true
                 }
             }

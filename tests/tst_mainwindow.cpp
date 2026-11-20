@@ -8,6 +8,8 @@
 #include <QSignalSpy>
 #include <QGuiApplication>
 #include <QDir>
+#include <QDirIterator>
+#include <QRegularExpression>
 #include <QFile>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -216,6 +218,58 @@ class TestMainWindow : public QObject
     };
 
 private slots:
+    void testStrataIconsUpdateWithThemeAndAppearancePreference()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *config = app.engine.rootContext()->contextProperty("config").value<ConfigManager *>();
+        auto *theme = app.engine.rootContext()->contextProperty("theme").value<ThemeLoader *>();
+        QVERIFY(config && theme);
+        QCOMPARE(config->iconTheme(), QString("Strata"));
+        auto *container = app.item("primaryFileView");
+        QVERIFY(container);
+        std::function<QQuickItem *(QQuickItem *)> interfaceIcon = [&](QQuickItem *parent) -> QQuickItem * {
+            if (parent->property("iconName").toString() == "strata-icons") return parent;
+            for (auto *child : parent->childItems())
+                if (auto *found = interfaceIcon(child)) return found;
+            return nullptr;
+        };
+        auto *button = app.item("viewModeButton_grid");
+        QVERIFY(button);
+        QTRY_VERIFY(interfaceIcon(button));
+        QTRY_COMPARE(interfaceIcon(button)->property("effectiveColor").value<QColor>(), theme->accent());
+        auto *grid = container->property("gridViewItem").value<QQuickItem *>();
+        QVERIFY(grid);
+        std::function<QQuickItem *(QQuickItem *)> fileImage = [&](QQuickItem *parent) -> QQuickItem * {
+            for (auto *child : parent->childItems()) {
+                if (child->property("source").toString().startsWith("image://icon/")
+                    && child->property("source").toString().contains("name=")) return child;
+                if (auto *found = fileImage(child)) return found;
+            }
+            return nullptr;
+        };
+        QTRY_VERIFY(fileImage(grid));
+        auto *image = fileImage(grid);
+        const QString oldSource = image->property("source").toString();
+        theme->loadTheme("strata-nord-light", {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+        QTRY_VERIFY(image->property("source").toString() != oldSource);
+        QVERIFY(image->property("source").toString().contains("fileColors=brand"));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
+        auto *panel = app.window->findChild<QObject *>("settingsPanel");
+        QVERIFY(panel);
+        auto *choice = panel->findChild<QObject *>("fileIconColors");
+        QVERIFY(choice);
+        QVERIFY(QMetaObject::invokeMethod(choice, "selected", Q_ARG(int, 1), Q_ARG(QString, QString("Theme accent"))));
+        QTRY_COMPARE(config->fileIconColors(), QString("theme"));
+        QTRY_VERIFY(image->property("source").toString().contains("fileColors=theme"));
+        // The saved preference also initializes a view created later.
+        app.tabModel->activeTab()->setViewMode("compact");
+        QTRY_VERIFY(container->property("compactViewItem").value<QQuickItem *>());
+        auto *compact = container->property("compactViewItem").value<QQuickItem *>();
+        QTRY_VERIFY(fileImage(compact));
+        QVERIFY(fileImage(compact)->property("source").toString().contains("fileColors=theme"));
+    }
+
     void testFilePickerSaveAndOverwrite()
     {
         QTemporaryDir dir;
@@ -252,6 +306,35 @@ private slots:
             QTRY_VERIFY(!app.item("pickerOverwrite")->isVisible());
             app.window->grabWindow().save(qEnvironmentVariable("HYPRFM_TEST_GRAB"));
         }
+    }
+
+    void testFilePickerCompactViewSelectsAFile()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("chosen.txt");
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        App app;
+        QDir().mkpath(app.home.path() + "/.config/hyprfm");
+        QFile cfg(app.home.path() + "/.config/hyprfm/config.toml");
+        QVERIFY(cfg.open(QIODevice::WriteOnly));
+        cfg.write("[general]\ndefault_view = \"compact\"\n");
+        cfg.close();
+        QVERIFY(app.load(QJsonObject{{"mode", "open"}, {"current_folder", dir.path()}}));
+        QCOMPARE(app.window->property("viewMode").toString(), QString("compact"));
+        auto *container = app.item("pickerFiles");
+        QVERIFY(container);
+        QTRY_VERIFY(container->property("compactViewItem").value<QQuickItem *>());
+        auto *compact = container->property("compactViewItem").value<QQuickItem *>();
+        QTRY_COMPARE(compact->property("count").toInt(), 1);
+        compact->forceActiveFocus();
+        QTest::keyClick(app.window, Qt::Key_Home);
+        QTRY_COMPARE(app.window->property("selectedPaths").toStringList(), QStringList{path});
+        QSignalSpy complete(app.picker, &FilePicker::completed);
+        QVERIFY(QMetaObject::invokeMethod(app.window, "submit", Q_ARG(QVariant, false)));
+        QCOMPARE(complete.size(), 1);
+        QCOMPARE(complete.first().first().toJsonObject().value("uris").toArray().first().toString(), QUrl::fromLocalFile(path).toString());
     }
 
     void testFilePickerCompactLayoutAndControls()
@@ -1187,49 +1270,103 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(d, "reject"));
         QTRY_VERIFY(!d->isVisible());
 
-        QQuickItem *focused = app.window->activeFocusItem();
-        QVERIFY2(focused, "nothing has keyboard focus after closing the overlay");
-        bool insideView = false;
-        for (QQuickItem *i = focused; i; i = i->parentItem())
-            if (i == view)
-                insideView = true;
-        QVERIFY2(insideView, qPrintable(QStringLiteral("focus went to %1, not the file view")
-                                            .arg(focused->objectName().isEmpty()
-                                                 ? QString::fromLatin1(focused->metaObject()->className())
-                                                 : focused->objectName())));
+        // The pane takes focus back on the next event-loop turn
+        // (scheduleActivePaneFocus), so wait for it rather than look at once:
+        // under a loaded machine the check could run before that turn.
+        auto focusInsideView = [&] {
+            for (QQuickItem *i = app.window->activeFocusItem(); i; i = i->parentItem())
+                if (i == view)
+                    return true;
+            return false;
+        };
+        auto focusName = [&] {
+            QQuickItem *focused = app.window->activeFocusItem();
+            if (!focused)
+                return QStringLiteral("nothing");
+            return focused->objectName().isEmpty()
+                ? QString::fromLatin1(focused->metaObject()->className()) : focused->objectName();
+        };
+        QTRY_VERIFY2_WITH_TIMEOUT(focusInsideView(), qPrintable(QStringLiteral("focus went to %1, not the file view")
+                                                                    .arg(focusName())), 2000);
     }
 
-    void testHomeQuickAccessClosesSplit_data()
+    void testSidebarNavigationKeepsSplit_data()
     {
         QTest::addColumn<QString>("orientation");
-        QTest::newRow("top-bottom") << QStringLiteral("horizontal");
-        QTest::newRow("side-by-side") << QStringLiteral("vertical");
+        QTest::addColumn<QString>("pane");
+        QTest::addColumn<QString>("viewMode");
+        for (const QString &orientation : {QString("vertical"), QString("horizontal")})
+            for (const QString &pane : {QString("primary"), QString("secondary")})
+                for (const QString &view : {QString("grid"), QString("detailed"), QString("miller"), QString("compact")})
+                    QTest::newRow(qPrintable(orientation + "-" + pane + "-" + view)) << orientation << pane << view;
     }
 
-    void testHomeQuickAccessClosesSplit()
+    void testSidebarNavigationKeepsSplit()
     {
         QFETCH(QString, orientation);
+        QFETCH(QString, pane);
+        QFETCH(QString, viewMode);
         App app;
         QVERIFY(app.load());
         auto *tab = app.tabModel->activeTab();
         QVERIFY(tab);
-        const QString other = app.home.path() + "/other";
-        QVERIFY(QDir().mkpath(other));
-        tab->resetSecondaryTo(other);
+        const QString primary = app.home.path() + "/primary";
+        const QString secondary = app.home.path() + "/secondary";
+        const QString bookmark = app.home.path() + "/bookmark";
+        const QString mounted = app.home.path() + "/mounted";
+        for (const auto &path : {primary, secondary, bookmark, mounted})
+            QVERIFY(QDir().mkpath(path));
+        tab->navigateTo(primary);
+        tab->resetSecondaryTo(secondary);
+        tab->setViewMode(viewMode);
         tab->setSplitOrientation(orientation);
         tab->setSplitViewEnabled(true);
-        QObject *root = app.window->contentItem()->parent();
-        QVERIFY(root);
-        QVERIFY(QMetaObject::invokeMethod(root, "setActivePane", Q_ARG(QVariant, QStringLiteral("secondary"))));
-
-        QQuickItem *home = app.item("quickAccess_Home");
-        QVERIFY(home);
-        QTest::mouseClick(app.window, Qt::LeftButton, {},
-                         home->mapToScene(QPointF(home->width() / 2, home->height() / 2)).toPoint());
-        QTRY_VERIFY(!tab->splitViewEnabled());
-        QCOMPARE(tab->currentPath(), QDir::homePath());
-        QCOMPARE(root->property("activePane").toString(), QStringLiteral("primary"));
-        QTRY_COMPARE(root->property("splitTransitionProgress").toReal(), 0.0);
+        app.bookmarks->setBookmarks({QDir::homePath(), bookmark});
+        QObject *root = app.window;
+        const QString other = pane == "primary" ? "secondary" : "primary";
+        const QString starting = pane == "primary" ? primary : secondary;
+        const auto currentPath = [&]() { return pane == "primary" ? tab->currentPath() : tab->secondaryCurrentPath(); };
+        auto *sidebar = app.item("sidebarPanel");
+        QVERIFY(sidebar);
+        for (const QString &action : {QString("Home"), QString("Recents"), QString("Trash"), QString("Network"),
+                                      QString("Pictures"), QString("Downloads"), QString("bookmark_0"),
+                                      QString("bookmark_1"), QString("mounted")}) {
+            QVERIFY(QMetaObject::invokeMethod(root, "setActivePane", Q_ARG(QVariant, pane)));
+            QVERIFY(QMetaObject::invokeMethod(root, "navigateActivePaneTo", Q_ARG(QVariant, starting)));
+            // Sidebar navigation must leave the other pane's search intact.
+            QVERIFY(QMetaObject::invokeMethod(root, "setPaneSearchMode", Q_ARG(QVariant, other), Q_ARG(QVariant, true)));
+            QVERIFY(QMetaObject::invokeMethod(root, "openSearch"));
+            QString expected = starting;
+            if (action == "mounted") {
+                expected = mounted;
+                auto *devices = app.engine.rootContext()->contextProperty("devices").value<QObject *>();
+                QVERIFY(devices);
+                // Exercise the sidebar's mount-completion route without mounting a real device.
+                QVERIFY(QMetaObject::invokeMethod(devices, "deviceMounted", Q_ARG(QString, mounted)));
+            } else {
+                auto *item = app.item(action.startsWith("bookmark_") ? action : "quickAccess_" + action);
+                QVERIFY2(item, qPrintable(action));
+                QTRY_VERIFY(item->isVisible());
+                if (action.startsWith("bookmark_"))
+                    expected = action == "bookmark_0" ? QDir::homePath() : bookmark;
+                else if (action != "Recents")
+                    expected = item->property("resolvedPath").toString();
+                QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(item));
+            }
+            QTRY_VERIFY2(tab->splitViewEnabled(), qPrintable(action));
+            QTRY_COMPARE(currentPath(), expected);
+            QCOMPARE(tab->currentPath(), pane == "primary" ? expected : primary);
+            QCOMPARE(tab->secondaryCurrentPath(), pane == "secondary" ? expected : secondary);
+            QCOMPARE(root->property("activePane").toString(), pane);
+            QCOMPARE(tab->splitOrientation(), orientation);
+            QCOMPARE(tab->viewMode(), viewMode);
+            const char *searchProperty = pane == "primary" ? "primaryPaneSearchMode" : "secondaryPaneSearchMode";
+            const char *otherSearchProperty = pane == "primary" ? "secondaryPaneSearchMode" : "primaryPaneSearchMode";
+            const char *recentsProperty = pane == "primary" ? "primaryPaneIsRecents" : "secondaryPaneIsRecents";
+            QTRY_VERIFY2(!root->property(searchProperty).toBool(), qPrintable(action));
+            QVERIFY2(root->property(otherSearchProperty).toBool(), qPrintable(action));
+            QCOMPARE(root->property(recentsProperty).toBool(), action == "Recents");
+        }
     }
 
     // Both panes get about half the space in either orientation. The
@@ -1543,9 +1680,9 @@ private slots:
         }
     }
 
-    // Only Home itself closes a split. Reaching ~ any other way (breadcrumb,
-    // typed path, a terminal link) navigates the active pane and keeps it.
-    void testOnlyHomeClosesTheSplit()
+    // The explicit toolbar/keyboard Home action closes the split; ordinary
+    // navigation to ~, including the sidebar, keeps the other pane.
+    void testExplicitHomeActionClosesTheSplit()
     {
         App app;
         QVERIFY(app.load());
@@ -1859,6 +1996,7 @@ private slots:
         app.sessionState->setGridColumns(4);
         app.sessionState->setRowHeightDetailed(40);
         app.sessionState->setRowHeightMiller(48);
+        app.sessionState->setRowHeightCompact(34);
         QTRY_COMPARE(grid->property("columnCount").toInt(), 4);
 
         // A view built later has to start at the saved zoom, and must not
@@ -1873,6 +2011,13 @@ private slots:
         QTRY_COMPARE(miller->property("rowHeight").toInt(), 48);
         QCOMPARE(app.sessionState->rowHeightDetailed(), 40);
         QCOMPARE(app.sessionState->rowHeightMiller(), 48);
+        app.tabModel->activeTab()->setViewMode(QStringLiteral("compact"));
+        QTRY_VERIFY(subView("compactViewItem"));
+        QQuickItem *compact = subView("compactViewItem");
+        QTRY_COMPARE(compact->property("rowHeight").toInt(), 34);
+        app.sessionState->setRowHeightCompact(99);
+        QTRY_COMPARE(compact->property("rowHeight").toInt(), 56);
+        QCOMPARE(app.sessionState->rowHeightCompact(), 56);
 
         // Once built, a hidden view keeps following the saved zoom.
         app.sessionState->setRowHeightDetailed(36);
@@ -1940,7 +2085,7 @@ private slots:
         };
         QObject *gridSlider = slider("iconSizeGrid");
         QVERIFY(gridSlider);
-        QVERIFY(slider("iconSizeDetailed") && slider("iconSizeMiller"));
+        QVERIFY(slider("iconSizeDetailed") && slider("iconSizeMiller") && slider("iconSizeCompact"));
 
         // Dragging the grid slider one notch right must enlarge the icons,
         // which means one column fewer.
@@ -1953,6 +2098,7 @@ private slots:
         app.sessionState->setGridColumns(3);
         app.sessionState->setRowHeightDetailed(50);
         app.sessionState->setRowHeightMiller(24);
+        app.sessionState->setRowHeightCompact(32);
         QVERIFY(QMetaObject::invokeMethod(panel, "showSection", Q_ARG(QVariant, 0)));
         QVERIFY(QMetaObject::invokeMethod(panel, "showSection", Q_ARG(QVariant, 1)));
 
@@ -1962,10 +2108,11 @@ private slots:
                  reloadedGrid->property("gridSpan").toInt() - 3);
         QCOMPARE(slider("iconSizeDetailed")->property("value").toInt(), 50);
         QCOMPARE(slider("iconSizeMiller")->property("value").toInt(), 24);
+        QCOMPARE(slider("iconSizeCompact")->property("value").toInt(), 32);
     }
 
     // Switching view used to be reachable only through Ctrl+1/2/3 or the
-    // right-click menu. The toolbar now carries the three modes, and the
+    // right-click menu. The toolbar now carries the four modes, and the
     // active one is marked.
     void testToolbarViewSwitcherChangesTheViewMode()
     {
@@ -1980,7 +2127,8 @@ private slots:
         QQuickItem *grid = button("grid");
         QQuickItem *miller = button("miller");
         QQuickItem *detailed = button("detailed");
-        QVERIFY(grid && miller && detailed);
+        QQuickItem *compact = button("compact");
+        QVERIFY(grid && miller && detailed && compact);
         QVERIFY(grid->property("current").toBool());
         QVERIFY(!miller->property("current").toBool());
 
@@ -1992,11 +2140,68 @@ private slots:
         QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(detailed));
         QTRY_COMPARE(app.tabModel->activeTab()->viewMode(), QString("detailed"));
 
-        // The Ctrl+1/2/3 shortcuts still drive the same state, so the toolbar
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(compact));
+        QTRY_COMPARE(app.tabModel->activeTab()->viewMode(), QString("compact"));
+        QTRY_VERIFY(compact->property("current").toBool());
+
+        // The Ctrl+1/2/3/4 shortcuts still drive the same state, so the toolbar
         // has to follow them too.
         QTest::keyClick(app.window, Qt::Key_1, Qt::ControlModifier);
         QTRY_COMPARE(app.tabModel->activeTab()->viewMode(), QString("grid"));
         QTRY_VERIFY(grid->property("current").toBool());
+        QTest::keyClick(app.window, Qt::Key_4, Qt::ControlModifier);
+        QTRY_COMPARE(app.tabModel->activeTab()->viewMode(), QString("compact"));
+        QTRY_VERIFY(compact->property("current").toBool());
+    }
+
+    void testCompactViewRoutesSelectionInSplitPanesAndSearch()
+    {
+        App app;
+        const QString directory = app.home.path() + "/files";
+        QVERIFY(QDir().mkpath(directory));
+        const QString path = directory + "/compact-match.txt";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        tab->navigateTo(directory);
+        tab->setViewMode("compact");
+        auto *container = app.item("primaryFileView");
+        QVERIFY(container);
+        QTRY_VERIFY(container->property("compactViewItem").value<QQuickItem *>());
+        auto *compact = container->property("compactViewItem").value<QQuickItem *>();
+        QTRY_COMPARE(compact->property("count").toInt(), 1);
+        QVERIFY(QMetaObject::invokeMethod(compact, "focusPath", Q_ARG(QVariant, path), Q_ARG(QVariant, true)));
+        QVariant paths;
+        QVERIFY(QMetaObject::invokeMethod(app.window, "getSelectedPaths", Q_RETURN_ARG(QVariant, paths),
+                                          Q_ARG(QVariant, QStringLiteral("primary"))));
+        QCOMPARE(paths.toStringList(), QStringList{path});
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "toggleSplitView"));
+        QTRY_VERIFY(tab->splitViewEnabled());
+        QVariant secondary;
+        QVERIFY(QMetaObject::invokeMethod(app.window, "fileViewForPane", Q_RETURN_ARG(QVariant, secondary),
+                                          Q_ARG(QVariant, QStringLiteral("secondary"))));
+        auto *secondaryContainer = secondary.value<QObject *>();
+        QVERIFY(secondaryContainer);
+        QTRY_VERIFY(secondaryContainer->property("compactViewItem").value<QQuickItem *>());
+        auto *other = secondaryContainer->property("compactViewItem").value<QQuickItem *>();
+        QTRY_COMPARE(other->property("count").toInt(), 1);
+        app.sessionState->setRowHeightCompact(36);
+        QTRY_COMPARE(compact->property("rowHeight").toInt(), 36);
+        QCOMPARE(other->property("rowHeight").toInt(), 36);
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "setActivePane", Q_ARG(QVariant, QStringLiteral("primary"))));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSearch"));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "handleSearchQuery", Q_ARG(QVariant, QStringLiteral("compact-match"))));
+        QTRY_COMPARE(app.searchProxy->rowCount(), 1);
+        QTRY_COMPARE(compact->property("count").toInt(), 1);
+        QCOMPARE(compact->property("highlightQuery").toString(), QString("compact-match"));
+        QVERIFY(QMetaObject::invokeMethod(compact, "focusPath", Q_ARG(QVariant, path), Q_ARG(QVariant, true)));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "getSelectedPaths", Q_RETURN_ARG(QVariant, paths),
+                                          Q_ARG(QVariant, QStringLiteral("primary"))));
+        QCOMPARE(paths.toStringList(), QStringList{path});
     }
 
     void testToolbarSplitButtonsSelectTheirOrientation()
@@ -2284,10 +2489,156 @@ private slots:
         show(1000, 50);
         QTRY_VERIFY(qAbs(fill->width() - meter->width() * 0.95) < 1.0);
 
+        // Yellow from 75% used, red from 90%, whatever the theme: its own
+        // warning and error colours where they are yellow and red, amber and
+        // red where not. The user's light theme has a teal warning; darcula
+        // a blue error; tokyo-night a cyan warning.
+        auto *theme = app.engine.rootContext()->contextProperty("theme").value<ThemeLoader *>();
+        QVERIFY(theme);
+        const auto yellow = [](const QColor &c) {
+            return c.hslHueF() >= 0 && c.hslHueF() * 360 >= 25 && c.hslHueF() * 360 <= 70;
+        };
+        const auto red = [](const QColor &c) {
+            return c.hslHueF() >= 0 && (c.hslHueF() * 360 >= 330 || c.hslHueF() * 360 <= 20);
+        };
+        const QList<std::pair<QString, QColor>> themes = {
+            {"strata-omarchy-light", QColor("#006b82")}, {"strata-material-darker", QColor("#ffcb6b")},
+            {"strata-tokyo-night", QColor("#0db9d7")}, {"strata-darcula", QColor("#bbb529")}};
+        for (const auto &[name, ownWarning] : themes) {
+            theme->loadTheme(name, {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+            QCOMPARE(theme->warning(), ownWarning);
+            show(1000, 200);
+            QTRY_VERIFY2(yellow(tierColour()), qPrintable(name + " " + tierColour().name()));
+            show(1000, 50);
+            QTRY_VERIFY2(red(tierColour()), qPrintable(name + " " + tierColour().name()));
+        }
+        // A theme whose colours already fit keeps them.
+        theme->loadTheme(QStringLiteral("strata-material-darker"), {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+        show(1000, 200);
+        QTRY_COMPARE(tierColour(), QColor("#ffcb6b"));
+        show(1000, 50);
+        QTRY_COMPARE(tierColour(), QColor("#F07178"));
+
         // Nothing to report hides the meter rather than drawing an empty bar.
         statusBar->setProperty("diskTotal", -1.0);
         statusBar->setProperty("diskFree", -1.0);
         QTRY_VERIFY(!meter->isVisible());
+    }
+
+    // ── Light and dark ─────────────────────────────────────────────────
+
+    static qreal luminance(const QColor &color)
+    {
+        return 0.2126 * color.redF() + 0.7152 * color.greenF() + 0.0722 * color.blueF();
+    }
+
+    // The toolbar's sun/moon button flips between the Light and Dark themes
+    // chosen in Settings; an open Settings window follows it and does not
+    // save the old theme back on its next change.
+    void testEveryInterfaceIconHasAStrataVersion()
+    {
+        // With the Strata icon theme (the default) icons come from the
+        // Strata set, in the accent colour. One missing there falls back to
+        // a plain text-coloured icon and stands out, as the toolbar's
+        // sun/moon and the Projects breadcrumb's rocket did.
+        QFile mapping(TEST_SOURCE_DIR "/src/qml/strataicons/IconMapping.js");
+        QVERIFY(mapping.open(QIODevice::ReadOnly));
+        const QString strata = QString::fromUtf8(mapping.readAll());
+        static const QRegularExpression use(
+            QStringLiteral(R"re(\b(Icon[A-Z]\w*)\s*\{|iconComponentSource\("(Icon[A-Z]\w*)"\))re"));
+        QStringList missing;
+        int checked = 0;
+        QDirIterator it(TEST_SOURCE_DIR "/src/qml", {"*.qml"}, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next();
+            if (path.contains("/qml/icons/") || path.contains("/qml/strataicons/") || path.contains("/qml/Quill/"))
+                continue;
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            auto matches = use.globalMatch(QString::fromUtf8(file.readAll()));
+            while (matches.hasNext()) {
+                const auto match = matches.next();
+                const QString type = match.captured(1).isEmpty() ? match.captured(2) : match.captured(1);
+                // Git status icons keep their own status colours.
+                if (type.startsWith("IconGit") || !QFile::exists(TEST_SOURCE_DIR "/src/qml/icons/" + type + ".qml"))
+                    continue;
+                ++checked;
+                if (!strata.contains('"' + type + "\": true"))
+                    missing << type + " (" + QFileInfo(path).fileName() + ")";
+            }
+        }
+        missing.removeDuplicates();
+        QVERIFY(checked > 50);
+        QVERIFY2(missing.isEmpty(), qPrintable("No Strata icon for: " + missing.join(", ")));
+    }
+
+    void testToolbarDarkModeToggleUsesThePresets()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *config = qobject_cast<ConfigManager *>(app.engine.rootContext()->contextProperty("config").value<QObject *>());
+        auto *theme = app.engine.rootContext()->contextProperty("theme").value<ThemeLoader *>();
+        QVERIFY(config && theme);
+        // main.cpp reloads the theme whenever the config changes; the harness does not.
+        QObject::connect(config, &ConfigManager::configChanged, theme, [config, theme] {
+            theme->loadTheme(config->theme(), {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+        });
+        config->saveSettings({{"lightTheme", "rose-pine-dawn"}, {"darkTheme", "rose-pine"}, {"theme", "rose-pine"}});
+        QTRY_COMPARE(config->theme(), QString("rose-pine"));
+        auto *button = app.item("darkModeButton");
+        QVERIFY(button);
+        QTRY_VERIFY(button->isVisible());
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to light theme"));
+        app.window->grabWindow();
+        QTRY_VERIFY(app.center(button).x() > 0);
+        // The sun and moon are Strata icons like the rest of the toolbar,
+        // drawn in the accent colour; plain ones were text-coloured and
+        // stood out (user report).
+        QCOMPARE(config->iconTheme(), QString("Strata"));
+        const auto toggleIconColor = [button] {
+            for (QQuickItem *child : button->childItems())
+                if (child->isVisible() && child->property("effectiveColor").isValid())
+                    return child->property("effectiveColor").value<QColor>();
+            return QColor();
+        };
+        QTRY_COMPARE(toggleIconColor(), theme->accent());
+
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
+        QTRY_VERIFY(luminance(theme->base()) > 0.5);
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to dark theme"));
+        QTRY_COMPARE(toggleIconColor(), theme->accent());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine"));
+        QTRY_VERIFY(luminance(theme->base()) < 0.5);
+
+        // A theme outside the pair counts by its own background.
+        config->saveSettings({{"theme", "dracula"}});
+        QTRY_COMPARE(config->theme(), QString("dracula"));
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to light theme"));
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
+
+        // Settings shows the same state and keeps up with the toolbar.
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
+        auto *panel = app.window->findChild<QObject *>("settingsPanel");
+        QVERIFY(panel);
+        QTRY_VERIFY(panel->findChild<QObject *>("darkModeSwitch"));
+        auto *darkSwitch = panel->findChild<QObject *>("darkModeSwitch");
+        QTRY_VERIFY(!darkSwitch->property("checked").toBool());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine"));
+        QTRY_VERIFY(darkSwitch->property("checked").toBool());
+        QVERIFY(QMetaObject::invokeMethod(panel, "applySettingsNow"));
+        QTest::qWait(50);
+        QCOMPARE(config->theme(), QString("rose-pine"));
+
+        // And its own switch still flips the pair.
+        darkSwitch->setProperty("checked", false);
+        QVERIFY(QMetaObject::invokeMethod(darkSwitch, "toggled", Q_ARG(bool, false)));
+        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
+        QTRY_VERIFY(!darkSwitch->property("checked").toBool());
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to dark theme"));
     }
 };
 

@@ -133,9 +133,28 @@ target_compile_definitions(tst_detailedview PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_detailedview PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
+target_link_libraries(tst_detailedview PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
 add_dependencies(tst_detailedview hyprfm)
 add_test(NAME tst_detailedview COMMAND tst_detailedview)
+
+add_executable(tst_compactview tst_compactview.cpp viewharness.h
+    ${CMAKE_SOURCE_DIR}/src/services/configmanager.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/themeloader.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/filesystemmodel.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/xdgtrash.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/gitstatusservice.cpp
+)
+target_include_directories(tst_compactview PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/third_party
+)
+target_compile_definitions(tst_compactview PRIVATE
+    TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
+)
+target_link_libraries(tst_compactview PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
+add_dependencies(tst_compactview hyprfm)
+add_test(NAME tst_compactview COMMAND tst_compactview)
 
 add_executable(tst_millerview tst_millerview.cpp viewharness.h
     ${CMAKE_SOURCE_DIR}/src/services/configmanager.cpp
@@ -155,7 +174,7 @@ target_compile_definitions(tst_millerview PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_millerview PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
+target_link_libraries(tst_millerview PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
 add_dependencies(tst_millerview hyprfm)
 add_test(NAME tst_millerview COMMAND tst_millerview)
 
@@ -177,7 +196,7 @@ target_compile_definitions(tst_viewcontextmenu PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_viewcontextmenu PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
+target_link_libraries(tst_viewcontextmenu PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
 add_dependencies(tst_viewcontextmenu hyprfm)
 add_test(NAME tst_viewcontextmenu COMMAND tst_viewcontextmenu)
 
@@ -192,7 +211,7 @@ add_executable(tst_toolbar tst_toolbar.cpp viewharness.h
 )
 target_include_directories(tst_toolbar PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/third_party)
 target_compile_definitions(tst_toolbar PRIVATE TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}" TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src")
-target_link_libraries(tst_toolbar PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
+target_link_libraries(tst_toolbar PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
 add_dependencies(tst_toolbar hyprfm)
 add_test(NAME tst_toolbar COMMAND tst_toolbar)
 
@@ -237,7 +256,7 @@ target_compile_definitions(tst_mainwindow PRIVATE
     HYPRFM_DATA_DIR="${CMAKE_SOURCE_DIR}"
     HYPRFM_VERSION="test"
 )
-target_link_libraries(tst_mainwindow PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Svg Qt6::Network Qt6::Concurrent PkgConfig::GIO)
+target_link_libraries(tst_mainwindow PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Svg Qt6::Network Qt6::Concurrent PkgConfig::GIO)
 add_dependencies(tst_mainwindow hyprfm)
 qt_add_resources(tst_mainwindow "logo"
     PREFIX "/HyprFM"
@@ -247,7 +266,7 @@ add_test(NAME tst_mainwindow COMMAND tst_mainwindow)
 
 # The view harnesses assert pixel geometry of a 900x600 window; a tiling
 # compositor would resize a real window, so keep them on the offscreen QPA.
-set_tests_properties(tst_detailedview tst_millerview tst_viewcontextmenu tst_toolbar tst_mainwindow PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+set_tests_properties(tst_compactview tst_detailedview tst_millerview tst_viewcontextmenu tst_toolbar tst_mainwindow PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 add_executable(tst_devicemodel tst_devicemodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/devicemodel.cpp
@@ -258,7 +277,7 @@ add_test(NAME tst_devicemodel COMMAND tst_devicemodel)
 
 add_executable(tst_iconprovider tst_iconprovider.cpp)
 target_include_directories(tst_iconprovider PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_iconprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick Qt6::Svg)
+target_link_libraries(tst_iconprovider PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick)
 add_test(NAME tst_iconprovider COMMAND tst_iconprovider)
 
 add_executable(tst_thumbnailprovider tst_thumbnailprovider.cpp

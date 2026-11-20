@@ -884,11 +884,7 @@ Rectangle {
                                         : 0
                                     height: parent.height
                                     radius: parent.radius
-                                    color: model.usagePercent >= 90
-                                        ? Theme.error
-                                        : model.usagePercent >= 75
-                                            ? Theme.warning
-                                            : Theme.accent
+                                    color: Theme.usageColor(model.usagePercent)
                                 }
                             }
                         }

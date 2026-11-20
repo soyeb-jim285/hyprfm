@@ -525,6 +525,12 @@ ApplicationWindow {
             primaryPaneIsRecents = enabled
     }
 
+    function openRecents() {
+        root.clearPaneSearch(activePane)
+        root.setPaneRecents(activePane, true)
+        root.scheduleActivePaneFocus()
+    }
+
     function searchProxyForPane(pane) {
         return pane === "secondary" ? splitSearchProxy : searchProxy
     }
@@ -632,6 +638,7 @@ ApplicationWindow {
         var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
         if (vm === "grid") return view.gridViewItem
         if (vm === "miller") return view.millerViewItem
+        if (vm === "compact") return view.compactViewItem
         return view.detailedViewItem
     }
 
@@ -741,8 +748,8 @@ ApplicationWindow {
         navigatePaneTo(activePane, path)
     }
 
-    // Home (toolbar, shortcut, sidebar) closes a split and shows Home across
-    // the whole window. Other ways of reaching ~ keep the split.
+    // The toolbar/keyboard Home action shows Home across the whole window.
+    // Sidebar destinations use ordinary navigation within the active pane.
     function goHome() {
         if (tabModel.activeTab && splitViewEnabled())
             root.toggleSplitView()
@@ -1209,6 +1216,17 @@ ApplicationWindow {
                 items.push({ path: fp, isDir: isDirectoryFromModel(model, row) })
         }
         return items
+    }
+
+    // Dark Mode, shared by the toolbar's sun/moon toggle and Settings: the
+    // configured dark theme is dark and the light theme light; any other
+    // theme counts by its own background.
+    readonly property bool darkModeActive: config.theme === config.darkTheme
+        || (config.theme !== config.lightTheme && Theme.isDark)
+    function toggleDarkMode() {
+        const target = root.darkModeActive ? config.lightTheme : config.darkTheme
+        if (target && target !== config.theme)
+            config.saveSettings({ theme: target })
     }
 
     function currentOrSelectedDirectoryPath() {
@@ -2250,7 +2268,7 @@ ApplicationWindow {
                                 Image {
                                     id: appChooserIcon
                                     source: modelData.iconName
-                                        ? ("image://icon/" + modelData.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                                        ? Theme.fileIconSource(modelData.iconName, "", 24, false)
                                         : ""
                                     sourceSize: Qt.size(22, 22)
                                     Layout.preferredWidth: 22
@@ -2532,7 +2550,7 @@ ApplicationWindow {
                                 Image {
                                     anchors.centerIn: parent; width: 32; height: 32
                                     source: propertiesDialog.props.iconName
-                                        ? ("image://icon/" + propertiesDialog.props.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                                        ? Theme.fileIconSource(propertiesDialog.props.iconName, propertiesDialog.props.name, 48, false)
                                         : ""
                                     sourceSize: Qt.size(32, 32); smooth: true
                                 }
@@ -2752,7 +2770,7 @@ ApplicationWindow {
                                         Image {
                                             id: owAppIcon
                                             source: modelData.iconName
-                                                ? ("image://icon/" + modelData.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                                                ? Theme.fileIconSource(modelData.iconName, "", 24, false)
                                                 : ""
                                             sourceSize: Qt.size(18, 18)
                                             width: 18; height: 18
@@ -2809,7 +2827,7 @@ ApplicationWindow {
                                         spacing: 6
 
                                         Loader {
-                                            source: "icons/IconSearch.qml"
+                                            source: Theme.iconComponentSource("IconSearch")
                                             width: 14; height: 14
                                             anchors.verticalCenter: parent.verticalCenter
                                             onLoaded: {
@@ -3368,7 +3386,7 @@ ApplicationWindow {
 
                 onOpenRequested: (path) => {
                     if (sidebarItem.isRecents) {
-                        root.setPaneRecents(root.activePane, true)
+                        root.openRecents()
                         return
                     }
 
@@ -3640,6 +3658,11 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcutMap["miller_view"]
         onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "miller" }
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["compact_view"]
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "compact" }
     }
 
     Shortcut {
@@ -4098,12 +4121,7 @@ ApplicationWindow {
                     activeSplitHorizontal: root.isSplitHorizontal
                     trashPath: root.unifiedTrashPath
                     isRecentsView: root.isRecentsView
-                    onBookmarkClicked: (path) => {
-                        if (path === fsModel.homePath())
-                            root.goHome()
-                        else
-                            root.navigateActivePaneTo(path)
-                    }
+                    onBookmarkClicked: path => root.navigateActivePaneTo(path)
                     onSavedSplitClicked: (split) => {
                         root.restoreSavedSplit(split)
                     }
@@ -4125,9 +4143,7 @@ ApplicationWindow {
                         menu.selectedFolderPaths = []
                         menu.popup(position.x, position.y)
                     }
-                    onRecentsClicked: {
-                        root.setPaneRecents(root.activePane, true)
-                    }
+                    onRecentsClicked: root.openRecents()
                     onCollapseClicked: root.toggleSidebar()
                     onFeatureHintRequested: (message) => toast.show(message, "info")
                 }
@@ -4231,6 +4247,8 @@ ApplicationWindow {
                 onConnectRemoteRequested: root.openRemoteConnectDialog()
                 onSettingsRequested: root.openSettingsPanel()
                 onKeyboardShortcutsRequested: root.openKeyboardShortcutsDialog()
+                darkMode: root.darkModeActive
+                onDarkModeToggleRequested: root.toggleDarkMode()
                 onCloseRequested: root.close()
                 onMinimizeRequested: root.showMinimized()
                 onMaximizeRequested: root.visibility === Window.Maximized ? root.showNormal() : root.showMaximized()

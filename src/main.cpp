@@ -973,22 +973,28 @@ int main(int argc, char *argv[])
     // An unset icon theme follows the desktop; Adwaita is the last resort when
     // nothing answers. Resolved inside ConfigManager so QML's config.iconTheme
     // (the ?theme= in every image://icon URL) sees the same answer.
-    config->setIconThemeFallback(desktop.iconTheme.isEmpty() ? QStringLiteral("Adwaita")
-                                                             : desktop.iconTheme);
+    const QString nativeIconTheme = desktop.iconTheme.isEmpty() ? QStringLiteral("Adwaita") : desktop.iconTheme;
+    config->setIconThemeFallback(nativeIconTheme);
 
     // Set icon theme so QIcon::fromTheme() works (e.g. for drag pixmaps)
-    QIcon::setThemeName(config->iconTheme());
+    QIcon::setThemeName(config->iconTheme() == "Strata" ? nativeIconTheme : config->iconTheme());
 
     // Register image providers (keep pointer to IconProvider for DragHelper)
     auto *iconProvider = new IconProvider(config->iconTheme());
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
     engine.addImageProvider("icon", iconProvider);
+    const auto updateIconPalette = [=]() {
+        iconProvider->setPalette(theme->accent(), theme->base(), config->fileIconColors() == "theme");
+    };
+    updateIconPalette();
+    QObject::connect(theme, &ThemeLoader::themeChanged, &app, updateIconPalette);
+    QObject::connect(config, &ConfigManager::configChanged, &app, updateIconPalette);
     engine.addImageProvider("pdfpreview", new PdfPreviewProvider);
 
     DragHelper *dragHelper = new DragHelper(iconProvider, &app);
 
     QObject::connect(config, &ConfigManager::configChanged, [=]() {
-        QIcon::setThemeName(config->iconTheme());
+        QIcon::setThemeName(config->iconTheme() == "Strata" ? nativeIconTheme : config->iconTheme());
         iconProvider->setPrimaryTheme(config->iconTheme());
     });
 
@@ -1108,6 +1114,7 @@ int main(int argc, char *argv[])
         w->sessionState->setGridColumns(session.value("gridColumns").toInt());
         w->sessionState->setRowHeightDetailed(session.value("rowHeightDetailed").toInt());
         w->sessionState->setRowHeightMiller(session.value("rowHeightMiller").toInt());
+        w->sessionState->setRowHeightCompact(session.value("rowHeightCompact").toInt());
 
         const QString homePath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
         TabModel *activeTab = w->tabModel->activeTab();
@@ -1310,6 +1317,7 @@ int main(int argc, char *argv[])
         session["gridColumns"] = sessionWindow->sessionState->gridColumns();
         session["rowHeightDetailed"] = sessionWindow->sessionState->rowHeightDetailed();
         session["rowHeightMiller"] = sessionWindow->sessionState->rowHeightMiller();
+        session["rowHeightCompact"] = sessionWindow->sessionState->rowHeightCompact();
 
         QQuickWindow *win = sessionWindow->window;
         session["windowX"] = win->x();
@@ -1343,6 +1351,7 @@ int main(int argc, char *argv[])
         QObject::connect(sessionWindow->sessionState, &SessionState::gridColumnsChanged, &app, scheduleSessionSave);
         QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightDetailedChanged, &app, scheduleSessionSave);
         QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightMillerChanged, &app, scheduleSessionSave);
+        QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightCompactChanged, &app, scheduleSessionSave);
         QQuickWindow *win = sessionWindow->window;
         QObject::connect(win, &QQuickWindow::xChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::yChanged, &app, scheduleSessionSave);
