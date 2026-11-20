@@ -78,4 +78,5 @@ set(HYPRFM_STRATA_QML_OVERRIDES
     IconVolumeX.qml
     IconX.qml
     IconLayoutList.qml
+    IconEject.qml
 )

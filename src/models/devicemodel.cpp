@@ -1104,6 +1104,15 @@ bool DeviceModel::isUserFuseMount(const QString &fsType, const QString &path, co
     return path.startsWith(prefix) && path.length() > prefix.length();
 }
 
+bool DeviceModel::isUserUnmountable(const QString &mountPoint, bool gioBackend)
+{
+    if (mountPoint.isEmpty() || mountPoint == QLatin1String("/"))
+        return false;
+    return gioBackend
+        || mountPoint.startsWith(QLatin1String("/run/media/"))
+        || mountPoint.startsWith(QLatin1String("/media/"));
+}
+
 void DeviceModel::unmountFuse(const QString &mountPoint, const QString &label)
 {
     QString tool = QStandardPaths::findExecutable(QStringLiteral("fusermount3"),
@@ -1305,6 +1314,8 @@ QVariant DeviceModel::data(const QModelIndex &index, int role) const
         case DeviceBackend::UDisks2:    break;
         }
         return QStringLiteral("udisks2");
+    case UserUnmountableRole:
+        return d.mounted && isUserUnmountable(d.mountPoint, d.backend == DeviceBackend::Gio);
     }
     return {};
 }
@@ -1321,5 +1332,6 @@ QHash<int, QByteArray> DeviceModel::roleNames() const
         {RemovableRole,    "removable"},
         {MountedRole,      "mounted"},
         {BackendRole,      "backend"},
+        {UserUnmountableRole, "userUnmountable"},
     };
 }

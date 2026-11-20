@@ -95,6 +95,41 @@ struct FakeDrives
     }
 };
 
+// Sidebar rows for the mount / unmount buttons: the system root, a USB stick
+// the desktop mounted, an unmounted drive and a phone that needs gvfs-mtp.
+struct FakeSidebarDevices
+{
+    QStandardItemModel devices;
+    FakeSidebarDevices()
+    {
+        devices.setItemRoleNames({{Qt::UserRole + 1, "deviceName"}, {Qt::UserRole + 2, "devicePath"},
+                                  {Qt::UserRole + 3, "mountPoint"}, {Qt::UserRole + 4, "totalSize"},
+                                  {Qt::UserRole + 5, "freeSpace"}, {Qt::UserRole + 6, "usagePercent"},
+                                  {Qt::UserRole + 7, "removable"}, {Qt::UserRole + 8, "mounted"},
+                                  {Qt::UserRole + 9, "backend"}, {Qt::UserRole + 10, "userUnmountable"}});
+        append("System", "/", true, "udisks2", false);
+        append("USB stick", "/run/media/u/USB", true, "udisks2", true);
+        append("Spare", "", false, "udisks2", false);
+        append("Phone", "", false, "mtp-missing", false);
+    }
+    void append(const QString &name, const QString &mount, bool mounted, const QString &backend,
+                bool userUnmountable)
+    {
+        auto *item = new QStandardItem;
+        item->setData(name, Qt::UserRole + 1);
+        item->setData(QStringLiteral("/dev/") + name, Qt::UserRole + 2);
+        item->setData(mount, Qt::UserRole + 3);
+        item->setData(qint64(1000), Qt::UserRole + 4);
+        item->setData(qint64(500), Qt::UserRole + 5);
+        item->setData(50, Qt::UserRole + 6);
+        item->setData(true, Qt::UserRole + 7);
+        item->setData(mounted, Qt::UserRole + 8);
+        item->setData(backend, Qt::UserRole + 9);
+        item->setData(userUnmountable, Qt::UserRole + 10);
+        devices.appendRow(item);
+    }
+};
+
 class TestMainWindow : public QObject
 {
     Q_OBJECT
@@ -2376,6 +2411,59 @@ private slots:
     }
 
     // #69: "Empty Trash" in the sidebar's Trash menu did nothing.
+    void testSidebarSectionHeadersAndDeviceMountButtons()
+    {
+        App app;
+        QVERIFY(app.load());
+        QQuickItem *content = app.window->contentItem();
+        QQuickItem *places = App::findText(content, QStringLiteral("PLACES"));
+        QQuickItem *favourites = App::findText(content, QStringLiteral("FAVOURITES"));
+        QQuickItem *devicesHeader = App::findText(content, QStringLiteral("DEVICES"));
+        QVERIFY(places && favourites && devicesHeader);
+        QVERIFY(places->isVisible() && favourites->isVisible());
+        // No devices yet (the test model defers its scan): no empty DEVICES heading.
+        QVERIFY(!devicesHeader->isVisible());
+
+        FakeSidebarDevices fake;
+        app.engine.rootContext()->setContextProperty("devices", &fake.devices);
+        QTRY_VERIFY(devicesHeader->isVisible());
+        // Places come first, then Favourites, then Devices (once the layout has
+        // placed the heading that just became visible).
+        QTRY_VERIFY(places->mapToScene({0, 0}).y() < favourites->mapToScene({0, 0}).y());
+        QTRY_VERIFY2(favourites->mapToScene({0, 0}).y() < devicesHeader->mapToScene({0, 0}).y(),
+                     qPrintable(QStringLiteral("favourites %1, devices %2")
+                                    .arg(favourites->mapToScene({0, 0}).y())
+                                    .arg(devicesHeader->mapToScene({0, 0}).y())));
+
+        QList<QQuickItem *> buttons;
+        std::function<void(QQuickItem *)> collect = [&](QQuickItem *item) {
+            for (QQuickItem *child : item->childItems()) {
+                if (child->objectName() == QLatin1String("deviceMountButton"))
+                    buttons.append(child);
+                collect(child);
+            }
+        };
+        QTRY_VERIFY((buttons.clear(), collect(content), buttons.size() == 4));
+        const auto buttonFor = [&](const QString &name) -> QQuickItem * {
+            for (QQuickItem *button : std::as_const(buttons))
+                if (button->property("deviceName").toString() == name)
+                    return button;
+            return nullptr;
+        };
+        QQuickItem *system = buttonFor(QStringLiteral("System"));
+        QQuickItem *usb = buttonFor(QStringLiteral("USB stick"));
+        QQuickItem *spare = buttonFor(QStringLiteral("Spare"));
+        QQuickItem *phone = buttonFor(QStringLiteral("Phone"));
+        QVERIFY(system && usb && spare && phone);
+        QVERIFY(!system->isVisible());                       // never unmount /
+        QVERIFY(usb->isVisible());
+        QCOMPARE(usb->property("tooltip").toString(), QStringLiteral("Unmount"));
+        QVERIFY(spare->isVisible());
+        QCOMPARE(spare->property("tooltip").toString(), QStringLiteral("Mount"));
+        QVERIFY(!phone->isVisible());                        // its row click explains gvfs-mtp
+        app.engine.rootContext()->setContextProperty("devices", nullptr);
+    }
+
     void testSidebarEmptyTrashAsksForConfirmation()
     {
         App app;

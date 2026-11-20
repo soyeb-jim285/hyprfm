@@ -36,6 +36,22 @@ Rectangle {
     color: Theme.mantle
     clip: false
 
+    // Section headings: PLACES, FAVOURITES, DEVICES look alike.
+    component SectionHeader: Item {
+        property alias text: headerLabel.text
+        Layout.fillWidth: true
+        Layout.preferredHeight: 25
+        Text {
+            id: headerLabel
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.spacing + 3
+            anchors.verticalCenter: parent.verticalCenter
+            color: Theme.muted
+            font.pointSize: Theme.fontSmall
+            font.weight: Font.DemiBold
+        }
+    }
+
     InterfaceZoom { anchors.fill: parent; z: 20 }
 
     Component { id: iconHome; IconHome { size: 18; color: Theme.subtext } }
@@ -47,6 +63,8 @@ Rectangle {
     Component { id: iconGlobe; IconGlobe { size: 18; color: Theme.subtext } }
     Component { id: iconHardDrive; IconHardDrive { size: 18; color: Theme.subtext } }
     Component { id: iconHardDriveOff; IconHardDriveOff { size: 18; color: Theme.muted } }
+    Component { id: iconMountAction; IconPlay { size: 14; color: Theme.subtext } }
+    Component { id: iconUnmountAction; IconEject { size: 14; color: Theme.subtext } }
     Component { id: iconUsb; IconUsb { size: 18; color: Theme.subtext } }
     Component { id: iconUsbOff; IconUsb { size: 18; color: Theme.muted } }
     Component { id: iconFolder; IconFolder { size: 18; color: Theme.subtext } }
@@ -130,6 +148,8 @@ Rectangle {
                 IconPanelLeft { anchors.centerIn: parent; size: 16; color: Theme.subtext }
             }
         }
+
+        SectionHeader { text: "PLACES" }
 
         // Quick access section
         Column {
@@ -349,19 +369,7 @@ Rectangle {
             }
         }
 
-        Item {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 25
-            Text {
-                anchors.left: parent.left
-                anchors.leftMargin: Theme.spacing + 3
-                anchors.verticalCenter: parent.verticalCenter
-                text: "FAVOURITES"
-                color: Theme.muted
-                font.pointSize: Theme.fontSmall
-                font.weight: Font.DemiBold
-            }
-        }
+        SectionHeader { text: "FAVOURITES" }
 
         // Bookmarks section — drag folders to add, drag items to reorder
         Item {
@@ -796,11 +804,17 @@ Rectangle {
             }
         }
 
+        SectionHeader {
+            text: "DEVICES"
+            visible: deviceRepeater.count > 0
+        }
+
         // Devices section
         Column {
             Layout.fillWidth: true
 
             Repeater {
+                id: deviceRepeater
                 model: devices
 
                 delegate: Rectangle {
@@ -872,6 +886,7 @@ Rectangle {
                         // Right side: name + progress bar
                         Column {
                             width: parent.width - 18 - Theme.spacing
+                                   - (deviceMountButton.visible ? deviceMountButton.width + Theme.spacing : 0)
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 3
 
@@ -941,6 +956,41 @@ Rectangle {
                                 root.featureHintRequested(runtimeFeatures.installHint("deviceMount"))
                             else
                                 devices.mount(index)
+                        }
+                    }
+
+                    // Mount (play, as GNOME Disks) an unmounted device; eject one the
+                    // user mounted (a phone, a cloud/FUSE mount, a drive under /run/media).
+                    // Never / or a fixed mount: model.userUnmountable says which.
+                    HoverRect {
+                        id: deviceMountButton
+                        objectName: "deviceMountButton"
+                        readonly property bool mountAction: !model.mounted
+                        readonly property string deviceName: model.deviceName
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.spacing - 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 24; height: 24
+                        z: 2
+                        visible: mountAction ? model.backend !== "mtp-missing" : model.userUnmountable
+                        tooltip: mountAction ? "Mount" : "Unmount"
+                        Accessible.role: Accessible.Button
+                        Accessible.name: (mountAction ? "Mount " : "Unmount ") + model.deviceName
+                        onClicked: {
+                            if (mountAction) {
+                                if (model.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable)
+                                    root.featureHintRequested(runtimeFeatures.installHint("deviceMount"))
+                                else
+                                    devices.mount(index)
+                            } else if (model.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable) {
+                                root.featureHintRequested(runtimeFeatures.installHint("deviceMount"))
+                            } else {
+                                devices.unmount(index)
+                            }
+                        }
+                        Loader {
+                            anchors.centerIn: parent
+                            sourceComponent: deviceMountButton.mountAction ? iconMountAction : iconUnmountAction
                         }
                     }
 
