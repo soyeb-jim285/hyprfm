@@ -525,6 +525,12 @@ ApplicationWindow {
             primaryPaneIsRecents = enabled
     }
 
+    function openRecents() {
+        root.clearPaneSearch(activePane)
+        root.setPaneRecents(activePane, true)
+        root.scheduleActivePaneFocus()
+    }
+
     function searchProxyForPane(pane) {
         return pane === "secondary" ? splitSearchProxy : searchProxy
     }
@@ -741,8 +747,8 @@ ApplicationWindow {
         navigatePaneTo(activePane, path)
     }
 
-    // Home (toolbar, shortcut, sidebar) closes a split and shows Home across
-    // the whole window. Other ways of reaching ~ keep the split.
+    // The toolbar/keyboard Home action shows Home across the whole window.
+    // Sidebar destinations use ordinary navigation within the active pane.
     function goHome() {
         if (tabModel.activeTab && splitViewEnabled())
             root.toggleSplitView()
@@ -3368,7 +3374,7 @@ ApplicationWindow {
 
                 onOpenRequested: (path) => {
                     if (sidebarItem.isRecents) {
-                        root.setPaneRecents(root.activePane, true)
+                        root.openRecents()
                         return
                     }
 
@@ -4098,12 +4104,7 @@ ApplicationWindow {
                     activeSplitHorizontal: root.isSplitHorizontal
                     trashPath: root.unifiedTrashPath
                     isRecentsView: root.isRecentsView
-                    onBookmarkClicked: (path) => {
-                        if (path === fsModel.homePath())
-                            root.goHome()
-                        else
-                            root.navigateActivePaneTo(path)
-                    }
+                    onBookmarkClicked: path => root.navigateActivePaneTo(path)
                     onSavedSplitClicked: (split) => {
                         root.restoreSavedSplit(split)
                     }
@@ -4125,9 +4126,7 @@ ApplicationWindow {
                         menu.selectedFolderPaths = []
                         menu.popup(position.x, position.y)
                     }
-                    onRecentsClicked: {
-                        root.setPaneRecents(root.activePane, true)
-                    }
+                    onRecentsClicked: root.openRecents()
                     onCollapseClicked: root.toggleSidebar()
                     onFeatureHintRequested: (message) => toast.show(message, "info")
                 }
