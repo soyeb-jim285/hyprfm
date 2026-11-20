@@ -19,14 +19,17 @@ class ConfigManager : public QObject
     Q_PROPERTY(QStringList availableThemes READ availableThemes CONSTANT)
     Q_PROPERTY(QString theme READ theme NOTIFY configChanged)
     Q_PROPERTY(QString iconTheme READ iconTheme NOTIFY configChanged)
+    Q_PROPERTY(QString fileIconColors READ fileIconColors NOTIFY configChanged)
     Q_PROPERTY(bool autoRefreshIcons READ autoRefreshIcons NOTIFY configChanged)
     Q_PROPERTY(int iconRevision READ iconRevision NOTIFY iconRevisionChanged)
     Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY configChanged)
+    Q_PROPERTY(double fontSize READ fontSize NOTIFY configChanged)
     Q_PROPERTY(QString defaultView READ defaultView NOTIFY configChanged)
     Q_PROPERTY(QString splitOrientation READ splitOrientation NOTIFY configChanged)
     Q_PROPERTY(bool showHidden READ showHidden NOTIFY configChanged)
     Q_PROPERTY(bool hiddenLast READ hiddenLast NOTIFY configChanged)
     Q_PROPERTY(bool gridFixedColumns READ gridFixedColumns NOTIFY configChanged)
+    Q_PROPERTY(bool compactFullNames READ compactFullNames NOTIFY configChanged)
     Q_PROPERTY(bool rightClickToEditPath READ rightClickToEditPath NOTIFY configChanged)
     Q_PROPERTY(bool singleClickOpensFolders READ singleClickOpensFolders NOTIFY configChanged)
     Q_PROPERTY(bool builtinTerminal READ builtinTerminal NOTIFY configChanged)
@@ -90,12 +93,14 @@ public:
     QString lightTheme() const;
     QString darkTheme() const;
     QString iconTheme() const;
+    QString fileIconColors() const;
     bool autoRefreshIcons() const { return m_autoRefreshIcons; }
     int iconRevision() const { return m_iconRevision; }
     // What an empty icon_theme resolves to: the desktop's own theme, which
     // only main.cpp can ask the portal for. Set once at startup.
     void setIconThemeFallback(const QString &theme);
     QString fontFamily() const;
+    double fontSize() const { return m_fontSize; }
     QString defaultView() const;
     QString splitOrientation() const;
     bool showHidden() const;
@@ -103,6 +108,7 @@ public:
     // Clicking a breadcrumb segment still navigates.
     bool hiddenLast() const;
     bool gridFixedColumns() const;
+    bool compactFullNames() const;
     bool rightClickToEditPath() const;
     bool singleClickOpensFolders() const;
     bool builtinTerminal() const;
@@ -221,14 +227,17 @@ private:
     QString m_theme;
     QString m_lightTheme;
     QString m_darkTheme;
-    QString m_iconTheme;          // as configured; empty means follow the desktop
+    QString m_iconTheme;
+    QString m_fileIconColors;          // as configured; empty means follow the desktop
     QString m_iconThemeFallback;  // what empty resolves to
     QString m_fontFamily;
+    double m_fontSize = 0;
     QString m_defaultView;
     QString m_splitOrientation;
     bool m_showHidden;
     bool m_hiddenLast;
     bool m_gridFixedColumns;
+    bool m_compactFullNames;
     bool m_rightClickToEditPath;
     bool m_singleClickOpensFolders;
     bool m_builtinTerminal;

@@ -14,6 +14,7 @@
 #include "models/filesystemmodel.h"
 #include "services/configmanager.h"
 #include "services/themeloader.h"
+#include "providers/iconprovider.h"
 
 class FileOpsStub : public QObject
 {
@@ -93,6 +94,7 @@ struct ViewHarness {
         QFile::link(QStringLiteral(TEST_MODULE_DIR "/HyprFM/qml"), moduleDir.path() + "/HyprFM/qml");
 
         QQmlEngine *engine = view.engine();
+        engine->addImageProvider("icon", new IconProvider(config->iconTheme()));
         engine->addImportPath(moduleDir.path());
         engine->addImportPath(QStringLiteral(TEST_SOURCE_DIR "/src/qml"));
         QQmlContext *ctx = view.rootContext();

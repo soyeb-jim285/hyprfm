@@ -14,6 +14,7 @@ set(HYPRFM_SOURCES
     models/bookmarkmodel.cpp
     models/filesystemmodel.cpp
     models/devicemodel.cpp
+    models/computermodel.cpp
     models/recentfilesmodel.cpp
     models/searchresultsmodel.cpp
     models/searchproxymodel.cpp
@@ -32,7 +33,11 @@ set(HYPRFM_SOURCES
     providers/pdfpreviewprovider.cpp
 )
 
+add_library(hyprfm_icons OBJECT icons/strata.qrc)
+target_link_libraries(hyprfm_icons PRIVATE Qt6::Core)
 qt_add_executable(hyprfm ${HYPRFM_SOURCES})
+target_link_libraries(hyprfm PRIVATE hyprfm_icons)
+install(DIRECTORY icons/strata/licenses/ DESTINATION share/hyprfm/licenses/strata)
 
 if(HYPRFM_TERMINAL)
     target_sources(hyprfm PRIVATE terminal/terminalview.cpp terminal/terminalview.h)
@@ -110,8 +115,12 @@ list(APPEND hyprfm_qml_module_args
         qml/components/Breadcrumb.qml
         qml/components/Toolbar.qml
         qml/components/HoverRect.qml
+        qml/components/InlineEditState.qml
+        qml/components/InlineNameEditor.qml
         qml/views/FileViewContainer.qml
+        qml/views/ComputerView.qml
         qml/views/FileGridView.qml
+        qml/views/FileCompactView.qml
         qml/views/FileDetailedView.qml
         qml/views/FileMillerView.qml
         qml/views/KineticWheelScroller.qml
@@ -123,6 +132,10 @@ list(APPEND hyprfm_qml_module_args
         qml/components/RemoteConnectDialog.qml
         qml/components/PreviewLoader.qml
         qml/components/QuickPreview.qml
+        qml/components/PreviewZoomControls.qml
+        qml/components/InterfaceZoom.qml
+        qml/components/PaneTerminal.qml
+        qml/components/ZoomablePreviewImage.qml
         qml/components/CsvTable.qml
         qml/components/Toast.qml
         qml/components/RubberBand.qml
@@ -160,6 +173,8 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconGlobe.qml
         qml/icons/IconRocket.qml
         qml/icons/IconSettings.qml
+        qml/icons/IconSun.qml
+        qml/icons/IconMoon.qml
         qml/icons/IconFilter.qml
         qml/icons/IconHardDrive.qml
         qml/icons/IconHardDriveOff.qml
@@ -199,6 +214,12 @@ if(HYPRFM_TERMINAL)
     list(APPEND hyprfm_qml_module_args qml/components/TerminalPanel.qml)
 endif()
 
+include(icons/strata-qml.cmake)
+foreach(icon IN LISTS HYPRFM_STRATA_QML_OVERRIDES)
+    list(REMOVE_ITEM hyprfm_qml_module_args "qml/icons/${icon}")
+    list(APPEND hyprfm_qml_module_args "qml/strataicons/${icon}")
+endforeach()
+list(APPEND hyprfm_qml_module_args qml/components/StrataIcon.qml qml/strataicons/IconMapping.js)
 qt_add_qml_module(hyprfm ${hyprfm_qml_module_args})
 
 # The app logo, for the About page; the installed copy is only in the icon

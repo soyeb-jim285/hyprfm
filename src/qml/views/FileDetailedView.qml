@@ -12,6 +12,8 @@ FocusScope {
     property var selectedIndices: []
     property int lastSelectedIndex: -1   // anchor for shift-selection
     property int cursorIndex: -1         // moving end for keyboard navigation
+    // Naming an entry in place (rename, new folder/file); see InlineEditState.
+    property InlineEditState inlineEdit: InlineEditState { view: root }
     property string sortColumn: "name"
     property bool sortAscending: true
 
@@ -46,8 +48,17 @@ FocusScope {
     property string typeAheadBuffer: ""
 
     property int rowHeight: 28
-    readonly property int minRowHeight: 22
+    readonly property int minRowHeight: Math.max(22, Math.ceil(Theme.fontNormal * 4 / 3) + 8)
     readonly property int maxRowHeight: 56
+    // Row-height zoom: Ctrl+Wheel over the list (the file container's
+    // InterfaceZoom, or the list itself where none sits on top). Like FileGridView.zoomByWheel, a
+    // negative delta (wheel up) makes rows taller.
+    function zoomByWheel(delta) {
+        wheelScroller.stopAndSettle()
+        root.interactionStarted()
+        var step = delta < 0 ? 2 : -2
+        root.rowHeight = Math.max(root.minRowHeight, Math.min(root.maxRowHeight, root.rowHeight + step))
+    }
     readonly property int detailIconSize: Math.round(rowHeight * 0.571)  // 16 at default 28
 
     // Map of folder path → item count
@@ -58,7 +69,7 @@ FocusScope {
     // is replaced when the answer arrives, not cleared first, so the column
     // does not blink while it is on its way.
     Connections {
-        target: root.viewModel
+        target: root.viewModel || null
         ignoreUnknownSignals: true
         function onFolderItemCountsReady(requestId, counts) {
             if (requestId === root.folderCountRequest)
@@ -380,6 +391,12 @@ FocusScope {
         var all = []
         for (var i = 0; i < listView.count; i++) all.push(i)
         selectedIndices = all
+    }
+    function restoreSelection(indices, cursor) {
+        selectedIndices = indices
+        cursorIndex = cursor
+        lastSelectedIndex = indices.length ? indices[0] : -1
+        if (cursor >= 0) listView.positionViewAtIndex(cursor, ListView.Contain)
     }
 
     function clickHeader(col) {
@@ -1009,6 +1026,9 @@ FocusScope {
                 id: detRow
                 width: listView.width
                 height: root.rowHeight
+                // The edited entry stacks above its neighbours, so its error label
+                // is not drawn under the next row.
+                z: root.inlineEdit.active && root.inlineEdit.path === filePath ? 2 : 0
 
                 // The remove transition leaves opacity/scale animated down, and
                 // reuseItems recycles that item as-is (view transitions never
@@ -1067,7 +1087,7 @@ FocusScope {
                                 // nothing at all.
                                 visible: !detThumb.visible
                                 opacity: detRow.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
-                                source: "image://icon/" + detRow.fileIconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                                source: Theme.fileIconSource(detRow.fileIconName, detRow.fileName, 24, false)
                                 sourceSize: Qt.size(root.detailIconSize * Screen.devicePixelRatio,
                                                     root.detailIconSize * Screen.devicePixelRatio)
                                 asynchronous: true
@@ -1183,6 +1203,7 @@ FocusScope {
 
                         Text {
                             width: root.colName - 20
+                            visible: !detNameEditor.editing
                             anchors.verticalCenter: parent.verticalCenter
                             textFormat: root.highlightQuery ? Text.StyledText : Text.PlainText
                             text: root.highlightQuery
@@ -1191,6 +1212,16 @@ FocusScope {
                             color: Theme.text
                             font.pointSize: Theme.fontNormal
                             elide: Text.ElideRight
+                        }
+
+                        InlineNameEditor {
+                            id: detNameEditor
+                            state: root.inlineEdit
+                            path: detRow.filePath
+                            isDir: detRow.isDir
+                            width: root.colName - 20
+                            height: Math.min(implicitHeight, parent.height)
+                            anchors.verticalCenter: parent.verticalCenter
                         }
                     }
                 }
@@ -1399,15 +1430,12 @@ FocusScope {
 
                 onWheel: (wheel) => {
                     if (wheel.modifiers & Qt.ControlModifier) {
-                        wheelScroller.stopAndSettle()
-                        root.interactionStarted()
                         var delta = wheelScroller.deltaFor(wheel)
                         if (delta === 0) {
                             wheel.accepted = false
                             return
                         }
-                        var step = delta < 0 ? 2 : -2
-                        root.rowHeight = Math.max(root.minRowHeight, Math.min(root.maxRowHeight, root.rowHeight + step))
+                        root.zoomByWheel(delta)
                         wheel.accepted = true
                     } else {
                         wheel.accepted = false
@@ -1503,7 +1531,7 @@ FocusScope {
 
 
     Connections {
-        target: root.viewModel
+        target: root.viewModel || null
         ignoreUnknownSignals: true
 
         function onModelReset() {

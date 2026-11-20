@@ -821,7 +821,13 @@ QStringList trashRootCandidatesForPath(const QString &path)
     if (!cleanPath.isEmpty()) {
         const QString lookupPath = existingLookupPathFor(cleanPath);
         const QString storageRoot = QDir::cleanPath(QStorageInfo(lookupPath).rootPath());
-        if (!storageRoot.isEmpty() && storageRoot != "/") {
+        // The freedesktop trash spec wants a volume's own .Trash-$uid only for files
+        // on another filesystem than the home trash.  "Not on /" is not that test:
+        // with /home as its own mount (btrfs subvolumes, a separate partition), every
+        // file in home would be sent to /home/.Trash-$uid, which the user cannot create.
+        const QString homeTrashStorageRoot = QDir::cleanPath(
+            QStorageInfo(existingLookupPathFor(XdgTrash::homeRoot())).rootPath());
+        if (!storageRoot.isEmpty() && storageRoot != "/" && storageRoot != homeTrashStorageRoot) {
             const QString uid = currentUidString();
             roots.append(QDir(storageRoot).filePath(".Trash-" + uid));
             roots.append(QDir(storageRoot).filePath(".Trash/" + uid));
