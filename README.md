@@ -110,7 +110,7 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 
 ### Look & feel
 
-- **TOML themes** with live reload — Catppuccin Mocha/Latte and Rose Pine/Moon/Dawn bundled
+- **TOML themes** with live reload — 105 bundled themes, including the complete 95-theme Strata catalog
 - **Built-in SVG icon set** (90+ Lucide-style icons rendered via Qt Shapes)
 - **Configurable corner radius**, fonts, animation duration
 - **Wayland compositor blur** on Hyprland plus native KWin blur on KDE Plasma
@@ -458,10 +458,14 @@ shortcut = "Ctrl+E"                 # optional; runs the action on the selection
 
 ## 🎨 Theming
 
-Themes are plain TOML files. Nothing is hardcoded in the binary. Five themes
-ship in `/usr/share/hyprfm/themes/*.toml` — `catppuccin-mocha`,
-`catppuccin-latte`, `rose-pine`, `rose-pine-moon` and `rose-pine-dawn`. Copy one
-as a starting point:
+Themes are plain TOML files. Nothing is hardcoded in the binary. The ten original
+themes and all 95 Strata themes ship in `/usr/share/hyprfm/themes/*.toml`.
+Strata themes use `strata-` names, such as `strata-tokyo-night`,
+`strata-catppuccin-frappe`, `strata-azure-glow`, and `strata-nord-light`. Choose
+them in Settings → Appearance, or set `theme = "strata-tokyo-night"` under
+`[general]`. See the [theme catalog notes](themes/README.md) for the color
+mapping, terminal palettes, source, and licensing. Copy any theme as a starting
+point:
 
 ```sh
 cp /usr/share/hyprfm/themes/catppuccin-mocha.toml ~/.config/hyprfm/themes/mytheme.toml

@@ -18,6 +18,21 @@ QtObject {
     property color error: theme.error
     property var terminalPalette: theme.terminalPalette
 
+    // Disk space bars turn yellow from 75% used and red from 90% in every
+    // theme: a theme's warning and error colours where they read as yellow
+    // and red, a fixed amber and red where they do not (several themes have
+    // a teal, blue or grey warning or error).
+    function _hueWithin(c, from, to) {
+        const h = c.hslHue * 360
+        return c.hslHue >= 0 && c.hslSaturation > 0.35
+            && (from <= to ? h >= from && h <= to : h >= from || h <= to)
+    }
+    readonly property color usageWarning: _hueWithin(warning, 25, 70) ? warning : "#e5a50a"
+    readonly property color usageCritical: _hueWithin(error, 330, 20) ? error : "#e01b24"
+    function usageColor(percent) {
+        return percent >= 90 ? usageCritical : percent >= 75 ? usageWarning : accent
+    }
+
     property int radiusSmall: config.radiusSmall
     property int radiusMedium: config.radiusMedium
     property int radiusLarge: config.radiusLarge

@@ -172,9 +172,7 @@ Rectangle {
             readonly property real usedFraction: statusBar.diskTotal > 0
                 ? Math.max(0, Math.min(1, 1 - statusBar.diskFree / statusBar.diskTotal))
                 : 0
-            readonly property color fillColor: usedFraction >= 0.90
-                ? Theme.error
-                : usedFraction >= 0.75 ? Theme.warning : Theme.accent
+            readonly property color fillColor: Theme.usageColor(usedFraction * 100)
 
             Layout.preferredWidth: diskLabel.implicitWidth + 20
             Layout.preferredHeight: 18
