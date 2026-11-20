@@ -66,15 +66,15 @@ Item {
     // is built and writes back what it actually accepted, since views clamp:
     // an out-of-range or negative value in session.json would otherwise be
     // shown corrected but never fixed on disk. Values of 0 mean "nothing
-    // saved", so the view keeps its own default. After that the views follow
-    // sessionState (the settings panel writes it directly) and feed it; this
-    // cannot ping-pong, because assigning a value a view already holds emits
-    // nothing and the clamp is idempotent. It also keeps both split panes at
-    // the same zoom, which is what the single saved value always meant.
+    // saved", so the view keeps its own default. Each pane then zooms on its
+    // own (Ctrl+Wheel over it, as in other file managers) and keeps writing
+    // what it shows, so a new tab or the next start begins there; it does
+    // not follow the other pane's writes. The settings sliders mean every
+    // pane, and say so with sessionState.applyZoomToAllPanes().
     // Row heights set here come from sessionState or follow a font change, so
     // they are not written back (applyingZoom); see rowHeightFloor. A saved
     // row height outside the font-independent range is corrected in
-    // sessionState first; that write re-runs applyZoom with the fixed value.
+    // sessionState first, then applied.
     function applyZoom() {
         const grid = root.gridViewItem
         const detailed = root.detailedViewItem
@@ -86,16 +86,16 @@ Item {
             const key = rows[i][1]
             if (!view || !(sessionState[key] > 0)) continue
             const corrected = clamp(sessionState[key], rowHeightFloor, view.maxRowHeight)
-            if (corrected !== sessionState[key]) {
+            if (corrected !== sessionState[key])
                 sessionState[key] = corrected
-                return
-            }
         }
         root.applyingZoom = true
         if (compact && sessionState.rowHeightCompact > 0)
             compact.rowHeight = clamp(sessionState.rowHeightCompact, compact.minRowHeight, compact.maxRowHeight)
         if (grid && sessionState.gridColumns > 0)
             grid.columnCount = clamp(sessionState.gridColumns, grid.minColumns, grid.maxColumns)
+        if (grid && sessionState.gridIconSize > 0)
+            grid.setZoomIconSize(sessionState.gridIconSize, false)
         if (detailed && sessionState.rowHeightDetailed > 0)
             detailed.rowHeight = clamp(sessionState.rowHeightDetailed,
                                        detailed.minRowHeight, detailed.maxRowHeight)
@@ -107,10 +107,7 @@ Item {
 
     Connections {
         target: sessionState
-        function onGridColumnsChanged() { root.applyZoom() }
-        function onRowHeightDetailedChanged() { root.applyZoom() }
-        function onRowHeightMillerChanged() { root.applyZoom() }
-        function onRowHeightCompactChanged() { root.applyZoom() }
+        function onZoomAppliedToAllPanes() { root.applyZoom() }
     }
 
     function activeView() {
@@ -181,11 +178,15 @@ Item {
                 onInteractionStarted: root.interactionStarted()
                 onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
                 onColumnCountChanged: if (zoomReady) sessionState.gridColumns = columnCount
+                onZoomIconSizeChanged: if (zoomReady) sessionState.gridIconSize = Math.round(zoomIconSize)
 
                 Component.onCompleted: {
                     if (sessionState.gridColumns > 0)
                         columnCount = root.clamp(sessionState.gridColumns, minColumns, maxColumns)
                     sessionState.gridColumns = columnCount
+                    if (sessionState.gridIconSize > 0)
+                        setZoomIconSize(sessionState.gridIconSize, false)
+                    sessionState.gridIconSize = Math.round(zoomIconSize)
                     zoomReady = true
                 }
             }

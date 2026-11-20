@@ -2,6 +2,7 @@
 // Main.qml headless. Used for behaviour that only shows with the full item
 // tree in place (event routing between overlays, toolbar, views).
 #include <QTest>
+#include <cmath>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include "services/filepicker.h"
@@ -599,17 +600,26 @@ private slots:
         QTRY_VERIFY(container->property("millerViewItem").value<QQuickItem *>());
         auto *miller = container->property("millerViewItem").value<QQuickItem *>();
         const int rowHeight = app.sessionState->rowHeightMiller();
-        // Sidebar, parent column and current column use the shared text-size preference.
-        const QPoint points[] = {app.center(app.item("quickAccess_Home")),
+        // Ctrl+Shift+Wheel over the sidebar, parent column and current column
+        // sizes the shared interface text.
+        const QPoint sidebarPoint = app.center(app.item("quickAccess_Home"));
+        const QPoint points[] = {sidebarPoint,
             miller->mapToScene(QPointF(miller->width() * 0.1, 80)).toPoint(),
             miller->mapToScene(QPointF(miller->width() * 0.45, 80)).toPoint()};
         for (const QPoint &point : points) {
             config->saveSettings({{"fontSize", 10}});
             QWheelEvent wheel(point, app.window->mapToGlobal(point), {}, QPoint(0,120), Qt::NoButton,
-                              Qt::ControlModifier, Qt::NoScrollPhase, false);
+                              Qt::ControlModifier | Qt::ShiftModifier, Qt::NoScrollPhase, false);
             QCoreApplication::sendEvent(app.window, &wheel);
             QTRY_COMPARE(config->fontSize(), 11.0);
         }
+        QCOMPARE(app.sessionState->rowHeightMiller(), rowHeight);
+        // Plain Ctrl+Wheel over the sidebar zooms nothing: no file view there.
+        QWheelEvent sidebarWheel(sidebarPoint, app.window->mapToGlobal(sidebarPoint), {}, QPoint(0, 120),
+                                 Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(app.window, &sidebarWheel);
+        QTest::qWait(50);
+        QCOMPARE(config->fontSize(), 11.0);
         QCOMPARE(app.sessionState->rowHeightMiller(), rowHeight);
         QTest::keyClick(app.window, Qt::Key_Minus, Qt::ControlModifier);
         QTRY_COMPARE(config->fontSize(), 10.0);
@@ -618,23 +628,26 @@ private slots:
         app.tabModel->activeTab()->setViewMode("grid");
         QTRY_VERIFY(container->property("gridViewItem").value<QQuickItem *>());
         auto *grid = container->property("gridViewItem").value<QQuickItem *>();
-        grid->setProperty("columnCount", 7);
+        QVERIFY(QMetaObject::invokeMethod(grid, "setZoomIconSize", Q_ARG(QVariant, 184), Q_ARG(QVariant, false)));
         const QPoint gridPoint = app.center(grid);
+        // Ctrl+Wheel: this pane's icons grow ~15% a notch; text stays.
         QWheelEvent iconsWheel(gridPoint, app.window->mapToGlobal(gridPoint), {}, QPoint(0, 120), Qt::NoButton,
-                               Qt::ControlModifier | Qt::ShiftModifier, Qt::NoScrollPhase, false);
+                               Qt::ControlModifier, Qt::NoScrollPhase, false);
         QCoreApplication::sendEvent(app.window, &iconsWheel);
-        QTRY_COMPARE(grid->property("columnCount").toInt(), 6);
+        QTRY_COMPARE(qRound(grid->property("zoomIconSize").toDouble()), qRound(184 * 1.15));
         QCOMPARE(config->fontSize(), 0.0);
         QTest::keyClick(app.window, Qt::Key_Minus, Qt::ControlModifier | Qt::AltModifier);
-        QTRY_COMPARE(grid->property("columnCount").toInt(), 7);
-        grid->setProperty("columnCount", 5);
+        QTRY_COMPARE(qRound(grid->property("zoomIconSize").toDouble()), 184);
+        QVERIFY(QMetaObject::invokeMethod(grid, "setZoomIconSize", Q_ARG(QVariant, 96), Q_ARG(QVariant, false)));
         QTest::keyClick(app.window, Qt::Key_0, Qt::ControlModifier | Qt::AltModifier);
-        QTRY_COMPARE(grid->property("columnCount").toInt(), 7);
+        QTRY_COMPARE(qRound(grid->property("zoomIconSize").toDouble()), 184);
+        // ... and it animates there: what is drawn follows the target.
+        QTRY_COMPARE(grid->property("iconSize").toInt(), 184);
     }
 
-    // Ctrl+Wheel over the Icons view sizes the text only: a bigger label makes
-    // the cell taller instead of shrinking the icon (it used to shrink as the
-    // text grew, and grow back as it shrank). Ctrl+Shift+Wheel sizes icons.
+    // Ctrl+Shift+Wheel over the Icons view sizes the text only: a bigger label
+    // makes the cell taller instead of shrinking the icon (it used to shrink
+    // as the text grew, and grow back as it shrank). Ctrl+Wheel sizes icons.
     void testIconsKeepTheirSizeWhenInterfaceTextGrows()
     {
         App app;
@@ -663,19 +676,19 @@ private slots:
         const int label = grid->property("labelHeight").toInt();
         const qreal cell = grid->property("cellHeight").toReal();
 
-        ctrlWheel(4, Qt::ControlModifier);                       // text 10 -> 14 pt
+        ctrlWheel(4, Qt::ControlModifier | Qt::ShiftModifier);   // text 10 -> 14 pt
         QTRY_COMPARE(config->fontSize(), 14.0);
         QTRY_VERIFY(grid->property("labelHeight").toInt() > label);
         QCOMPARE(grid->property("iconSize").toInt(), icon);
         QCOMPARE(grid->property("cellHeight").toReal(),
                  cell + grid->property("labelHeight").toInt() - label);
 
-        ctrlWheel(-6, Qt::ControlModifier);                      // 14 -> 8 pt
+        ctrlWheel(-6, Qt::ControlModifier | Qt::ShiftModifier);  // 14 -> 8 pt
         QTRY_COMPARE(config->fontSize(), 8.0);
         QTRY_COMPARE(grid->property("labelHeight").toInt(), label);
         QCOMPARE(grid->property("iconSize").toInt(), icon);
 
-        ctrlWheel(1, Qt::ControlModifier | Qt::ShiftModifier);   // icons, not text
+        ctrlWheel(1, Qt::ControlModifier);                       // icons, not text
         QTRY_VERIFY(grid->property("iconSize").toInt() > icon);
         QCOMPARE(config->fontSize(), 8.0);
     }
@@ -2552,11 +2565,15 @@ private slots:
         // The other views are only built the first time they are shown.
         QVERIFY(!subView("detailedViewItem") && !subView("millerViewItem"));
 
+        // What the settings sliders do: write, then apply to every pane.
         app.sessionState->setGridColumns(4);
+        app.sessionState->setGridIconSize(300);
         app.sessionState->setRowHeightDetailed(40);
         app.sessionState->setRowHeightMiller(48);
         app.sessionState->setRowHeightCompact(34);
+        app.sessionState->applyZoomToAllPanes();
         QTRY_COMPARE(grid->property("columnCount").toInt(), 4);
+        QTRY_COMPARE(qRound(grid->property("zoomIconSize").toDouble()), 300);
 
         // A view built later has to start at the saved zoom, and must not
         // write its own default back over it.
@@ -2575,18 +2592,101 @@ private slots:
         QQuickItem *compact = subView("compactViewItem");
         QTRY_COMPARE(compact->property("rowHeight").toInt(), 34);
         app.sessionState->setRowHeightCompact(99);
+        app.sessionState->applyZoomToAllPanes();
         QTRY_COMPARE(compact->property("rowHeight").toInt(), 56);
         QCOMPARE(app.sessionState->rowHeightCompact(), 56);
 
-        // Once built, a hidden view keeps following the saved zoom.
+        // Once built, a hidden view still takes a value applied to every pane...
         app.sessionState->setRowHeightDetailed(36);
+        app.sessionState->applyZoomToAllPanes();
         QTRY_COMPARE(detailed->property("rowHeight").toInt(), 36);
+        // ... but not a value another pane merely wrote (each pane zooms on its own).
+        app.sessionState->setRowHeightDetailed(44);
+        QTest::qWait(50);
+        QCOMPARE(detailed->property("rowHeight").toInt(), 36);
 
         // A view clamps what it accepts and the mirror writes the clamped
         // value back, so session.json never keeps something unusable.
         app.sessionState->setGridColumns(99);
+        app.sessionState->setGridIconSize(9999);
+        app.sessionState->applyZoomToAllPanes();
         QTRY_COMPARE(grid->property("columnCount").toInt(), 12);
         QTRY_COMPARE(app.sessionState->gridColumns(), 12);
+        QTRY_COMPARE(qRound(grid->property("zoomIconSize").toDouble()), 512);
+        QTRY_COMPARE(app.sessionState->gridIconSize(), 512);
+    }
+
+    // Grid zoom is a continuous icon size: Ctrl+Wheel scales it ~15% a notch
+    // (a touchpad by fractions), it animates, it goes down to 32 px (a column
+    // count stopped at 88 px), and the icons are not reloaded every frame:
+    // their URLs follow the settled size, and the last render stays while
+    // the new one loads.
+    void testGridZoomIsSmoothContinuousAndGoesSmall()
+    {
+        App app;
+        QVERIFY(app.load());
+        app.window->resize(1600, 700);   // wide enough that small icons need >12 columns
+        for (int i = 0; i < 6; ++i)
+            QVERIFY(QFile(app.home.path() + QStringLiteral("/file%1.txt").arg(i)).open(QIODevice::WriteOnly));
+        app.tabModel->activeTab()->navigateTo(app.home.path());
+        app.tabModel->activeTab()->setViewMode("grid");
+        auto *container = app.item("primaryFileView");
+        QVERIFY(container);
+        QTRY_VERIFY(container->property("gridViewItem").value<QQuickItem *>());
+        auto *grid = container->property("gridViewItem").value<QQuickItem *>();
+        QTRY_VERIFY(grid->property("count").toInt() >= 6);
+        QVERIFY(QMetaObject::invokeMethod(grid, "setZoomIconSize", Q_ARG(QVariant, 184), Q_ARG(QVariant, false)));
+        QTRY_COMPARE(grid->property("iconSize").toInt(), 184);
+        app.window->grabWindow();
+
+        const auto iconImages = [&]() {
+            QList<QQuickItem *> found;
+            std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+                for (QQuickItem *child : item->childItems()) {
+                    if (child->property("source").toString().startsWith(QLatin1String("image://icon/")))
+                        found.append(child);
+                    walk(child);
+                }
+            };
+            walk(grid);
+            return found;
+        };
+        QTRY_VERIFY(!iconImages().isEmpty());
+        QQuickItem *icon = iconImages().first();
+        if (icon->metaObject()->indexOfProperty("retainWhileLoading") >= 0)
+            QVERIFY(icon->property("retainWhileLoading").toBool());
+        const QString sourceBefore = icon->property("source").toString();
+        QVERIFY(sourceBefore.contains(QLatin1String("logicalSize=184")));
+
+        const QPoint point = app.center(grid);
+        const auto wheel = [&](QPoint angle, QPoint pixels) {
+            QWheelEvent event(point, app.window->mapToGlobal(point), pixels, angle, Qt::NoButton,
+                              Qt::ControlModifier, Qt::NoScrollPhase, false);
+            QCoreApplication::sendEvent(app.window, &event);
+        };
+        wheel(QPoint(0, 120), QPoint());
+        QCOMPARE(qRound(grid->property("zoomIconSize").toDouble()), qRound(184 * 1.15));
+        // Animated: right after the notch the drawn size has not jumped yet.
+        QVERIFY(grid->property("iconSize").toInt() < qRound(184 * 1.15));
+        // Mid-zoom the URL is unchanged, so nothing reloads...
+        QCOMPARE(icon->property("source").toString(), sourceBefore);
+        QTRY_COMPARE(grid->property("iconSize").toInt(), qRound(184 * 1.15));
+        // ... and once the zoom settles the icon is rendered at its new size.
+        QTRY_VERIFY(icon->property("source").toString().contains(
+            QStringLiteral("logicalSize=%1").arg(qRound(184 * 1.15))));
+
+        // A touchpad's half notch zooms by half a step.
+        const qreal beforeHalf = grid->property("zoomIconSize").toDouble();
+        wheel(QPoint(0, 60), QPoint(0, 5));
+        QCOMPARE(qRound(grid->property("zoomIconSize").toDouble()), qRound(beforeHalf * std::pow(1.15, 0.5)));
+
+        // Far out: 32 px icons, and more columns than a column count allowed.
+        for (int i = 0; i < 40; ++i)
+            wheel(QPoint(0, -120), QPoint());
+        QTRY_COMPARE(grid->property("iconSize").toInt(), 32);
+        QCOMPARE(qRound(grid->property("zoomIconSize").toDouble()), 32);
+        QVERIFY(grid->property("effectiveColumnCount").toInt() > 12);
+        QCOMPARE(app.sessionState->gridIconSize(), 32);
     }
 
     // Resizing the window changes how many grid columns fit, not the icon
@@ -2611,7 +2711,9 @@ private slots:
         QCOMPARE(grid->property("iconSize").toInt(), wideIcon);
 
         // Zooming in still makes the icons bigger.
+        app.sessionState->setGridIconSize(wideIcon + 100);
         app.sessionState->setGridColumns(4);
+        app.sessionState->applyZoomToAllPanes();
         QTRY_VERIFY(grid->property("iconSize").toInt() > wideIcon);
 
         QVariantMap settings;
@@ -2646,14 +2748,25 @@ private slots:
         QVERIFY(gridSlider);
         QVERIFY(slider("iconSizeDetailed") && slider("iconSizeMiller") && slider("iconSizeCompact"));
 
-        // Dragging the grid slider one notch right must enlarge the icons,
-        // which means one column fewer.
+        // The grid slider is the icon size in px, and it reaches the pane.
+        auto *container = app.item("primaryFileView");
+        auto *grid = qvariant_cast<QQuickItem *>(container->property("gridViewItem"));
+        QVERIFY(grid);
+        QVERIFY(QMetaObject::invokeMethod(gridSlider, "moved", Q_ARG(qreal, 96)));
+        QCOMPARE(app.sessionState->gridIconSize(), 96);
+        QTRY_COMPARE(qRound(grid->property("zoomIconSize").toDouble()), 96);
+
+        // With fixed columns the slider is the column count again, flipped:
+        // one notch right enlarges the icons, which means one column fewer.
+        QObject *columnsSlider = slider("gridColumnsFixed");
+        QVERIFY(columnsSlider);
         const int columnsBefore = app.sessionState->gridColumns();
-        QVERIFY(QMetaObject::invokeMethod(gridSlider, "moved",
-                                          Q_ARG(qreal, gridSlider->property("value").toReal() + 1)));
+        QVERIFY(QMetaObject::invokeMethod(columnsSlider, "moved",
+                                          Q_ARG(qreal, columnsSlider->property("value").toReal() + 1)));
         QCOMPARE(app.sessionState->gridColumns(), columnsBefore - 1);
 
         // Zoom changed elsewhere shows up when the page is next shown.
+        app.sessionState->setGridIconSize(240);
         app.sessionState->setGridColumns(3);
         app.sessionState->setRowHeightDetailed(50);
         app.sessionState->setRowHeightMiller(24);
@@ -2663,8 +2776,11 @@ private slots:
 
         QObject *reloadedGrid = slider("iconSizeGrid");
         QVERIFY(reloadedGrid);
-        QCOMPARE(reloadedGrid->property("value").toInt(),
-                 reloadedGrid->property("gridSpan").toInt() - 3);
+        QCOMPARE(reloadedGrid->property("value").toInt(), 240);
+        QObject *reloadedColumns = slider("gridColumnsFixed");
+        QVERIFY(reloadedColumns);
+        QCOMPARE(reloadedColumns->property("value").toInt(),
+                 reloadedColumns->property("gridSpan").toInt() - 3);
         QCOMPARE(slider("iconSizeDetailed")->property("value").toInt(), 50);
         QCOMPARE(slider("iconSizeMiller")->property("value").toInt(), 24);
         QCOMPARE(slider("iconSizeCompact")->property("value").toInt(), 32);
@@ -2747,9 +2863,21 @@ private slots:
         QTRY_VERIFY(secondaryContainer->property("compactViewItem").value<QQuickItem *>());
         auto *other = secondaryContainer->property("compactViewItem").value<QQuickItem *>();
         QTRY_COMPARE(other->property("count").toInt(), 1);
+        // The settings slider means both panes...
         app.sessionState->setRowHeightCompact(36);
+        app.sessionState->applyZoomToAllPanes();
         QTRY_COMPARE(compact->property("rowHeight").toInt(), 36);
         QCOMPARE(other->property("rowHeight").toInt(), 36);
+        // ... Ctrl+Wheel over one pane zooms that pane only (and is remembered).
+        app.window->grabWindow();
+        const QPoint left = compact->mapToScene(QPointF(compact->width() / 2, 40)).toPoint();
+        QWheelEvent zoom(left, app.window->mapToGlobal(left), {}, QPoint(0, 120), Qt::NoButton,
+                         Qt::ControlModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(app.window, &zoom);
+        QTRY_COMPARE(compact->property("rowHeight").toInt(), 38);
+        QTest::qWait(50);
+        QCOMPARE(other->property("rowHeight").toInt(), 36);
+        QCOMPARE(app.sessionState->rowHeightCompact(), 38);
 
         QVERIFY(QMetaObject::invokeMethod(app.window, "setActivePane", Q_ARG(QVariant, QStringLiteral("primary"))));
         QVERIFY(QMetaObject::invokeMethod(app.window, "openSearch"));
@@ -3396,17 +3524,17 @@ private slots:
         QCOMPARE(savedRowHeight(app, viewMode), chosen);
     }
 
-    void testShiftWheelZoomsRowsAndCtrlWheelSizesText_data()
+    void testCtrlWheelZoomsRowsAndCtrlShiftWheelSizesText_data()
     {
         QTest::addColumn<QString>("viewMode");
         for (const QString &mode : {QString("compact"), QString("detailed"), QString("miller")})
             QTest::newRow(qPrintable(mode)) << mode;
     }
 
-    // In the app (not a lone view) Ctrl+Wheel sizes the interface text, so
-    // Ctrl+Shift+Wheel is how rows grow and shrink in the list views; it used
-    // to work in Grid only.
-    void testShiftWheelZoomsRowsAndCtrlWheelSizesText()
+    // As in other file managers, Ctrl+Wheel zooms the view under the pointer
+    // (rows grow and shrink in the list views); Ctrl+Shift+Wheel sizes the
+    // interface text. Until 11-20 it was the other way round.
+    void testCtrlWheelZoomsRowsAndCtrlShiftWheelSizesText()
     {
         QFETCH(QString, viewMode);
         App app;
@@ -3429,14 +3557,14 @@ private slots:
             : view->mapToScene(QPointF(view->width() / 2, 80)).toPoint();
 
         QWheelEvent rows(point, app.window->mapToGlobal(point), {}, QPoint(0, 120), Qt::NoButton,
-                         Qt::ControlModifier | Qt::ShiftModifier, Qt::NoScrollPhase, false);
+                         Qt::ControlModifier, Qt::NoScrollPhase, false);
         QCoreApplication::sendEvent(app.window, &rows);
         QTRY_COMPARE(savedRowHeight(app, viewMode), before + 2);
         QCOMPARE(view->property("rowHeight").toInt(), before + 2);
         QCOMPARE(config->fontSize(), 10.0);
 
         QWheelEvent text(point, app.window->mapToGlobal(point), {}, QPoint(0, 120), Qt::NoButton,
-                         Qt::ControlModifier, Qt::NoScrollPhase, false);
+                         Qt::ControlModifier | Qt::ShiftModifier, Qt::NoScrollPhase, false);
         QCoreApplication::sendEvent(app.window, &text);
         QTRY_COMPARE(config->fontSize(), 11.0);
         QCOMPARE(savedRowHeight(app, viewMode), before + 2);

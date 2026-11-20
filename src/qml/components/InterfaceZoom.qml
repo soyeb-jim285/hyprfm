@@ -3,8 +3,10 @@ import HyprFM
 
 // Shared by the sidebar and both file panes. Preview magnification and icon
 // density keep their own state; interface text size is a saved preference.
-// Ctrl+Wheel sizes interface text; Ctrl+Shift+Wheel zooms the file view under
-// it (Grid icons, or row height in Compact, Detailed and Miller).
+// Ctrl+Wheel zooms the file view under the pointer, that pane only, as other
+// file managers do (Grid icons, or row height in Compact, Detailed and
+// Miller); over the sidebar or the Computer page it does nothing.
+// Ctrl+Shift+Wheel sizes interface text for the whole window.
 Item {
     id: root
     property Item previewControls: null
@@ -26,12 +28,13 @@ Item {
                 return true
             }
         }
-        const horizontal = !!(wheel.modifiers & Qt.ShiftModifier)
-        const pixels = wheel.pixelDelta.y || (horizontal ? wheel.pixelDelta.x : 0)
-        const angle = wheel.angleDelta.y || (horizontal ? wheel.angleDelta.x : 0)
+        // (Shift turns a vertical wheel into a horizontal one on some systems)
+        const shift = !!(wheel.modifiers & Qt.ShiftModifier)
+        const pixels = wheel.pixelDelta.y || (shift ? wheel.pixelDelta.x : 0)
+        const angle = wheel.angleDelta.y || (shift ? wheel.angleDelta.x : 0)
         const steps = (pixels ? pixels / 10 : angle / 120) * (wheel.inverted ? -1 : 1)
         if (!steps) return false
-        if (horizontal) {
+        if (!shift) {
             if (!viewZoomEnabled || !fileView || !fileView.zoomByWheel) return false
             fileView.zoomByWheel(-steps * 42)
             return true

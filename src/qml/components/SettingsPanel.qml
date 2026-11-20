@@ -1009,7 +1009,7 @@ Window {
             }
 
             Text {
-                text: "Ctrl + scroll wheel does the same inside any view."
+                text: "Ctrl + scroll wheel does the same in the pane under the pointer. Ctrl + Shift + scroll wheel sizes interface text."
                 color: Theme.subtext
                 font.pointSize: Theme.fontSmall
                 Layout.fillWidth: true
@@ -1024,20 +1024,38 @@ Window {
             // Loader that is rebuilt every time it is shown, so reopening the
             // page picks up a Ctrl+wheel made in the meantime.
             //
-            // The grid zooms by column count, where fewer columns means bigger
-            // icons. The slider is flipped so dragging right always enlarges,
-            // hence `gridSpan - columns` in both directions.
+            // The grid zooms by icon size (px); with fixed columns it zooms by
+            // column count instead, where fewer columns means bigger icons, so
+            // that slider is flipped (`gridSpan - columns`) to enlarge to the
+            // right. Sliders mean every pane: applyZoomToAllPanes().
             Q.Slider {
                 objectName: "iconSizeGrid"
+                visible: !root.draftGridFixedColumns
+                Layout.fillWidth: true
+                label: "Grid view"
+                from: 32
+                to: 512
+                stepSize: 8
+                value: sessionState.gridIconSize > 0 ? sessionState.gridIconSize : 184
+                onMoved: (value) => {
+                    sessionState.gridIconSize = Math.round(value)
+                    sessionState.applyZoomToAllPanes()
+                }
+            }
+            Q.Slider {
+                objectName: "gridColumnsFixed"
                 readonly property int gridSpan: 14   // minColumns 2 + maxColumns 12
-
+                visible: root.draftGridFixedColumns
                 Layout.fillWidth: true
                 label: "Grid view"
                 from: 2
                 to: 12
                 stepSize: 1
                 value: gridSpan - (sessionState.gridColumns > 0 ? sessionState.gridColumns : 7)
-                onMoved: (value) => sessionState.gridColumns = gridSpan - Math.round(value)
+                onMoved: (value) => {
+                    sessionState.gridColumns = gridSpan - Math.round(value)
+                    sessionState.applyZoomToAllPanes()
+                }
             }
 
             Q.Toggle {
@@ -1060,7 +1078,10 @@ Window {
                 to: 56
                 stepSize: 1
                 value: sessionState.rowHeightDetailed > 0 ? sessionState.rowHeightDetailed : 28
-                onMoved: (value) => sessionState.rowHeightDetailed = Math.round(value)
+                onMoved: (value) => {
+                    sessionState.rowHeightDetailed = Math.round(value)
+                    sessionState.applyZoomToAllPanes()
+                }
             }
 
             Q.Slider {
@@ -1071,7 +1092,10 @@ Window {
                 to: 56
                 stepSize: 1
                 value: sessionState.rowHeightMiller > 0 ? sessionState.rowHeightMiller : 28
-                onMoved: (value) => sessionState.rowHeightMiller = Math.round(value)
+                onMoved: (value) => {
+                    sessionState.rowHeightMiller = Math.round(value)
+                    sessionState.applyZoomToAllPanes()
+                }
             }
 
             Q.Slider {
@@ -1082,7 +1106,10 @@ Window {
                 to: 56
                 stepSize: 1
                 value: sessionState.rowHeightCompact > 0 ? sessionState.rowHeightCompact : 28
-                onMoved: (value) => sessionState.rowHeightCompact = Math.round(value)
+                onMoved: (value) => {
+                    sessionState.rowHeightCompact = Math.round(value)
+                    sessionState.applyZoomToAllPanes()
+                }
             }
 
             Q.Toggle {

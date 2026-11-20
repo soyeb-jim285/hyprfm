@@ -314,9 +314,9 @@ install is needed there.
 | `Ctrl+2` | Miller column view |
 | `Ctrl+3` | Detailed view |
 | `Ctrl+4` | Compact view |
-| `Ctrl+Scroll` | Resize interface text over sidebar/file columns (Grid icons keep their size; the cells grow with the text); zoom content over a preview |
+| `Ctrl+Scroll` | Zoom the file view under the pointer (Grid icons 32–512 px, or row height in Compact, Detailed and Miller; Grid icons also `Ctrl+Alt++` / `Ctrl+Alt+-`, and `Ctrl+Alt+0` to reset); zoom content over a preview |
 | `Ctrl++` / `Ctrl+-` / `Ctrl+0` | Increase / decrease / reset interface text size; in a focused preview they zoom the preview instead |
-| `Ctrl+Shift+Scroll` | Resize Grid icons, or row height in Compact, Detailed and Miller; Grid icons also `Ctrl+Alt++` / `Ctrl+Alt+-`, and `Ctrl+Alt+0` to reset |
+| `Ctrl+Shift+Scroll` | Resize interface text across the window (Grid icons keep their size; the cells grow with the text) |
 | `Space` | Quick preview |
 | `F3` | Toggle split pane |
 | `F4` | Toggle the built-in terminal |
@@ -331,11 +331,11 @@ install is needed there.
 | `Ctrl+Shift+,` | Open `config.toml` in your editor |
 | `Ctrl+?` | Keyboard shortcut reference |
 
-These controls follow the local Strata development: mouse and touchpad wheel input,
-independent preview zoom, Compact's sideways scrolling, extra-pane transfers, and
-terminal-aware key routing. Pane shortcuts leave editors and dialogs alone. Closing
-the active extra pane keeps its folder and file selection, and reopening the terminal
-follows the active folder. Explicit shortcut customizations remain in effect.
+Mouse and touchpad wheel input, independent preview zoom, Compact's sideways
+scrolling, extra-pane transfers, and terminal-aware key routing work across
+views. Pane shortcuts leave editors and dialogs alone. Closing the active extra
+pane keeps its folder and file selection, and reopening the terminal follows the
+active folder. Explicit shortcut customizations remain in effect.
 
 Code previews choose a light or dark syntax palette with the app theme and refresh
 when the theme changes. Computer's List and Column drive cards have a bounded width,

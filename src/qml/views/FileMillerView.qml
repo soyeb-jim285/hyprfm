@@ -135,8 +135,8 @@ FocusScope {
     }
     readonly property int minRowHeight: Math.max(22, Math.ceil(Theme.fontNormal * 4 / 3) + 8)
     readonly property int maxRowHeight: 56
-    // Row-height zoom, shared by Ctrl+Wheel over the list and the file
-    // container's Ctrl+Shift+Wheel. Like FileGridView.zoomByWheel, a
+    // Row-height zoom: Ctrl+Wheel over the list (the file container's
+    // InterfaceZoom, or the list itself where none sits on top). Like FileGridView.zoomByWheel, a
     // negative delta (wheel up) makes rows taller.
     function zoomByWheel(delta) {
         currentWheelScroller.stopAndSettle()

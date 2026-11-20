@@ -769,7 +769,7 @@ ApplicationWindow {
     function resizeGridIcons(steps) {
         const view = root.activeSubView()
         if (!view || !tabModel.activeTab || tabModel.activeTab.viewMode !== "grid" || root.paneIsComputer(activePane)) return
-        if (steps === 0) view.columnCount = view.defaultColumnCount
+        if (steps === 0) view.resetZoom()
         else view.zoomByWheel(-steps * 42)
     }
 
@@ -1057,20 +1057,24 @@ ApplicationWindow {
 
         if (!enable) {
             if (activePane === "secondary") {
-                const selected = root.getSelectedPaths("secondary")
+                const fromComputer = root.paneIsComputer("secondary")
+                const selected = fromComputer ? [] : root.getSelectedPaths("secondary")
                 const view = root.activeSubView()
-                const cursorPath = view ? root.filePathFromModel(root.paneModel("secondary"), view.cursorIndex) : ""
+                const cursorPath = (!fromComputer && view)
+                    ? root.filePathFromModel(root.paneModel("secondary"), view.cursorIndex) : ""
                 // The primary pane takes over the secondary's folder; its own
                 // search or filter belonged to the folder it is leaving.
                 root.clearPaneSearch("primary")
                 tabModel.activeTab.navigateTo(tabModel.activeTab.secondaryCurrentPath)
                 root.setPaneRecents("primary", root.paneIsRecents("secondary"))
-                primaryFileViewContainer.restoreSelection(selected, cursorPath, tabModel.activeTab.currentPath)
+                if (!fromComputer)
+                    primaryFileViewContainer.restoreSelection(selected, cursorPath, tabModel.activeTab.currentPath)
             }
             root.clearPaneSearch("secondary")
             root.setPaneRecents("secondary", false)
             if (activePane === "secondary")
                 activePane = "primary"
+            root.scheduleActivePaneFocus()
         }
 
         tabModel.activeTab.splitViewEnabled = enable
@@ -3689,7 +3693,9 @@ ApplicationWindow {
         sequence: config.shortcutMap["refresh"]
         onActivated: {
             if (root.paneIsComputer(activePane)) {
-                root.activeSubView().refresh()
+                const view = root.activeSubView()
+                if (view && view.refresh)
+                    view.refresh()
                 return
             }
             fsModel.refresh()

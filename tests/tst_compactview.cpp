@@ -100,6 +100,28 @@ private slots:
         QCOMPARE(root->property("selectedIndices").toList(), QVariantList({0, 1}));
     }
 
+    // A compact row is one click target end to end, like a Detailed row: the
+    // blank space after a short name still picks that file. (The grid's tile
+    // is narrower than its cell; in Compact mode it must span the row.)
+    void testClickOnBlankEndOfRowSelectsIt()
+    {
+        Harness h;
+        QVERIFY(h.loadCompact());
+        auto *root = h.view.rootObject();
+        auto *second = h.item("compactItem_1");
+        auto *label = h.item("compactLabel_1");
+        QVERIFY(second && label);
+        auto *tile = second->property("tile").value<QQuickItem *>();
+        QVERIFY(tile);
+        QCOMPARE(tile->width(), second->width());
+        QCOMPARE(tile->height(), second->height());
+
+        const QPoint blankEnd = second->mapToScene(QPointF(second->width() - 4, second->height() / 2)).toPoint();
+        QVERIFY(blankEnd.x() > label->mapToScene(QPointF(label->implicitWidth(), 0)).x());
+        QTest::mouseClick(&h.view, Qt::LeftButton, {}, blankEnd);
+        QCOMPARE(root->property("selectedIndices").toList(), QVariantList({1}));
+    }
+
     void testVerticalWheelScrollsSideways()
     {
         Harness h;

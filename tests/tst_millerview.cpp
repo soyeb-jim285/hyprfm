@@ -101,12 +101,13 @@ private slots:
         f.write("hello preview\n");
         f.close();
 
-        QQmlEngine engine;
-        PreviewService previewService;
-        engine.rootContext()->setContextProperty("previewService", &previewService);
-        QQmlComponent component(&engine, QUrl::fromLocalFile(
+        // The loader imports HyprFM (Theme picks the preview's light or dark
+        // highlighting), so it needs the harness's staged module and context.
+        MillerHarness h;
+        QVERIFY(h.loadMiller());
+        QQmlComponent component(h.view.engine(), QUrl::fromLocalFile(
             QStringLiteral(TEST_SOURCE_DIR "/src/qml/components/PreviewLoader.qml")));
-        std::unique_ptr<QObject> loader(component.create());
+        std::unique_ptr<QObject> loader(component.create(h.view.rootContext()));
         QVERIFY2(loader, qPrintable(component.errorString()));
         loader->setProperty("requester", "test");
         loader->setProperty("kind", "text");

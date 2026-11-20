@@ -89,12 +89,34 @@ GridView {
     // user may never scroll to.
     cacheBuffer: 512
     // Zoom picks an icon size and the window width decides how many columns
-    // fit, so resizing the window no longer resizes the icons (#61). The
-    // zoom step is still stored as a column count (2 = biggest, 12 =
-    // smallest): each step is the cell a 1600 px wide view would get with
-    // that many columns, so the default looks as it did on a typical window.
-    // grid_fixed_columns brings back the old way: zoom is the column count
-    // and the icons stretch to fill the width.
+    // fit, so resizing the window does not resize the icons (#61). The size
+    // is continuous, 32 to 512 px: Ctrl+Wheel scales it ~15% a notch (a
+    // touchpad by fractions of a notch) and the change animates. It used to
+    // be a column count, 2..12 of a 1600 px view, which never went below an
+    // 88 px icon and jumped ~30 px a step. grid_fixed_columns keeps the
+    // column count: zoom is the count and the icons stretch to the width.
+    readonly property int defaultIconSize: 184   // the old default, 7 columns
+    readonly property int minIconSize: 32
+    readonly property int maxIconSize: 512
+    property real zoomIconSize: defaultIconSize   // what the zoom asks for (saved)
+    property real shownIconSize: zoomIconSize     // what is drawn: follows, animated
+    property bool animateZoom: false
+    Behavior on shownIconSize {
+        enabled: root.animateZoom
+        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+    }
+    function setZoomIconSize(size, animate) {
+        animateZoom = !!animate
+        zoomIconSize = Math.max(minIconSize, Math.min(maxIconSize, size))
+    }
+    function resetZoom() {
+        if (compactMode)
+            rowHeight = Math.max(minRowHeight, 28)
+        else if (config.gridFixedColumns)
+            columnCount = defaultColumnCount
+        else
+            setZoomIconSize(defaultIconSize, true)
+    }
     readonly property int defaultColumnCount: 7
     property int columnCount: defaultColumnCount
     readonly property int minColumns: 2
@@ -102,7 +124,7 @@ GridView {
     readonly property int minCellWidth: 140
     readonly property int targetCellSize: config.gridFixedColumns
         ? Math.floor(width / effectiveColumnCount)
-        : Math.max(1, Math.min(width, Math.round(1600 / columnCount)))
+        : Math.max(1, Math.min(width, Math.round(shownIconSize) + 45))
     readonly property int effectiveColumnCount: config.gridFixedColumns
         ? Math.max(minColumns, Math.min(columnCount, Math.min(maxColumns, Math.max(1, Math.floor(width / minCellWidth)))))
         : Math.max(1, Math.floor(width / targetCellSize))
@@ -117,6 +139,10 @@ GridView {
     // stops, so dragging the window edge does not re-render every icon at
     // each pixel; meanwhile the last render is scaled.
     readonly property int exactIconRequestSize: Math.max(16, Math.ceil(root.iconSize * Screen.devicePixelRatio))
+    // The icon URL carries the size too, so it follows the settled request:
+    // with root.iconSize every zoom frame reloaded every visible icon, and
+    // they came back one by one.
+    readonly property int iconSourceSize: Math.max(16, Math.round(iconRequestSize / Screen.devicePixelRatio))
     property int iconRequestSize: exactIconRequestSize
     onExactIconRequestSizeChanged: iconSizeSettle.restart()
     Timer {
@@ -128,8 +154,8 @@ GridView {
 
     // Spare width is shared out between the columns.
     cellWidth: compactMode ? compactColumnWidth : Math.floor(width / effectiveColumnCount)
-    // The zoom step (Ctrl+Shift+Wheel) sizes the icon: the cell's height at the
-    // 10 pt label. Larger interface text (Ctrl+Wheel) makes the cell taller by
+    // The zoom step (Ctrl+Wheel) sizes the icon: the cell's height at the
+    // 10 pt label. Larger interface text (Ctrl+Shift+Wheel) makes the cell taller by
     // what the label gains, as Strata's Icons view does, rather than taking
     // that room from the icon -- which shrank icons as the text grew.
     cellHeight: compactMode ? Math.max(rowHeight, Math.ceil(nameMetrics.height) + 8)
@@ -203,9 +229,12 @@ GridView {
         if (compactMode) {
             var sizeStep = delta < 0 ? 2 : -2
             rowHeight = Math.max(minRowHeight, Math.min(maxRowHeight, rowHeight + sizeStep))
-        } else {
+        } else if (config.gridFixedColumns) {
             var step = delta < 0 ? -1 : 1
             columnCount = Math.max(minColumns, Math.min(maxColumns, columnCount + step))
+        } else {
+            // delta is -42 a wheel notch up (bigger); a touchpad gives fractions
+            setZoomIconSize(zoomIconSize * Math.pow(1.15, -delta / 42), true)
         }
     }
 
@@ -703,9 +732,12 @@ GridView {
             }
         }
 
-        readonly property bool hasThumbnail: !root.compactMode && !fileOps.isRemotePath(delegateItem.filePath) && !fileOps.isSlowPath(delegateItem.filePath)
-            && (delegateItem.isDir || delegateItem.hasImagePreview || delegateItem.hasVideoPreview
-                || delegateItem.hasPdfPreview)
+        // Compact rows show icons, not file thumbnails; a folder's custom icon
+        // is still its icon there, as in the Detailed view.
+        readonly property bool hasThumbnail: !fileOps.isRemotePath(delegateItem.filePath) && !fileOps.isSlowPath(delegateItem.filePath)
+            && (delegateItem.isDir
+                || (!root.compactMode && (delegateItem.hasImagePreview || delegateItem.hasVideoPreview
+                                          || delegateItem.hasPdfPreview)))
 
         Image {
             id: thumbImg
@@ -754,9 +786,11 @@ GridView {
             anchors.topMargin: root.compactMode ? 0 : 8
             width: root.iconSize
             height: root.iconSize
-            source: Theme.fileIconSource(delegateItem.fileIconName, delegateItem.fileName, root.iconSize, !root.compactMode)
+            source: Theme.fileIconSource(delegateItem.fileIconName, delegateItem.fileName, root.iconSourceSize, !root.compactMode)
             sourceSize: Qt.size(root.iconRequestSize, root.iconRequestSize)
             asynchronous: true
+            // Keep showing the last render while the settled size loads (Qt 6.8+).
+            Component.onCompleted: if ("retainWhileLoading" in iconImg) iconImg.retainWhileLoading = true
         }
 
         Rectangle {
@@ -902,11 +936,12 @@ GridView {
         // Selection/hover rect wraps tightly around the content
         Rectangle {
             id: selectionRect
+            // A compact row is the whole cell, as the Detailed view's rows are.
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
-            anchors.topMargin: 3
-            width: Math.min(parent.width - 10, Math.max(root.iconSize + 36, 110))
-            height: parent.height - 6
+            anchors.topMargin: root.compactMode ? 0 : 3
+            width: root.compactMode ? parent.width : Math.min(parent.width - 10, Math.max(root.iconSize + 36, 110))
+            height: root.compactMode ? parent.height : parent.height - 6
             radius: Theme.radiusMedium
             z: -1
             opacity: (root.isDragging && delegateItem.isSelected) ? 0.4 : 1.0
@@ -1067,7 +1102,7 @@ GridView {
                     wheel.accepted = false
                     return
                 }
-                root.zoomByWheel(delta)
+                root.zoomByWheel(delta < 0 ? -42 : 42)
                 wheel.accepted = true
             } else {
                 wheel.accepted = false

@@ -1116,6 +1116,12 @@ int main(int argc, char *argv[])
         // Session-scoped view state (zoom per view). 0 keeps built-in defaults.
         w->sessionState = new SessionState(w);
         w->sessionState->setGridColumns(session.value("gridColumns").toInt());
+        // Grid zoom was a column count until 0.7.x; the size it gave becomes
+        // the icon size (a cell of 1600/columns px, less the 45 px label).
+        if (session.contains("gridIconSize"))
+            w->sessionState->setGridIconSize(session.value("gridIconSize").toInt());
+        else if (const int columns = session.value("gridColumns").toInt(); columns > 0)
+            w->sessionState->setGridIconSize(qBound(32, qRound(1600.0 / columns) - 45, 512));
         w->sessionState->setRowHeightDetailed(session.value("rowHeightDetailed").toInt());
         w->sessionState->setRowHeightMiller(session.value("rowHeightMiller").toInt());
         w->sessionState->setRowHeightCompact(session.value("rowHeightCompact").toInt());
@@ -1319,6 +1325,7 @@ int main(int argc, char *argv[])
         session["tabs"] = sessionWindow->tabModel->saveSession();
         session["activeTab"] = sessionWindow->tabModel->activeIndex();
         session["gridColumns"] = sessionWindow->sessionState->gridColumns();
+        session["gridIconSize"] = sessionWindow->sessionState->gridIconSize();
         session["rowHeightDetailed"] = sessionWindow->sessionState->rowHeightDetailed();
         session["rowHeightMiller"] = sessionWindow->sessionState->rowHeightMiller();
         session["rowHeightCompact"] = sessionWindow->sessionState->rowHeightCompact();
@@ -1353,6 +1360,7 @@ int main(int argc, char *argv[])
         QObject::connect(sessionWindow->tabModel, &TabListModel::sessionChanged, &app, scheduleSessionSave);
         // Zoom changes are session state too, so persist them the same way.
         QObject::connect(sessionWindow->sessionState, &SessionState::gridColumnsChanged, &app, scheduleSessionSave);
+        QObject::connect(sessionWindow->sessionState, &SessionState::gridIconSizeChanged, &app, scheduleSessionSave);
         QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightDetailedChanged, &app, scheduleSessionSave);
         QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightMillerChanged, &app, scheduleSessionSave);
         QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightCompactChanged, &app, scheduleSessionSave);
