@@ -1,4 +1,5 @@
 pragma Singleton
+import "../strataicons/IconMapping.js" as StrataMapping
 import QtQuick
 
 QtObject {
@@ -12,6 +13,22 @@ QtObject {
     property color text: theme.text
     property color subtext: theme.subtext
     property color muted: theme.muted
+    function iconComponentSource(type) {
+        return Qt.resolvedUrl((StrataMapping.types[type] ? "../strataicons/" : "../icons/") + type + ".qml")
+    }
+
+    function fileIconSource(iconName, fileName, logicalSize, grid) {
+        return "image://icon/" + encodeURIComponent(iconName || "text-x-generic")
+            + "?theme=" + encodeURIComponent(config.iconTheme)
+            + "&r=" + config.iconRevision
+            + "&accent=" + encodeURIComponent(theme.accent)
+            + "&background=" + encodeURIComponent(theme.base)
+            + "&fileColors=" + config.fileIconColors
+            + "&name=" + encodeURIComponent(fileName || "")
+            + "&logicalSize=" + (logicalSize || 48)
+            + "&context=" + (grid ? "grid" : "interface")
+    }
+
     property color accent: theme.accent
     property color success: theme.success
     property color warning: theme.warning

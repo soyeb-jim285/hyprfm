@@ -26,6 +26,90 @@ class TestIconProvider : public QObject
     }
 
 private slots:
+    void testStrataAssociations_data()
+    {
+        QTest::addColumn<QString>("filename");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("rust") << "main.RS" << "strata-ctp-rust";
+        QTest::newRow("cargo") << "Cargo.toml" << "strata-ctp-cargo";
+        QTest::newRow("compound-extension") << "file.d.ts" << "strata-ctp-typescript-def";
+        QTest::newRow("docker-affix") << "Dockerfile.unusual" << "strata-ctp-docker";
+        QTest::newRow("private-key") << "id_ed25519" << "strata-key-round";
+        QTest::newRow("unknown") << "unknown-file-42" << "";
+    }
+
+    void testStrataAssociations()
+    {
+        QFETCH(QString, filename);
+        QFETCH(QString, expected);
+        QCOMPARE(StrataIcons::fileIcon(filename), expected);
+        QCOMPARE(StrataIcons::resolve("inode-directory", filename), QString("strata-folder"));
+    }
+
+    void testAllStrataIconsRender_data()
+    {
+        QTest::addColumn<QString>("name");
+        for (const QString &category : {QString("actions"), QString("catppuccin")}) {
+            const auto names = QDir(":/HyprFM/icons/strata/" + category).entryList({"*.svg"});
+            QVERIFY(!names.isEmpty());
+            for (const QString &file : names) {
+                const QString name = QFileInfo(file).completeBaseName();
+                QTest::newRow(qPrintable(name)) << name;
+            }
+        }
+    }
+
+    void testAllStrataIconsRender()
+    {
+        QFETCH(QString, name);
+        IconProvider provider("Strata");
+        QSize size;
+        const QImage image = provider.requestImage(name, &size, QSize(48, 48));
+        QVERIFY(!StrataIcons::render(name, 48, QColor("#89b4fa"), QColor("#1e1e2e"), false, 48, false).isNull());
+        QCOMPARE(size, QSize(48, 48));
+        QVERIFY(!image.isNull());
+        bool visible = false;
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                visible |= image.pixelColor(x, y).alpha() > 0;
+        QVERIFY(visible);
+    }
+
+    void testStrataPaletteAndCacheFollowThemeChanges()
+    {
+        IconProvider provider("Strata");
+        QSize size;
+        const auto render = [&](const QString &id) { return provider.requestImage(id, &size, QSize(48, 48)); };
+        provider.setPalette(QColor("#ff0000"), QColor("#1e1e2e"), false);
+        const QImage redFolder = render("folder");
+        const QImage mocha = render("application-octet-stream?name=main.rs");
+        provider.setPalette(QColor("#00ff00"), QColor("#1e1e2e"), false);
+        QVERIFY(redFolder != render("folder"));
+        QCOMPARE(mocha, render("application-octet-stream?name=main.rs"));
+        provider.setPalette(QColor("#00ff00"), QColor("#eff1f5"), false);
+        QVERIFY(mocha != render("application-octet-stream?name=main.rs"));
+        provider.setPalette(QColor("#00ff00"), QColor("#eff1f5"), true);
+        const QImage themed = render("application-octet-stream?name=main.rs");
+        bool foundOpaque = false;
+        for (int y = 0; y < themed.height(); ++y) {
+            for (int x = 0; x < themed.width(); ++x) {
+                const QColor pixel = themed.pixelColor(x, y);
+                if (pixel.alpha() == 255) {
+                    QCOMPARE(pixel, QColor("#00ff00"));
+                    foundOpaque = true;
+                }
+            }
+        }
+        QVERIFY(foundOpaque);
+        QVERIFY(themed != mocha);
+        // Explicit URL colors win even before the application updates provider state.
+        QCOMPARE(render("folder?accent=%23ff0000&background=%231e1e2e"), redFolder);
+        QCOMPARE(render("text-plain?name=spaces%20%26%20hash%23.rs"), render("text-plain?name=main.rs"));
+        // Distinct filenames that map to the same icon share the cached image instead of re-rendering per file.
+        QCOMPARE(render("text-plain?name=first.rs").cacheKey(), render("text-plain?name=second.rs").cacheKey());
+        QCOMPARE(render("inode-directory?name=FolderA").cacheKey(), render("inode-directory?name=FolderB").cacheKey());
+    }
+
     void testConstruction()
     {
         // Should not crash with a valid theme name

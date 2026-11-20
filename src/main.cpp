@@ -973,22 +973,28 @@ int main(int argc, char *argv[])
     // An unset icon theme follows the desktop; Adwaita is the last resort when
     // nothing answers. Resolved inside ConfigManager so QML's config.iconTheme
     // (the ?theme= in every image://icon URL) sees the same answer.
-    config->setIconThemeFallback(desktop.iconTheme.isEmpty() ? QStringLiteral("Adwaita")
-                                                             : desktop.iconTheme);
+    const QString nativeIconTheme = desktop.iconTheme.isEmpty() ? QStringLiteral("Adwaita") : desktop.iconTheme;
+    config->setIconThemeFallback(nativeIconTheme);
 
     // Set icon theme so QIcon::fromTheme() works (e.g. for drag pixmaps)
-    QIcon::setThemeName(config->iconTheme());
+    QIcon::setThemeName(config->iconTheme() == "Strata" ? nativeIconTheme : config->iconTheme());
 
     // Register image providers (keep pointer to IconProvider for DragHelper)
     auto *iconProvider = new IconProvider(config->iconTheme());
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
     engine.addImageProvider("icon", iconProvider);
+    const auto updateIconPalette = [=]() {
+        iconProvider->setPalette(theme->accent(), theme->base(), config->fileIconColors() == "theme");
+    };
+    updateIconPalette();
+    QObject::connect(theme, &ThemeLoader::themeChanged, &app, updateIconPalette);
+    QObject::connect(config, &ConfigManager::configChanged, &app, updateIconPalette);
     engine.addImageProvider("pdfpreview", new PdfPreviewProvider);
 
     DragHelper *dragHelper = new DragHelper(iconProvider, &app);
 
     QObject::connect(config, &ConfigManager::configChanged, [=]() {
-        QIcon::setThemeName(config->iconTheme());
+        QIcon::setThemeName(config->iconTheme() == "Strata" ? nativeIconTheme : config->iconTheme());
         iconProvider->setPrimaryTheme(config->iconTheme());
     });
 

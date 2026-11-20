@@ -74,6 +74,7 @@ install(DIRECTORY ${CMAKE_BINARY_DIR}/src/HyprFM/
     DESTINATION share/hyprfm/HyprFM
     FILES_MATCHING
         PATTERN "*.qml"
+        PATTERN "*.js"
         PATTERN "qmldir"
         PATTERN "*.qmltypes")
 

@@ -304,7 +304,7 @@ Rectangle {
                                 { mode: "grid",     icon: "Grid",         name: "Grid view" },
                                 { mode: "miller",   icon: "Columns3",     name: "Miller column view" },
                                 { mode: "detailed", icon: "AlignJustify", name: "Detailed view" },
-                                { mode: "compact",  icon: "List",         name: "Compact view" }
+                                { mode: "compact",  icon: "LayoutList",         name: "Compact view" }
                             ].filter(mode => !root.filePickerMode || mode.mode !== "miller")
 
                             delegate: HoverRect {
@@ -333,7 +333,7 @@ Rectangle {
 
                                 Loader {
                                     anchors.centerIn: parent
-                                    source: "../icons/Icon" + viewButton.modelData.icon + ".qml"
+                                    source: Theme.iconComponentSource("Icon" + viewButton.modelData.icon)
                                     onLoaded: {
                                         item.size = 16
                                         item.color = Qt.binding(() => viewButton.current ? Theme.accent : Theme.text)

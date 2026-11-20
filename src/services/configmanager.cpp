@@ -311,7 +311,7 @@ QStringList ConfigManager::availableMonospaceFonts() const
 
 QStringList ConfigManager::availableIconThemes() const
 {
-    QStringList themes;
+    QStringList themes{QStringLiteral("Strata")};
     for (const QString &baseDir : iconSearchDirs()) {
         QDir dir(baseDir);
         const QFileInfoList entries = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
@@ -334,12 +334,10 @@ void ConfigManager::setDefaults()
     m_lightTheme = QStringLiteral("catppuccin-latte");
     m_darkTheme = QStringLiteral("catppuccin-mocha");
     m_theme = m_desktopDark ? m_darkTheme : m_lightTheme;
-    // Empty means "whatever the desktop is set to": main.cpp asks the XDG
-    // portal and hands the answer to setIconThemeFallback(). Adwaita ships 47
-    // mimetype icons, so pinning it here made most file types fall through to
-    // whichever fallback theme happened to have them - and it stays the
-    // built-in answer for a desktop that publishes nothing.
-    m_iconTheme.clear();
+    // The bundled pack is the default; an explicitly empty setting still
+    // follows the desktop through setIconThemeFallback().
+    m_iconTheme = QStringLiteral("Strata");
+    m_fileIconColors = QStringLiteral("brand");
     m_autoRefreshIcons = true;
     m_iconThemeFallback = QStringLiteral("Adwaita");
     m_fontFamily.clear();
@@ -451,6 +449,8 @@ void ConfigManager::loadConfig()
             m_theme = QString::fromStdString(*v);
         if (auto v = config["general"]["auto_refresh_icons"].value<bool>())
             m_autoRefreshIcons = *v;
+        if (auto v = config["general"]["file_icon_colors"].value<std::string>())
+            m_fileIconColors = *v == "theme" ? QStringLiteral("theme") : QStringLiteral("brand");
         if (auto v = config["general"]["icon_theme"].value<std::string>())
             m_iconTheme = QString::fromStdString(*v);
         if (auto v = config["general"]["font_family"].value<std::string>())
@@ -756,10 +756,12 @@ QString ConfigManager::documentedConfigTemplate()
 light_theme = "catppuccin-latte"
 dark_theme = "catppuccin-mocha"
 
-# Icon theme for file and folder icons (a directory name under
-# /usr/share/icons or ~/.icons). Toolbar and sidebar icons are built in.
-# Empty follows the desktop's own icon theme.
-icon_theme = ""
+# Built-in Strata icons follow the color theme. Other values select an
+# installed icon pack under /usr/share/icons or ~/.icons; empty follows the desktop.
+icon_theme = "Strata"
+
+# Strata file icons: "brand" = Mocha/Latte palettes, "theme" = theme accent.
+file_icon_colors = "brand"
 
 # Reload icons when the selected local icon theme is updated.
 auto_refresh_icons = true
@@ -1069,6 +1071,7 @@ void ConfigManager::saveListColumns(const QStringList &columns, const QVariantMa
 QString ConfigManager::theme() const { return m_theme; }
 QString ConfigManager::lightTheme() const { return m_lightTheme; }
 QString ConfigManager::darkTheme() const { return m_darkTheme; }
+QString ConfigManager::fileIconColors() const { return m_fileIconColors; }
 QString ConfigManager::iconTheme() const
 {
     return m_iconTheme.isEmpty() ? m_iconThemeFallback : m_iconTheme;
@@ -1323,6 +1326,10 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
     if (settings.contains("autoRefreshIcons")) {
         m_autoRefreshIcons = settings.value("autoRefreshIcons").toBool();
         general.insert_or_assign("auto_refresh_icons", m_autoRefreshIcons);
+    }
+    if (settings.contains("fileIconColors")) {
+        m_fileIconColors = settings.value("fileIconColors").toString() == "theme" ? "theme" : "brand";
+        general.insert_or_assign("file_icon_colors", m_fileIconColors.toStdString());
     }
     if (settings.contains("iconTheme")) {
         const QString iconTheme = settings.value("iconTheme").toString().trimmed();

@@ -34,7 +34,7 @@ Window {
 
     readonly property color sectionBorderColor: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
     readonly property string defaultThemeName: "catppuccin-mocha"
-    readonly property string defaultIconThemeName: "Adwaita"
+    readonly property string defaultIconThemeName: "Strata"
     readonly property string defaultSidebarPosition: "left"
     readonly property int defaultSidebarWidth: 200
     readonly property int defaultSidebarAutoHideWidth: 700
@@ -78,6 +78,7 @@ Window {
     property string draftFontFamily: config.fontFamily
     property bool draftAutoRefreshIcons: config.autoRefreshIcons
     property string draftIconTheme: config.iconTheme
+    property string draftFileIconColors: config.fileIconColors
     property bool draftDarkMode: true
     property bool draftShowHidden: currentShowHidden
     property bool draftHiddenLast: config.hiddenLast
@@ -282,6 +283,7 @@ Window {
         setDraftTheme(defaultThemeName)
         draftFontFamily = ""
         draftIconTheme = defaultIconThemeName
+        draftFileIconColors = "brand"
         draftAutoRefreshIcons = true
         draftShowHidden = false
         draftHiddenLast = false
@@ -338,6 +340,7 @@ Window {
             fontOptions = buildFontOptions()
 
             draftIconTheme = config.iconTheme
+            draftFileIconColors = config.fileIconColors
             draftAutoRefreshIcons = config.autoRefreshIcons
             iconThemeOptions = buildOptions(availableIconThemeValues, draftIconTheme, "Adwaita")
 
@@ -426,6 +429,7 @@ Window {
             darkTheme: draftDarkTheme,
             fontFamily: draftFontFamily,
             iconTheme: draftIconTheme,
+            fileIconColors: draftFileIconColors,
             autoRefreshIcons: draftAutoRefreshIcons,
             showHidden: draftShowHidden,
             hiddenLast: draftHiddenLast,
@@ -634,6 +638,19 @@ Window {
                 currentIndex: root.optionIndex(root.iconThemeOptions, root.draftIconTheme, 0)
                 onSelected: (_, value) => {
                     root.draftIconTheme = value
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Dropdown {
+                objectName: "fileIconColors"
+                Layout.fillWidth: true
+                label: "File icon colors"
+                enabled: root.draftIconTheme === "Strata"
+                model: ["Brand colors", "Theme accent"]
+                currentIndex: root.draftFileIconColors === "theme" ? 1 : 0
+                onSelected: (index, value) => {
+                    root.draftFileIconColors = index === 1 ? "theme" : "brand"
                     root.applySettingsNow()
                 }
             }

@@ -809,7 +809,7 @@ Item {
                     { text: "Grid", shortcut: keys("grid_view"), action: "view_grid", checked: currentViewMode === "grid", icon: "Grid" },
                     { text: "Miller", shortcut: keys("miller_view"), action: "view_miller", checked: currentViewMode === "miller", icon: "Columns3" },
                     { text: "Detailed", shortcut: keys("detailed_view"), action: "view_detailed", checked: currentViewMode === "detailed", icon: "AlignJustify" },
-                    { text: "Compact", shortcut: keys("compact_view"), action: "view_compact", checked: currentViewMode === "compact", icon: "List" }
+                    { text: "Compact", shortcut: keys("compact_view"), action: "view_compact", checked: currentViewMode === "compact", icon: "LayoutList" }
                 ]
             })
             items.push({ text: "Sort By", shortcut: "", action: "sort_toggle", isSubmenu: true, icon: "SlidersH",
@@ -949,7 +949,7 @@ Item {
                     Layout.preferredHeight: 16
                     Layout.alignment: Qt.AlignVCenter
                     active: !!(itemData && itemData.icon)
-                    source: (itemData && itemData.icon) ? "../icons/Icon" + itemData.icon + ".qml" : ""
+                    source: (itemData && itemData.icon) ? Theme.iconComponentSource("Icon" + itemData.icon) : ""
                     onLoaded: {
                         item.size = 16
                         item.color = Qt.binding(() => itemData && itemData.destructive ? Theme.error : Theme.muted)
@@ -1009,7 +1009,7 @@ Item {
                     Layout.preferredHeight: 16
                     Layout.alignment: Qt.AlignVCenter
                     active: !!(itemData && itemData.icon)
-                    source: (itemData && itemData.icon) ? "../icons/Icon" + itemData.icon + ".qml" : ""
+                    source: (itemData && itemData.icon) ? Theme.iconComponentSource("Icon" + itemData.icon) : ""
                     onLoaded: {
                         item.size = 16
                         item.color = Qt.binding(() => submenuTrigger.isActive ? Theme.text : Theme.muted)
@@ -1066,7 +1066,7 @@ Item {
                 spacing: 8
                 Image {
                     source: subItemData && subItemData.iconName
-                        ? ("image://icon/" + subItemData.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                        ? Theme.fileIconSource(subItemData.iconName, "", 24, false)
                         : ""
                     sourceSize: Qt.size(18, 18)
                     Layout.preferredWidth: visible ? 18 : 0
@@ -1079,7 +1079,7 @@ Item {
                     Layout.preferredHeight: 14
                     Layout.alignment: Qt.AlignVCenter
                     active: !!(subItemData && subItemData.icon)
-                    source: (subItemData && subItemData.icon) ? "../icons/Icon" + subItemData.icon + ".qml" : ""
+                    source: (subItemData && subItemData.icon) ? Theme.iconComponentSource("Icon" + subItemData.icon) : ""
                     onLoaded: {
                         item.size = 14
                         item.color = Qt.binding(() => Theme.muted)

@@ -32,7 +32,11 @@ set(HYPRFM_SOURCES
     providers/pdfpreviewprovider.cpp
 )
 
+add_library(hyprfm_icons OBJECT icons/strata.qrc)
+target_link_libraries(hyprfm_icons PRIVATE Qt6::Core)
 qt_add_executable(hyprfm ${HYPRFM_SOURCES})
+target_link_libraries(hyprfm PRIVATE hyprfm_icons)
+install(DIRECTORY icons/strata/licenses/ DESTINATION share/hyprfm/licenses/strata)
 
 if(HYPRFM_TERMINAL)
     target_sources(hyprfm PRIVATE terminal/terminalview.cpp terminal/terminalview.h)
@@ -200,6 +204,12 @@ if(HYPRFM_TERMINAL)
     list(APPEND hyprfm_qml_module_args qml/components/TerminalPanel.qml)
 endif()
 
+include(icons/strata-qml.cmake)
+foreach(icon IN LISTS HYPRFM_STRATA_QML_OVERRIDES)
+    list(REMOVE_ITEM hyprfm_qml_module_args "qml/icons/${icon}")
+    list(APPEND hyprfm_qml_module_args "qml/strataicons/${icon}")
+endforeach()
+list(APPEND hyprfm_qml_module_args qml/components/StrataIcon.qml qml/strataicons/IconMapping.js)
 qt_add_qml_module(hyprfm ${hyprfm_qml_module_args})
 
 # The app logo, for the About page; the installed copy is only in the icon

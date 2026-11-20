@@ -216,6 +216,58 @@ class TestMainWindow : public QObject
     };
 
 private slots:
+    void testStrataIconsUpdateWithThemeAndAppearancePreference()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *config = app.engine.rootContext()->contextProperty("config").value<ConfigManager *>();
+        auto *theme = app.engine.rootContext()->contextProperty("theme").value<ThemeLoader *>();
+        QVERIFY(config && theme);
+        QCOMPARE(config->iconTheme(), QString("Strata"));
+        auto *container = app.item("primaryFileView");
+        QVERIFY(container);
+        std::function<QQuickItem *(QQuickItem *)> interfaceIcon = [&](QQuickItem *parent) -> QQuickItem * {
+            if (parent->property("iconName").toString() == "strata-icons") return parent;
+            for (auto *child : parent->childItems())
+                if (auto *found = interfaceIcon(child)) return found;
+            return nullptr;
+        };
+        auto *button = app.item("viewModeButton_grid");
+        QVERIFY(button);
+        QTRY_VERIFY(interfaceIcon(button));
+        QTRY_COMPARE(interfaceIcon(button)->property("effectiveColor").value<QColor>(), theme->accent());
+        auto *grid = container->property("gridViewItem").value<QQuickItem *>();
+        QVERIFY(grid);
+        std::function<QQuickItem *(QQuickItem *)> fileImage = [&](QQuickItem *parent) -> QQuickItem * {
+            for (auto *child : parent->childItems()) {
+                if (child->property("source").toString().startsWith("image://icon/")
+                    && child->property("source").toString().contains("name=")) return child;
+                if (auto *found = fileImage(child)) return found;
+            }
+            return nullptr;
+        };
+        QTRY_VERIFY(fileImage(grid));
+        auto *image = fileImage(grid);
+        const QString oldSource = image->property("source").toString();
+        theme->loadTheme("strata-nord-light", {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+        QTRY_VERIFY(image->property("source").toString() != oldSource);
+        QVERIFY(image->property("source").toString().contains("fileColors=brand"));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
+        auto *panel = app.window->findChild<QObject *>("settingsPanel");
+        QVERIFY(panel);
+        auto *choice = panel->findChild<QObject *>("fileIconColors");
+        QVERIFY(choice);
+        QVERIFY(QMetaObject::invokeMethod(choice, "selected", Q_ARG(int, 1), Q_ARG(QString, QString("Theme accent"))));
+        QTRY_COMPARE(config->fileIconColors(), QString("theme"));
+        QTRY_VERIFY(image->property("source").toString().contains("fileColors=theme"));
+        // The saved preference also initializes a view created later.
+        app.tabModel->activeTab()->setViewMode("compact");
+        QTRY_VERIFY(container->property("compactViewItem").value<QQuickItem *>());
+        auto *compact = container->property("compactViewItem").value<QQuickItem *>();
+        QTRY_VERIFY(fileImage(compact));
+        QVERIFY(fileImage(compact)->property("source").toString().contains("fileColors=theme"));
+    }
+
     void testFilePickerSaveAndOverwrite()
     {
         QTemporaryDir dir;

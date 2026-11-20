@@ -112,7 +112,7 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 ### Look & feel
 
 - **TOML themes** with live reload — 105 bundled themes, including the complete 95-theme Strata catalog
-- **Built-in SVG icon set** (90+ Lucide-style icons rendered via Qt Shapes)
+- **Strata icon pack** with theme-colored Lucide icons and 354 Catppuccin file-type icons; light/dark brand palettes or the theme accent
 - **Configurable corner radius**, fonts, animation duration
 - **Wayland compositor blur** on Hyprland plus native KWin blur on KDE Plasma
 
@@ -390,7 +390,8 @@ Config lives at `~/.config/hyprfm/config.toml`. On first run HyprFM writes it fu
                                # "pywal" follows ~/.cache/wal/colors.json live
 light_theme = "catppuccin-latte"  # the Dark Mode switch in Settings flips
 dark_theme = "catppuccin-mocha"   # between these two
-icon_theme = "Adwaita"         # system icon theme fallback
+icon_theme = "Strata"          # bundled icons; installed icon packs also work
+file_icon_colors = "brand"      # Strata file icons: brand | theme
 font_family = ""               # UI font; empty = desktop font
 default_view = "grid"          # grid | detailed | miller | compact
 compact_full_names = false    # widen Compact columns to show complete filenames
@@ -461,6 +462,10 @@ shortcut = "Ctrl+E"                 # optional; runs the action on the selection
 ---
 
 ## 🎨 Theming
+
+For theme-aware folder and file icons, select **Strata** under Settings →
+Look & Feel → Icon Pack. **File icon colors** switches between brand palettes
+and the theme accent. See the [icon pack notes](src/icons/README.md).
 
 Themes are plain TOML files. Nothing is hardcoded in the binary. The ten original
 themes and all 95 Strata themes ship in `/usr/share/hyprfm/themes/*.toml`.

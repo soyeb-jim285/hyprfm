@@ -133,7 +133,7 @@ target_compile_definitions(tst_detailedview PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_detailedview PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
+target_link_libraries(tst_detailedview PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
 add_dependencies(tst_detailedview hyprfm)
 add_test(NAME tst_detailedview COMMAND tst_detailedview)
 
@@ -152,7 +152,7 @@ target_compile_definitions(tst_compactview PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_compactview PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Svg Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
+target_link_libraries(tst_compactview PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
 add_dependencies(tst_compactview hyprfm)
 add_test(NAME tst_compactview COMMAND tst_compactview)
 
@@ -174,7 +174,7 @@ target_compile_definitions(tst_millerview PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_millerview PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
+target_link_libraries(tst_millerview PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
 add_dependencies(tst_millerview hyprfm)
 add_test(NAME tst_millerview COMMAND tst_millerview)
 
@@ -196,7 +196,7 @@ target_compile_definitions(tst_viewcontextmenu PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_viewcontextmenu PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
+target_link_libraries(tst_viewcontextmenu PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
 add_dependencies(tst_viewcontextmenu hyprfm)
 add_test(NAME tst_viewcontextmenu COMMAND tst_viewcontextmenu)
 
@@ -211,7 +211,7 @@ add_executable(tst_toolbar tst_toolbar.cpp viewharness.h
 )
 target_include_directories(tst_toolbar PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/third_party)
 target_compile_definitions(tst_toolbar PRIVATE TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}" TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src")
-target_link_libraries(tst_toolbar PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
+target_link_libraries(tst_toolbar PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent PkgConfig::GIO)
 add_dependencies(tst_toolbar hyprfm)
 add_test(NAME tst_toolbar COMMAND tst_toolbar)
 
@@ -256,7 +256,7 @@ target_compile_definitions(tst_mainwindow PRIVATE
     HYPRFM_DATA_DIR="${CMAKE_SOURCE_DIR}"
     HYPRFM_VERSION="test"
 )
-target_link_libraries(tst_mainwindow PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Svg Qt6::Network Qt6::Concurrent PkgConfig::GIO)
+target_link_libraries(tst_mainwindow PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Svg Qt6::Network Qt6::Concurrent PkgConfig::GIO)
 add_dependencies(tst_mainwindow hyprfm)
 qt_add_resources(tst_mainwindow "logo"
     PREFIX "/HyprFM"
@@ -277,7 +277,7 @@ add_test(NAME tst_devicemodel COMMAND tst_devicemodel)
 
 add_executable(tst_iconprovider tst_iconprovider.cpp)
 target_include_directories(tst_iconprovider PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_iconprovider PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick Qt6::Svg)
+target_link_libraries(tst_iconprovider PRIVATE hyprfm_icons Qt6::Svg Qt6::Test Qt6::Core Qt6::Gui Qt6::Quick)
 add_test(NAME tst_iconprovider COMMAND tst_iconprovider)
 
 add_executable(tst_thumbnailprovider tst_thumbnailprovider.cpp

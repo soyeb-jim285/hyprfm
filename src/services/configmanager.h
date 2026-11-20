@@ -19,6 +19,7 @@ class ConfigManager : public QObject
     Q_PROPERTY(QStringList availableThemes READ availableThemes CONSTANT)
     Q_PROPERTY(QString theme READ theme NOTIFY configChanged)
     Q_PROPERTY(QString iconTheme READ iconTheme NOTIFY configChanged)
+    Q_PROPERTY(QString fileIconColors READ fileIconColors NOTIFY configChanged)
     Q_PROPERTY(bool autoRefreshIcons READ autoRefreshIcons NOTIFY configChanged)
     Q_PROPERTY(int iconRevision READ iconRevision NOTIFY iconRevisionChanged)
     Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY configChanged)
@@ -91,6 +92,7 @@ public:
     QString lightTheme() const;
     QString darkTheme() const;
     QString iconTheme() const;
+    QString fileIconColors() const;
     bool autoRefreshIcons() const { return m_autoRefreshIcons; }
     int iconRevision() const { return m_iconRevision; }
     // What an empty icon_theme resolves to: the desktop's own theme, which
@@ -223,7 +225,8 @@ private:
     QString m_theme;
     QString m_lightTheme;
     QString m_darkTheme;
-    QString m_iconTheme;          // as configured; empty means follow the desktop
+    QString m_iconTheme;
+    QString m_fileIconColors;          // as configured; empty means follow the desktop
     QString m_iconThemeFallback;  // what empty resolves to
     QString m_fontFamily;
     QString m_defaultView;

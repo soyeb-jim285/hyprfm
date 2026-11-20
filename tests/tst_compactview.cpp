@@ -9,12 +9,6 @@ class TestCompactView : public QObject
     Q_OBJECT
 
     struct Harness : ViewHarness {
-        Harness()
-        {
-            extraContext = [this](QQmlContext *) {
-                view.engine()->addImageProvider("icon", new IconProvider("Adwaita"));
-            };
-        }
         bool loadCompact(int count = 80)
         {
             QStringList names;
