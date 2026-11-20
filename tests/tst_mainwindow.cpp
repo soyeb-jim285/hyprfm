@@ -2879,6 +2879,60 @@ private slots:
         QTRY_VERIFY(!darkSwitch->property("checked").toBool());
         QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to dark theme"));
     }
+
+    // A click anywhere on a Computer page (e.g. its subtitle) or on a split
+    // pane's header bar makes that pane active.
+    void testComputerPagesTakeClicksForSidebarAndHeaders()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        tab->navigateTo(app.home.path());
+        auto activePane = [&] { return app.window->property("activePane").toString(); };
+
+        auto *computer = app.item("quickAccess_Computer");
+        QVERIFY(computer && computer->isVisible());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(computer));
+        QTRY_COMPARE(tab->currentPath(), QString("computer:///"));
+        QTest::keyClick(app.window, Qt::Key_F3);
+        QTRY_COMPARE(app.window->property("splitTransitionProgress").toReal(), 1.0);
+        auto *secondaryLoader = app.item("secondaryPaneLoader");
+        QVERIFY(secondaryLoader);
+        QTRY_VERIFY(secondaryLoader->property("item").value<QQuickItem *>());
+        auto *left = app.item("primaryFileView");
+        auto *right = secondaryLoader->property("item").value<QQuickItem *>()
+                          ->property("fileView").value<QQuickItem *>();
+        QVERIFY(left && right);
+        QTRY_COMPARE(tab->secondaryCurrentPath(), QString("computer:///"));
+        QTRY_VERIFY(left->property("computerViewItem").value<QQuickItem *>()
+                    && right->property("computerViewItem").value<QQuickItem *>());
+        auto emptySpot = [&](QQuickItem *container) {
+            QQuickItem *page = container->property("computerViewItem").value<QQuickItem *>();
+            QQuickItem *subtitle = page ? App::findText(page, QStringLiteral("Devices and drives")) : nullptr;
+            return subtitle ? app.center(subtitle) : QPoint(-1, -1);
+        };
+        QVERIFY(emptySpot(left).x() >= 0 && emptySpot(right).x() >= 0);
+
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, emptySpot(left));
+        QTRY_COMPARE(activePane(), QString("primary"));
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, emptySpot(right));
+        QTRY_COMPARE(activePane(), QString("secondary"));
+
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, emptySpot(left));
+        QTRY_COMPARE(activePane(), QString("primary"));
+        auto *home = app.item("quickAccess_Home");
+        QVERIFY(home && home->isVisible());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(home));
+        QTRY_COMPARE(tab->currentPath(), QDir::homePath());
+        QCOMPARE(tab->secondaryCurrentPath(), QString("computer:///"));
+
+        auto *rightHeader = app.item("secondaryPaneHeader");
+        QVERIFY(rightHeader && rightHeader->isVisible());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(rightHeader));
+        QTRY_COMPARE(activePane(), QString("secondary"));
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(app.item("primaryPaneHeader")));
+        QTRY_COMPARE(activePane(), QString("primary"));
+    }
 };
 
 QTEST_MAIN(TestMainWindow)

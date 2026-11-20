@@ -216,6 +216,22 @@ FocusScope {
             }
         }
     }
+    // Any press on the page makes its pane the active one and takes the
+    // keyboard, as a press on a file view's empty space does, then goes on to
+    // the card, button or list under it. Only a drive card did this before,
+    // so a click elsewhere on the page left the other split pane active: F4
+    // toggled that pane's terminal and a sidebar place opened over there.
+    MouseArea {
+        objectName: "computerPagePress"
+        anchors.fill: parent
+        z: 100
+        acceptedButtons: Qt.AllButtons
+        onPressed: mouse => {
+            root.interactionStarted()
+            root.forceActiveFocus()
+            mouse.accepted = false
+        }
+    }
     Menu {
         id: driveMenu
         palette.window: Theme.surface
