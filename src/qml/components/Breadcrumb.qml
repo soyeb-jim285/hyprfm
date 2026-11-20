@@ -220,7 +220,7 @@ Item {
                                 id: segLabel
                                 anchors.centerIn: parent
                                 text: modelData.label
-                                color: parent.parent.isLast ? Theme.text : Theme.overlay
+                                color: parent.parent.isLast ? Theme.text : Theme.subtext
                                 font.pointSize: Theme.fontNormal
                                 font.weight: Font.Bold
                                 verticalAlignment: Text.AlignVCenter
