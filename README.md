@@ -73,9 +73,12 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 
 - **Grid view** with adjustable column count (`Ctrl+Scroll` to zoom)
 - **Detailed view** with sortable columns, image/video thumbnails, and folder item counts
+- **Compact view** (`Ctrl+4`): small icons beside filenames, arranged in columns that fill downwards and scroll sideways
 - **Miller columns** (`Ctrl+2`): parent · current · live preview, the macOS Finder favorite
 - **Image and video thumbnails** in detailed and Miller views
 - **Quick preview** (`Space`): full-screen overlay for images, video (poster frame), PDFs, text and rendered Markdown, with metadata sidebar
+- **Preview zoom**: 25–400% in quick preview and the Miller preview pane, with a slider, `Ctrl+Scroll`, and `Ctrl+0` to reset while the preview has focus. Zoom stays with that preview when switching files; magnified images and PDF pages scroll.
+- **Computer**: open the sidebar shortcut or `computer:///` for drive cards with device icons, used-space bars, and free/total capacity. Double-click or press Enter to open a drive; its menu also offers mount and unmount actions.
 - **Split pane** (`F3`): work in two directories side by side
 - **Built-in terminal** (`F4`): a shell under the file view, on Ghostty's terminal core (libghostty-vt), with mouse selection, `Ctrl+Shift+C`/`Ctrl+Shift+V`, and mouse support for programs like htop and vim
 
@@ -110,8 +113,8 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 
 ### Look & feel
 
-- **TOML themes** with live reload — Catppuccin Mocha/Latte and Rose Pine/Moon/Dawn bundled
-- **Built-in SVG icon set** (90+ Lucide-style icons rendered via Qt Shapes)
+- **TOML themes** with live reload — 105 bundled themes, including the complete 95-theme Strata catalog
+- **Strata icon pack** with theme-colored Lucide icons and 354 Catppuccin file-type icons; light/dark brand palettes or the theme accent
 - **Configurable corner radius**, fonts, animation duration
 - **Wayland compositor blur** on Hyprland plus native KWin blur on KDE Plasma
 
@@ -309,6 +312,7 @@ install is needed there.
 | `Ctrl+1` | Grid view |
 | `Ctrl+2` | Miller column view |
 | `Ctrl+3` | Detailed view |
+| `Ctrl+4` | Compact view |
 | `Ctrl+Scroll` | Zoom (icon size or row height); also Settings → Layout → Icon Size |
 | `Space` | Quick preview |
 | `F3` | Toggle split pane |
@@ -345,8 +349,9 @@ reusing a tab already showing that pair.
 Only the first window keeps the saved session (tabs + window geometry);
 additional windows start fresh and leave it untouched.
 
-Home (toolbar button, shortcut or sidebar entry) closes an open split and
-shows Home across the full window.
+Home in the sidebar, other quick-access entries, bookmarks, and mounted drives
+open in the active pane and keep an existing split. The toolbar Home button
+and Home keyboard shortcut show Home across the full window.
 
 Right-click empty space in a split and choose **Save Split to Bookmarks**, or
 select two folders and choose **Save as Split View**, to keep both paths and
@@ -385,11 +390,13 @@ Config lives at `~/.config/hyprfm/config.toml`. On first run HyprFM writes it fu
 [general]
 # theme = "catppuccin-mocha"   # active theme; filename in themes/ without .toml
                                # "pywal" follows ~/.cache/wal/colors.json live
-light_theme = "catppuccin-latte"  # the Dark Mode switch in Settings flips
-dark_theme = "catppuccin-mocha"   # between these two
-icon_theme = "Adwaita"         # system icon theme fallback
+light_theme = "catppuccin-latte"  # the toolbar sun/moon button and the Dark
+dark_theme = "catppuccin-mocha"   # Mode switch in Settings flip between these
+icon_theme = "Strata"          # bundled icons; installed icon packs also work
+file_icon_colors = "brand"      # Strata file icons: brand | theme
 font_family = ""               # UI font; empty = desktop font
-default_view = "grid"          # grid | detailed | miller
+default_view = "grid"          # grid | detailed | miller | compact
+compact_full_names = false    # widen Compact columns to show complete filenames
 show_hidden = false
 builtin_terminal = false       # Open in Terminal uses the F4 panel instead of $TERMINAL
 dependency_startup_check = true # warn on startup when a required tool is missing
@@ -402,7 +409,7 @@ position = "left"
 width = 200
 visible = true
 # Quick-access entries to hide. Valid names:
-# "Home", "Recents", "Trash", "Network", "Pictures", "Downloads"
+# "Home", "Computer", "Recents", "Trash", "Network", "Pictures", "Downloads"
 hidden_quick_access = []
 
 [appearance]
@@ -458,10 +465,18 @@ shortcut = "Ctrl+E"                 # optional; runs the action on the selection
 
 ## 🎨 Theming
 
-Themes are plain TOML files. Nothing is hardcoded in the binary. Five themes
-ship in `/usr/share/hyprfm/themes/*.toml` — `catppuccin-mocha`,
-`catppuccin-latte`, `rose-pine`, `rose-pine-moon` and `rose-pine-dawn`. Copy one
-as a starting point:
+For theme-aware folder and file icons, select **Strata** under Settings →
+Look & Feel → Icon Pack. **File icon colors** switches between brand palettes
+and the theme accent. See the [icon pack notes](src/icons/README.md).
+
+Themes are plain TOML files. Nothing is hardcoded in the binary. The ten original
+themes and all 95 Strata themes ship in `/usr/share/hyprfm/themes/*.toml`.
+Strata themes use `strata-` names, such as `strata-tokyo-night`,
+`strata-catppuccin-frappe`, `strata-azure-glow`, and `strata-nord-light`. Choose
+them in Settings → Appearance, or set `theme = "strata-tokyo-night"` under
+`[general]`. See the [theme catalog notes](themes/README.md) for the color
+mapping, terminal palettes, source, and licensing. Copy any theme as a starting
+point:
 
 ```sh
 cp /usr/share/hyprfm/themes/catppuccin-mocha.toml ~/.config/hyprfm/themes/mytheme.toml
@@ -501,8 +516,8 @@ Themes reload live on save.
 
 ### Light and dark
 
-Name two themes as a pair and the Dark Mode switch in Settings flips between
-them:
+Name two themes as a pair, and the sun/moon button in the toolbar (or the Dark
+Mode switch in Settings) flips between them:
 
 ```toml
 [general]

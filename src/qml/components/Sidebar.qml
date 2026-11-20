@@ -37,6 +37,7 @@ Rectangle {
     clip: false
 
     Component { id: iconHome; IconHome { size: 18; color: Theme.subtext } }
+    Component { id: iconMonitor; IconMonitor { size: 18; color: Theme.subtext } }
     Component { id: iconClock; IconClock { size: 18; color: Theme.subtext } }
     Component { id: iconTrash; IconTrash { size: 18; color: Theme.subtext } }
     Component { id: iconImage; IconImage { size: 18; color: Theme.subtext } }
@@ -136,6 +137,7 @@ Rectangle {
             Repeater {
                 model: ListModel {
                     ListElement { name: "Home"; iconType: "home" }
+                    ListElement { name: "Computer"; iconType: "monitor" }
                     ListElement { name: "Recents"; iconType: "clock" }
                     ListElement { name: "Trash"; iconType: "trash" }
                     ListElement { name: "Network"; iconType: "globe" }
@@ -150,11 +152,12 @@ Rectangle {
                     // Entries the user hid via the sidebar context menu or
                     // Settings → Layout collapse away entirely.
                     visible: config.hiddenQuickAccess.indexOf(model.name) < 0
-                        && (!root.filePickerMode || ["Recents", "Trash", "Network"].indexOf(model.name) < 0)
+                        && (!root.filePickerMode || ["Computer", "Recents", "Trash", "Network"].indexOf(model.name) < 0)
 
                     readonly property string resolvedPath: {
                         const home = fsModel.homePath()
                         if (model.name === "Home") return home
+                        if (model.name === "Computer") return "computer:///"
                         if (model.name === "Recents") return ""
                         if (model.name === "Trash") return root.trashPath
                         if (model.name === "Network") return "network:///"
@@ -167,9 +170,10 @@ Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
                     height: visible ? 32 : 0
                     readonly property bool isActive: {
+                        if (model.name === "Computer") return !root.isRecentsView && /^computer:\/*$/i.test(root.currentPath)
                         if (model.name === "Recents") return root.isRecentsView
                         if (model.name === "Trash") return !root.isRecentsView && fileOps.isTrashPath(root.currentPath)
-                        if (model.name === "Network") return !root.isRecentsView && fileOps.isRemotePath(root.currentPath)
+                        if (model.name === "Network") return !root.isRecentsView && fileOps.isRemotePath(root.currentPath) && !/^computer:\/*$/i.test(root.currentPath)
                         if (resolvedPath === "") return false
                         return !root.isRecentsView && resolvedPath === root.currentPath
                     }
@@ -884,11 +888,7 @@ Rectangle {
                                         : 0
                                     height: parent.height
                                     radius: parent.radius
-                                    color: model.usagePercent >= 90
-                                        ? Theme.error
-                                        : model.usagePercent >= 75
-                                            ? Theme.warning
-                                            : Theme.accent
+                                    color: Theme.usageColor(model.usagePercent)
                                 }
                             }
                         }

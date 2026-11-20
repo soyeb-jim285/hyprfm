@@ -252,6 +252,7 @@ ApplicationWindow {
     // Open in Terminal, from every menu and the shortcut. `other` picks the
     // kind the setting does not, for the second menu entry.
     function openTerminalAt(path, other) {
+        if (root.isComputerPath(path)) return
         if (root.builtinTerminalAvailable && config.builtinTerminal !== !!other)
             root.openTerminalPanel(path)
         else
@@ -369,9 +370,18 @@ ApplicationWindow {
             : tabModel.activeTab.currentPath
     }
 
+    function isComputerPath(path) {
+        return /^computer:\/*$/i.test(path || "")
+    }
+
+    function paneIsComputer(pane) {
+        return !paneIsRecents(pane) && !paneSearchMode(pane) && isComputerPath(panePath(pane))
+    }
+
     function pathDisplayName(path) {
         if (!path)
             return ""
+        if (isComputerPath(path)) return "Computer"
 
         if (fileOps.isTrashPath(path)) {
             var trashPath = path.length > 9 && path.endsWith("/") ? path.slice(0, -1) : path
@@ -413,9 +423,17 @@ ApplicationWindow {
 
         property string title: ""
         property bool activePaneHeader: false
+        // A press on the header bar makes its pane the active one.
+        signal activated()
 
         Layout.fillWidth: true
         Layout.preferredHeight: 34
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+            onPressed: splitPaneHeader.activated()
+        }
 
         Rectangle {
             anchors.fill: parent
@@ -492,6 +510,7 @@ ApplicationWindow {
     }
 
     function showPropertiesFor(path) {
+        if (!path || root.isComputerPath(path)) return
         propertiesDialogLoader.active = true
         root.propertiesDialog.showProperties(path)
     }
@@ -523,6 +542,12 @@ ApplicationWindow {
             secondaryPaneIsRecents = enabled
         else
             primaryPaneIsRecents = enabled
+    }
+
+    function openRecents() {
+        root.clearPaneSearch(activePane)
+        root.setPaneRecents(activePane, true)
+        root.scheduleActivePaneFocus()
     }
 
     function searchProxyForPane(pane) {
@@ -629,10 +654,7 @@ ApplicationWindow {
         if (!view)
             return null
 
-        var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-        if (vm === "grid") return view.gridViewItem
-        if (vm === "miller") return view.millerViewItem
-        return view.detailedViewItem
+        return view.activeView()
     }
 
     function activeSubView() {
@@ -741,8 +763,8 @@ ApplicationWindow {
         navigatePaneTo(activePane, path)
     }
 
-    // Home (toolbar, shortcut, sidebar) closes a split and shows Home across
-    // the whole window. Other ways of reaching ~ keep the split.
+    // The toolbar/keyboard Home action shows Home across the whole window.
+    // Sidebar destinations use ordinary navigation within the active pane.
     function goHome() {
         if (tabModel.activeTab && splitViewEnabled())
             root.toggleSplitView()
@@ -826,7 +848,7 @@ ApplicationWindow {
     }
 
     function beginTransfer(paths, destinationPath, moveOperation, clearClipboardOnSuccess) {
-        if (!paths || paths.length === 0 || !destinationPath)
+        if (!paths || paths.length === 0 || !destinationPath || root.isComputerPath(destinationPath))
             return
 
         var plan = fileOps.transferPlan(paths, destinationPath)
@@ -951,6 +973,7 @@ ApplicationWindow {
             return
 
         var currentPath = panePath(activePane)
+        if (isComputerPath(currentPath)) return
         if (fileOps.isRemotePath(currentPath)) {
             var parentRemotePath = fileOps.parentPath(currentPath)
             if (parentRemotePath && parentRemotePath !== currentPath)
@@ -1062,6 +1085,7 @@ ApplicationWindow {
     }
 
     function activeItemCount() {
+        if (root.paneIsComputer(activePane)) return computerModel.count
         if (root.paneIsRecents(activePane))
             return recentFiles.count
         if (root.paneShowsSearchResults(activePane))
@@ -1072,7 +1096,7 @@ ApplicationWindow {
     }
 
     function activeFolderCount() {
-        if (root.paneIsRecents(activePane) || root.paneShowsSearchResults(activePane))
+        if (root.paneIsComputer(activePane) || root.paneIsRecents(activePane) || root.paneShowsSearchResults(activePane))
             return 0
 
         return paneBaseModel(activePane).folderCount
@@ -1082,11 +1106,11 @@ ApplicationWindow {
     // nothing about them. Everything else, search included, is one directory
     // and the model reports -1 wherever a disk is meaningless anyway.
     function activeDiskFree() {
-        return root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskFree
+        return root.paneIsComputer(activePane) || root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskFree
     }
 
     function activeDiskTotal() {
-        return root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskTotal
+        return root.paneIsComputer(activePane) || root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskTotal
     }
 
     function applyActiveTabSort() {
@@ -1124,6 +1148,14 @@ ApplicationWindow {
 
     function updateSelectionStatus() {
         var subView = activeSubView()
+
+        if (paneIsComputer(activePane)) {
+            cancelSelectedSizeRequest()
+            currentSelectedCount = subView && subView.selectedDevices ? subView.selectedDevices.length : 0
+            currentSelectedSize = ""
+            currentSelectedSizePending = false
+            return
+        }
 
         if (!subView || !subView.selectedIndices) {
             cancelSelectedSizeRequest()
@@ -1211,7 +1243,23 @@ ApplicationWindow {
         return items
     }
 
+    // Dark Mode, shared by the toolbar's sun/moon toggle and Settings: the
+    // configured dark theme is dark and the light theme light; any other
+    // theme counts by its own background.
+    readonly property bool darkModeActive: config.theme === config.darkTheme
+        || (config.theme !== config.lightTheme && Theme.isDark)
+    function toggleDarkMode() {
+        const target = root.darkModeActive ? config.lightTheme : config.darkTheme
+        if (target && target !== config.theme)
+            config.saveSettings({ theme: target })
+    }
+
     function currentOrSelectedDirectoryPath() {
+        if (root.paneIsComputer(root.activePane)) {
+            var view = root.activeSubView()
+            return view && view.selectedDevices && view.selectedDevices.length
+                ? view.selectedMountPath() : root.panePath(root.activePane)
+        }
         var items = root.getSelectedItems(root.activePane)
         if (items.length === 1 && items[0].isDir)
             return items[0].path
@@ -1223,6 +1271,10 @@ ApplicationWindow {
     }
 
     function selectedOrCurrentPropertiesPath() {
+        if (root.paneIsComputer(root.activePane)) {
+            var view = root.activeSubView()
+            return view && view.selectedMountPath ? view.selectedMountPath() : ""
+        }
         var items = root.getSelectedItems(root.activePane)
         if (items.length === 1)
             return items[0].path
@@ -1234,6 +1286,10 @@ ApplicationWindow {
     }
 
     function selectedOrCurrentTerminalPath() {
+        if (root.paneIsComputer(root.activePane)) {
+            var view = root.activeSubView()
+            return view && view.selectedMountPath ? view.selectedMountPath() : ""
+        }
         var items = root.getSelectedItems(root.activePane)
         if (items.length === 1)
             return items[0].isDir ? items[0].path : fileOps.parentPath(items[0].path)
@@ -1335,7 +1391,7 @@ ApplicationWindow {
     }
 
     function showNewFolderDialog(parentPath) {
-        if (!parentPath)
+        if (!parentPath || root.isComputerPath(parentPath))
             return
 
         root.newItemParentPath = parentPath
@@ -1357,7 +1413,7 @@ ApplicationWindow {
     }
 
     function showNewFileDialog(parentPath) {
-        if (!parentPath)
+        if (!parentPath || root.isComputerPath(parentPath))
             return
 
         root.newItemParentPath = parentPath
@@ -2250,7 +2306,7 @@ ApplicationWindow {
                                 Image {
                                     id: appChooserIcon
                                     source: modelData.iconName
-                                        ? ("image://icon/" + modelData.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                                        ? Theme.fileIconSource(modelData.iconName, "", 24, false)
                                         : ""
                                     sourceSize: Qt.size(22, 22)
                                     Layout.preferredWidth: 22
@@ -2532,7 +2588,7 @@ ApplicationWindow {
                                 Image {
                                     anchors.centerIn: parent; width: 32; height: 32
                                     source: propertiesDialog.props.iconName
-                                        ? ("image://icon/" + propertiesDialog.props.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                                        ? Theme.fileIconSource(propertiesDialog.props.iconName, propertiesDialog.props.name, 48, false)
                                         : ""
                                     sourceSize: Qt.size(32, 32); smooth: true
                                 }
@@ -2752,7 +2808,7 @@ ApplicationWindow {
                                         Image {
                                             id: owAppIcon
                                             source: modelData.iconName
-                                                ? ("image://icon/" + modelData.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                                                ? Theme.fileIconSource(modelData.iconName, "", 24, false)
                                                 : ""
                                             sourceSize: Qt.size(18, 18)
                                             width: 18; height: 18
@@ -2809,7 +2865,7 @@ ApplicationWindow {
                                         spacing: 6
 
                                         Loader {
-                                            source: "icons/IconSearch.qml"
+                                            source: Theme.iconComponentSource("IconSearch")
                                             width: 14; height: 14
                                             anchors.verticalCenter: parent.verticalCenter
                                             onLoaded: {
@@ -3368,7 +3424,7 @@ ApplicationWindow {
 
                 onOpenRequested: (path) => {
                     if (sidebarItem.isRecents) {
-                        root.setPaneRecents(root.activePane, true)
+                        root.openRecents()
                         return
                     }
 
@@ -3541,6 +3597,10 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcutMap["refresh"]
         onActivated: {
+            if (root.paneIsComputer(activePane)) {
+                root.activeSubView().refresh()
+                return
+            }
             fsModel.refresh()
             splitFsModel.refresh()
         }
@@ -3640,6 +3700,11 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcutMap["miller_view"]
         onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "miller" }
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["compact_view"]
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "compact" }
     }
 
     Shortcut {
@@ -3851,6 +3916,15 @@ ApplicationWindow {
                     hideEntry
                 ]
 
+            if (root.isComputerPath(item.path))
+                return [
+                    { text: "Open", shortcut: config.shortcutMap["open"] || "Return", action: "open" },
+                    { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
+                    { text: "Open in Split View", shortcut: "", action: "split_open", icon: "SquareSplitHorizontal" },
+                    { separator: true },
+                    hideEntry
+                ]
+
             if (fileOps.isTrashPath(item.path))
                 return [
                     { text: "Open", shortcut: config.shortcutMap["open"] || "Return", action: "open" },
@@ -4047,7 +4121,7 @@ ApplicationWindow {
     }
 
     function pasteIntoDirectory(destPath) {
-        if (!destPath)
+        if (!destPath || root.isComputerPath(destPath))
             return
 
         if (clipboard.hasContent) {
@@ -4098,12 +4172,7 @@ ApplicationWindow {
                     activeSplitHorizontal: root.isSplitHorizontal
                     trashPath: root.unifiedTrashPath
                     isRecentsView: root.isRecentsView
-                    onBookmarkClicked: (path) => {
-                        if (path === fsModel.homePath())
-                            root.goHome()
-                        else
-                            root.navigateActivePaneTo(path)
-                    }
+                    onBookmarkClicked: path => root.navigateActivePaneTo(path)
                     onSavedSplitClicked: (split) => {
                         root.restoreSavedSplit(split)
                     }
@@ -4125,9 +4194,7 @@ ApplicationWindow {
                         menu.selectedFolderPaths = []
                         menu.popup(position.x, position.y)
                     }
-                    onRecentsClicked: {
-                        root.setPaneRecents(root.activePane, true)
-                    }
+                    onRecentsClicked: root.openRecents()
                     onCollapseClicked: root.toggleSidebar()
                     onFeatureHintRequested: (message) => toast.show(message, "info")
                 }
@@ -4231,6 +4298,8 @@ ApplicationWindow {
                 onConnectRemoteRequested: root.openRemoteConnectDialog()
                 onSettingsRequested: root.openSettingsPanel()
                 onKeyboardShortcutsRequested: root.openKeyboardShortcutsDialog()
+                darkMode: root.darkModeActive
+                onDarkModeToggleRequested: root.toggleDarkMode()
                 onCloseRequested: root.close()
                 onMinimizeRequested: root.showMinimized()
                 onMaximizeRequested: root.visibility === Window.Maximized ? root.showNormal() : root.showMaximized()
@@ -4369,6 +4438,8 @@ ApplicationWindow {
                             SplitPaneHeader {
                                 Layout.preferredHeight: visible ? 34 : 0
                                 visible: root.splitViewPresented
+                                objectName: "primaryPaneHeader"
+                                onActivated: root.setActivePane("primary")
                                 title: root.paneDisplayName("primary")
                                 activePaneHeader: root.activePane === "primary"
                             }
@@ -4387,9 +4458,13 @@ ApplicationWindow {
                                     ? "" : root.paneBaseModel("primary").loadError
                                 viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                                 currentPath: root.panePath("primary")
+                                showComputer: root.paneIsComputer("primary")
 
                                 onInteractionStarted: root.setActivePane("primary")
                                 onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("primary", filePath, isDirectory)
+                                onOpenInNewTabRequested: path => root.openPathInNewTab(path)
+                                onOpenInSplitViewRequested: path => root.openPathInSplitView(path)
+                                onFeatureHintRequested: message => toast.show(message, "info")
                                 // Model resets also clear selection; only an
                                 // interaction should switch the active pane.
                                 onSelectionChanged: {
@@ -4467,6 +4542,8 @@ ApplicationWindow {
                                 spacing: 0
 
                                 SplitPaneHeader {
+                                    objectName: "secondaryPaneHeader"
+                                    onActivated: root.setActivePane("secondary")
                                     title: root.paneDisplayName("secondary")
                                     activePaneHeader: root.activePane === "secondary"
                                 }
@@ -4485,9 +4562,13 @@ ApplicationWindow {
                                         ? "" : root.paneBaseModel("secondary").loadError
                                     viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                                     currentPath: root.panePath("secondary")
+                                    showComputer: root.paneIsComputer("secondary")
 
                                     onInteractionStarted: root.setActivePane("secondary")
                                     onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("secondary", filePath, isDirectory)
+                                    onOpenInNewTabRequested: path => root.openPathInNewTab(path)
+                                    onOpenInSplitViewRequested: path => root.openPathInSplitView(path)
+                                    onFeatureHintRequested: message => toast.show(message, "info")
                                     onSelectionChanged: {
                                         root.updateSelectionStatus()
                                     }
@@ -4561,6 +4642,7 @@ ApplicationWindow {
                     objectName: "statusBar"
                     Layout.fillWidth: true
                     itemCount: root.activeItemCount()
+                    itemSummary: root.paneIsComputer(activePane) ? computerModel.count + (computerModel.count === 1 ? " drive" : " drives") : ""
                     folderCount: root.activeFolderCount()
                     searchStatus: root.searchMode && root.searchServiceForPane(activePane).isSearching
                         ? "Searching... " + root.searchServiceForPane(activePane).resultCount + " results"

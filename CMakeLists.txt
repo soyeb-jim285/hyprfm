@@ -60,7 +60,8 @@ endif()
 add_subdirectory(src)
 
 # Install themes
-install(DIRECTORY themes/ DESTINATION share/hyprfm/themes FILES_MATCHING PATTERN "*.toml")
+install(DIRECTORY themes/ DESTINATION share/hyprfm/themes
+    FILES_MATCHING PATTERN "*.toml" PATTERN "*.txt" PATTERN "README.md")
 
 # Install the generated HyprFM QML module: qmldir + qml/ tree + qmltypes.
 # The qmldir keeps Qt's `prefer :/HyprFM/`, so at runtime the module resolves
@@ -73,6 +74,7 @@ install(DIRECTORY ${CMAKE_BINARY_DIR}/src/HyprFM/
     DESTINATION share/hyprfm/HyprFM
     FILES_MATCHING
         PATTERN "*.qml"
+        PATTERN "*.js"
         PATTERN "qmldir"
         PATTERN "*.qmltypes")
 

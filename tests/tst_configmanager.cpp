@@ -344,13 +344,28 @@ private slots:
         QVERIFY(QFile::exists(path + ".sample"));   // the reference is still refreshed
     }
 
+    void testStrataIconPreferenceSurvivesRestart()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("config.toml");
+        ConfigManager config(path);
+        QVERIFY(config.availableIconThemes().contains("Strata"));
+        config.saveSettings({{"iconTheme", "Strata"}, {"fileIconColors", "theme"}});
+        ConfigManager restored(path);
+        QCOMPARE(restored.iconTheme(), QString("Strata"));
+        QCOMPARE(restored.fileIconColors(), QString("theme"));
+        restored.saveSettings({{"fileIconColors", "brand"}});
+        ConfigManager brand(path);
+        QCOMPARE(brand.fileIconColors(), QString("brand"));
+    }
+
     void testDefaultValues()
     {
         QTemporaryDir dir;
         ConfigManager mgr(dir.path() + "/config.toml");
 
         QCOMPARE(mgr.theme(), QString("catppuccin-mocha"));
-        QCOMPARE(mgr.iconTheme(), QString("Adwaita"));
+        QCOMPARE(mgr.iconTheme(), QString("Strata"));
         QCOMPARE(mgr.fontFamily(), QString());
         QCOMPARE(mgr.defaultView(), QString("grid"));
         QCOMPARE(mgr.showHidden(), false);
@@ -597,6 +612,7 @@ private slots:
         QCOMPARE(mgr.shortcut("close_tab"), QString("Ctrl+W"));
         QCOMPARE(mgr.shortcut("open_in_new_tab"), QString("Ctrl+Return"));
         QCOMPARE(mgr.shortcut("open_in_split"), QString("Ctrl+Shift+Return"));
+        QCOMPARE(mgr.shortcut("compact_view"), QString("Ctrl+4"));
         QCOMPARE(mgr.shortcut("copy"), QString("Ctrl+C"));
         QCOMPARE(mgr.shortcut("cut"), QString("Ctrl+X"));
         QCOMPARE(mgr.shortcut("paste"), QString("Ctrl+V"));

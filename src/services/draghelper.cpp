@@ -8,6 +8,8 @@
 #include <QPixmap>
 #include <QTimer>
 #include <QUrl>
+#include <QFileInfo>
+#include <QUrlQuery>
 
 DragHelper::DragHelper(IconProvider *iconProvider, QObject *parent)
     : QObject(parent)
@@ -71,8 +73,12 @@ void DragHelper::startDrag(const QStringList &filePaths,
         // Render via IconProvider (uses rsvg-convert, same as QML)
         QSize actualSize;
         QImage iconImg;
-        if (m_iconProvider && !icon.isEmpty())
-            iconImg = m_iconProvider->requestImage(icon, &actualSize, QSize(iconSize, iconSize));
+        if (m_iconProvider && !icon.isEmpty()) {
+            QUrlQuery query;
+            query.addQueryItem("name", QFileInfo(paths.first()).fileName());
+            iconImg = m_iconProvider->requestImage(icon + "?" + query.toString(QUrl::FullyEncoded),
+                                                  &actualSize, QSize(iconSize, iconSize));
+        }
 
         QPainter painter(&pixmap);
         painter.setRenderHint(QPainter::Antialiasing);

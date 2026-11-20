@@ -1067,7 +1067,7 @@ FocusScope {
                                 // nothing at all.
                                 visible: !detThumb.visible
                                 opacity: detRow.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
-                                source: "image://icon/" + detRow.fileIconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                                source: Theme.fileIconSource(detRow.fileIconName, detRow.fileName, 24, false)
                                 sourceSize: Qt.size(root.detailIconSize * Screen.devicePixelRatio,
                                                     root.detailIconSize * Screen.devicePixelRatio)
                                 asynchronous: true

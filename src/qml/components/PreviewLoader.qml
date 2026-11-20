@@ -74,6 +74,9 @@ QtObject {
     property Timer _debounce: Timer {
         interval: 80
         onTriggered: {
+            // path is a dependent binding too: on the first Miller selection
+            // it can still be empty inside reload(). Inspect it here, alongside
+            // kind, once all bindings describe the new selection.
             if (loader.path === "") {
                 previewService.cancelPreview(loader.requester)
                 loader.loading = false
