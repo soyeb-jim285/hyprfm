@@ -80,7 +80,7 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 - **Preview zoom**: 25–400% in quick preview and the Miller preview pane, with a slider, `Ctrl+Scroll`, and `Ctrl+0` to reset while the preview has focus. Zoom stays with that preview when switching files; magnified images and PDF pages scroll.
 - **Computer**: open the sidebar shortcut or `computer:///` for drive cards with device icons, used-space bars, and free/total capacity. Double-click or press Enter to open a drive; its menu also offers mount and unmount actions.
 - **Split pane** (`F3`): work in two directories side by side
-- **Built-in terminal** (`F4`): a shell under the file view, on Ghostty's terminal core (libghostty-vt), with mouse selection, `Ctrl+Shift+C`/`Ctrl+Shift+V`, and mouse support for programs like htop and vim
+- **Built-in terminal** (`F4`): a shell under the file view (in split view, each pane has its own, started in that pane's folder), on Ghostty's terminal core (libghostty-vt), with mouse selection, `Ctrl+Shift+C`/`Ctrl+Shift+V`, and mouse support for programs like htop and vim
 
 <div align="center">
 
@@ -319,7 +319,7 @@ install is needed there.
 | `Ctrl+Shift+Scroll` | Resize interface text across the window (Grid icons keep their size; the cells grow with the text) |
 | `Space` | Quick preview |
 | `F3` | Toggle split pane |
-| `F4` | Toggle the built-in terminal |
+| `F4` | Toggle the active pane's built-in terminal; each split pane has its own |
 | `F9` | Toggle sidebar |
 | `Ctrl+H` | Toggle hidden files |
 | `Ctrl+Shift+B` | Toggle transparency |
@@ -334,8 +334,11 @@ install is needed there.
 Mouse and touchpad wheel input, independent preview zoom, Compact's sideways
 scrolling, extra-pane transfers, and terminal-aware key routing work across
 views. Pane shortcuts leave editors and dialogs alone. Closing the active extra
-pane keeps its folder and file selection, and reopening the terminal follows the
-active folder. Explicit shortcut customizations remain in effect.
+pane keeps its folder and file selection. Each split pane has its own terminal
+under it: `F4` or Open in Terminal starts it in that pane's folder, reopening it
+takes its shell to that pane's current folder, clicking into a terminal makes its
+pane active, and closing the split closes the other pane's terminal with it.
+Explicit shortcut customizations remain in effect.
 
 Code previews choose a light or dark syntax palette with the app theme and refresh
 when the theme changes. Computer's List and Column drive cards have a bounded width,

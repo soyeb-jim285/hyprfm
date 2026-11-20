@@ -134,6 +134,7 @@ list(APPEND hyprfm_qml_module_args
         qml/components/QuickPreview.qml
         qml/components/PreviewZoomControls.qml
         qml/components/InterfaceZoom.qml
+        qml/components/PaneTerminal.qml
         qml/components/ZoomablePreviewImage.qml
         qml/components/CsvTable.qml
         qml/components/Toast.qml

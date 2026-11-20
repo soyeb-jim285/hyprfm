@@ -62,6 +62,9 @@
 #include "services/sessionstate.h"
 #include "services/themeloader.h"
 #include "services/undomanager.h"
+#ifdef HYPRFM_TERMINAL
+#include "terminal/terminalview.h"
+#endif
 
 // Root (prepended by ComputerModel), a mounted data drive and two
 // unmounted drives that have neither a device path nor a mount point.
@@ -109,6 +112,9 @@ class TestMainWindow : public QObject
         QQuickWindow *window = nullptr;
 
         FilePicker *picker = nullptr;
+        // Off by default, as for builds without the terminal; a test that
+        // drives the built-in terminal sets it before load().
+        bool builtinTerminal = false;
         bool load(const QJsonObject &pickerRequest = {})
         {
             QDir().mkpath(moduleDir.path() + "/HyprFM");
@@ -211,6 +217,13 @@ class TestMainWindow : public QObject
                 fsModel->setRootPath(picker->initialFolder());
                 ctx->setContextProperty("picker", picker);
             }
+#ifdef HYPRFM_TERMINAL
+            qmlRegisterType<TerminalView>("HyprFM", 1, 0, "TerminalView");   // as main.cpp does
+            if (builtinTerminal) {
+                ctx->setContextProperty("hyprfmBuiltinTerminal", true);
+                ctx->setContextProperty("terminalDefaultFontSize", TerminalView::defaultFontPointSize());
+            }
+#endif
             engine.load(QUrl::fromLocalFile(picker ? QStringLiteral(TEST_SOURCE_DIR "/src/qml/FilePicker.qml")
                                                  : QStringLiteral(TEST_SOURCE_DIR "/src/qml/Main.qml")));
             if (engine.rootObjects().isEmpty())
@@ -646,6 +659,195 @@ private slots:
         QTRY_COMPARE(grid->property("iconSize").toInt(), 184);
     }
 
+    // Split panes in two folders: F4 in each pane opens that pane's own
+    // terminal, under that pane, its shell in that pane's folder (the panel
+    // used to be one, across the window, in the active pane's folder only).
+    // F4 closes just the active pane's; clicking into a terminal makes its
+    // pane the active one and keeps the keyboard there.
+    void testEachSplitPaneOpensItsOwnTerminal()
+    {
+#ifndef HYPRFM_TERMINAL
+        QSKIP("built without the built-in terminal");
+#else
+        qputenv("SHELL", "/bin/sh");
+        qputenv("ENV", "");   // no ~/.shrc for an interactive sh
+        App app;
+        app.builtinTerminal = true;
+        QVERIFY(app.load());
+        const QString left = app.home.path() + "/left";
+        const QString right = app.home.path() + "/right";
+        QVERIFY(QDir().mkpath(left) && QDir().mkpath(right));
+        auto *tab = app.tabModel->activeTab();
+        tab->navigateTo(left);
+        tab->resetSecondaryTo(right);
+        tab->setSplitViewEnabled(true);
+        QTRY_COMPARE(app.window->property("splitTransitionProgress").toReal(), 1.0);
+
+        auto *primaryFrame = app.item("primaryPaneFrame");
+        auto *secondaryFrame = app.item("secondaryPaneLoader");
+        QVERIFY(primaryFrame && secondaryFrame);
+        QTRY_VERIFY(secondaryFrame->property("item").value<QQuickItem *>());
+        auto *primaryView = app.item("primaryFileView");
+        auto *secondaryView = secondaryFrame->property("item").value<QQuickItem *>()
+                                  ->property("fileView").value<QQuickItem *>();
+        QVERIFY(primaryView && secondaryView);
+        auto shellDir = [](QObject *shell) {
+            QString dir;
+            QMetaObject::invokeMethod(shell, "currentDirectory", Q_RETURN_ARG(QString, dir));
+            return dir;
+        };
+        auto sceneRect = [](QQuickItem *it) { return it->mapRectToScene(QRectF(0, 0, it->width(), it->height())); };
+        auto activePane = [&] { return app.window->property("activePane").toString(); };
+
+        // Left pane: click its empty space, F4.
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(primaryView));
+        QTRY_COMPARE(activePane(), QString("primary"));
+        QTest::keyClick(app.window, Qt::Key_F4);
+        auto *leftTerm = app.item("primaryPaneTerminal");
+        QVERIFY(leftTerm);
+        QTRY_VERIFY(leftTerm->isVisible() && leftTerm->height() > 0);
+        auto *leftShell = leftTerm->property("terminal").value<QQuickItem *>();
+        QVERIFY(leftShell);
+        QTRY_COMPARE_WITH_TIMEOUT(shellDir(leftShell), left, 5000);
+        QVERIFY(sceneRect(primaryFrame).contains(sceneRect(leftTerm).adjusted(1, 1, -1, -1)));
+
+        // Right pane: click, F4 -- a second shell, in the right folder.
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(secondaryView));
+        QTRY_COMPARE(activePane(), QString("secondary"));
+        QTest::keyClick(app.window, Qt::Key_F4);
+        auto *rightTerm = app.item("secondaryPaneTerminal");
+        QVERIFY(rightTerm);
+        QTRY_VERIFY(rightTerm->isVisible() && rightTerm->height() > 0);
+        auto *rightShell = rightTerm->property("terminal").value<QQuickItem *>();
+        QVERIFY(rightShell && rightShell != leftShell);
+        QTRY_COMPARE_WITH_TIMEOUT(shellDir(rightShell), right, 5000);
+        QVERIFY(sceneRect(secondaryFrame).contains(sceneRect(rightTerm).adjusted(1, 1, -1, -1)));
+        QVERIFY(leftTerm->isVisible());
+        QCOMPARE(shellDir(leftShell), left);
+
+        // F4 from inside the right terminal closes only the right one.
+        QTRY_VERIFY(rightShell->hasActiveFocus());
+        QTest::keyClick(app.window, Qt::Key_F4);
+        QTRY_VERIFY(!rightTerm->isVisible());
+        QVERIFY(leftTerm->isVisible());
+
+        // Clicking into the left terminal makes the left pane active and the
+        // keyboard stays in the terminal; F4 then closes the left one.
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(leftShell));
+        QTRY_COMPARE(activePane(), QString("primary"));
+        QTest::qWait(100);
+        QVERIFY(leftShell->hasActiveFocus());
+        QTest::keyClick(app.window, Qt::Key_F4);
+        QTRY_VERIFY(!leftTerm->isVisible());
+
+        // F4 again in the right pane brings back its running shell.
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(secondaryView));
+        QTRY_COMPARE(activePane(), QString("secondary"));
+        QTest::keyClick(app.window, Qt::Key_F4);
+        QTRY_VERIFY(rightTerm->isVisible());
+        QCOMPARE(rightTerm->property("terminal").value<QQuickItem *>(), rightShell);
+        QVERIFY(!leftTerm->isVisible());
+
+        // With builtin_terminal = true, Open in Terminal (Ctrl+Alt+T) in the
+        // left pane opens the left pane's terminal, not the right one's.
+        auto *config = qobject_cast<ConfigManager *>(app.engine.rootContext()->contextProperty("config").value<QObject *>());
+        QVERIFY(config);
+        config->saveSettings({{"builtinTerminal", true}});
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(primaryView));
+        QTRY_COMPARE(activePane(), QString("primary"));
+        QTest::keyClick(app.window, Qt::Key_T, Qt::ControlModifier | Qt::AltModifier);
+        QTRY_VERIFY(leftTerm->isVisible());
+        QCOMPARE(leftTerm->property("terminal").value<QQuickItem *>(), leftShell);
+        QTRY_VERIFY(leftShell->hasActiveFocus());
+        QCOMPARE(shellDir(leftShell), left);
+        QVERIFY(rightTerm->isVisible());
+        QCOMPARE(shellDir(rightShell), right);
+#endif
+    }
+
+    // User flag: Computer -> split -> click the left pane -> F4 -> click the
+    // right pane -> F4 closed the left terminal and opened none. A click on the
+    // Computer page did not make its pane active (only a drive card did), which
+    // also sent a sidebar place to the right pane after a click on the left one.
+    void testComputerPagesTakeClicksForTerminalsAndSidebar()
+    {
+#ifndef HYPRFM_TERMINAL
+        QSKIP("built without the built-in terminal");
+#else
+        qputenv("SHELL", "/bin/sh");
+        qputenv("ENV", "");   // no ~/.shrc for an interactive sh
+        App app;
+        app.builtinTerminal = true;
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        tab->navigateTo(app.home.path());
+        auto activePane = [&] { return app.window->property("activePane").toString(); };
+
+        // Computer, then F3 for the split.
+        auto *computer = app.item("quickAccess_Computer");
+        QVERIFY(computer && computer->isVisible());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(computer));
+        QTRY_COMPARE(tab->currentPath(), QString("computer:///"));
+        QTest::keyClick(app.window, Qt::Key_F3);
+        QTRY_COMPARE(app.window->property("splitTransitionProgress").toReal(), 1.0);
+        auto *secondaryLoader = app.item("secondaryPaneLoader");
+        QVERIFY(secondaryLoader);
+        QTRY_VERIFY(secondaryLoader->property("item").value<QQuickItem *>());
+        auto *left = app.item("primaryFileView");
+        auto *right = secondaryLoader->property("item").value<QQuickItem *>()
+                          ->property("fileView").value<QQuickItem *>();
+        QVERIFY(left && right);
+        QTRY_COMPARE(tab->secondaryCurrentPath(), QString("computer:///"));
+        QTRY_VERIFY(left->property("computerViewItem").value<QQuickItem *>()
+                    && right->property("computerViewItem").value<QQuickItem *>());
+        // The page itself, not a drive card (a card already took the click):
+        // its "Devices and drives" subtitle.
+        auto emptySpot = [&](QQuickItem *container) {
+            QQuickItem *page = container->property("computerViewItem").value<QQuickItem *>();
+            QQuickItem *subtitle = page ? App::findText(page, QStringLiteral("Devices and drives")) : nullptr;
+            return subtitle ? app.center(subtitle) : QPoint(-1, -1);
+        };
+        QVERIFY(emptySpot(left).x() >= 0 && emptySpot(right).x() >= 0);
+        auto *leftTerm = app.item("primaryPaneTerminal");
+        auto *rightTerm = app.item("secondaryPaneTerminal");
+        QVERIFY(leftTerm && rightTerm);
+
+        // Left pane click, F4: the left terminal.
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, emptySpot(left));
+        QTRY_COMPARE(activePane(), QString("primary"));
+        QTest::keyClick(app.window, Qt::Key_F4);
+        QTRY_VERIFY(leftTerm->isVisible());
+
+        // Right pane click, F4: the right terminal, and the left one stays.
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, emptySpot(right));
+        QTRY_COMPARE(activePane(), QString("secondary"));
+        QTest::keyClick(app.window, Qt::Key_F4);
+        QTRY_VERIFY(rightTerm->isVisible());
+        QVERIFY(leftTerm->isVisible());
+        auto *rightShell = rightTerm->property("terminal").value<QQuickItem *>();
+        QVERIFY(rightShell);
+        QTRY_VERIFY(rightShell->hasActiveFocus());
+
+        // Left pane click, then Home in the sidebar: Home opens on the left.
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, emptySpot(left));
+        QTRY_COMPARE(activePane(), QString("primary"));
+        QVERIFY(!rightShell->hasActiveFocus());
+        auto *home = app.item("quickAccess_Home");
+        QVERIFY(home && home->isVisible());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(home));
+        QTRY_COMPARE(tab->currentPath(), QDir::homePath());
+        QCOMPARE(tab->secondaryCurrentPath(), QString("computer:///"));
+
+        // A press on a pane's header bar makes that pane active as well.
+        auto *rightHeader = app.item("secondaryPaneHeader");
+        QVERIFY(rightHeader && rightHeader->isVisible());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(rightHeader));
+        QTRY_COMPARE(activePane(), QString("secondary"));
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(app.item("primaryPaneHeader")));
+        QTRY_COMPARE(activePane(), QString("primary"));
+#endif
+    }
+
     // Ctrl+Shift+Wheel over the Icons view sizes the text only: a bigger label
     // makes the cell taller instead of shrinking the icon (it used to shrink
     // as the text grew, and grow back as it shrank). Ctrl+Wheel sizes icons.
@@ -994,6 +1196,12 @@ private slots:
         app.tabModel->activeTab()->navigateTo(locked);
         QTRY_VERIFY(errorText->isVisible());
         QVERIFY(errorText->property("text").toString().contains(QStringLiteral("permission")));
+
+        // The Computer page lists drives, not a folder: the error the file
+        // model still holds from the locked folder must not cover it.
+        app.tabModel->activeTab()->navigateTo(QStringLiteral("computer:///"));
+        QTRY_VERIFY(app.item("computerView") && app.item("computerView")->isVisible());
+        QVERIFY(!errorText->isVisible());
 
         app.tabModel->activeTab()->navigateTo(dir.path());
         QTRY_VERIFY(!errorText->isVisible());
@@ -3213,176 +3421,6 @@ private slots:
         QTRY_VERIFY(!meter->isVisible());
     }
 
-    // ── Light and dark ─────────────────────────────────────────────────
-
-    static qreal luminance(const QColor &color)
-    {
-        return 0.2126 * color.redF() + 0.7152 * color.greenF() + 0.0722 * color.blueF();
-    }
-
-    // The toolbar's sun/moon button flips between the Light and Dark themes
-    // chosen in Settings; an open Settings window follows it and does not
-    // save the old theme back on its next change.
-    void testEveryInterfaceIconHasAStrataVersion()
-    {
-        // With the Strata icon theme (the default) icons come from the
-        // Strata set, in the accent colour. One missing there falls back to
-        // a plain text-coloured icon and stands out, as the toolbar's
-        // sun/moon and the Projects breadcrumb's rocket did.
-        QFile mapping(TEST_SOURCE_DIR "/src/qml/strataicons/IconMapping.js");
-        QVERIFY(mapping.open(QIODevice::ReadOnly));
-        const QString strata = QString::fromUtf8(mapping.readAll());
-        static const QRegularExpression use(
-            QStringLiteral(R"re(\b(Icon[A-Z]\w*)\s*\{|iconComponentSource\("(Icon[A-Z]\w*)"\))re"));
-        QStringList missing;
-        int checked = 0;
-        QDirIterator it(TEST_SOURCE_DIR "/src/qml", {"*.qml"}, QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            const QString path = it.next();
-            if (path.contains("/qml/icons/") || path.contains("/qml/strataicons/") || path.contains("/qml/Quill/"))
-                continue;
-            QFile file(path);
-            QVERIFY(file.open(QIODevice::ReadOnly));
-            auto matches = use.globalMatch(QString::fromUtf8(file.readAll()));
-            while (matches.hasNext()) {
-                const auto match = matches.next();
-                const QString type = match.captured(1).isEmpty() ? match.captured(2) : match.captured(1);
-                // Git status icons keep their own status colours.
-                if (type.startsWith("IconGit") || !QFile::exists(TEST_SOURCE_DIR "/src/qml/icons/" + type + ".qml"))
-                    continue;
-                ++checked;
-                if (!strata.contains('"' + type + "\": true"))
-                    missing << type + " (" + QFileInfo(path).fileName() + ")";
-            }
-        }
-        missing.removeDuplicates();
-        QVERIFY(checked > 50);
-        QVERIFY2(missing.isEmpty(), qPrintable("No Strata icon for: " + missing.join(", ")));
-    }
-
-    void testToolbarDarkModeToggleUsesThePresets()
-    {
-        App app;
-        QVERIFY(app.load());
-        auto *config = qobject_cast<ConfigManager *>(app.engine.rootContext()->contextProperty("config").value<QObject *>());
-        auto *theme = app.engine.rootContext()->contextProperty("theme").value<ThemeLoader *>();
-        QVERIFY(config && theme);
-        // main.cpp reloads the theme whenever the config changes; the harness does not.
-        QObject::connect(config, &ConfigManager::configChanged, theme, [config, theme] {
-            theme->loadTheme(config->theme(), {QStringLiteral(TEST_SOURCE_DIR "/themes")});
-        });
-        config->saveSettings({{"lightTheme", "rose-pine-dawn"}, {"darkTheme", "rose-pine"}, {"theme", "rose-pine"}});
-        QTRY_COMPARE(config->theme(), QString("rose-pine"));
-        auto *button = app.item("darkModeButton");
-        QVERIFY(button);
-        QTRY_VERIFY(button->isVisible());
-        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to light theme"));
-        app.window->grabWindow();
-        QTRY_VERIFY(app.center(button).x() > 0);
-        // The sun and moon are Strata icons like the rest of the toolbar,
-        // drawn in the accent colour; plain ones were text-coloured and
-        // stood out (user report).
-        QCOMPARE(config->iconTheme(), QString("Strata"));
-        const auto toggleIconColor = [button] {
-            for (QQuickItem *child : button->childItems())
-                if (child->isVisible() && child->property("effectiveColor").isValid())
-                    return child->property("effectiveColor").value<QColor>();
-            return QColor();
-        };
-        QTRY_COMPARE(toggleIconColor(), theme->accent());
-
-        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
-        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
-        QTRY_VERIFY(luminance(theme->base()) > 0.5);
-        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to dark theme"));
-        QTRY_COMPARE(toggleIconColor(), theme->accent());
-        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
-        QTRY_COMPARE(config->theme(), QString("rose-pine"));
-        QTRY_VERIFY(luminance(theme->base()) < 0.5);
-
-        // A theme outside the pair counts by its own background.
-        config->saveSettings({{"theme", "dracula"}});
-        QTRY_COMPARE(config->theme(), QString("dracula"));
-        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to light theme"));
-        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
-        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
-
-        // Settings shows the same state and keeps up with the toolbar.
-        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
-        auto *panel = app.window->findChild<QObject *>("settingsPanel");
-        QVERIFY(panel);
-        QTRY_VERIFY(panel->findChild<QObject *>("darkModeSwitch"));
-        auto *darkSwitch = panel->findChild<QObject *>("darkModeSwitch");
-        QTRY_VERIFY(!darkSwitch->property("checked").toBool());
-        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
-        QTRY_COMPARE(config->theme(), QString("rose-pine"));
-        QTRY_VERIFY(darkSwitch->property("checked").toBool());
-        QVERIFY(QMetaObject::invokeMethod(panel, "applySettingsNow"));
-        QTest::qWait(50);
-        QCOMPARE(config->theme(), QString("rose-pine"));
-
-        // And its own switch still flips the pair.
-        darkSwitch->setProperty("checked", false);
-        QVERIFY(QMetaObject::invokeMethod(darkSwitch, "toggled", Q_ARG(bool, false)));
-        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
-        QTRY_VERIFY(!darkSwitch->property("checked").toBool());
-        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to dark theme"));
-    }
-
-    // A click anywhere on a Computer page (e.g. its subtitle) or on a split
-    // pane's header bar makes that pane active.
-    void testComputerPagesTakeClicksForSidebarAndHeaders()
-    {
-        App app;
-        QVERIFY(app.load());
-        auto *tab = app.tabModel->activeTab();
-        tab->navigateTo(app.home.path());
-        auto activePane = [&] { return app.window->property("activePane").toString(); };
-
-        auto *computer = app.item("quickAccess_Computer");
-        QVERIFY(computer && computer->isVisible());
-        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(computer));
-        QTRY_COMPARE(tab->currentPath(), QString("computer:///"));
-        QTest::keyClick(app.window, Qt::Key_F3);
-        QTRY_COMPARE(app.window->property("splitTransitionProgress").toReal(), 1.0);
-        auto *secondaryLoader = app.item("secondaryPaneLoader");
-        QVERIFY(secondaryLoader);
-        QTRY_VERIFY(secondaryLoader->property("item").value<QQuickItem *>());
-        auto *left = app.item("primaryFileView");
-        auto *right = secondaryLoader->property("item").value<QQuickItem *>()
-                          ->property("fileView").value<QQuickItem *>();
-        QVERIFY(left && right);
-        QTRY_COMPARE(tab->secondaryCurrentPath(), QString("computer:///"));
-        QTRY_VERIFY(left->property("computerViewItem").value<QQuickItem *>()
-                    && right->property("computerViewItem").value<QQuickItem *>());
-        auto emptySpot = [&](QQuickItem *container) {
-            QQuickItem *page = container->property("computerViewItem").value<QQuickItem *>();
-            QQuickItem *subtitle = page ? App::findText(page, QStringLiteral("Devices and drives")) : nullptr;
-            return subtitle ? app.center(subtitle) : QPoint(-1, -1);
-        };
-        QVERIFY(emptySpot(left).x() >= 0 && emptySpot(right).x() >= 0);
-
-        QTest::mouseClick(app.window, Qt::LeftButton, {}, emptySpot(left));
-        QTRY_COMPARE(activePane(), QString("primary"));
-        QTest::mouseClick(app.window, Qt::LeftButton, {}, emptySpot(right));
-        QTRY_COMPARE(activePane(), QString("secondary"));
-
-        QTest::mouseClick(app.window, Qt::LeftButton, {}, emptySpot(left));
-        QTRY_COMPARE(activePane(), QString("primary"));
-        auto *home = app.item("quickAccess_Home");
-        QVERIFY(home && home->isVisible());
-        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(home));
-        QTRY_COMPARE(tab->currentPath(), QDir::homePath());
-        QCOMPARE(tab->secondaryCurrentPath(), QString("computer:///"));
-
-        auto *rightHeader = app.item("secondaryPaneHeader");
-        QVERIFY(rightHeader && rightHeader->isVisible());
-        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(rightHeader));
-        QTRY_COMPARE(activePane(), QString("secondary"));
-        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(app.item("primaryPaneHeader")));
-        QTRY_COMPARE(activePane(), QString("primary"));
-    }
-
     // ── Zoom keys and wheels ────────────────────────────────────────────
 
     static ConfigManager *configOf(App &app)
@@ -3716,6 +3754,122 @@ private slots:
         QTest::keyClick(app.window, Qt::Key_Return, Qt::ControlModifier);
         QTRY_COMPARE(app.tabModel->rowCount(), tabs + 1);
         QTRY_COMPARE(app.tabModel->activeTab()->currentPath(), mount);
+    }
+
+    // ── Light and dark ─────────────────────────────────────────────────
+
+    static qreal luminance(const QColor &color)
+    {
+        return 0.2126 * color.redF() + 0.7152 * color.greenF() + 0.0722 * color.blueF();
+    }
+
+    // The toolbar's sun/moon button flips between the Light and Dark themes
+    // chosen in Settings; an open Settings window follows it and does not
+    // save the old theme back on its next change.
+    void testEveryInterfaceIconHasAStrataVersion()
+    {
+        // With the Strata icon theme (the default) icons come from the
+        // Strata set, in the accent colour. One missing there falls back to
+        // a plain text-coloured icon and stands out, as the toolbar's
+        // sun/moon and the Projects breadcrumb's rocket did.
+        QFile mapping(TEST_SOURCE_DIR "/src/qml/strataicons/IconMapping.js");
+        QVERIFY(mapping.open(QIODevice::ReadOnly));
+        const QString strata = QString::fromUtf8(mapping.readAll());
+        static const QRegularExpression use(
+            QStringLiteral(R"re(\b(Icon[A-Z]\w*)\s*\{|iconComponentSource\("(Icon[A-Z]\w*)"\))re"));
+        QStringList missing;
+        int checked = 0;
+        QDirIterator it(TEST_SOURCE_DIR "/src/qml", {"*.qml"}, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next();
+            if (path.contains("/qml/icons/") || path.contains("/qml/strataicons/") || path.contains("/qml/Quill/"))
+                continue;
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            auto matches = use.globalMatch(QString::fromUtf8(file.readAll()));
+            while (matches.hasNext()) {
+                const auto match = matches.next();
+                const QString type = match.captured(1).isEmpty() ? match.captured(2) : match.captured(1);
+                // Git status icons keep their own status colours.
+                if (type.startsWith("IconGit") || !QFile::exists(TEST_SOURCE_DIR "/src/qml/icons/" + type + ".qml"))
+                    continue;
+                ++checked;
+                if (!strata.contains('"' + type + "\": true"))
+                    missing << type + " (" + QFileInfo(path).fileName() + ")";
+            }
+        }
+        missing.removeDuplicates();
+        QVERIFY(checked > 50);
+        QVERIFY2(missing.isEmpty(), qPrintable("No Strata icon for: " + missing.join(", ")));
+    }
+
+    void testToolbarDarkModeToggleUsesThePresets()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *config = configOf(app);
+        auto *theme = app.engine.rootContext()->contextProperty("theme").value<ThemeLoader *>();
+        QVERIFY(config && theme);
+        // main.cpp reloads the theme whenever the config changes; the harness does not.
+        QObject::connect(config, &ConfigManager::configChanged, theme, [config, theme] {
+            theme->loadTheme(config->theme(), {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+        });
+        config->saveSettings({{"lightTheme", "rose-pine-dawn"}, {"darkTheme", "rose-pine"}, {"theme", "rose-pine"}});
+        QTRY_COMPARE(config->theme(), QString("rose-pine"));
+        auto *button = app.item("darkModeButton");
+        QVERIFY(button);
+        QTRY_VERIFY(button->isVisible());
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to light theme"));
+        app.window->grabWindow();
+        QTRY_VERIFY(app.center(button).x() > 0);
+        // The sun and moon are Strata icons like the rest of the toolbar,
+        // drawn in the accent colour; plain ones were text-coloured and
+        // stood out (user report).
+        QCOMPARE(config->iconTheme(), QString("Strata"));
+        const auto toggleIconColor = [button] {
+            for (QQuickItem *child : button->childItems())
+                if (child->isVisible() && child->property("effectiveColor").isValid())
+                    return child->property("effectiveColor").value<QColor>();
+            return QColor();
+        };
+        QTRY_COMPARE(toggleIconColor(), theme->accent());
+
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
+        QTRY_VERIFY(luminance(theme->base()) > 0.5);
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to dark theme"));
+        QTRY_COMPARE(toggleIconColor(), theme->accent());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine"));
+        QTRY_VERIFY(luminance(theme->base()) < 0.5);
+
+        // A theme outside the pair counts by its own background.
+        config->saveSettings({{"theme", "dracula"}});
+        QTRY_COMPARE(config->theme(), QString("dracula"));
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to light theme"));
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
+
+        // Settings shows the same state and keeps up with the toolbar.
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSettingsPanel"));
+        auto *panel = app.window->findChild<QObject *>("settingsPanel");
+        QVERIFY(panel);
+        QTRY_VERIFY(panel->findChild<QObject *>("darkModeSwitch"));
+        auto *darkSwitch = panel->findChild<QObject *>("darkModeSwitch");
+        QTRY_VERIFY(!darkSwitch->property("checked").toBool());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(button));
+        QTRY_COMPARE(config->theme(), QString("rose-pine"));
+        QTRY_VERIFY(darkSwitch->property("checked").toBool());
+        QVERIFY(QMetaObject::invokeMethod(panel, "applySettingsNow"));
+        QTest::qWait(50);
+        QCOMPARE(config->theme(), QString("rose-pine"));
+
+        // And its own switch still flips the pair.
+        darkSwitch->setProperty("checked", false);
+        QVERIFY(QMetaObject::invokeMethod(darkSwitch, "toggled", Q_ARG(bool, false)));
+        QTRY_COMPARE(config->theme(), QString("rose-pine-dawn"));
+        QTRY_VERIFY(!darkSwitch->property("checked").toBool());
+        QTRY_COMPARE(button->property("tooltip").toString(), QString("Switch to dark theme"));
     }
 
     // ── Naming in place ────────────────────────────────────────────────

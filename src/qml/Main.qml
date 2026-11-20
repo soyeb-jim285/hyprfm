@@ -203,38 +203,105 @@ ApplicationWindow {
         root.sidebarWaitingForWidth = false
     }
 
-    // ── Built-in terminal panel ──────────────────────────────────────────────
-    property bool terminalPanelOpen: false
-    // The panel is created on first open and kept while hidden, so the shell
-    // survives F4; it goes when the shell exits.
-    property bool terminalPanelCreated: false
+    // ── Built-in terminal panels: one per pane ─────────────────────────────
+    // Each pane has its own panel under its file view (PaneTerminal), so split
+    // panes in different folders each get a shell in their own folder. F4 and
+    // Open in Terminal act on the active pane; clicking into a pane's terminal
+    // makes that pane active.
     // Set by main.cpp in builds with HYPRFM_TERMINAL; tests leave it unset.
     readonly property bool builtinTerminalAvailable:
         typeof hyprfmBuiltinTerminal !== "undefined" && hyprfmBuiltinTerminal
 
-    function toggleTerminalPanel() {
-        if (root.terminalPanelOpen)
-            root.closeTerminalPanel()
-        else
-            root.openTerminalPanel(root.isLocalPath(root.panePath(root.activePane)) ? root.panePath(root.activePane) : fsModel.homePath())
+    function paneTerminal(pane) {
+        if (pane === "secondary")
+            return secondaryPaneLoader.item ? secondaryPaneLoader.item.paneTerminal : null
+        return primaryPaneTerminal
     }
 
-    // Shows the panel. A new shell starts in `path` (or the active folder);
-    // a running one is taken to `path` if it is at its prompt.
-    function openTerminalPanel(path) {
+    // The pane whose terminal has keyboard focus, or "".
+    function terminalFocusPane() {
+        for (const pane of ["primary", "secondary"]) {
+            const holder = root.paneTerminal(pane)
+            if (holder && holder.terminal && holder.terminal.activeFocus)
+                return pane
+        }
+        return ""
+    }
+
+    function toggleTerminalPanel() {
+        const pane = root.activePane
+        const holder = root.paneTerminal(pane)
+        if (holder && holder.open)
+            root.closeTerminalPanel(pane)
+        else
+            root.openTerminalPanel(root.isLocalPath(root.panePath(pane)) ? root.panePath(pane) : fsModel.homePath(), pane)
+    }
+
+    // Shows a pane's panel (the active pane's by default). A new shell starts
+    // in `path` (or that pane's folder); a running one is taken to `path` if
+    // it is at its prompt.
+    function openTerminalPanel(path, pane) {
         if (!root.builtinTerminalAvailable)
             return
-        root.terminalPanelCreated = true
-        root.terminalPanelOpen = true
-        var view = terminalPanelLoader.item.terminal
+        pane = pane || root.activePane
+        if (pane === "secondary" && !root.splitViewEnabled())
+            pane = "primary"
+        const holder = root.paneTerminal(pane)
+        if (!holder)
+            return
+        holder.created = true
+        holder.open = true
+        var view = holder.terminal
         if (!view.running) {
-            var dir = path || root.panePath(root.activePane)
+            var dir = path || root.panePath(pane)
             view.workingDirectory = root.isLocalPath(dir) ? dir : ""
             view.start()
         } else if (path) {
             view.changeDirectory(path)
         }
+        root.activatePaneKeepingFocus(pane)
         view.forceActiveFocus()
+    }
+
+    function closeTerminalPanel(pane) {
+        const holder = root.paneTerminal(pane || root.activePane)
+        if (holder)
+            holder.open = false
+        root.scheduleActivePaneFocus()
+    }
+
+    // The last shell of a pane's panel exited: the panel goes (and a later
+    // F4 starts a fresh one).
+    function paneTerminalFinished(pane) {
+        root.closeTerminalPanel(pane)
+        // Not from inside the shell's own signal.
+        Qt.callLater(() => {
+            const holder = root.paneTerminal(pane)
+            if (holder)
+                holder.created = false
+        })
+    }
+
+    function confirmTerminalPaste(view, text) {
+        root.pendingTerminalPasteView = view
+        root.pendingTerminalPaste = text
+        root.openDialog(terminalPasteConfirmDialogLoader)
+    }
+
+    // Focus moving into a pane's terminal makes that pane the active one,
+    // without handing focus back to its file view.
+    function activatePaneKeepingFocus(pane) {
+        if (pane === "secondary" && !root.splitViewEnabled())
+            return
+        if (root.activePane === pane)
+            return
+        root.activePane = pane
+        root.updateSelectionStatus()
+    }
+    onActiveFocusItemChanged: {
+        const pane = root.terminalFocusPane()
+        if (pane)
+            root.activatePaneKeepingFocus(pane)
     }
 
     function otherTerminalItems() {
@@ -242,11 +309,6 @@ ApplicationWindow {
             return []
         return [{ text: config.builtinTerminal ? "Open in External Terminal" : "Open in Built-in Terminal",
                   shortcut: "", action: "terminal_other" }]
-    }
-
-    function closeTerminalPanel() {
-        root.terminalPanelOpen = false
-        root.scheduleActivePaneFocus()
     }
 
     // Open in Terminal, from every menu and the shortcut. `other` picks the
@@ -375,7 +437,7 @@ ApplicationWindow {
     }
 
     function paneIsComputer(pane) {
-        return !paneIsRecents(pane) && !paneSearchMode(pane) && isComputerPath(panePath(pane))
+        return !paneIsRecents(pane) && !paneShowsSearchResults(pane) && isComputerPath(panePath(pane))
     }
 
     function pathDisplayName(path) {
@@ -739,7 +801,7 @@ ApplicationWindow {
     function paneCommandsEnabled() {
         const focus = root.activeFocusItem
         if (focus && focus.text !== undefined && focus.readOnly === false) return false
-        if (terminalPanelLoader.item && terminalPanelLoader.item.terminal.activeFocus) return false
+        if (root.terminalFocusPane() !== "") return false
         if (toolbar.pathEditing || sidebarPanel.renamingBookmarkIndex >= 0) return false
         const dialogs = [root.renameDialog, root.bulkRenameDialog, root.newFolderDialog,
             root.newFileDialog, root.settingsPanel, root.shortcutsDialog, root.propertiesDialog,
@@ -1057,6 +1119,9 @@ ApplicationWindow {
         }
 
         if (!enable) {
+            const secTerm = root.paneTerminal("secondary")
+            if (secTerm && secTerm.open)
+                secTerm.open = false
             if (activePane === "secondary") {
                 const fromComputer = root.paneIsComputer("secondary")
                 const selected = fromComputer ? [] : root.getSelectedPaths("secondary")
@@ -1303,6 +1368,8 @@ ApplicationWindow {
         return items
     }
 
+    // A folder Favourites can take: not empty, not a virtual place
+    // (Computer, Trash) and not already listed. Files never reach here.
     // Dark Mode, shared by the toolbar's sun/moon toggle and Settings: the
     // configured dark theme is dark and the light theme light; any other
     // theme counts by its own background.
@@ -1314,8 +1381,6 @@ ApplicationWindow {
             config.saveSettings({ theme: target })
     }
 
-    // A folder Favourites can take: not empty, not a virtual place
-    // (Computer, Trash) and not already listed. Files never reach here.
     function favouriteCandidate(path) {
         if (!path || root.isComputerPath(path) || fileOps.isTrashPath(path) || bookmarks.containsPath(path))
             return ""
@@ -1493,7 +1558,7 @@ ApplicationWindow {
     function createAndNameInline(parentPath, isFolder) {
         const view = root.inlineEditView()
         if (!view || parentPath !== root.panePath(root.activePane)
-                || root.paneIsRecents(root.activePane) || root.paneSearchMode(root.activePane))
+                || root.paneIsRecents(root.activePane) || root.paneShowsSearchResults(root.activePane))
             return false
         const name = root.uniqueChildName(parentPath, isFolder ? "New Folder" : "New File")
         const created = root.joinChildPath(parentPath, name)
@@ -4745,6 +4810,16 @@ ApplicationWindow {
                                     root.applySortChange(column, ascending)
                                 }
                             }
+
+                            PaneTerminal {
+                                id: primaryPaneTerminal
+                                pane: "primary"
+                                paneHeight: primaryPaneFrame.height
+                                windowShortcuts: [config.shortcutMap["toggle_terminal"]]
+                                onFinished: root.paneTerminalFinished("primary")
+                                onUnsafePaste: (view, text) => root.confirmTerminalPaste(view, text)
+                                onFolderActivated: path => root.navigatePaneTo("primary", path)
+                            }
                         }
 
                         Rectangle {
@@ -4794,6 +4869,7 @@ ApplicationWindow {
                         sourceComponent: Rectangle {
                             id: secondaryPaneFrame
                             property alias fileView: secondaryFileViewContainer
+                            property alias paneTerminal: secondaryPaneTerminal
                             opacity: root.splitTransitionProgress
                             scale: 0.96 + (0.04 * root.splitTransitionProgress)
                             transformOrigin: root.isSplitHorizontal ? Item.Bottom : Item.Right
@@ -4847,6 +4923,18 @@ ApplicationWindow {
                                         root.applySortChange(column, ascending)
                                     }
                                 }
+
+                                // Closing the split closes this pane's shells
+                                // with it, as closing a terminal tab does.
+                                PaneTerminal {
+                                    id: secondaryPaneTerminal
+                                    pane: "secondary"
+                                    paneHeight: secondaryPaneFrame.height
+                                    windowShortcuts: [config.shortcutMap["toggle_terminal"]]
+                                    onFinished: root.paneTerminalFinished("secondary")
+                                    onUnsafePaste: (view, text) => root.confirmTerminalPaste(view, text)
+                                    onFolderActivated: path => root.navigatePaneTo("secondary", path)
+                                }
                             }
 
                             Rectangle {
@@ -4863,43 +4951,6 @@ ApplicationWindow {
                         }
                     }
                 }
-                }
-
-                Loader {
-                    id: terminalPanelLoader
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: item ? item.implicitHeight : 0
-                    visible: root.terminalPanelOpen
-                    active: root.terminalPanelCreated
-                    // By URL: the file is only in the module when the terminal
-                    // is built in.
-                    source: Qt.resolvedUrl("components/TerminalPanel.qml")
-                    onLoaded: {
-                        item.maximumHeight = Qt.binding(() => root.height * 0.7)
-                        item.windowShortcuts = Qt.binding(() => [config.shortcutMap["toggle_terminal"]])
-                    }
-
-                    Connections {
-                        target: terminalPanelLoader.item
-                        function onFinished() {
-                            root.closeTerminalPanel()
-                            // Not from inside the shell's own signal.
-                            Qt.callLater(() => { root.terminalPanelCreated = false })
-                        }
-                        function onUnsafePaste(view, text) {
-                            root.pendingTerminalPasteView = view
-                            root.pendingTerminalPaste = text
-                            root.openDialog(terminalPasteConfirmDialogLoader)
-                        }
-                        // The view only passes on web, mail and local
-                        // folder links; see TerminalView::activateLink().
-                        function onLinkActivated(url) {
-                            Qt.openUrlExternally(url)
-                        }
-                        function onFolderActivated(path) {
-                            root.navigateActivePaneTo(path)
-                        }
-                    }
                 }
 
                 StatusBar {

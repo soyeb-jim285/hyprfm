@@ -396,6 +396,13 @@ if(HYPRFM_TERMINAL)
     target_link_libraries(tst_terminalview PRIVATE Qt6::Test Qt6::Quick Qt6::DBus ghostty-vt-static util)
     add_test(NAME tst_terminalview COMMAND tst_terminalview)
     set_tests_properties(tst_terminalview PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # The main window with the terminal built in: each pane's own panel.
+    target_sources(tst_mainwindow PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/terminal/terminalview.cpp
+        ${CMAKE_SOURCE_DIR}/src/terminal/terminalview.h)
+    target_link_libraries(tst_mainwindow PRIVATE ghostty-vt-static util)
+    target_compile_definitions(tst_mainwindow PRIVATE HYPRFM_TERMINAL)
 endif()
 
 # The portal runs on an isolated bus; no changes to the user's desktop.
