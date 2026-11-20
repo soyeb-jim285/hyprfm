@@ -16,6 +16,9 @@ bool isRemoteUri(const QString &path)
 QString displayNameForPath(const QString &path)
 {
     const QUrl url(path);
+    if (url.scheme() == QStringLiteral("computer") && url.host().isEmpty()
+        && (url.path().isEmpty() || url.path() == QStringLiteral("/")))
+        return QStringLiteral("Computer");
     if (url.scheme() == QStringLiteral("trash")) {
         const QString fileName = url.fileName();
         return fileName.isEmpty() ? QStringLiteral("Trash") : fileName;
@@ -109,7 +112,7 @@ bool TabModel::sortAscending() const { return m_sortAscending; }
 QString TabModel::normalizeViewMode(const QString &mode)
 {
     if (mode == QStringLiteral("grid") || mode == QStringLiteral("detailed")
-        || mode == QStringLiteral("miller"))
+        || mode == QStringLiteral("miller") || mode == QStringLiteral("compact"))
         return mode;
     if (mode == QStringLiteral("list"))
         return QStringLiteral("detailed");

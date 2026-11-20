@@ -46,6 +46,10 @@ removed when the interaction finishes. Results return as JSON on stdout;
 closing the window returns cancellation. File system writes remain the caller's
 responsibility, apart from explicitly creating a new folder in the chooser.
 
+Grid, detailed and Compact views are available from the toolbar. Compact view
+places small icons beside filenames in columns that scroll sideways; `Ctrl+4`
+selects it. The `compact_full_names` preference also applies to the chooser.
+
 Supported: local files and folders (including local mount points), single and
 multiple selection, glob/MIME filters, suggested folder/name/file, additional
 checkbox/combo options, overwrite confirmation and unique names for SaveFiles.

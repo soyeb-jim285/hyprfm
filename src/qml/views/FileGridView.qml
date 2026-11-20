@@ -6,7 +6,48 @@ import Quill as Q
 GridView {
     id: root
     Accessible.role: Accessible.List
-    Accessible.name: "File grid"
+    Accessible.name: compactMode ? qsTr("Compact file view") : "File grid"
+
+    property bool compactMode: false
+    property int rowHeight: 28
+    readonly property int minRowHeight: Math.max(22, Math.ceil(Theme.fontNormal * 4 / 3) + 8)
+    readonly property int maxRowHeight: 56
+    readonly property int rowsPerColumn: Math.max(1, Math.floor(height / cellHeight))
+    property real compactNameWidth: 0
+    readonly property int compactColumnWidth: Math.ceil(Math.max(120 * Theme.uiScale,
+        iconSize + 28 + (config.compactFullNames ? compactNameWidth
+            : Math.min(compactNameWidth, nameMetrics.averageCharacterWidth * 32))))
+
+    FontMetrics {
+        id: nameMetrics
+        font.pointSize: Theme.fontNormal
+        onFontChanged: nameWidthTimer.restart()
+    }
+
+    function measureCompactNames() {
+        if (!compactMode) return
+        var longest = 0
+        var limit = config.compactFullNames ? Infinity : nameMetrics.averageCharacterWidth * 32
+        for (var i = 0; i < count; ++i) {
+            longest = Math.max(longest, nameMetrics.advanceWidth(fileNameForRow(i)))
+            if (longest >= limit) break
+        }
+        compactNameWidth = longest
+    }
+
+    Timer {
+        id: nameWidthTimer
+        interval: 0
+        onTriggered: root.measureCompactNames()
+    }
+    onCountChanged: nameWidthTimer.restart()
+    onModelChanged: nameWidthTimer.restart()
+    Connections {
+        target: config
+        function onConfigChanged() { nameWidthTimer.restart() }
+    }
+    flow: compactMode ? GridView.FlowTopToBottom : GridView.FlowLeftToRight
+    flickableDirection: compactMode ? Flickable.HorizontalFlick : Flickable.VerticalFlick
 
     property var selectedIndices: []
     property int lastSelectedIndex: -1   // anchor for shift-selection
@@ -48,25 +89,49 @@ GridView {
     // user may never scroll to.
     cacheBuffer: 512
     // Zoom picks an icon size and the window width decides how many columns
-    // fit, so resizing the window no longer resizes the icons (#61). The
-    // zoom step is still stored as a column count (2 = biggest, 12 =
-    // smallest): each step is the cell a 1600 px wide view would get with
-    // that many columns, so the default looks as it did on a typical window.
-    // grid_fixed_columns brings back the old way: zoom is the column count
-    // and the icons stretch to fill the width.
-    property int columnCount: 7
+    // fit, so resizing the window does not resize the icons (#61). The size
+    // is continuous, 32 to 512 px: Ctrl+Wheel scales it ~15% a notch (a
+    // touchpad by fractions of a notch) and the change animates. It used to
+    // be a column count, 2..12 of a 1600 px view, which never went below an
+    // 88 px icon and jumped ~30 px a step. grid_fixed_columns keeps the
+    // column count: zoom is the count and the icons stretch to the width.
+    readonly property int defaultIconSize: 184   // the old default, 7 columns
+    readonly property int minIconSize: 32
+    readonly property int maxIconSize: 512
+    property real zoomIconSize: defaultIconSize   // what the zoom asks for (saved)
+    property real shownIconSize: zoomIconSize     // what is drawn: follows, animated
+    property bool animateZoom: false
+    Behavior on shownIconSize {
+        enabled: root.animateZoom
+        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+    }
+    function setZoomIconSize(size, animate) {
+        animateZoom = !!animate
+        zoomIconSize = Math.max(minIconSize, Math.min(maxIconSize, size))
+    }
+    function resetZoom() {
+        if (compactMode)
+            rowHeight = Math.max(minRowHeight, 28)
+        else if (config.gridFixedColumns)
+            columnCount = defaultColumnCount
+        else
+            setZoomIconSize(defaultIconSize, true)
+    }
+    readonly property int defaultColumnCount: 7
+    property int columnCount: defaultColumnCount
     readonly property int minColumns: 2
     readonly property int maxColumns: 12
     readonly property int minCellWidth: 140
     readonly property int targetCellSize: config.gridFixedColumns
         ? Math.floor(width / effectiveColumnCount)
-        : Math.max(1, Math.min(width, Math.round(1600 / columnCount)))
+        : Math.max(1, Math.min(width, Math.round(shownIconSize) + 45))
     readonly property int effectiveColumnCount: config.gridFixedColumns
         ? Math.max(minColumns, Math.min(columnCount, Math.min(maxColumns, Math.max(1, Math.floor(width / minCellWidth)))))
         : Math.max(1, Math.floor(width / targetCellSize))
     // Two lines of the label font, so a larger desktop font does not get
     // clipped: 32 px was exactly two lines at 10 pt and nothing more.
-    readonly property int labelHeight: Math.round(32 * Theme.uiScale)
+    readonly property int labelHeight: Math.round(baseLabelHeight * Theme.uiScale)
+    readonly property int baseLabelHeight: 32
     // Ask for exactly the size the icon is drawn at. A fixed 96 was being
     // stretched to iconSize (~229 at seven columns on a 1080p window), and
     // 32 px buckets still shrank a 96 px render to 87, which blurred thin
@@ -74,6 +139,10 @@ GridView {
     // stops, so dragging the window edge does not re-render every icon at
     // each pixel; meanwhile the last render is scaled.
     readonly property int exactIconRequestSize: Math.max(16, Math.ceil(root.iconSize * Screen.devicePixelRatio))
+    // The icon URL carries the size too, so it follows the settled request:
+    // with root.iconSize every zoom frame reloaded every visible icon, and
+    // they came back one by one.
+    readonly property int iconSourceSize: Math.max(16, Math.round(iconRequestSize / Screen.devicePixelRatio))
     property int iconRequestSize: exactIconRequestSize
     onExactIconRequestSizeChanged: iconSizeSettle.restart()
     Timer {
@@ -84,9 +153,15 @@ GridView {
     readonly property int thumbnailRequestSize: 256 * Screen.devicePixelRatio
 
     // Spare width is shared out between the columns.
-    cellWidth: Math.floor(width / effectiveColumnCount)
-    cellHeight: targetCellSize
-    readonly property int iconSize: cellHeight - 8 - labelHeight - 5  // 8px top, 0px gap, 5px bottom
+    cellWidth: compactMode ? compactColumnWidth : Math.floor(width / effectiveColumnCount)
+    // The zoom step (Ctrl+Wheel) sizes the icon: the cell's height at the
+    // 10 pt label. Larger interface text (Ctrl+Shift+Wheel) makes the cell taller by
+    // what the label gains, as Strata's Icons view does, rather than taking
+    // that room from the icon -- which shrank icons as the text grew.
+    cellHeight: compactMode ? Math.max(rowHeight, Math.ceil(nameMetrics.height) + 8)
+                            : targetCellSize + labelHeight - baseLabelHeight
+    readonly property int iconSize: compactMode ? Math.max(16, rowHeight - 8)
+                                                : targetCellSize - 8 - baseLabelHeight - 5  // 8px top, 0px gap, 5px bottom
 
     focus: visible
     keyNavigationEnabled: false
@@ -148,12 +223,27 @@ GridView {
         }
     }
 
+    function zoomByWheel(delta) {
+        wheelScroller.stopAndSettle()
+        root.interactionStarted()
+        if (compactMode) {
+            var sizeStep = delta < 0 ? 2 : -2
+            rowHeight = Math.max(minRowHeight, Math.min(maxRowHeight, rowHeight + sizeStep))
+        } else if (config.gridFixedColumns) {
+            var step = delta < 0 ? -1 : 1
+            columnCount = Math.max(minColumns, Math.min(maxColumns, columnCount + step))
+        } else {
+            // delta is -42 a wheel notch up (bigger); a touchpad gives fractions
+            setZoomIconSize(zoomIconSize * Math.pow(1.15, -delta / 42), true)
+        }
+    }
+
     function moveSelection(delta, extend) {
         wheelScroller.stopAndSettle()
         if (count <= 0)
             return
         var current = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
-        var next = Math.max(0, Math.min(count - 1, current + delta))
+        var next = compactMode && current < 0 ? 0 : Math.max(0, Math.min(count - 1, current + delta))
         if (next === current && current >= 0) return
         if (extend && lastSelectedIndex >= 0) {
             var lo = Math.min(next, lastSelectedIndex)
@@ -190,10 +280,10 @@ GridView {
         positionViewAtIndex(next, GridView.Contain)
     }
 
-    Keys.onLeftPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
-    Keys.onRightPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
-    Keys.onUpPressed: (event) => moveSelection(-effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
-    Keys.onDownPressed: (event) => moveSelection(effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
+    Keys.onLeftPressed: (event) => moveSelection(compactMode ? -rowsPerColumn : -1, event.modifiers & Qt.ShiftModifier)
+    Keys.onRightPressed: (event) => moveSelection(compactMode ? rowsPerColumn : 1, event.modifiers & Qt.ShiftModifier)
+    Keys.onUpPressed: (event) => moveSelection(compactMode ? -1 : -effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
+    Keys.onDownPressed: (event) => moveSelection(compactMode ? 1 : effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Home) {
             moveSelectionTo(0, event.modifiers & Qt.ShiftModifier)
@@ -231,7 +321,10 @@ GridView {
     }
 
     ScrollBar.vertical: ScrollBar {
-        policy: ScrollBar.AsNeeded
+        policy: root.compactMode ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded
+    }
+    ScrollBar.horizontal: ScrollBar {
+        policy: root.compactMode ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
     }
 
     function selectIndex(idx, ctrl, shift) {
@@ -461,6 +554,12 @@ GridView {
             positionViewAtIndex(idx, GridView.Contain)
         return true
     }
+    function restoreSelection(indices, cursor) {
+        selectedIndices = indices
+        cursorIndex = cursor
+        lastSelectedIndex = indices.length ? indices[0] : -1
+        if (cursor >= 0) positionViewAtIndex(cursor, GridView.Contain)
+    }
 
     function selectAll() {
         var all = []
@@ -557,10 +656,13 @@ GridView {
     }
 
     Connections {
-        target: root.model
+        target: root.model || null
         ignoreUnknownSignals: true
 
+        function onDataChanged() { nameWidthTimer.restart() }
+
         function onModelReset() {
+            nameWidthTimer.restart()
             // Indices no longer map to the same files; drop the stale selection.
             root.clearSelection()
             root.schedulePendingFocus()
@@ -579,6 +681,7 @@ GridView {
     // ── Delegate ───────────────────────────────────────────────────────────
     delegate: Item {
         id: delegateItem
+        objectName: root.compactMode ? "compactItem_" + index : ""
         width: root.cellWidth
         height: root.cellHeight
         // The hit/selection area: icon + label with a gap to the next cell, so
@@ -629,9 +732,12 @@ GridView {
             }
         }
 
+        // Compact rows show icons, not file thumbnails; a folder's custom icon
+        // is still its icon there, as in the Detailed view.
         readonly property bool hasThumbnail: !fileOps.isRemotePath(delegateItem.filePath) && !fileOps.isSlowPath(delegateItem.filePath)
-            && (delegateItem.isDir || delegateItem.hasImagePreview || delegateItem.hasVideoPreview
-                || delegateItem.hasPdfPreview)
+            && (delegateItem.isDir
+                || (!root.compactMode && (delegateItem.hasImagePreview || delegateItem.hasVideoPreview
+                                          || delegateItem.hasPdfPreview)))
 
         Image {
             id: thumbImg
@@ -646,9 +752,12 @@ GridView {
             // checking only the status left those cells blank for good.
             visible: delegateItem.hasThumbnail && status === Image.Ready && implicitWidth > 0
             opacity: delegateItem.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: parent.top
-            anchors.topMargin: 8
+            anchors.horizontalCenter: root.compactMode ? undefined : parent.horizontalCenter
+            anchors.left: root.compactMode ? parent.left : undefined
+            anchors.leftMargin: 8
+            anchors.verticalCenter: root.compactMode ? parent.verticalCenter : undefined
+            anchors.top: root.compactMode ? undefined : parent.top
+            anchors.topMargin: root.compactMode ? 0 : 8
             width: root.iconSize
             height: root.iconSize
             fillMode: Image.PreserveAspectFit
@@ -669,14 +778,19 @@ GridView {
             id: iconImg
             visible: !thumbImg.visible
             opacity: delegateItem.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: parent.top
-            anchors.topMargin: 8
+            anchors.horizontalCenter: root.compactMode ? undefined : parent.horizontalCenter
+            anchors.left: root.compactMode ? parent.left : undefined
+            anchors.leftMargin: 8
+            anchors.verticalCenter: root.compactMode ? parent.verticalCenter : undefined
+            anchors.top: root.compactMode ? undefined : parent.top
+            anchors.topMargin: root.compactMode ? 0 : 8
             width: root.iconSize
             height: root.iconSize
-            source: "image://icon/" + delegateItem.fileIconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+            source: Theme.fileIconSource(delegateItem.fileIconName, delegateItem.fileName, root.iconSourceSize, !root.compactMode)
             sourceSize: Qt.size(root.iconRequestSize, root.iconRequestSize)
             asynchronous: true
+            // Keep showing the last render while the settled size loads (Qt 6.8+).
+            Component.onCompleted: if ("retainWhileLoading" in iconImg) iconImg.retainWhileLoading = true
         }
 
         Rectangle {
@@ -772,24 +886,29 @@ GridView {
         Text {
             id: measureText
             visible: false
-            width: labelText.width
+            width: root.compactMode ? 0 : labelText.width
             font: labelText.font
             textFormat: Text.PlainText
-            text: delegateItem.fileName
+            text: root.compactMode ? "" : delegateItem.fileName
             wrapMode: Text.WrapAnywhere
             maximumLineCount: 3
         }
 
         Text {
             id: labelText
-            width: selectionRect.width - 8
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: (iconImg.visible ? iconImg : thumbImg).bottom
+            objectName: root.compactMode ? "compactLabel_" + delegateItem.index : ""
+            width: root.compactMode ? parent.width - root.iconSize - 28 : selectionRect.width - 8
+            anchors.horizontalCenter: root.compactMode ? undefined : parent.horizontalCenter
+            anchors.left: root.compactMode ? iconImg.right : undefined
+            anchors.leftMargin: root.compactMode ? 8 : 0
+            anchors.verticalCenter: root.compactMode ? parent.verticalCenter : undefined
+            anchors.top: root.compactMode ? undefined : (iconImg.visible ? iconImg : thumbImg).bottom
             anchors.topMargin: 0
             textFormat: root.highlightQuery ? Text.StyledText : Text.PlainText
             text: root.highlightQuery ? Theme.highlightMatch(displayName, root.highlightQuery) : displayName
             readonly property string displayName: {
                 var name = delegateItem.fileName
+                if (root.compactMode) return nameMetrics.elidedText(name, Qt.ElideMiddle, labelText.width)
                 // If it fits in 2 lines, show as-is
                 if (measureText.lineCount <= 2) return name
                 // Middle-elide: keep last 6 chars (extension + some context)
@@ -805,22 +924,24 @@ GridView {
             // The file's name is the view's primary text: it gets the UI font
             // size, not the one-point-smaller secondary size.
             font.pointSize: Theme.fontNormal
-            horizontalAlignment: Text.AlignHCenter
-            maximumLineCount: 2
-            wrapMode: Text.WrapAnywhere
+            horizontalAlignment: root.compactMode ? Text.AlignLeft : Text.AlignHCenter
+            verticalAlignment: root.compactMode ? Text.AlignVCenter : Text.AlignTop
+            maximumLineCount: root.compactMode ? 1 : 2
+            wrapMode: root.compactMode ? Text.NoWrap : Text.WrapAnywhere
             clip: true
-            height: root.labelHeight
+            height: root.compactMode ? parent.height : root.labelHeight
         }
 
 
         // Selection/hover rect wraps tightly around the content
         Rectangle {
             id: selectionRect
+            // A compact row is the whole cell, as the Detailed view's rows are.
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
-            anchors.topMargin: 3
-            width: Math.min(parent.width - 10, Math.max(root.iconSize + 36, 110))
-            height: parent.height - 6
+            anchors.topMargin: root.compactMode ? 0 : 3
+            width: root.compactMode ? parent.width : Math.min(parent.width - 10, Math.max(root.iconSize + 36, 110))
+            height: root.compactMode ? parent.height : parent.height - 6
             radius: Theme.radiusMedium
             z: -1
             opacity: (root.isDragging && delegateItem.isSelected) ? 0.4 : 1.0
@@ -976,16 +1097,12 @@ GridView {
 
         onWheel: (wheel) => {
             if (wheel.modifiers & Qt.ControlModifier) {
-                wheelScroller.stopAndSettle()
-                root.interactionStarted()
-                // Scroll up = zoom in = fewer columns (bigger icons)
                 var delta = wheelScroller.deltaFor(wheel)
                 if (delta === 0) {
                     wheel.accepted = false
                     return
                 }
-                var step = delta < 0 ? -1 : 1
-                root.columnCount = Math.max(root.minColumns, Math.min(root.maxColumns, root.columnCount + step))
+                root.zoomByWheel(delta < 0 ? -42 : 42)
                 wheel.accepted = true
             } else {
                 wheel.accepted = false
@@ -1081,6 +1198,9 @@ GridView {
         anchors.fill: parent
         z: 12
         flickable: root
+        horizontal: root.compactMode
+        zoomEnabled: true
+        onZoomRequested: delta => root.zoomByWheel(delta)
         wheelStep: 42
         mouseWheelMultiplier: 0.75
         touchpadMultiplier: 1.35

@@ -46,8 +46,17 @@ FocusScope {
     property string typeAheadBuffer: ""
 
     property int rowHeight: 28
-    readonly property int minRowHeight: 22
+    readonly property int minRowHeight: Math.max(22, Math.ceil(Theme.fontNormal * 4 / 3) + 8)
     readonly property int maxRowHeight: 56
+    // Row-height zoom: Ctrl+Wheel over the list (the file container's
+    // InterfaceZoom, or the list itself where none sits on top). Like FileGridView.zoomByWheel, a
+    // negative delta (wheel up) makes rows taller.
+    function zoomByWheel(delta) {
+        wheelScroller.stopAndSettle()
+        root.interactionStarted()
+        var step = delta < 0 ? 2 : -2
+        root.rowHeight = Math.max(root.minRowHeight, Math.min(root.maxRowHeight, root.rowHeight + step))
+    }
     readonly property int detailIconSize: Math.round(rowHeight * 0.571)  // 16 at default 28
 
     // Map of folder path → item count
@@ -58,7 +67,7 @@ FocusScope {
     // is replaced when the answer arrives, not cleared first, so the column
     // does not blink while it is on its way.
     Connections {
-        target: root.viewModel
+        target: root.viewModel || null
         ignoreUnknownSignals: true
         function onFolderItemCountsReady(requestId, counts) {
             if (requestId === root.folderCountRequest)
@@ -380,6 +389,12 @@ FocusScope {
         var all = []
         for (var i = 0; i < listView.count; i++) all.push(i)
         selectedIndices = all
+    }
+    function restoreSelection(indices, cursor) {
+        selectedIndices = indices
+        cursorIndex = cursor
+        lastSelectedIndex = indices.length ? indices[0] : -1
+        if (cursor >= 0) listView.positionViewAtIndex(cursor, ListView.Contain)
     }
 
     function clickHeader(col) {
@@ -1067,7 +1082,7 @@ FocusScope {
                                 // nothing at all.
                                 visible: !detThumb.visible
                                 opacity: detRow.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
-                                source: "image://icon/" + detRow.fileIconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                                source: Theme.fileIconSource(detRow.fileIconName, detRow.fileName, 24, false)
                                 sourceSize: Qt.size(root.detailIconSize * Screen.devicePixelRatio,
                                                     root.detailIconSize * Screen.devicePixelRatio)
                                 asynchronous: true
@@ -1399,15 +1414,12 @@ FocusScope {
 
                 onWheel: (wheel) => {
                     if (wheel.modifiers & Qt.ControlModifier) {
-                        wheelScroller.stopAndSettle()
-                        root.interactionStarted()
                         var delta = wheelScroller.deltaFor(wheel)
                         if (delta === 0) {
                             wheel.accepted = false
                             return
                         }
-                        var step = delta < 0 ? 2 : -2
-                        root.rowHeight = Math.max(root.minRowHeight, Math.min(root.maxRowHeight, root.rowHeight + step))
+                        root.zoomByWheel(delta)
                         wheel.accepted = true
                     } else {
                         wheel.accepted = false
@@ -1503,7 +1515,7 @@ FocusScope {
 
 
     Connections {
-        target: root.viewModel
+        target: root.viewModel || null
         ignoreUnknownSignals: true
 
         function onModelReset() {
