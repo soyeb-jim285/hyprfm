@@ -2284,6 +2284,36 @@ private slots:
         show(1000, 50);
         QTRY_VERIFY(qAbs(fill->width() - meter->width() * 0.95) < 1.0);
 
+        // Yellow from 75% used, red from 90%, whatever the theme: its own
+        // warning and error colours where they are yellow and red, amber and
+        // red where not. The user's light theme has a teal warning; darcula
+        // a blue error; tokyo-night a cyan warning.
+        auto *theme = app.engine.rootContext()->contextProperty("theme").value<ThemeLoader *>();
+        QVERIFY(theme);
+        const auto yellow = [](const QColor &c) {
+            return c.hslHueF() >= 0 && c.hslHueF() * 360 >= 25 && c.hslHueF() * 360 <= 70;
+        };
+        const auto red = [](const QColor &c) {
+            return c.hslHueF() >= 0 && (c.hslHueF() * 360 >= 330 || c.hslHueF() * 360 <= 20);
+        };
+        const QList<std::pair<QString, QColor>> themes = {
+            {"strata-omarchy-light", QColor("#006b82")}, {"strata-material-darker", QColor("#ffcb6b")},
+            {"strata-tokyo-night", QColor("#0db9d7")}, {"strata-darcula", QColor("#bbb529")}};
+        for (const auto &[name, ownWarning] : themes) {
+            theme->loadTheme(name, {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+            QCOMPARE(theme->warning(), ownWarning);
+            show(1000, 200);
+            QTRY_VERIFY2(yellow(tierColour()), qPrintable(name + " " + tierColour().name()));
+            show(1000, 50);
+            QTRY_VERIFY2(red(tierColour()), qPrintable(name + " " + tierColour().name()));
+        }
+        // A theme whose colours already fit keeps them.
+        theme->loadTheme(QStringLiteral("strata-material-darker"), {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+        show(1000, 200);
+        QTRY_COMPARE(tierColour(), QColor("#ffcb6b"));
+        show(1000, 50);
+        QTRY_COMPARE(tierColour(), QColor("#F07178"));
+
         // Nothing to report hides the meter rather than drawing an empty bar.
         statusBar->setProperty("diskTotal", -1.0);
         statusBar->setProperty("diskFree", -1.0);
