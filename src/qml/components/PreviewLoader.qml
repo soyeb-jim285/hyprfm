@@ -42,7 +42,10 @@ QtObject {
     property var directoryPreview: ({ entries: [], truncated: false, error: "", count: 0 })
     property var pdfPreview: ({ localPath: "", pageCount: 0, error: "" })
     property var fileMetadata: ({})
-    property var fontPreview: ({})
+    readonly property var emptyFontPreview: ({
+        family: "", styleName: "", weight: 400, italic: false, valid: false, error: ""
+    })
+    property var fontPreview: emptyFontPreview
 
     signal pdfPageCountChanged()
 
@@ -51,7 +54,7 @@ QtObject {
         directoryPreview = ({ entries: [], truncated: false, error: "", count: 0 })
         pdfPreview = ({ localPath: "", pageCount: 0, error: "" })
         fileMetadata = ({})
-        fontPreview = ({})
+        fontPreview = emptyFontPreview
     }
 
     // Drops any in-flight request and clears the panel.

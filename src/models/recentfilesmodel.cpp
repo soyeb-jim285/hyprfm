@@ -31,7 +31,22 @@ QVariant RecentFilesModel::data(const QModelIndex &index, int role) const
         return QFileInfo(entry.path).fileName();
     if (role == FilePathRole)
         return QFileInfo(entry.path).absoluteFilePath();
-    return entry.details.value(role);
+    if (!entry.details.isEmpty())
+        return entry.details.value(role);
+    switch (role) {
+    case FileSizeRole:
+        return qint64(-1);
+    case FileModifiedRole:
+        return QDateTime();
+    case IsDirRole:
+    case IsSymlinkRole:
+    case HasImagePreviewRole:
+    case HasVideoPreviewRole:
+    case HasPdfPreviewRole:
+        return false;
+    default:
+        return QString();
+    }
 }
 
 QVariant RecentFilesModel::readRole(const QFileInfo &info, const QMimeType &mime, int role)
