@@ -60,7 +60,8 @@ endif()
 add_subdirectory(src)
 
 # Install themes
-install(DIRECTORY themes/ DESTINATION share/hyprfm/themes FILES_MATCHING PATTERN "*.toml")
+install(DIRECTORY themes/ DESTINATION share/hyprfm/themes
+    FILES_MATCHING PATTERN "*.toml" PATTERN "*.txt" PATTERN "README.md")
 
 # Install the generated HyprFM QML module: qmldir + qml/ tree + qmltypes.
 # The qmldir keeps Qt's `prefer :/HyprFM/`, so at runtime the module resolves
