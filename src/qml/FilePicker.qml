@@ -18,7 +18,7 @@ Window {
     title: (picker.options.title || (saving ? qsTr("Save file") : qsTr("Open file"))) + " — HyprFM"
 
     readonly property bool saving: picker.options.mode === "save"
-    property string viewMode: config.defaultView === "grid" ? "grid" : "detailed"
+    property string viewMode: ["grid", "compact"].indexOf(config.defaultView) >= 0 ? config.defaultView : "detailed"
     property bool sidebarVisible: true
     property var selectedPaths: []
     property var history: []    // seeded once below; a binding would rewrite it on navigation
@@ -83,6 +83,7 @@ Window {
     Shortcut { sequence: "Alt+Left"; enabled: !root.hasOverlay; onActivated: root.goBack() }
     Shortcut { sequence: "Alt+Right"; enabled: !root.hasOverlay; onActivated: root.goForward() }
     Shortcut { sequence: "Ctrl+H"; enabled: !root.hasOverlay; onActivated: fsModel.showHidden = !fsModel.showHidden }
+    Shortcut { sequence: config.shortcutMap["compact_view"]; enabled: !root.hasOverlay; onActivated: { root.viewMode = "compact"; root.selectedPaths = []; root.focusFiles() } }
     Shortcut { sequence: "Ctrl+Return"; enabled: !root.hasOverlay; onActivated: root.submit() }
     Shortcut { sequence: "Ctrl+Shift+N"; enabled: !root.hasOverlay; onActivated: newFolder.open() }
 

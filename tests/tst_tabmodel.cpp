@@ -434,10 +434,21 @@ private slots:
         QCOMPARE(model.activeTab()->viewMode(), QString("grid"));
     }
 
+    void testCompactViewSurvivesSessionRestoreAndNewTabs()
+    {
+        TabListModel model;
+        model.activeTab()->setViewMode("compact");
+        model.addTab();
+        QCOMPARE(model.activeTab()->viewMode(), QString("compact"));
+        TabListModel restored;
+        restored.restoreSession(model.saveSession(), 1);
+        QCOMPARE(restored.activeTab()->viewMode(), QString("compact"));
+    }
+
     void testNormalizeViewModeKeepsValidModes()
     {
         for (const QString &mode : {QStringLiteral("grid"), QStringLiteral("detailed"),
-                                    QStringLiteral("miller")})
+                                    QStringLiteral("miller"), QStringLiteral("compact")})
             QCOMPARE(TabModel::normalizeViewMode(mode), mode);
         QCOMPARE(TabModel::normalizeViewMode("list"), QString("detailed"));
         QCOMPARE(TabModel::normalizeViewMode(""), QString("grid"));
