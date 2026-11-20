@@ -121,6 +121,7 @@
             kdePackages.qtdeclarative
             kdePackages.qtsvg
             kdePackages.qtwayland
+            kdePackages.qtmultimedia
             kdePackages.kwindowsystem
             glib
           ];

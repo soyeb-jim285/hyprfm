@@ -123,6 +123,7 @@ list(APPEND hyprfm_qml_module_args
         qml/components/RemoteConnectDialog.qml
         qml/components/PreviewLoader.qml
         qml/components/QuickPreview.qml
+        qml/components/VideoPreviewPlayer.qml
         qml/components/CsvTable.qml
         qml/components/Toast.qml
         qml/components/RubberBand.qml
@@ -136,6 +137,13 @@ list(APPEND hyprfm_qml_module_args
         qml/icons/IconSquare.qml
         qml/icons/IconPause.qml
         qml/icons/IconPlay.qml
+        qml/icons/IconSkipBack.qml
+        qml/icons/IconSkipForward.qml
+        qml/icons/IconVolume.qml
+        qml/icons/IconVolume1.qml
+        qml/icons/IconVolume2.qml
+        qml/icons/IconVolumeX.qml
+        qml/icons/IconRefreshCw.qml
         qml/icons/IconGrid.qml
         qml/icons/IconList.qml
         qml/icons/IconAlignJustify.qml
@@ -269,6 +277,7 @@ target_link_libraries(hyprfm PRIVATE
     Qt6::Svg
     Qt6::Network
     Qt6::Concurrent
+    Qt6::Multimedia
     PkgConfig::GIO
 )
 

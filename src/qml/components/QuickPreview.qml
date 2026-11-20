@@ -99,7 +99,7 @@ Item {
     // SVGs need explicit routing through the thumbnail provider (QSvgRenderer
     // path). Qt's default Image handler treats viewBox-only SVGs as 0×0.
     readonly property bool isSvg: isImage && _mime === "image/svg+xml"
-    readonly property bool isVideo: !isRemoteUri && !isDirectory && _mime.startsWith("video/")
+    readonly property bool isVideo: !isRemoteUri && !isDirectory && (_mime.startsWith("video/") || ["mp4", "mkv", "webm", "avi", "mov", "flv", "wmv", "m4v", "ts"].indexOf(fileExtension) >= 0)
     readonly property bool isAudio: !isRemoteUri && !isDirectory && _mime.startsWith("audio/")
     readonly property bool isPdf: !isRemoteUri && !isDirectory && _mime === "application/pdf"
     readonly property bool isFont: {
@@ -385,26 +385,68 @@ Item {
         closePreview()
     }
     Keys.onLeftPressed: (event) => {
+        if (root.isVideo && videoPreview) {
+            videoPreview.seekRelative(-5000)
+            event.accepted = true
+            return
+        }
         event.accepted = true
         cycleFile(-1)
     }
     Keys.onRightPressed: (event) => {
+        if (root.isVideo && videoPreview) {
+            videoPreview.seekRelative(5000)
+            event.accepted = true
+            return
+        }
         event.accepted = true
         cycleFile(1)
     }
     Keys.onUpPressed: (event) => {
+        if (root.isVideo && videoPreview) {
+            videoPreview.setVolume(videoPreview.volume + 0.05)
+            event.accepted = true
+            return
+        }
         if (!isPdf)
             return
         event.accepted = true
         changePdfPage(-1)
     }
     Keys.onDownPressed: (event) => {
+        if (root.isVideo && videoPreview) {
+            videoPreview.setVolume(videoPreview.volume - 0.05)
+            event.accepted = true
+            return
+        }
         if (!isPdf)
             return
         event.accepted = true
         changePdfPage(1)
     }
     Keys.onPressed: (event) => {
+        if (root.isVideo && videoPreview) {
+            if (event.key === Qt.Key_M) {
+                videoPreview.toggleMute()
+                event.accepted = true
+                return
+            }
+            if (event.key === Qt.Key_L) {
+                videoPreview.toggleLoop()
+                event.accepted = true
+                return
+            }
+            if (event.key === Qt.Key_BracketLeft) {
+                event.accepted = true
+                cycleFile(-1)
+                return
+            }
+            if (event.key === Qt.Key_BracketRight) {
+                event.accepted = true
+                cycleFile(1)
+                return
+            }
+        }
         if (!isPdf)
             return
         if (event.key === Qt.Key_PageUp) {
@@ -416,6 +458,11 @@ Item {
         }
     }
     Keys.onSpacePressed: (event) => {
+        if (root.isVideo && videoPreview) {
+            videoPreview.togglePlayPause()
+            event.accepted = true
+            return
+        }
         event.accepted = true
         closePreview()
     }
@@ -523,11 +570,71 @@ Item {
         }
     }
 
+    readonly property real mediaAspectRatio: {
+        if (root.isVideo && videoPreview && videoPreview.aspectRatio > 0)
+            return videoPreview.aspectRatio
+        if (root.isImage && visualPreview && visualPreview.implicitWidth > 0 && visualPreview.implicitHeight > 0)
+            return visualPreview.implicitWidth / visualPreview.implicitHeight
+        if (root.fileMetadata && root.fileMetadata["Resolution"]) {
+            var parts = String(root.fileMetadata["Resolution"]).toLowerCase().split("x")
+            if (parts.length === 2) {
+                var w = parseFloat(parts[0].trim())
+                var h = parseFloat(parts[1].trim())
+                if (w > 0 && h > 0)
+                    return w / h
+            }
+        }
+        return 0
+    }
+
+    readonly property real defaultCardWidth: Math.min(root.width * 0.9, 1080)
+    readonly property real defaultCardHeight: Math.min(root.height * 0.88, 760)
+
+    readonly property real targetCardWidth: {
+        if ((root.isImage || root.isVideo) && root.mediaAspectRatio > 0) {
+            var maxW = Math.max(700, root.width * 0.92)
+            var maxH = Math.max(480, root.height * 0.88)
+            var chromeH = 150
+            var sidebarW = 344
+
+            var availH = maxH - chromeH
+            var targetPreviewW = availH * root.mediaAspectRatio
+            var targetW = targetPreviewW + sidebarW
+
+            return Math.max(720, Math.min(maxW, Math.min(1280, targetW)))
+        }
+        return defaultCardWidth
+    }
+
+    readonly property real targetCardHeight: {
+        if ((root.isImage || root.isVideo) && root.mediaAspectRatio > 0) {
+            var maxH = Math.max(480, root.height * 0.88)
+            var chromeH = 150
+            var sidebarW = 344
+
+            var previewW = targetCardWidth - sidebarW
+            var targetPreviewH = previewW / root.mediaAspectRatio
+            var targetH = targetPreviewH + chromeH
+
+            return Math.max(440, Math.min(maxH, targetH))
+        }
+        return defaultCardHeight
+    }
+
     Rectangle {
         id: card
         anchors.centerIn: parent
-        width: Math.min(parent.width * 0.9, 1080)
-        height: Math.min(parent.height * 0.88, 760)
+        width: root.targetCardWidth
+        height: root.targetCardHeight
+
+        Behavior on width {
+            enabled: root.active && !root.closing
+            NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic }
+        }
+        Behavior on height {
+            enabled: root.active && !root.closing
+            NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutCubic }
+        }
         opacity: 0
         scale: 0.88
         transformOrigin: Item.Center
@@ -736,23 +843,32 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: Theme.radiusMedium
+                    clip: true
                     color: Qt.rgba(Theme.base.r, Theme.base.g, Theme.base.b, 0.52)
                     border.width: 1
                     border.color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
 
                     Item {
                         anchors.fill: parent
-                        anchors.margins: 12
+                        anchors.margins: (root.isVideo || root.isImage) ? 0 : 12
 
                         Image {
                             id: visualPreview
                             anchors.fill: parent
-                            visible: root.hasVisualPreview
+                            visible: root.hasVisualPreview && !root.isVideo
                             source: root.visualSource
                             sourceSize: Qt.size(width, height)
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
                             smooth: true
+                        }
+
+                        VideoPreviewPlayer {
+                            id: videoPreview
+                            anchors.fill: parent
+                            visible: root.isVideo
+                            active: root.active && root.isVideo
+                            filePath: root.filePath
                         }
 
                         // Outgoing page, drawn underneath while the next one
@@ -818,7 +934,7 @@ Item {
                         Column {
                             anchors.centerIn: parent
                             spacing: 10
-                            visible: (root.hasVisualPreview && visualPreview.status === Image.Error)
+                            visible: (root.hasVisualPreview && !root.isVideo && visualPreview.status === Image.Error)
                                 || (root.isPdf && root.pdfPreviewAvailable && root.pdfPreview.localPath !== "" && pdfPreviewImage.status === Image.Error)
 
                             Image {
@@ -849,7 +965,7 @@ Item {
 
                         Rectangle {
                             anchors.centerIn: parent
-                            visible: (root.hasVisualPreview && visualPreview.status === Image.Loading)
+                            visible: (root.hasVisualPreview && !root.isVideo && visualPreview.status === Image.Loading)
                                 || (root.isPdf && root.pdfPreviewAvailable && root.pdfPreview.localPath !== "" && pdfPreviewImage.status === Image.Loading)
                             color: Qt.rgba(Theme.base.r, Theme.base.g, Theme.base.b, 0.72)
                             radius: Theme.radiusMedium
@@ -1326,9 +1442,11 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: root.directoryFiles.length > 1
-                    ? "Use Space or Esc to close, Return to open, and Left/Right to browse nearby items"
-                    : "Use Space or Esc to close, and Return to open externally"
+                text: root.isVideo
+                    ? "Space / Click to play/pause · Left/Right to seek · Esc to close"
+                    : (root.directoryFiles.length > 1
+                        ? "Use Space or Esc to close, Return to open, and Left/Right to browse nearby items"
+                        : "Use Space or Esc to close, and Return to open externally")
                 color: Theme.muted
                 font.pointSize: Theme.fontSmall
                 horizontalAlignment: Text.AlignRight

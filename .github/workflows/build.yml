@@ -93,7 +93,7 @@ jobs:
           # generic.so / libqwayland-egl.so) ships with the base Qt install.
           # We force linuxdeploy-plugin-qt to bundle it via EXTRA_PLATFORM_PLUGINS
           # further below.
-          modules: 'qtshadertools'
+          modules: 'qtshadertools qtmultimedia'
 
       - name: Install system dependencies
         run: |
