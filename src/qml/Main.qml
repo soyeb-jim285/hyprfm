@@ -632,6 +632,7 @@ ApplicationWindow {
         var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
         if (vm === "grid") return view.gridViewItem
         if (vm === "miller") return view.millerViewItem
+        if (vm === "compact") return view.compactViewItem
         return view.detailedViewItem
     }
 
@@ -3640,6 +3641,11 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcutMap["miller_view"]
         onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "miller" }
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["compact_view"]
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "compact" }
     }
 
     Shortcut {

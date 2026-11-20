@@ -27,6 +27,7 @@ class ConfigManager : public QObject
     Q_PROPERTY(bool showHidden READ showHidden NOTIFY configChanged)
     Q_PROPERTY(bool hiddenLast READ hiddenLast NOTIFY configChanged)
     Q_PROPERTY(bool gridFixedColumns READ gridFixedColumns NOTIFY configChanged)
+    Q_PROPERTY(bool compactFullNames READ compactFullNames NOTIFY configChanged)
     Q_PROPERTY(bool rightClickToEditPath READ rightClickToEditPath NOTIFY configChanged)
     Q_PROPERTY(bool singleClickOpensFolders READ singleClickOpensFolders NOTIFY configChanged)
     Q_PROPERTY(bool builtinTerminal READ builtinTerminal NOTIFY configChanged)
@@ -103,6 +104,7 @@ public:
     // Clicking a breadcrumb segment still navigates.
     bool hiddenLast() const;
     bool gridFixedColumns() const;
+    bool compactFullNames() const;
     bool rightClickToEditPath() const;
     bool singleClickOpensFolders() const;
     bool builtinTerminal() const;
@@ -229,6 +231,7 @@ private:
     bool m_showHidden;
     bool m_hiddenLast;
     bool m_gridFixedColumns;
+    bool m_compactFullNames;
     bool m_rightClickToEditPath;
     bool m_singleClickOpensFolders;
     bool m_builtinTerminal;

@@ -303,7 +303,8 @@ Rectangle {
                             model: [
                                 { mode: "grid",     icon: "Grid",         name: "Grid view" },
                                 { mode: "miller",   icon: "Columns3",     name: "Miller column view" },
-                                { mode: "detailed", icon: "AlignJustify", name: "Detailed view" }
+                                { mode: "detailed", icon: "AlignJustify", name: "Detailed view" },
+                                { mode: "compact",  icon: "List",         name: "Compact view" }
                             ].filter(mode => !root.filePickerMode || mode.mode !== "miller")
 
                             delegate: HoverRect {
