@@ -23,6 +23,8 @@ Item {
         factor = Math.max(minimum, Math.min(maximum, isFinite(value) ? value : 1))
     }
     function reset() { setFactor(1) }
+    // One wheel notch or one Ctrl++ / Ctrl+- press.
+    function zoomSteps(steps) { setFactor(factor * Math.exp(steps * 0.14)) }
     function focusPreview() {
         interacted()
         Qt.callLater(function() { if (root.scope && root.scope.visible && !root.scope.activeFocus) root.scope.forceActiveFocus() })
@@ -30,7 +32,7 @@ Item {
     function wheelZoom(wheel) {
         var steps = wheel.pixelDelta.y !== 0 ? wheel.pixelDelta.y / 10 : wheel.angleDelta.y / 120
         if (steps === 0) return false
-        setFactor(factor * Math.exp(steps * 0.14 * (wheel.inverted ? -1 : 1)))
+        zoomSteps(steps * (wheel.inverted ? -1 : 1))
         focusPreview()
         return true
     }
@@ -84,9 +86,22 @@ Item {
             IconUndo { anchors.centerIn: parent; size: 16; color: Theme.text }
         }
     }
+    // The interface text-size keys act on the preview while it has focus;
+    // Main.qml's text-size shortcuts stand down then (previewOwnsFocus()).
+    readonly property bool keysActive: root.available && !!root.scope && root.scope.visible && root.scope.activeFocus
     Shortcut {
-        sequence: "Ctrl+0"
-        enabled: root.available && root.scope && root.scope.visible && root.scope.activeFocus
+        sequences: [config.shortcutMap["text_larger"], "Ctrl+="]
+        enabled: root.keysActive
+        onActivated: root.zoomSteps(1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["text_smaller"]
+        enabled: root.keysActive
+        onActivated: root.zoomSteps(-1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["text_reset"]
+        enabled: root.keysActive
         onActivated: root.reset()
     }
     Item {

@@ -3,11 +3,13 @@ import HyprFM
 
 // Shared by the sidebar and both file panes. Preview magnification and icon
 // density keep their own state; interface text size is a saved preference.
+// Ctrl+Wheel sizes interface text; Ctrl+Shift+Wheel zooms the file view under
+// it (Grid icons, or row height in Compact, Detailed and Miller).
 Item {
     id: root
     property Item previewControls: null
     property Item fileView: null
-    property bool thumbnailsEnabled: false
+    property bool viewZoomEnabled: false
     property real pendingSteps: 0
     property int previousDirection: 0
 
@@ -30,7 +32,7 @@ Item {
         const steps = (pixels ? pixels / 10 : angle / 120) * (wheel.inverted ? -1 : 1)
         if (!steps) return false
         if (horizontal) {
-            if (!thumbnailsEnabled || !fileView || !fileView.zoomByWheel) return false
+            if (!viewZoomEnabled || !fileView || !fileView.zoomByWheel) return false
             fileView.zoomByWheel(-steps * 42)
             return true
         }

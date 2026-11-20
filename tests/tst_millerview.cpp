@@ -1,6 +1,7 @@
 // Headless interaction test for the Miller view's draggable column dividers.
 #include <QTest>
 #include <QQmlComponent>
+#include <QRegularExpression>
 #include <memory>
 #include "viewharness.h"
 #include "services/metadataextractor.h"
@@ -34,6 +35,15 @@ class TestMillerView : public QObject
     };
 
 private slots:
+    // QML binding warnings from the view itself are failures: an unbound
+    // model used to log "Unable to assign [undefined] to QObject*", and a
+    // missing preview service a TypeError on pdfPreviewAvailable.
+    void init()
+    {
+        QTest::failOnWarning(QRegularExpression(QStringLiteral("Unable to assign \\[undefined\\]")));
+        QTest::failOnWarning(QRegularExpression(QStringLiteral("pdfPreviewAvailable")));
+    }
+
     void testLeftDividerDragChangesParentFraction()
     {
         MillerHarness h;

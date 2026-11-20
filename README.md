@@ -303,6 +303,7 @@ install is needed there.
 | `F5` | Refresh |
 | `Ctrl+Return` | Open in a new tab |
 | `Ctrl+Shift+Return` | Open in the split pane |
+| `Ctrl+D` | Add the selected folder (or the current one) to Favourites; also in the right-click menu |
 | `Type any letter` | Type-ahead jump to file |
 
 ### Views
@@ -314,8 +315,8 @@ install is needed there.
 | `Ctrl+3` | Detailed view |
 | `Ctrl+4` | Compact view |
 | `Ctrl+Scroll` | Resize interface text over sidebar/file columns; zoom content over a preview |
-| `Ctrl++` / `Ctrl+-` / `Ctrl+0` | Increase / decrease / reset interface text size; Ctrl+0 in a focused preview resets preview zoom |
-| `Ctrl+Shift+Scroll` | Resize Grid icons; also `Ctrl+Alt++` / `Ctrl+Alt+-`, and `Ctrl+Alt+0` to reset |
+| `Ctrl++` / `Ctrl+-` / `Ctrl+0` | Increase / decrease / reset interface text size; in a focused preview they zoom the preview instead |
+| `Ctrl+Shift+Scroll` | Resize Grid icons, or row height in Compact, Detailed and Miller; Grid icons also `Ctrl+Alt++` / `Ctrl+Alt+-`, and `Ctrl+Alt+0` to reset |
 | `Space` | Quick preview |
 | `F3` | Toggle split pane |
 | `F4` | Toggle the built-in terminal |

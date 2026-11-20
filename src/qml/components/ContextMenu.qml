@@ -23,6 +23,9 @@ Item {
     property int menuWidth: 260
     property bool splitViewEnabled: false
     property bool isTrashView: false
+    // Folder an "Add to Favourites" item would add; empty hides the item
+    // (a file, a virtual place, or a folder already in Favourites).
+    property string favouritePath: ""
 
     signal openRequested(string path, bool isDir)
     signal openWithRequested(string path, string desktopFile)
@@ -45,6 +48,7 @@ Item {
     signal selectAllRequested()
     signal propertiesRequested(string path)
     signal splitViewRequested(string path)
+    signal addFavouriteRequested(string path)
     signal viewModeRequested(string mode)
     signal sortRequested(string column, bool ascending)
     signal emptyTrashRequested()
@@ -731,6 +735,8 @@ Item {
                     items.push({ text: "Move to Other Pane", shortcut: keys("move_to_other_pane"), action: "move_other_pane", icon: "Scissors" })
                 }
             }
+            if (targetIsDir && favouritePath !== "")
+                items.push({ text: "Add to Favourites", shortcut: keys("add_to_favourites"), action: "add_favourite", icon: "Bookmark" })
             var mime = ""
             if (!targetIsDir && fileModel) {
                 var props = fileModel.fileProperties(targetPath)
@@ -846,6 +852,8 @@ Item {
                     items.push({ text: "Close Split View", shortcut: keys("split_view"), action: "close_split", icon: "SquareSplitHorizontal" })
                     items.push({ text: "Save Split to Bookmarks", shortcut: "", action: "save_current_split", icon: "Bookmark" })
                 }
+                if (favouritePath !== "")
+                    items.push({ text: "Add Folder to Favourites", shortcut: keys("add_to_favourites"), action: "add_favourite", icon: "Bookmark" })
                 items.push({ separator: true })
                 if (!remoteContext) {
                     items.push({ text: "Open in Terminal", shortcut: keys("open_terminal"), action: "terminal", icon: "Terminal" })
@@ -887,6 +895,7 @@ Item {
         case "newfile": newFileRequested(effectiveDir); break
         case "properties": propertiesRequested(targetPath); break
         case "split_open": splitViewRequested(targetPath); break
+        case "add_favourite": addFavouriteRequested(favouritePath); break
         case "split_here": splitViewRequested(effectiveDir); break
         case "close_split": customActionRequested("close_split"); break
         case "copy_other_pane": customActionRequested("copy_other_pane"); break

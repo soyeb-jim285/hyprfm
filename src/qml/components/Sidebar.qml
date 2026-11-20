@@ -367,7 +367,10 @@ Rectangle {
         Item {
             id: bookmarksSection
             Layout.fillWidth: true
-            implicitHeight: Math.max(bookmarksList.height, root.activeSplitVisible ? rowHeight : 0)
+            // An empty list keeps one row as a drop target, so the first
+            // folder (or the active split) can still be dropped here.
+            implicitHeight: Math.max(bookmarksList.height,
+                                     root.activeSplitVisible || bookmarks.count === 0 ? rowHeight : 0)
 
             readonly property int rowHeight: 32
             readonly property bool externalDragActive:
@@ -439,10 +442,13 @@ Rectangle {
                     var insertAt = bookmarkDropArea._extDropIndex
                     var urls = bookmarksSection.dragUrls(drop)
                     bookmarksSection.clearExternalDrop()
+                    // insertBookmark refuses files (favourites are folders);
+                    // the next accepted folder goes after the previous one.
+                    var at = insertAt >= 0 ? insertAt : bookmarks.count
                     for (var i = 0; i < urls.length; i++) {
                         var path = bookmarksSection.decodedPath(urls[i])
-                        if (path !== "")
-                            bookmarks.insertBookmark(path, insertAt >= 0 ? insertAt : bookmarks.count)
+                        if (path !== "" && bookmarks.insertBookmark(path, at))
+                            at++
                     }
                     drop.accept()
                 }
@@ -598,9 +604,9 @@ Rectangle {
 
             Text {
                 objectName: "emptyBookmarksHint"
-                visible: bookmarks.count === 0 && root.activeSplitVisible
+                visible: bookmarks.count === 0 && !bookmarksSection.externalDragActive
                 anchors.centerIn: parent
-                text: "Drop here to save"
+                text: root.activeSplitVisible ? "Drop here to save" : "Drop folders here"
                 color: Theme.muted
                 font.pointSize: Theme.fontSmall
             }

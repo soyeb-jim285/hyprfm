@@ -82,6 +82,7 @@ const ShortcutSpec kShortcutSpecs[] = {
     {"reopen_tab", "Reopen Closed Tab"},
     {"open_in_new_tab", "Open in New Tab"},
     {"open_in_split", "Open in Split View"},
+    {"add_to_favourites", "Add to Favourites"},
     {"copy_to_other_pane", "Copy to Other Pane"},
     {"move_to_other_pane", "Move to Other Pane"},
     {"focus_previous_column", "Focus Previous Column"},
@@ -186,6 +187,7 @@ QMap<QString, QString> ConfigManager::s_defaultShortcuts = {
     {"reopen_tab", "Ctrl+Shift+T"},
     {"open_in_new_tab", "Ctrl+Return"},
     {"open_in_split", "Ctrl+Shift+Return"},
+    {"add_to_favourites", "Ctrl+D"},
     {"copy_to_other_pane", "Ctrl+Shift+C"},
     {"move_to_other_pane", "Ctrl+Shift+X"},
     {"focus_previous_column", "Ctrl+Left"},
@@ -960,6 +962,7 @@ current_fraction = 0.5
 # reopen_tab        = "Ctrl+Shift+T"
 # open_in_new_tab   = "Ctrl+Return"
 # open_in_split     = "Ctrl+Shift+Return"
+# add_to_favourites = "Ctrl+D"
 # copy              = "Ctrl+C"
 # cut               = "Ctrl+X"
 # paste             = "Ctrl+V"

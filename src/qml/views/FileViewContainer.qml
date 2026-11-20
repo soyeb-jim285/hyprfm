@@ -41,12 +41,25 @@ Item {
         anchors.fill: parent
         z: 100
         fileView: root.activeView()
-        thumbnailsEnabled: !root.showComputer && root.viewMode === "grid"
+        viewZoomEnabled: !root.showComputer
         previewControls: !root.showComputer && root.viewMode === "miller" && root.millerViewItem ? root.millerViewItem.previewControls : null
     }
 
     function clamp(value, lo, hi) {
         return Math.max(lo, Math.min(hi, value))
+    }
+
+    // Row views raise their minimum row height with the interface font
+    // (minRowHeight). That floor only limits what is shown: the saved row
+    // height stays the size the user picked, so enlarging the text and then
+    // resetting it brings rows back down instead of keeping them inflated.
+    // A view's floor without any font is 22 (see their minRowHeight).
+    readonly property int rowHeightFloor: 22
+    property bool applyingZoom: false
+    // What a newly built view saves: the session value, corrected only for
+    // the font-independent range, or the view's own default when none.
+    function savedRowHeight(saved, current, maximum) {
+        return saved > 0 ? clamp(saved, rowHeightFloor, maximum) : current
     }
 
     // Zoom is persisted in sessionState. A view takes the saved value when it
@@ -58,11 +71,27 @@ Item {
     // cannot ping-pong, because assigning a value a view already holds emits
     // nothing and the clamp is idempotent. It also keeps both split panes at
     // the same zoom, which is what the single saved value always meant.
+    // Row heights set here come from sessionState or follow a font change, so
+    // they are not written back (applyingZoom); see rowHeightFloor. A saved
+    // row height outside the font-independent range is corrected in
+    // sessionState first; that write re-runs applyZoom with the fixed value.
     function applyZoom() {
         const grid = root.gridViewItem
         const detailed = root.detailedViewItem
         const miller = root.millerViewItem
         const compact = root.compactViewItem
+        const rows = [[compact, "rowHeightCompact"], [detailed, "rowHeightDetailed"], [miller, "rowHeightMiller"]]
+        for (var i = 0; i < rows.length; ++i) {
+            const view = rows[i][0]
+            const key = rows[i][1]
+            if (!view || !(sessionState[key] > 0)) continue
+            const corrected = clamp(sessionState[key], rowHeightFloor, view.maxRowHeight)
+            if (corrected !== sessionState[key]) {
+                sessionState[key] = corrected
+                return
+            }
+        }
+        root.applyingZoom = true
         if (compact && sessionState.rowHeightCompact > 0)
             compact.rowHeight = clamp(sessionState.rowHeightCompact, compact.minRowHeight, compact.maxRowHeight)
         if (grid && sessionState.gridColumns > 0)
@@ -73,6 +102,7 @@ Item {
         if (miller && sessionState.rowHeightMiller > 0)
             miller.rowHeight = clamp(sessionState.rowHeightMiller,
                                      miller.minRowHeight, miller.maxRowHeight)
+        root.applyingZoom = false
     }
 
     Connections {
@@ -81,10 +111,6 @@ Item {
         function onRowHeightDetailedChanged() { root.applyZoom() }
         function onRowHeightMillerChanged() { root.applyZoom() }
         function onRowHeightCompactChanged() { root.applyZoom() }
-    }
-    Connections {
-        target: Theme
-        function onFontNormalChanged() { root.applyZoom() }
     }
 
     function activeView() {
@@ -183,12 +209,16 @@ Item {
                 onSelectedIndicesChanged: root.selectionChanged()
                 onInteractionStarted: root.interactionStarted()
                 onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
-                onRowHeightChanged: if (zoomReady) sessionState.rowHeightDetailed = rowHeight
+                onRowHeightChanged: if (zoomReady && !root.applyingZoom) sessionState.rowHeightDetailed = rowHeight
+                // The font sets this floor; react to the view's own value, which a
+                // Theme.fontNormal handler could read before it updates.
+                onMinRowHeightChanged: if (zoomReady) root.applyZoom()
 
                 Component.onCompleted: {
-                    if (sessionState.rowHeightDetailed > 0)
-                        rowHeight = root.clamp(sessionState.rowHeightDetailed, minRowHeight, maxRowHeight)
-                    sessionState.rowHeightDetailed = rowHeight
+                    const saved = sessionState.rowHeightDetailed
+                    if (saved > 0)
+                        rowHeight = root.clamp(saved, minRowHeight, maxRowHeight)
+                    sessionState.rowHeightDetailed = root.savedRowHeight(saved, rowHeight, maxRowHeight)
                     zoomReady = true
                 }
             }
@@ -211,12 +241,16 @@ Item {
                 onSelectionChanged: root.selectionChanged()
                 onInteractionStarted: root.interactionStarted()
                 onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
-                onRowHeightChanged: if (zoomReady) sessionState.rowHeightMiller = rowHeight
+                onRowHeightChanged: if (zoomReady && !root.applyingZoom) sessionState.rowHeightMiller = rowHeight
+                // The font sets this floor; react to the view's own value, which a
+                // Theme.fontNormal handler could read before it updates.
+                onMinRowHeightChanged: if (zoomReady) root.applyZoom()
 
                 Component.onCompleted: {
-                    if (sessionState.rowHeightMiller > 0)
-                        rowHeight = root.clamp(sessionState.rowHeightMiller, minRowHeight, maxRowHeight)
-                    sessionState.rowHeightMiller = rowHeight
+                    const saved = sessionState.rowHeightMiller
+                    if (saved > 0)
+                        rowHeight = root.clamp(saved, minRowHeight, maxRowHeight)
+                    sessionState.rowHeightMiller = root.savedRowHeight(saved, rowHeight, maxRowHeight)
                     zoomReady = true
                 }
             }
@@ -239,12 +273,16 @@ Item {
                 onSelectedIndicesChanged: root.selectionChanged()
                 onInteractionStarted: root.interactionStarted()
                 onTransferRequested: (paths, destinationPath, moveOperation) => root.transferRequested(paths, destinationPath, moveOperation)
-                onRowHeightChanged: if (zoomReady) sessionState.rowHeightCompact = rowHeight
+                onRowHeightChanged: if (zoomReady && !root.applyingZoom) sessionState.rowHeightCompact = rowHeight
+                // The font sets this floor; react to the view's own value, which a
+                // Theme.fontNormal handler could read before it updates.
+                onMinRowHeightChanged: if (zoomReady) root.applyZoom()
 
                 Component.onCompleted: {
-                    if (sessionState.rowHeightCompact > 0)
-                        rowHeight = root.clamp(sessionState.rowHeightCompact, minRowHeight, maxRowHeight)
-                    sessionState.rowHeightCompact = rowHeight
+                    const saved = sessionState.rowHeightCompact
+                    if (saved > 0)
+                        rowHeight = root.clamp(saved, minRowHeight, maxRowHeight)
+                    sessionState.rowHeightCompact = root.savedRowHeight(saved, rowHeight, maxRowHeight)
                     zoomReady = true
                 }
             }

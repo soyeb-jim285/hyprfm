@@ -46,7 +46,7 @@ FocusScope {
         var anchor = -1
         for (var index = 0; index < deviceModel.count; ++index) {
             const key = deviceKey(deviceModel.get(index))
-            if (savedSelection.indexOf(key) >= 0) selection.push(index)
+            if (key && savedSelection.indexOf(key) >= 0) selection.push(index)
             if (key && key === savedCursor) cursor = index
             if (key && key === savedAnchor) anchor = index
         }
@@ -96,6 +96,13 @@ FocusScope {
     }
     function refresh() { deviceActions.refreshAsync(); deviceModel.refresh() }
     Keys.onPressed: event => {
+        // Only plain and Shift (range) presses move through the drives;
+        // Alt+Left/Right (history), Ctrl+Return (new tab) and the like stay
+        // with the window's shortcuts.
+        if (event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) {
+            event.accepted = false
+            return
+        }
         var step = 0
         if (event.key === Qt.Key_Left) step = -1
         else if (event.key === Qt.Key_Right) step = 1
@@ -104,7 +111,7 @@ FocusScope {
         else if (event.key === Qt.Key_Home) { choose(0, false, !!(event.modifiers & Qt.ShiftModifier)); event.accepted = true; return }
         else if (event.key === Qt.Key_End) { choose(deviceModel.count - 1, false, !!(event.modifiers & Qt.ShiftModifier)); event.accepted = true; return }
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { openDevice(cursorIndex); event.accepted = true; return }
-        else if (event.key === Qt.Key_Escape) { selectedDevices = []; cursorIndex = -1; selectionChanged(); event.accepted = true; return }
+        else if (event.key === Qt.Key_Escape) { selectedDevices = []; cursorIndex = -1; anchorIndex = -1; selectionChanged(); event.accepted = true; return }
         if (step) { choose(Math.max(0, Math.min(deviceModel.count - 1, cursorIndex < 0 ? 0 : cursorIndex + step)), false, !!(event.modifiers & Qt.ShiftModifier)); event.accepted = true }
     }
     Connections {

@@ -29,6 +29,10 @@
 #include <functional>
 #include <QTemporaryDir>
 #include <QWheelEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QStandardItemModel>
+#include <QUrl>
 #include "models/bookmarkmodel.h"
 #include "models/devicemodel.h"
 #include "models/computermodel.h"
@@ -56,6 +60,35 @@
 #include "services/sessionstate.h"
 #include "services/themeloader.h"
 #include "services/undomanager.h"
+
+// Root (prepended by ComputerModel), a mounted data drive and two
+// unmounted drives that have neither a device path nor a mount point.
+struct FakeDrives
+{
+    QStandardItemModel devices;
+    QString dataMount;
+    explicit FakeDrives(const QString &mount) : dataMount(mount)
+    {
+        devices.setItemRoleNames({{Qt::UserRole + 1, "deviceName"}, {Qt::UserRole + 2, "devicePath"},
+                                  {Qt::UserRole + 3, "mountPoint"}, {Qt::UserRole + 4, "totalSize"},
+                                  {Qt::UserRole + 5, "freeSpace"}, {Qt::UserRole + 6, "mounted"}});
+        append("Data", "/dev/fake-data", mount, 1000, 500, true);
+        append("USB A", "", "", 0, 0, false);
+        append("USB B", "", "", 0, 0, false);
+    }
+    void append(const QString &name, const QString &device, const QString &mount,
+                qint64 total, qint64 free, bool mounted)
+    {
+        auto *item = new QStandardItem;
+        item->setData(name, Qt::UserRole + 1);
+        item->setData(device, Qt::UserRole + 2);
+        item->setData(mount, Qt::UserRole + 3);
+        item->setData(total, Qt::UserRole + 4);
+        item->setData(free, Qt::UserRole + 5);
+        item->setData(mounted, Qt::UserRole + 6);
+        devices.appendRow(item);
+    }
+};
 
 class TestMainWindow : public QObject
 {
@@ -3171,6 +3204,458 @@ private slots:
         QTRY_COMPARE(activePane(), QString("secondary"));
         QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(app.item("primaryPaneHeader")));
         QTRY_COMPARE(activePane(), QString("primary"));
+    }
+
+    // ── Zoom keys and wheels ────────────────────────────────────────────
+
+    static ConfigManager *configOf(App &app)
+    {
+        return qobject_cast<ConfigManager *>(app.engine.rootContext()->contextProperty("config").value<QObject *>());
+    }
+    static const char *viewAlias(const QString &mode)
+    {
+        return mode == "detailed" ? "detailedViewItem" : mode == "miller" ? "millerViewItem" : "compactViewItem";
+    }
+    static int savedRowHeight(App &app, const QString &mode)
+    {
+        return mode == "detailed" ? app.sessionState->rowHeightDetailed()
+             : mode == "miller" ? app.sessionState->rowHeightMiller()
+             : app.sessionState->rowHeightCompact();
+    }
+
+    void testTextSizeKeysZoomAFocusedPreview_data()
+    {
+        QTest::addColumn<bool>("quick");
+        QTest::newRow("quick") << true;
+        QTest::newRow("miller") << false;
+    }
+
+    // Ctrl++ / Ctrl+= / Ctrl+- belong to a focused preview as Ctrl+0 does.
+    // They used to resize the interface text from inside the preview.
+    void testTextSizeKeysZoomAFocusedPreview()
+    {
+        QFETCH(bool, quick);
+        App app;
+        const QString path = app.home.filePath("notes.txt");
+        {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(QByteArray("Preview keys\n").repeated(80));
+        }
+        QVERIFY(app.load());
+        auto *config = configOf(app);
+        QVERIFY(config);
+        config->saveSettings({{"fontSize", 10}});
+        app.tabModel->activeTab()->navigateTo(app.home.path());
+        if (!quick) app.tabModel->activeTab()->setViewMode("miller");
+        auto *baseModel = app.engine.rootContext()->contextProperty("fsModel").value<QObject *>();
+        QTRY_COMPARE(baseModel->property("rootPath").toString(), app.home.path());
+        QTRY_VERIFY(!baseModel->property("isLoading").toBool());
+        if (quick)
+            QVERIFY(QMetaObject::invokeMethod(app.window, "showQuickPreview", Q_ARG(QVariant, path)));
+        else
+            QVERIFY(QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("primary")),
+                                              Q_ARG(QVariant, path), Q_ARG(QVariant, true)));
+        QTRY_VERIFY(app.item(quick ? "quickPreviewZoom" : "millerPreviewZoom"));
+        auto *controls = app.item(quick ? "quickPreviewZoom" : "millerPreviewZoom");
+        QTRY_VERIFY(controls->property("available").toBool());
+        auto *scope = quick ? app.window->property("quickPreview").value<QQuickItem *>() : app.item("millerPreviewColumn");
+        QVERIFY(scope);
+        scope->forceActiveFocus();
+        QTRY_VERIFY(scope->hasActiveFocus());
+
+        QTest::keyClick(app.window, Qt::Key_Equal, Qt::ControlModifier);
+        QTRY_VERIFY(controls->property("factor").toReal() > 1.0);
+        const qreal once = controls->property("factor").toReal();
+        QTest::keyClick(app.window, Qt::Key_Plus, Qt::ControlModifier);
+        QTRY_VERIFY(controls->property("factor").toReal() > once);
+        QTest::keyClick(app.window, Qt::Key_Minus, Qt::ControlModifier);
+        QTRY_VERIFY(qAbs(controls->property("factor").toReal() - once) < 1e-6);
+        QTest::keyClick(app.window, Qt::Key_0, Qt::ControlModifier);
+        QTRY_COMPARE(controls->property("factor").toReal(), 1.0);
+        QCOMPARE(config->fontSize(), 10.0);
+
+        // Back in the file view the same keys size the interface text.
+        QTest::keyClick(app.window, Qt::Key_Left, Qt::ControlModifier);
+        QTRY_VERIFY(!scope->hasActiveFocus());
+        QTest::keyClick(app.window, Qt::Key_Equal, Qt::ControlModifier);
+        QTRY_COMPARE(config->fontSize(), 11.0);
+        QTest::keyClick(app.window, Qt::Key_0, Qt::ControlModifier);
+        QTRY_COMPARE(config->fontSize(), 0.0);
+        QCOMPARE(controls->property("factor").toReal(), 1.0);
+    }
+
+    // Text entry keeps Ctrl+= / Ctrl+- / Ctrl+0 like it keeps every pane command.
+    void testTextSizeKeysLeaveTextEntryAlone()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *config = configOf(app);
+        QVERIFY(config);
+        config->saveSettings({{"fontSize", 10}});
+        QTest::keyClick(app.window, Qt::Key_L, Qt::ControlModifier);
+        QTRY_VERIFY(app.window->activeFocusItem()
+                    && app.window->activeFocusItem()->property("readOnly").isValid()
+                    && !app.window->activeFocusItem()->property("readOnly").toBool());
+        for (const Qt::Key key : {Qt::Key_Equal, Qt::Key_Plus, Qt::Key_Minus, Qt::Key_0})
+            QTest::keyClick(app.window, key, Qt::ControlModifier);
+        QTest::qWait(50);
+        QCOMPARE(config->fontSize(), 10.0);
+        QTest::keyClick(app.window, Qt::Key_Escape);
+        QTRY_VERIFY(!app.window->activeFocusItem()
+                    || !app.window->activeFocusItem()->property("readOnly").isValid()
+                    || app.window->activeFocusItem()->property("readOnly").toBool());
+        QTest::keyClick(app.window, Qt::Key_Equal, Qt::ControlModifier);
+        QTRY_COMPARE(config->fontSize(), 11.0);
+    }
+
+    void testLargeTextDoesNotInflateSavedRowHeights_data()
+    {
+        QTest::addColumn<QString>("viewMode");
+        for (const QString &mode : {QString("detailed"), QString("miller"), QString("compact")})
+            QTest::newRow(qPrintable(mode)) << mode;
+    }
+
+    // A big interface font raises the minimum row height. That is shown, but
+    // the saved row height stays the user's, so resetting the font brings rows
+    // back instead of leaving them at the inflated size for good.
+    void testLargeTextDoesNotInflateSavedRowHeights()
+    {
+        QFETCH(QString, viewMode);
+        App app;
+        QVERIFY(app.load());
+        auto *config = configOf(app);
+        QVERIFY(config);
+        config->saveSettings({{"fontSize", 10}});
+        app.tabModel->activeTab()->navigateTo(app.home.path());
+        app.tabModel->activeTab()->setViewMode(viewMode);
+        auto *container = app.item("primaryFileView");
+        QVERIFY(container);
+        QTRY_VERIFY(container->property(viewAlias(viewMode)).value<QQuickItem *>());
+        auto *view = container->property(viewAlias(viewMode)).value<QQuickItem *>();
+        QTRY_VERIFY(savedRowHeight(app, viewMode) > 0);
+        const int chosen = savedRowHeight(app, viewMode);
+        QCOMPARE(view->property("rowHeight").toInt(), chosen);
+
+        config->saveSettings({{"fontSize", 20}});
+        QTRY_VERIFY(view->property("minRowHeight").toInt() > chosen);
+        QTRY_COMPARE(view->property("rowHeight").toInt(), view->property("minRowHeight").toInt());
+        QCOMPARE(savedRowHeight(app, viewMode), chosen);
+
+        QTest::keyClick(app.window, Qt::Key_0, Qt::ControlModifier);
+        QTRY_COMPARE(config->fontSize(), 0.0);
+        QTRY_COMPARE(view->property("rowHeight").toInt(), chosen);
+        QCOMPARE(savedRowHeight(app, viewMode), chosen);
+    }
+
+    void testShiftWheelZoomsRowsAndCtrlWheelSizesText_data()
+    {
+        QTest::addColumn<QString>("viewMode");
+        for (const QString &mode : {QString("compact"), QString("detailed"), QString("miller")})
+            QTest::newRow(qPrintable(mode)) << mode;
+    }
+
+    // In the app (not a lone view) Ctrl+Wheel sizes the interface text, so
+    // Ctrl+Shift+Wheel is how rows grow and shrink in the list views; it used
+    // to work in Grid only.
+    void testShiftWheelZoomsRowsAndCtrlWheelSizesText()
+    {
+        QFETCH(QString, viewMode);
+        App app;
+        QVERIFY(app.load());
+        auto *config = configOf(app);
+        QVERIFY(config);
+        config->saveSettings({{"fontSize", 10}});
+        app.tabModel->activeTab()->navigateTo(app.home.path());
+        app.tabModel->activeTab()->setViewMode(viewMode);
+        auto *container = app.item("primaryFileView");
+        QVERIFY(container);
+        QTRY_VERIFY(container->property(viewAlias(viewMode)).value<QQuickItem *>());
+        auto *view = container->property(viewAlias(viewMode)).value<QQuickItem *>();
+        QTRY_VERIFY(view->isVisible());
+        QTRY_VERIFY(savedRowHeight(app, viewMode) > 0);
+        const int before = savedRowHeight(app, viewMode);
+        app.window->grabWindow();
+        const QPoint point = viewMode == "miller"
+            ? view->mapToScene(QPointF(view->width() * 0.45, 80)).toPoint()
+            : view->mapToScene(QPointF(view->width() / 2, 80)).toPoint();
+
+        QWheelEvent rows(point, app.window->mapToGlobal(point), {}, QPoint(0, 120), Qt::NoButton,
+                         Qt::ControlModifier | Qt::ShiftModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(app.window, &rows);
+        QTRY_COMPARE(savedRowHeight(app, viewMode), before + 2);
+        QCOMPARE(view->property("rowHeight").toInt(), before + 2);
+        QCOMPARE(config->fontSize(), 10.0);
+
+        QWheelEvent text(point, app.window->mapToGlobal(point), {}, QPoint(0, 120), Qt::NoButton,
+                         Qt::ControlModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(app.window, &text);
+        QTRY_COMPARE(config->fontSize(), 11.0);
+        QCOMPARE(savedRowHeight(app, viewMode), before + 2);
+    }
+
+    // ── Split view and Computer ─────────────────────────────────────────
+
+    // Closing the split from the secondary pane hands its folder to the
+    // primary pane; the primary pane's old search must not stay on top of it.
+    // A different folder already clears it (onCurrentPathChanged), so the
+    // case that stuck is the one a new split starts with: both panes on the
+    // same folder.
+    void testClosingSplitFromSecondaryDropsPrimarySearch()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        QVERIFY(tab);
+        const QString folder = app.home.path() + "/shared";
+        QVERIFY(QDir().mkpath(folder));
+        tab->navigateTo(folder);
+        QTRY_COMPARE(tab->currentPath(), folder);
+        QVERIFY(QMetaObject::invokeMethod(app.window, "toggleSplitView"));
+        QTRY_VERIFY(tab->splitViewEnabled());
+        QCOMPARE(tab->secondaryCurrentPath(), folder);
+        const QString secondary = folder;
+        QObject *root = app.window;
+        QVERIFY(QMetaObject::invokeMethod(root, "setPaneSearchMode", Q_ARG(QVariant, QString("primary")),
+                                          Q_ARG(QVariant, true)));
+        QVERIFY(root->property("primaryPaneSearchMode").toBool());
+        QVERIFY(QMetaObject::invokeMethod(root, "setActivePane", Q_ARG(QVariant, QString("secondary"))));
+        QVERIFY(QMetaObject::invokeMethod(root, "toggleSplitView"));
+        QTRY_VERIFY(!tab->splitViewEnabled());
+        QCOMPARE(tab->currentPath(), secondary);
+        QVERIFY(!root->property("primaryPaneSearchMode").toBool());
+        QCOMPARE(root->property("activePane").toString(), QString("primary"));
+    }
+
+    static QQuickItem *showFakeComputer(App &app, FakeDrives &drives, ComputerModel **modelOut)
+    {
+        auto *model = qobject_cast<ComputerModel *>(
+            app.engine.rootContext()->contextProperty("computerModel").value<QObject *>());
+        if (!model) return nullptr;
+        model->setDevices(&drives.devices);
+        model->refresh();
+        app.tabModel->activeTab()->navigateTo("computer:///");
+        auto *container = app.item("primaryFileView");
+        if (!container) return nullptr;
+        if (!QTest::qWaitFor([&] { return container->property("computerViewItem").value<QQuickItem *>(); }))
+            return nullptr;
+        auto *view = container->property("computerViewItem").value<QQuickItem *>();
+        if (!QTest::qWaitFor([&] { return view->isVisible() && model->rowCount() == 4; }))
+            return nullptr;
+        *modelOut = model;
+        return view;
+    }
+    static int driveIndex(ComputerModel *model, const QString &name)
+    {
+        for (int i = 0; i < model->rowCount(); ++i)
+            if (model->get(i).value("deviceName").toString() == name) return i;
+        return -1;
+    }
+    static bool choose(QQuickItem *view, int index, bool control = false, bool shift = false)
+    {
+        return QMetaObject::invokeMethod(view, "choose", Q_ARG(QVariant, index), Q_ARG(QVariant, control),
+                                         Q_ARG(QVariant, shift));
+    }
+    static QVariantList selectedDrives(QQuickItem *view)
+    {
+        return view->property("selectedDevices").toList();
+    }
+
+    // Ctrl+Shift+Return needs one mounted drive; an unmounted drive or several
+    // drives used to open computer:/// in the split instead of nothing.
+    void testOpenInSplitNeedsOneMountedDrive()
+    {
+        App app;
+        const QString mount = app.home.path() + "/data";
+        QVERIFY(QDir().mkpath(mount));
+        FakeDrives drives(mount);
+        QVERIFY(app.load());
+        ComputerModel *model = nullptr;
+        auto *view = showFakeComputer(app, drives, &model);
+        QVERIFY(view);
+        auto *tab = app.tabModel->activeTab();
+        const int data = driveIndex(model, "Data");
+        const int usb = driveIndex(model, "USB A");
+        QVERIFY(data >= 0 && usb >= 0);
+
+        QVERIFY(choose(view, usb));
+        QTest::keyClick(app.window, Qt::Key_Return, Qt::ControlModifier | Qt::ShiftModifier);
+        QTest::qWait(100);
+        QVERIFY(!tab->splitViewEnabled());
+        QVERIFY(choose(view, data));
+        QVERIFY(choose(view, driveIndex(model, "File System"), true));
+        QCOMPARE(selectedDrives(view).size(), 2);
+        QTest::keyClick(app.window, Qt::Key_Return, Qt::ControlModifier | Qt::ShiftModifier);
+        QTest::qWait(100);
+        QVERIFY(!tab->splitViewEnabled());
+
+        QVERIFY(choose(view, data));
+        QTest::keyClick(app.window, Qt::Key_Return, Qt::ControlModifier | Qt::ShiftModifier);
+        QTRY_VERIFY(tab->splitViewEnabled());
+        QCOMPARE(tab->secondaryCurrentPath(), mount);
+    }
+
+    void testComputerSelectionAnchorsAndModifiedKeys()
+    {
+        App app;
+        const QString mount = app.home.path() + "/data";
+        QVERIFY(QDir().mkpath(mount));
+        FakeDrives drives(mount);
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        tab->navigateTo(app.home.path());
+        QTRY_COMPARE(tab->currentPath(), app.home.path());
+        ComputerModel *model = nullptr;
+        auto *view = showFakeComputer(app, drives, &model);
+        QVERIFY(view);
+
+        // Escape forgets the range anchor along with the selection.
+        QVERIFY(choose(view, 1));
+        QTest::keyClick(app.window, Qt::Key_Escape);
+        QTRY_VERIFY(selectedDrives(view).isEmpty());
+        QCOMPARE(view->property("anchorIndex").toInt(), -1);
+        QVERIFY(choose(view, 3, false, true));
+        QCOMPARE(selectedDrives(view), QVariantList{3});
+
+        // Drives without a device path or mount point have no identity to
+        // restore: a refresh must not select every such drive.
+        const int usbA = driveIndex(model, "USB A");
+        const int usbB = driveIndex(model, "USB B");
+        QVERIFY(usbA >= 0 && usbB >= 0);
+        QVERIFY(choose(view, usbA));
+        model->refresh();
+        QTRY_COMPARE(model->rowCount(), 4);
+        QVERIFY(!selectedDrives(view).contains(usbB));
+
+        // Modified keys reach the window: history and open-in-new-tab.
+        view->forceActiveFocus();
+        QTest::keyClick(app.window, Qt::Key_Left, Qt::AltModifier);
+        QTRY_COMPARE(tab->currentPath(), app.home.path());
+        QTest::keyClick(app.window, Qt::Key_Right, Qt::AltModifier);
+        QTRY_COMPARE(tab->currentPath(), QString("computer:///"));
+        QTRY_VERIFY(view->isVisible());
+        QVERIFY(choose(view, driveIndex(model, "Data")));
+        const int tabs = app.tabModel->rowCount();
+        QTest::keyClick(app.window, Qt::Key_Return, Qt::ControlModifier);
+        QTRY_COMPARE(app.tabModel->rowCount(), tabs + 1);
+        QTRY_COMPARE(app.tabModel->activeTab()->currentPath(), mount);
+    }
+
+    // ── Favourites ─────────────────────────────────────────────────────
+
+    static void dropUrls(App &app, const QPoint &pos, const QList<QUrl> &urls)
+    {
+        QMimeData mime;
+        mime.setUrls(urls);
+        QDragEnterEvent enter(pos, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(app.window, &enter);
+        QDragMoveEvent move(pos, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(app.window, &move);
+        QDropEvent drop(QPointF(pos), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(app.window, &drop);
+    }
+
+    // With no favourites and no split the section used to collapse to 0 px,
+    // so nothing could be dropped on it; and a dropped file became a bookmark.
+    void testFoldersDropOntoEmptyFavourites()
+    {
+        App app;
+        const QString folder = app.home.path() + "/keep";
+        const QString file = app.home.path() + "/note.txt";
+        QVERIFY(QDir().mkpath(folder));
+        {
+            QFile out(file);
+            QVERIFY(out.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(app.load());
+        app.bookmarks->setBookmarks({});
+        auto *hint = app.item("emptyBookmarksHint");
+        QVERIFY(hint);
+        QTRY_VERIFY(hint->isVisible());
+        QCOMPARE(hint->property("text").toString(), QString("Drop folders here"));
+        app.window->grabWindow();
+        QTRY_VERIFY(app.center(hint).y() > 0);
+        const QPoint target = app.center(hint);
+
+        dropUrls(app, target, {QUrl::fromLocalFile(file)});
+        QTest::qWait(50);
+        QCOMPARE(app.bookmarks->rowCount(), 0);
+        QTRY_VERIFY(hint->isVisible());
+
+        dropUrls(app, target, {QUrl::fromLocalFile(file), QUrl::fromLocalFile(folder)});
+        QTRY_COMPARE(app.bookmarks->rowCount(), 1);
+        QVERIFY(app.bookmarks->containsPath(folder));
+        QTRY_VERIFY(!hint->isVisible());
+    }
+
+    static QStringList menuActions(QObject *menu)
+    {
+        QVariant result;
+        QMetaObject::invokeMethod(menu, "buildModel", Q_RETURN_ARG(QVariant, result));
+        QStringList actions;
+        for (const QVariant &entry : result.toList())
+            actions << entry.toMap().value("action").toString();
+        return actions;
+    }
+
+    // Folders could reach Favourites only by dragging; now also from the
+    // right-click menu and with Ctrl+D.
+    void testAddFoldersToFavouritesFromMenuAndKeyboard()
+    {
+        App app;
+        const QString folder = app.home.path() + "/projects";
+        const QString file = app.home.path() + "/readme.txt";
+        QVERIFY(QDir().mkpath(folder));
+        {
+            QFile out(file);
+            QVERIFY(out.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(app.load());
+        app.bookmarks->setBookmarks({});
+        app.tabModel->activeTab()->navigateTo(app.home.path());
+        auto *baseModel = app.engine.rootContext()->contextProperty("fsModel").value<QObject *>();
+        QTRY_COMPARE(baseModel->property("rootPath").toString(), app.home.path());
+        QTRY_VERIFY(!baseModel->property("isLoading").toBool());
+        auto showMenu = [&](const QString &path, bool isDir) {
+            return QMetaObject::invokeMethod(app.window, "showContextMenuForPane", Q_ARG(QVariant, QString("primary")),
+                                             Q_ARG(QVariant, path), Q_ARG(QVariant, isDir),
+                                             Q_ARG(QVariant, QVariant::fromValue(QPointF(200, 200))));
+        };
+        auto run = [&](QObject *menu, const QString &action) {
+            return QMetaObject::invokeMethod(menu, "executeAction", Q_ARG(QVariant, action),
+                                             Q_ARG(QVariant, QVariant()), Q_ARG(QVariant, QVariant()));
+        };
+
+        QVERIFY(showMenu(folder, true));
+        QObject *menu = app.item("contextMenu");
+        QVERIFY(menu);
+        QVERIFY(menuActions(menu).contains("add_favourite"));
+        QVERIFY(run(menu, "add_favourite"));
+        QTRY_VERIFY(app.bookmarks->containsPath(folder));
+        // Already a favourite, a file, or the trash: no item.
+        QVERIFY(showMenu(folder, true));
+        QVERIFY(!menuActions(menu).contains("add_favourite"));
+        QVERIFY(QMetaObject::invokeMethod(menu, "close"));
+        QVERIFY(showMenu(file, false));
+        QVERIFY(!menuActions(menu).contains("add_favourite"));
+        QVERIFY(QMetaObject::invokeMethod(menu, "close"));
+        // Empty space offers the folder being shown.
+        QVERIFY(showMenu(QString(), true));
+        QVERIFY(menuActions(menu).contains("add_favourite"));
+        QVERIFY(run(menu, "add_favourite"));
+        QTRY_VERIFY(app.bookmarks->containsPath(app.home.path()));
+        QCOMPARE(app.bookmarks->rowCount(), 2);
+
+        // Ctrl+D adds the selected folder, once.
+        app.bookmarks->setBookmarks({});
+        QVERIFY(QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("primary")),
+                                          Q_ARG(QVariant, folder), Q_ARG(QVariant, true)));
+        QTRY_COMPARE(app.window->property("currentSelectedCount").toInt(), 1);
+        QTest::keyClick(app.window, Qt::Key_D, Qt::ControlModifier);
+        QTRY_VERIFY(app.bookmarks->containsPath(folder));
+        QTest::keyClick(app.window, Qt::Key_D, Qt::ControlModifier);
+        QTest::qWait(50);
+        QCOMPARE(app.bookmarks->rowCount(), 1);
     }
 };
 
