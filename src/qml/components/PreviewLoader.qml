@@ -28,7 +28,7 @@ QtObject {
     // zip as a folder.
     property string path: ""
 
-    // "text" | "pdf" | "archive" | "directory" | "" (metadata only)
+    // "text" | "pdf" | "archive" | "directory" | "font" | "" (metadata only)
     property string kind: ""
 
     // Only meaningful for encrypted archives. Set by the owner alongside
@@ -42,6 +42,7 @@ QtObject {
     property var directoryPreview: ({ entries: [], truncated: false, error: "", count: 0 })
     property var pdfPreview: ({ localPath: "", pageCount: 0, error: "" })
     property var fileMetadata: ({})
+    property var fontPreview: ({})
 
     signal pdfPageCountChanged()
 
@@ -50,6 +51,7 @@ QtObject {
         directoryPreview = ({ entries: [], truncated: false, error: "", count: 0 })
         pdfPreview = ({ localPath: "", pageCount: 0, error: "" })
         fileMetadata = ({})
+        fontPreview = ({})
     }
 
     // Drops any in-flight request and clears the panel.
@@ -105,6 +107,8 @@ QtObject {
                 loader.directoryPreview = data.directory
             if (data.archive !== undefined)
                 loader.directoryPreview = data.archive
+            if (data.font !== undefined)
+                loader.fontPreview = data.font
             if (data.metadata !== undefined)
                 loader.fileMetadata = data.metadata
             if (data.pdf !== undefined) {

@@ -1,13 +1,11 @@
 #include "models/recentfilesmodel.h"
+#include "services/filesystemtasks.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLocale>
 #include <QMimeDatabase>
-#include <QFutureWatcher>
-#include <QSet>
-#include <QtConcurrent>
 
 RecentFilesModel::RecentFilesModel(const QString &storagePath, QObject *parent)
     : QAbstractListModel(parent)
@@ -28,15 +26,17 @@ QVariant RecentFilesModel::data(const QModelIndex &index, int role) const
     if (!index.isValid() || index.row() >= m_entries.size())
         return {};
 
-    const QFileInfo info(m_entries.at(index.row()).path);
-    if (!info.exists())
-        return {};
+    const RecentEntry &entry = m_entries.at(index.row());
+    if (role == FileNameRole)
+        return QFileInfo(entry.path).fileName();
+    if (role == FilePathRole)
+        return QFileInfo(entry.path).absoluteFilePath();
+    return entry.details.value(role);
+}
 
+QVariant RecentFilesModel::readRole(const QFileInfo &info, const QMimeType &mime, int role)
+{
     switch (role) {
-    case FileNameRole:
-        return info.fileName();
-    case FilePathRole:
-        return info.absoluteFilePath();
     case FileSizeRole:
         return info.isDir() ? QVariant(-1) : QVariant(info.size());
     case FileSizeTextRole: {
@@ -79,10 +79,6 @@ QVariant RecentFilesModel::data(const QModelIndex &index, int role) const
     case FileIconNameRole: {
         if (info.isDir())
             return QStringLiteral("folder");
-        // Same MIME-driven approach as FileSystemModel — handles ambiguous
-        // extensions like .ts correctly via QMimeDatabase content sniffing.
-        static QMimeDatabase mimeDb;
-        const QMimeType mime = mimeDb.mimeTypeForFile(info);
         if (mime.isValid()) {
             QString icon = mime.iconName();
             if (icon.isEmpty())
@@ -95,20 +91,12 @@ QVariant RecentFilesModel::data(const QModelIndex &index, int role) const
     case GitStatusRole:
     case GitStatusIconRole:
         return QString();
-    case HasImagePreviewRole: {
-        static QMimeDatabase mimeDb;
-        return mimeDb.mimeTypeForFile(info).name()
-            .startsWith(QLatin1String("image/"));
-    }
-    case HasVideoPreviewRole: {
-        static QMimeDatabase mimeDb;
-        return mimeDb.mimeTypeForFile(info).name()
-            .startsWith(QLatin1String("video/"));
-    }
-    case HasPdfPreviewRole: {
-        static QMimeDatabase mimeDb;
-        return mimeDb.mimeTypeForFile(info).name() == QLatin1String("application/pdf");
-    }
+    case HasImagePreviewRole:
+        return mime.name().startsWith(QLatin1String("image/"));
+    case HasVideoPreviewRole:
+        return mime.name().startsWith(QLatin1String("video/"));
+    case HasPdfPreviewRole:
+        return mime.name() == QLatin1String("application/pdf");
     default:
         return {};
     }
@@ -150,7 +138,8 @@ void RecentFilesModel::addRecent(const QString &path)
 
     // Insert at front
     beginInsertRows(QModelIndex(), 0, 0);
-    m_entries.prepend({path, QDateTime::currentDateTime()});
+    const RecentEntry added{path, QDateTime::currentDateTime(), {}};
+    m_entries.prepend(added);
     endInsertRows();
 
     // Trim if over max
@@ -162,6 +151,7 @@ void RecentFilesModel::addRecent(const QString &path)
 
     emit countChanged();
     save();
+    probeEntries({added});
 }
 
 void RecentFilesModel::clear()
@@ -188,40 +178,53 @@ void RecentFilesModel::load()
         QString path = obj["path"].toString();
         QDateTime time = QDateTime::fromString(obj["time"].toString(), Qt::ISODate);
         if (!path.isEmpty())
-            m_entries.append({path, time});
+            m_entries.append({path, time, {}});
     }
-    dropMissingInBackground();
+    probeEntries(m_entries);
 }
 
-// Recent files can live on any disk, and checking that one still exists is
-// a stat on it: a spun-down drive or an unreachable network mount held up
-// the whole launch, since this model is built before the window. Load the
-// list as saved and drop the missing entries once a worker has looked.
-void RecentFilesModel::dropMissingInBackground()
+// A recents list can span several mounts. A drive that stops responding
+// must not delay the other entries or make a data() call wait for I/O.
+void RecentFilesModel::probeEntries(const QList<RecentEntry> &entries)
 {
-    QStringList paths;
-    for (const RecentEntry &entry : std::as_const(m_entries))
-        paths.append(entry.path);
-    if (paths.isEmpty())
-        return;
+    const MountTable mounts;
+    QHash<QByteArray, QList<RecentEntry>> batches;
+    for (const RecentEntry &entry : entries)
+        batches[mounts.forPath(entry.path)].append(entry);
 
-    auto *watcher = new QFutureWatcher<QSet<QString>>(this);
-    connect(watcher, &QFutureWatcher<QSet<QString>>::finished, this, [this, watcher]() {
-        const QSet<QString> missing = watcher->future().takeResult();
-        watcher->deleteLater();
-        if (missing.isEmpty())
-            return;
-        beginResetModel();
-        m_entries.removeIf([&](const RecentEntry &entry) { return missing.contains(entry.path); });
-        endResetModel();
-    });
-    watcher->setFuture(QtConcurrent::run([paths]() {
-        QSet<QString> missing;
-        for (const QString &path : paths)
-            if (!QFileInfo::exists(path))
-                missing.insert(path);
-        return missing;
-    }));
+    for (auto it = batches.begin(); it != batches.end(); ++it) {
+        const auto scan = [batch = std::move(it.value())]() mutable {
+            const QMimeDatabase mimeDb;
+            for (RecentEntry &entry : batch) {
+                const QFileInfo info(entry.path);
+                if (!info.exists())
+                    continue;
+                const QMimeType mime = mimeDb.mimeTypeForFile(info);
+                for (int role = FileSizeRole; role <= HasPdfPreviewRole; ++role)
+                    entry.details.insert(role, readRole(info, mime, role));
+            }
+            return std::move(batch);
+        };
+        watchFilesystemTask(this, it.key(), scan, [this](const QList<RecentEntry> &results) {
+            for (const RecentEntry &result : results) {
+                for (qsizetype row = 0; row < m_entries.size(); ++row) {
+                    RecentEntry &entry = m_entries[row];
+                    if (entry.path != result.path || entry.accessTime != result.accessTime)
+                        continue;
+                    if (result.details.isEmpty()) {
+                        beginRemoveRows({}, row, row);
+                        m_entries.removeAt(row);
+                        endRemoveRows();
+                        emit countChanged();
+                    } else {
+                        entry.details = result.details;
+                        emit dataChanged(index(row), index(row));
+                    }
+                    break;
+                }
+            }
+        });
+    }
 }
 
 void RecentFilesModel::save() const

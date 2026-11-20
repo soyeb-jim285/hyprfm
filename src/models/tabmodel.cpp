@@ -65,10 +65,7 @@ QString parentLocation(const QString &path)
         return parentUrl.toString(QUrl::FullyEncoded);
     }
 
-    QDir dir(path);
-    if (dir.cdUp())
-        return dir.absolutePath();
-    return path;
+    return QFileInfo(QDir::cleanPath(path)).absolutePath();
 }
 
 }
@@ -288,4 +285,13 @@ void TabModel::resetSecondaryTo(const QString &path)
     }
     if (historyChanged)
         emit secondaryHistoryChanged();
+}
+
+void TabModel::resolveRestoredPath(const QString &savedPath, const QString &resolvedPath)
+{
+    if (savedPath != m_currentPath || resolvedPath == m_currentPath)
+        return;
+    m_currentPath = resolvedPath;
+    emit currentPathChanged();
+    emit titleChanged();
 }

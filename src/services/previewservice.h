@@ -2,14 +2,13 @@
 
 #include <QByteArray>
 #include <QHash>
-#include <QMutex>
+#include <QFutureWatcher>
 #include <QObject>
 #include <QString>
 #include <QStringList>
 #include <QVariantMap>
 
 class MetadataExtractor;
-class QThreadPool;
 
 class PreviewService : public QObject
 {
@@ -18,7 +17,6 @@ class PreviewService : public QObject
 
 public:
     explicit PreviewService(QObject *parent = nullptr);
-    ~PreviewService() override;
 
     // Optional: when set, metadata is gathered in the same worker pass as the
     // preview body, so QML gets one signal and repaints once instead of
@@ -28,7 +26,7 @@ public:
     bool pdfPreviewAvailable() const;
 
     // Async entry point. `kind` is one of "text", "pdf", "archive",
-    // "directory", or "" for metadata only. Results arrive on previewReady;
+    // "directory", "font", or "" for metadata only. Results arrive on previewReady;
     // anything superseded by a newer request is dropped, never emitted.
     //
     // `requester` identifies the panel asking. Staleness is tracked per
@@ -50,7 +48,6 @@ public:
     Q_INVOKABLE QVariantMap loadArchivePreview(const QString &path, int maxEntries = 200,
                                                const QString &password = QString()) const;
     Q_INVOKABLE QVariantMap loadPdfPreview(const QString &path) const;
-    Q_INVOKABLE QVariantMap loadFontPreview(const QString &path);
     Q_INVOKABLE QString localPreviewPath(const QString &path) const;
 
     // Converts bat's ANSI-coloured output to escaped HTML. Public so it can
@@ -68,9 +65,9 @@ signals:
     void previewReady(const QString &requester, const QString &path, const QVariantMap &data);
 
 private:
-    // Runs on a worker thread. Excludes font previews on purpose:
-    // QFontDatabase is GUI-thread-only, so QML still calls loadFontPreview
-    // directly (it is a local file read, not a subprocess).
+    // Only reading a font happens on the worker. Qt registers the bytes on
+    // the GUI thread because QFontDatabase belongs to the GUI.
+    QVariantMap registerFontPreview(const QString &path, const QByteArray &bytes);
     QVariantMap buildPreview(const QString &path, const QString &kind,
                              const QString &password, bool lightTheme) const;
 
@@ -85,18 +82,6 @@ private:
     int m_activeFontPreviewId = -1;
     QString m_activeFontPreviewPath;
 
-    // Bumped per request; a worker whose generation no longer matches has
-    // been superseded and its result is discarded. Same approach as
-    // FileSystemModel::applyLocalReload, but keyed by requester.
-    quint64 bumpGeneration(const QString &requester);
-    bool isCurrent(const QString &requester, quint64 generation) const;
-
-    mutable QMutex m_generationMutex;
-    QHash<QString, quint64> m_generations;
-
-    // Private pool: archive listing can block for up to 10 s
-    // (loadArchivePreview), and that must never starve thumbnail rendering
-    // on the global pool.
-    QThreadPool *m_pool = nullptr;
-    MetadataExtractor *m_metadata = nullptr;
+    QHash<QString, QFutureWatcher<QVariantMap> *> m_requests;
+    bool m_extractMetadata = false;
 };

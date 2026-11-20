@@ -26,6 +26,7 @@
 #include <QDBusReply>
 #include <QStyleHints>
 #include <QFileInfo>
+#include "services/filesystemtasks.h"
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <unistd.h>
@@ -651,25 +652,13 @@ int main(int argc, char *argv[])
         else if (initialSecondaryPath.isEmpty())
             initialSecondaryPath = a;
     }
-    // A split needs two folders. Anything else in the second slot (another
-    // file from the desktop's %F, the value of `-style fusion`, a typo) keeps
-    // the plain one-path launch.
-    // ponytail: a real folder named like a Qt option value still matches.
-    const auto isSplitLocation = [](const QString &path) {
-        return path.contains(QLatin1String("://")) || QFileInfo(path).isDir();
+    auto absoluteLaunchPath = [](const QString &path) {
+        if (path.isEmpty() || path.contains(QLatin1String("://")))
+            return path;
+        return QFileInfo(path).absoluteFilePath();
     };
-    if (!isSplitLocation(initialOpenPath) || !isSplitLocation(initialSecondaryPath))
-        initialSecondaryPath.clear();
-    if (!initialOpenPath.isEmpty()) {
-        QFileInfo fi(initialOpenPath);
-        if (fi.exists())
-            initialOpenPath = fi.absoluteFilePath();
-    }
-    if (!initialSecondaryPath.isEmpty()) {
-        QFileInfo fi(initialSecondaryPath);
-        if (fi.exists())
-            initialSecondaryPath = fi.absoluteFilePath();
-    }
+    initialOpenPath = absoluteLaunchPath(initialOpenPath);
+    initialSecondaryPath = absoluteLaunchPath(initialSecondaryPath);
 
     // Before QGuiApplication: it may set VK_DRIVER_FILES, which is only safe
     // while this is the only thread.
@@ -1090,6 +1079,18 @@ int main(int argc, char *argv[])
     QList<AppWindow *> windows;
     AppWindow *sessionWindow = nullptr;   // the one whose state is session.json
     AppWindow *lastActiveWindow = nullptr;
+    QObject windowLifetime;
+
+    // Desktop launchers can send more than one file. Only two directories
+    // request a split, and checking them must not hold up either process.
+    auto validateSplit = [](QObject *owner, const QString &primary, const QString &secondary, auto onReady) {
+        watchFilesystemTask(owner, MountTable().forPath(secondary), [primary, secondary]() {
+            auto isDirectory = [](const QString &path) {
+                return path.contains(QLatin1String("://")) || QFileInfo(path).isDir();
+            };
+            return isDirectory(secondary) && isDirectory(primary);
+        }, onReady);
+    };
 
     auto createWindow = [&](const QJsonObject &session, const QString &openPath, const QString &secondaryPath = QString()) -> AppWindow * {
         auto *w = new AppWindow(&app);
@@ -1106,10 +1107,13 @@ int main(int argc, char *argv[])
             // one tab rather than opening a second tab for it later.
             if (auto *tab = w->tabModel->activeTab()) {
                 tab->navigateTo(openPath);
-                if (!secondaryPath.isEmpty()) {
-                    tab->setSplitViewEnabled(true);
-                    tab->resetSecondaryTo(secondaryPath);
-                }
+                if (!secondaryPath.isEmpty())
+                    validateSplit(tab, openPath, secondaryPath, [tab, openPath, secondaryPath](bool valid) {
+                        if (valid && tab->currentPath() == openPath && !tab->splitViewEnabled()) {
+                            tab->resetSecondaryTo(secondaryPath);
+                            tab->setSplitViewEnabled(true);
+                        }
+                    });
             }
         }
 
@@ -1250,7 +1254,7 @@ int main(int argc, char *argv[])
         });
 
         windows.append(w);
-        QObject::connect(w, &QObject::destroyed, &app, [&windows, &sessionWindow, &lastActiveWindow, w, &app, &engine]() {
+        QObject::connect(w, &QObject::destroyed, &windowLifetime, [&windows, &sessionWindow, &lastActiveWindow, w, &windowLifetime, &engine]() {
             windows.removeAll(w);
             // A closed window frees a whole window's worth of objects at once,
             // but the JS heap only shrinks on the engine's next collection and
@@ -1258,7 +1262,7 @@ int main(int argc, char *argv[])
             // behind, 112 -> 202 MB after eight. Collecting and trimming once
             // things settle keeps it at ~1.5 MB (the collection costs ~30 ms,
             // so not during the close itself).
-            QTimer::singleShot(1000, &app, [&engine]() {
+            QTimer::singleShot(1000, &windowLifetime, [&engine]() {
                 engine.collectGarbage();
 #ifdef __GLIBC__
                 malloc_trim(0);
@@ -1270,7 +1274,7 @@ int main(int argc, char *argv[])
         return w;
     };
 
-    QObject::connect(&app, &QGuiApplication::focusWindowChanged, &app, [&](QWindow *focused) {
+    QObject::connect(&app, &QGuiApplication::focusWindowChanged, &windowLifetime, [&](QWindow *focused) {
         for (AppWindow *w : std::as_const(windows))
             if (w->window == focused)
                 lastActiveWindow = w;
@@ -1426,10 +1430,17 @@ int main(int argc, char *argv[])
         if (!target)
             return;
         if (!path.isEmpty()) {
-            if (!secondaryPath.isEmpty())
-                target->tabModel->openSplit(path, secondaryPath);
-            else
+            if (!secondaryPath.isEmpty()) {
+                auto *tabs = target->tabModel;
+                validateSplit(tabs, path, secondaryPath, [tabs, path, secondaryPath](bool valid) {
+                    if (valid)
+                        tabs->openSplit(path, secondaryPath);
+                    else
+                        tabs->openPath(path);
+                });
+            } else {
                 target->tabModel->openPath(path);
+            }
         }
         QQuickWindow *win = target->window;
         if (win->visibility() == QWindow::Minimized || win->visibility() == QWindow::Hidden)

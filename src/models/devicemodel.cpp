@@ -1,4 +1,5 @@
 #include "models/devicemodel.h"
+#include "services/filesystemtasks.h"
 
 #include <QCoreApplication>
 #include <QDBusArgument>
@@ -15,7 +16,6 @@
 #include <QHash>
 #include <QDebug>
 #include <QMetaObject>
-#include <QMutexLocker>
 #include <QPointer>
 #include <QProcess>
 #include <QRegularExpression>
@@ -27,8 +27,6 @@
 #include <gio/gio.h>
 #define signals Q_SIGNALS
 #include <algorithm>
-#include <memory>
-#include <thread>
 
 static const QStringList kVirtualTypes = {
     "tmpfs", "devtmpfs", "proc", "sysfs",
@@ -41,7 +39,6 @@ static const QStringList kVirtualTypes = {
 DeviceModel::DeviceModel(QObject *parent, bool deferInitialRefresh)
     : QAbstractListModel(parent)
 {
-    m_fuseProbeContext->model = this;
     m_refreshTimer.setSingleShot(true);
     m_refreshTimer.setInterval(600);
     connect(&m_refreshTimer, &QTimer::timeout, this, &DeviceModel::refreshAsync);
@@ -70,10 +67,6 @@ DeviceModel::DeviceModel(QObject *parent, bool deferInitialRefresh)
 
 DeviceModel::~DeviceModel()
 {
-    {
-        QMutexLocker locker(&m_fuseProbeContext->mutex);
-        m_fuseProbeContext->model = nullptr;
-    }
     clearDevices();
     if (m_volumeMonitor) {
         g_signal_handlers_disconnect_by_data(m_volumeMonitor, this);
@@ -630,6 +623,7 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
 
     static const QString kEfiGuid = QStringLiteral("c12a7328-f81f-11d2-ba4b-00a098cb80e7");
 
+    QStringList mountsToProbe;
     for (auto it = blocks.constBegin(); it != blocks.constEnd(); ++it) {
         const BlockInfo &b = it.value();
 
@@ -669,61 +663,18 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
         else
             name = b.device.section(QLatin1Char('/'), -1);
 
-        qint64 total = 0;
-        qint64 free = 0;
-        int usage = 0;
-        if (mounted) {
-            // Inside a Flatpak the sandbox's `/` is a tmpfs runtime
-            // overlay, not the host root. With --filesystem=host the host
-            // file system is exposed under /run/host as individual bind
-            // mounts (/run/host/usr, /run/host/etc, /run/host/var, etc.).
-            // Note: /run/host itself is the tmpfs, so we cannot just stat
-            // it — we have to stat one of the sub-mounts that lives on
-            // the host root partition.
-            //
-            // Strategy: try the mount point directly first (works for
-            // /home, /tmp, /opt, /media, /mnt, /run/media which are bind
-            // mounted at the same path). If that fails or gives bogus
-            // numbers and we're in Flatpak, fall back to a host-side
-            // probe. For "/" specifically, /run/host/usr is the safest
-            // bet — every distro has /usr on the root partition.
-            const bool inFlatpak = QFile::exists(QStringLiteral("/.flatpak-info"));
-            QStorageInfo storage(mountPoint);
-            if (inFlatpak && (!storage.isValid() || storage.bytesTotal() == 0
-                              || storage.device() == QByteArrayLiteral("tmpfs"))) {
-                QStringList probes;
-                if (mountPoint == QLatin1String("/")) {
-                    probes << QStringLiteral("/run/host/usr")
-                           << QStringLiteral("/run/host/etc");
-                } else {
-                    probes << QStringLiteral("/run/host") + mountPoint;
-                }
-                for (const QString &probe : std::as_const(probes)) {
-                    if (!QFileInfo(probe).exists())
-                        continue;
-                    QStorageInfo s(probe);
-                    if (s.isValid() && s.bytesTotal() > 0
-                        && s.device() != QByteArrayLiteral("tmpfs")) {
-                        storage = s;
-                        break;
-                    }
-                }
-            }
-            if (storage.isValid()) {
-                total = storage.bytesTotal();
-                free = storage.bytesAvailable();
-                usage = usagePercentFor(total, free);
-            }
-        } else {
-            total = b.size;
-        }
+        const MountUsage known = m_mountUsage.value(mountPoint);
+        const qint64 total = mounted && known.total > 0 ? known.total : b.size;
+        const qint64 free = known.free;
+        const int usage = usagePercentFor(known.total, free);
+        if (mounted)
+            mountsToProbe.append(mountPoint);
 
         m_devices.append({name, b.device, mountPoint, b.idType.toLower(),
                           total, free, usage, removable, mounted,
                           QString(), DeviceBackend::UDisks2, nullptr, nullptr});
     }
 
-    QStringList fuseToProbe;
     const QHash<QString, QString> fuseMountTypes = userFuseMountTypes();
     GVolumeMonitor *volumeMonitor = m_volumeMonitor ? m_volumeMonitor : g_volume_monitor_get();
     if (volumeMonitor) {
@@ -763,11 +714,11 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
                     // statfs on a FUSE mount waits for its daemon, which can hang
                     // (11-20: a wedged Filen rclone): the size comes from a probe off
                     // this thread; meanwhile the last known one.
-                    const FuseUsage known = m_fuseUsage.value(path);
+                    const MountUsage known = m_mountUsage.value(path);
                     const qint64 total = known.total;
                     const qint64 free = known.free;
                     const int usage = usagePercentFor(total, free);
-                    fuseToProbe.append(path);
+                    mountsToProbe.append(path);
                     QString name = qStringFromGChar(g_mount_get_name(mount));
                     if (name.isEmpty())
                         name = QFileInfo(path).fileName();
@@ -937,44 +888,58 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
 
     endResetModel();
 
-    for (const QString &mountPoint : std::as_const(fuseToProbe))
-        probeFuseUsage(mountPoint);
+    for (const QString &mountPoint : std::as_const(mountsToProbe))
+        probeMountUsage(mountPoint);
 }
 
-void DeviceModel::probeFuseUsage(const QString &mountPoint)
+void DeviceModel::probeMountUsage(const QString &mountPoint)
 {
-    if (m_fuseProbesPending.contains(mountPoint))
-        return;   // the last one has not answered: this mount may hang
-    m_fuseProbesPending.insert(mountPoint);
+    const auto mount = MountTable().forPath(mountPoint);
+    const auto key = qMakePair(mountPoint, mount);
+    if (m_mountProbesPending.contains(key))
+        return;
+    m_mountProbesPending.insert(key);
 
-    // A plain detached thread, not QtConcurrent: Qt waits for its global pool at
-    // exit, and a probe stuck in a dead FUSE daemon would then hang the quit.
-    const std::shared_ptr<FuseProbeContext> ctx = m_fuseProbeContext;
-    std::thread([ctx, mountPoint]() {
-        const QStorageInfo storage(mountPoint);
-        qint64 total = 0;
-        qint64 free = 0;
-        if (storage.isValid() && storage.rootPath() == mountPoint) {
-            total = storage.bytesTotal();
-            free = storage.bytesAvailable();
+    const auto probe = [mountPoint]() {
+        QStorageInfo storage(mountPoint);
+        // Flatpak sees a tmpfs at /. The host disk's bind-mounted directories
+        // under /run/host still report its real capacity.
+        if (QFile::exists(QStringLiteral("/.flatpak-info"))
+            && (!storage.isValid() || storage.bytesTotal() == 0
+                || storage.device() == QByteArrayLiteral("tmpfs"))) {
+            const QStringList paths = mountPoint == QStringLiteral("/")
+                ? QStringList{QStringLiteral("/run/host/usr"), QStringLiteral("/run/host/etc")}
+                : QStringList{QStringLiteral("/run/host") + mountPoint};
+            for (const QString &path : paths) {
+                if (!QFileInfo::exists(path))
+                    continue;
+                const QStorageInfo candidate(path);
+                if (candidate.isValid() && candidate.bytesTotal() > 0
+                    && candidate.device() != QByteArrayLiteral("tmpfs")) {
+                    storage = candidate;
+                    break;
+                }
+            }
         }
-        QMutexLocker locker(&ctx->mutex);
-        if (ctx->model) {
-            QMetaObject::invokeMethod(ctx->model, [ctx, mountPoint, total, free]() {
-                if (ctx->model)
-                    ctx->model->applyFuseUsage(mountPoint, total, free);
-            }, Qt::QueuedConnection);
-        }
-    }).detach();
+        return storage.isValid() && storage.isReady()
+            ? MountUsage{storage.bytesTotal(), storage.bytesAvailable()} : MountUsage{};
+    };
+    watchFilesystemTask(this, mount, probe, [this, key](MountUsage usage) {
+        m_mountProbesPending.remove(key);
+        if (MountTable().forPath(key.first) == key.second)
+            applyMountUsage(key.first, usage.total, usage.free);
+    });
 }
 
-void DeviceModel::applyFuseUsage(const QString &mountPoint, qint64 total, qint64 free)
+void DeviceModel::applyMountUsage(const QString &mountPoint, qint64 total, qint64 free)
 {
-    m_fuseProbesPending.remove(mountPoint);
-    m_fuseUsage.insert(mountPoint, {total, free});
+    const MountUsage previous = m_mountUsage.value(mountPoint);
+    if (previous.total == total && previous.free == free)
+        return;
+    m_mountUsage.insert(mountPoint, {total, free});
     for (int i = 0; i < m_devices.size(); ++i) {
         DeviceEntry &dev = m_devices[i];
-        if (dev.backend != DeviceBackend::Gio || dev.mountPoint != mountPoint)
+        if (!dev.mounted || dev.mountPoint != mountPoint)
             continue;
         dev.totalSize = total;
         dev.freeSpace = free;

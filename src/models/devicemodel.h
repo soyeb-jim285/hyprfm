@@ -3,11 +3,9 @@
 #include <QAbstractListModel>
 #include <QFileSystemWatcher>
 #include <QHash>
-#include <QMutex>
 #include <QSet>
 #include <QList>
 #include <QTimer>
-#include <memory>
 
 typedef struct _GMount GMount;
 typedef struct _GVolume GVolume;
@@ -93,19 +91,12 @@ private:
     void setupMtpWatcher();
     static bool isVirtual(const QString &fsType);
     void unmountFuse(const QString &mountPoint, const QString &label);
-    void probeFuseUsage(const QString &mountPoint);
-    void applyFuseUsage(const QString &mountPoint, qint64 total, qint64 free);
+    void probeMountUsage(const QString &mountPoint);
+    void applyMountUsage(const QString &mountPoint, qint64 total, qint64 free);
 
-    // Size of each user FUSE mount, as last answered, so a refresh shows it at once;
-    // probes in flight, at most one per mount (a hung daemon keeps its probe).
-    struct FuseUsage { qint64 total = 0; qint64 free = 0; };
-    struct FuseProbeContext {
-        QMutex mutex;
-        DeviceModel *model = nullptr;
-    };
-    std::shared_ptr<FuseProbeContext> m_fuseProbeContext = std::make_shared<FuseProbeContext>();
-    QHash<QString, FuseUsage> m_fuseUsage;
-    QSet<QString> m_fuseProbesPending;
+    struct MountUsage { qint64 total = 0; qint64 free = 0; };
+    QHash<QString, MountUsage> m_mountUsage;
+    QSet<QPair<QString, QByteArray>> m_mountProbesPending;
 
     QList<DeviceEntry> m_devices;
     GVolumeMonitor *m_volumeMonitor = nullptr;

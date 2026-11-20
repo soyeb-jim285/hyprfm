@@ -4,6 +4,9 @@
 #include <cerrno>
 #include <cstring>
 #include <sys/stat.h>
+#include <sys/inotify.h>
+#include <unistd.h>
+#include "services/filesystemtasks.h"
 #include "services/cloudmounts.h"
 #include "services/gitstatusservice.h"
 #include "services/xdgtrash.h"
@@ -21,12 +24,9 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QDirIterator>
-#include <QCoreApplication>
 #include <QPointer>
-#include <QThreadPool>
 #include <QUrl>
 #include "services/diskusageservice.h"
-#include <QtConcurrent>
 #include <QCollator>
 #include <algorithm>
 
@@ -696,6 +696,21 @@ QVariantMap buildTrashProperties(const QVariantMap &entry)
 
 }
 
+struct FileSystemModel::DirectoryWatch {
+    explicit DirectoryWatch(const QString &path) : fd(inotify_init1(IN_CLOEXEC | IN_NONBLOCK))
+    {
+        if (fd >= 0) {
+            wd = inotify_add_watch(fd, QFile::encodeName(path).constData(),
+                                   IN_ONLYDIR | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO
+                                   | IN_ATTRIB | IN_MODIFY | IN_DELETE_SELF | IN_MOVE_SELF);
+        }
+    }
+
+    ~DirectoryWatch() { if (fd >= 0) close(fd); }
+    const int fd;
+    int wd = -1;
+};
+
 FileSystemModel::FileSystemModel(QObject *parent)
     : QAbstractListModel(parent)
 {
@@ -704,17 +719,18 @@ FileSystemModel::FileSystemModel(QObject *parent)
     m_refreshDebounce.setSingleShot(true);
     m_refreshDebounce.setInterval(150);
     connect(&m_refreshDebounce, &QTimer::timeout, this, &FileSystemModel::refresh);
-    connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this]() {
-        if (!m_rootPath.isEmpty())
-            emit watchedDirectoryChanged(m_rootPath);
-        m_refreshDebounce.start();
+    m_detailsDebounce.setSingleShot(true);
+    connect(&m_detailsDebounce, &QTimer::timeout, this, &FileSystemModel::loadVisibleDetails);
+    m_loadDeadline.setSingleShot(true);
+    connect(&m_loadDeadline, &QTimer::timeout, this, [this]() {
+        setLoadError(ETIMEDOUT);
+        setIsLoading(false);
     });
 }
 
 FileSystemModel::~FileSystemModel()
 {
     cancelRemoteReload();
-    cancelLocalReload();
 }
 
 void FileSystemModel::setGitStatusService(GitStatusService *service)
@@ -850,10 +866,10 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
     case FileSizeRole:
         if (entry.isDir)
             return QVariant(-1);
-        ensureStat(entry);
+        requestEntryDetails(index, entry);
         return QVariant(entry.size);
     case FileModifiedRole:
-        ensureStat(entry);
+        requestEntryDetails(index, entry);
         return entry.modifiedMs == kNoTime ? QDateTime()
                                            : QDateTime::fromMSecsSinceEpoch(entry.modifiedMs);
     case IsDirRole:
@@ -861,50 +877,50 @@ QVariant FileSystemModel::data(const QModelIndex &index, int role) const
     case IsSymlinkRole:
         return entry.isSymLink;
     case FileSizeTextRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).sizeText;
     case FileTypeRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).fileType;
     case FileModifiedTextRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).modifiedText;
     case FilePermissionsRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).permissionsText;
     case FileOwnerRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).owner;
     case FileGroupRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).group;
     case FileCreatedTextRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).createdText;
     case FileAccessedTextRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).accessedText;
     case FileExtensionRole:
         return entry.isDir ? QString() : QFileInfo(entry.name).suffix();
-    case MimeTypeRole: {
-        Details &details = detailsOf(entry);
-        if (details.mimeType.isEmpty())
-            details.mimeType = mimeTypeForFile(entryPath(entry)).name();
-        return details.mimeType;
-    }
+    case MimeTypeRole:
+        requestEntryDetails(index, entry);
+        return detailsOf(entry).mimeType;
     case SymlinkTargetRole:
-        return entry.isSymLink ? QFileInfo(entryPath(entry)).symLinkTarget() : QString();
+        if (!entry.isSymLink)
+            return QString();
+        requestEntryDetails(index, entry);
+        return detailsOf(entry).symlinkTarget;
     case FileIconNameRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).iconName;
     case HasImagePreviewRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).hasImagePreview;
     case HasVideoPreviewRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).hasVideoPreview;
     case HasPdfPreviewRole:
-        ensurePopulated(entry);
+        requestEntryDetails(index, entry);
         return detailsOf(entry).hasPdfPreview;
     case GitStatusRole:
         return m_gitService ? m_gitService->statusForPath(entryPath(entry)) : QString();
@@ -976,6 +992,8 @@ void FileSystemModel::setLoadError(int error)
     QString message;
     if (error == EACCES || error == EPERM)
         message = tr("You don't have permission to view this folder");
+    else if (error == ETIMEDOUT)
+        message = tr("This folder did not respond");
     else if (error)
         message = QString::fromLocal8Bit(std::strerror(error));
     if (m_loadError == message)
@@ -994,29 +1012,63 @@ bool FileSystemModel::isRemoteRoot() const
     return isRemoteUri(m_rootPath);
 }
 
-QStorageInfo FileSystemModel::rootStorage() const
+qint64 FileSystemModel::diskFree() const { return m_diskFree; }
+qint64 FileSystemModel::diskTotal() const { return m_diskTotal; }
+
+void FileSystemModel::refreshDiskSpace()
 {
-    // Trash and remote mounts would report the host's own disk, which says
-    // nothing about the listing in front of the user, so report nothing.
-    if (m_rootPath.isEmpty() || isTrashRoot() || isRemoteRoot())
-        return {};
-    if (!QFileInfo(m_rootPath).isDir())
-        return {};
-    return QStorageInfo(m_rootPath);
+    if (m_diskProbe || m_rootPath.isEmpty())
+        return;
+
+    const auto probe = [path = m_rootPath]() -> std::pair<qint64, qint64> {
+        const QStorageInfo storage(path);
+        if (storage.isValid() && storage.isReady())
+            return {storage.bytesAvailable(), storage.bytesTotal()};
+        return {-1, -1};
+    };
+    const auto apply = [this](auto space) {
+        m_diskProbe = nullptr;
+        if (m_diskFree == space.first && m_diskTotal == space.second)
+            return;
+        m_diskFree = space.first;
+        m_diskTotal = space.second;
+        emit countsChanged();
+    };
+    if (m_synchronousReload)
+        apply(probe());
+    else
+        m_diskProbe = watchFilesystemTask(this, MountTable().forPath(m_rootPath), probe, apply);
 }
 
-// Nothing is cached: this is a statfs(2) behind a getter the status bar reads
-// once per listing change, so there is no staleness to manage either.
-qint64 FileSystemModel::diskFree() const
+void FileSystemModel::installDirectoryWatch(std::shared_ptr<DirectoryWatch> watch)
 {
-    const QStorageInfo storage = rootStorage();
-    return storage.isValid() && storage.isReady() ? storage.bytesAvailable() : -1;
-}
+    if (!watch || watch->wd < 0)
+        return;
 
-qint64 FileSystemModel::diskTotal() const
-{
-    const QStorageInfo storage = rootStorage();
-    return storage.isValid() && storage.isReady() ? storage.bytesTotal() : -1;
+    m_directoryWatch = std::move(watch);
+    m_directoryNotifier = std::make_unique<QSocketNotifier>(m_directoryWatch->fd, QSocketNotifier::Read);
+    connect(m_directoryNotifier.get(), &QSocketNotifier::activated, this, [this]() {
+        alignas(inotify_event) char buffer[4096];
+        bool changed = false;
+        bool watchRemoved = false;
+        ssize_t size;
+        while ((size = read(m_directoryWatch->fd, buffer, sizeof(buffer))) > 0) {
+            changed = true;
+            for (ssize_t offset = 0; offset < size;) {
+                const auto *event = reinterpret_cast<const inotify_event *>(buffer + offset);
+                watchRemoved |= (event->mask & IN_IGNORED) != 0;
+                offset += sizeof(inotify_event) + event->len;
+            }
+        }
+        if (watchRemoved) {
+            m_directoryNotifier.reset();
+            m_directoryWatch.reset();
+        }
+        if (changed) {
+            emit watchedDirectoryChanged(m_rootPath);
+            m_refreshDebounce.start();
+        }
+    });
 }
 
 void FileSystemModel::setRootPath(const QString &path)
@@ -1025,18 +1077,17 @@ void FileSystemModel::setRootPath(const QString &path)
     if (m_rootPath == normalizedPath)
         return;
 
-    // Stop watching old directory
-    if (!m_rootPath.isEmpty() && !isTrashRoot() && !isRemoteRoot())
-        m_watcher.removePath(m_rootPath);
+    m_refreshDebounce.stop();
+    m_directoryNotifier.reset();
+    m_directoryWatch.reset();
+    delete m_diskProbe.data();
+    m_diskFree = -1;
+    m_diskTotal = -1;
 
     m_rootPath = normalizedPath;
     m_entryPrefix = QDir(m_rootPath).absolutePath();
     if (!m_entryPrefix.endsWith(QLatin1Char('/')))
         m_entryPrefix += QLatin1Char('/');
-
-    // Watch new directory
-    if (!m_rootPath.isEmpty() && !isTrashRoot() && !isRemoteRoot())
-        m_watcher.addPath(m_rootPath);
 
     reload();
     if (m_gitService)
@@ -1158,6 +1209,10 @@ void FileSystemModel::reload()
     // A folder scan still in flight belongs to the previous root; Trash and
     // remote roots never start one of their own to supersede it.
     ++m_localReloadGeneration;
+    m_loadDeadline.stop();
+    delete m_trashWatcher.data();
+    delete m_localReloadWatcher;
+    m_localReloadWatcher = nullptr;
 
     // The Computer overview has its own device model. Do not send its virtual
     // root through GIO or expose drive mount points as filesystem entries.
@@ -1178,7 +1233,6 @@ void FileSystemModel::reload()
     }
 
     if (isTrashRoot()) {
-        // Trash scan runs gio synchronously already; wrap in the reset.
         setLoadError(0);
         beginResetModel();
         m_entries.clear();
@@ -1186,10 +1240,9 @@ void FileSystemModel::reload()
         m_trashEntries.clear();
         m_fileCount = 0;
         m_folderCount = 0;
-        reloadTrash();
         endResetModel();
         emit countsChanged();
-        setIsLoading(false);
+        reloadTrash();
         return;
     }
 
@@ -1239,12 +1292,17 @@ static QString suffixOf(const QString &name)
 
 FileSystemModel::LocalReloadResult FileSystemModel::scanLocalEntries(
     quint64 generation, const QString &rootPath, bool showHidden,
-    QDir::SortFlags sortFlags, bool hiddenLast)
+    QDir::SortFlags sortFlags, bool hiddenLast, bool watchDirectory)
 {
     LocalReloadResult result;
     result.generation = generation;
     if (rootPath.isEmpty())
         return result;
+
+    // inotify_add_watch can block resolving the path. Arm it before the
+    // scan on the worker so changes between scanning and showing rows count.
+    if (watchDirectory)
+        result.watch = std::make_shared<DirectoryWatch>(rootPath);
 
     const int sortBy = sortFlags & QDir::SortByMask;
     const bool wantStat = sortBy == QDir::Size || sortBy == QDir::Time;
@@ -1278,7 +1336,15 @@ QList<FileSystemModel::Entry> FileSystemModel::readLocalEntries(const QString &r
         path += '/';
     const qsizetype prefix = path.size();
 
-    while (struct dirent *e = ::readdir(dir)) {
+    const MountTable mounts;
+    for (;;) {
+        errno = 0;
+        const struct dirent *e = ::readdir(dir);
+        if (!e) {
+            if (error)
+                *error = errno;
+            break;
+        }
         const char *name = e->d_name;
         if (name[0] == '.') {
             if (name[1] == '\0' || (name[1] == '.' && name[2] == '\0'))
@@ -1295,13 +1361,19 @@ QList<FileSystemModel::Entry> FileSystemModel::readLocalEntries(const QString &r
         if (isLink || wantStat || e->d_type == DT_UNKNOWN) {
             path.truncate(prefix);
             path += name;
-            statted = ::stat(path.constData(), &st) == 0;   // follows symlinks
-            if (e->d_type == DT_UNKNOWN) {
-                struct stat linkStat;
-                isLink = ::lstat(path.constData(), &linkStat) == 0 && S_ISLNK(linkStat.st_mode);
+            // Statting a child mount crosses into it. Keep the parent listing
+            // available even if the mount ignores requests.
+            if (mounts.isMountPoint(QFile::decodeName(path))) {
+                isDir = !isRegular;
+            } else {
+                statted = ::stat(path.constData(), &st) == 0;   // follows symlinks
+                if (e->d_type == DT_UNKNOWN) {
+                    struct stat linkStat;
+                    isLink = ::lstat(path.constData(), &linkStat) == 0 && S_ISLNK(linkStat.st_mode);
+                }
+                isDir = statted && S_ISDIR(st.st_mode);
+                isRegular = statted && S_ISREG(st.st_mode);
             }
-            isDir = statted && S_ISDIR(st.st_mode);
-            isRegular = statted && S_ISREG(st.st_mode);
         }
         // What QDir::AllEntries keeps: directories and regular files, through
         // symlinks. Fifos, sockets, devices and broken links are not listed.
@@ -1387,42 +1459,27 @@ void FileSystemModel::sortEntries(QList<Entry> &entries, QDir::SortFlags flags, 
 void FileSystemModel::scheduleLocalReload(bool tryDiff)
 {
     setIsLoading(true);
+    setLoadError(0);
     const quint64 gen = ++m_localReloadGeneration;
-    m_localReloadTryDiff = tryDiff;
+    const QString path = m_rootPath.isEmpty() ? QString() : QDir::cleanPath(m_entryPrefix);
+    const auto scan = [gen, path,
+                       showHidden = m_showHidden, flags = m_sortFlags, hiddenLast = m_hiddenLast,
+                       watchDirectory = !m_directoryWatch]() {
+        return scanLocalEntries(gen, path, showHidden, flags, hiddenLast, watchDirectory);
+    };
 
     if (m_synchronousReload) {
-        // Test mode: run scan inline so rowCount is correct before the
-        // caller moves on.
-        applyLocalReload(scanLocalEntries(gen, m_rootPath, m_showHidden, m_sortFlags, m_hiddenLast),
-                         tryDiff);
+        applyLocalReload(scan(), tryDiff);
         return;
     }
 
-    if (!m_localReloadWatcher) {
-        m_localReloadWatcher = new QFutureWatcher<LocalReloadResult>(this);
-        connect(m_localReloadWatcher, &QFutureWatcherBase::finished, this, [this]() {
-            if (!m_localReloadWatcher)
-                return;
-            // takeResult, not result(): result() hands back a copy and the
-            // future keeps its own until the next scan, so the entry list
-            // was held twice and the first write to m_entries detached it
-            // into a second full copy (2.4 MB per 10k files).
-            applyLocalReload(m_localReloadWatcher->future().takeResult(), m_localReloadTryDiff);
+    delete m_localReloadWatcher;
+    m_localReloadWatcher = watchFilesystemTask(this, MountTable().forPath(path),
+        scan, [this, tryDiff](LocalReloadResult result) {
+            m_localReloadWatcher = nullptr;
+            applyLocalReload(std::move(result), tryDiff);
         });
-    }
-
-    auto future = QtConcurrent::run(&FileSystemModel::scanLocalEntries,
-                                    gen, m_rootPath, m_showHidden, m_sortFlags, m_hiddenLast);
-    m_localReloadWatcher->setFuture(future);
-}
-
-void FileSystemModel::cancelLocalReload()
-{
-    if (!m_localReloadWatcher)
-        return;
-    m_localReloadWatcher->disconnect(this);
-    m_localReloadWatcher->waitForFinished();
-    setIsLoading(false);
+    m_loadDeadline.start(8000);
 }
 
 void FileSystemModel::applyLocalReload(LocalReloadResult result, bool tryDiff)
@@ -1433,7 +1490,11 @@ void FileSystemModel::applyLocalReload(LocalReloadResult result, bool tryDiff)
     if (result.generation != m_localReloadGeneration)
         return;
 
+    m_loadDeadline.stop();
     setLoadError(result.error);
+    installDirectoryWatch(std::move(result.watch));
+    if (!result.error)
+        refreshDiskSpace();
 
     if (tryDiff && applyLocalDiff(result.entries)) {
         setIsLoading(false);
@@ -1483,8 +1544,8 @@ void FileSystemModel::startRemoteMount(const QString &rootPath, int generation)
     });
     startHostToolProcess(mountProc, QStringLiteral("gio"),
                          {QStringLiteral("mount"), gioLocationArg(rootPath)});
-    QTimer::singleShot(10000, mountProc, [this, mountProc, generation]() {
-        if (mountProc == m_remoteReloadProcess
+    QTimer::singleShot(10000, this, [this, mountProc = QPointer(mountProc), generation]() {
+        if (mountProc && mountProc == m_remoteReloadProcess
             && generation == m_remoteReloadGeneration
             && mountProc->state() != QProcess::NotRunning) {
             mountProc->kill();
@@ -1537,8 +1598,8 @@ void FileSystemModel::startRemoteList(const QString &rootPath, int generation, b
     });
 
     startHostToolProcess(process, QStringLiteral("gio"), args);
-    QTimer::singleShot(8000, process, [this, process, generation]() {
-        if (process == m_remoteReloadProcess
+    QTimer::singleShot(8000, this, [this, process = QPointer(process), generation]() {
+        if (process && process == m_remoteReloadProcess
             && generation == m_remoteReloadGeneration
             && process->state() != QProcess::NotRunning) {
             process->kill();
@@ -1551,13 +1612,7 @@ void FileSystemModel::cancelRemoteReload()
     if (!m_remoteReloadProcess)
         return;
 
-    m_remoteReloadProcess->disconnect();
-    if (m_remoteReloadProcess->state() != QProcess::NotRunning) {
-        m_remoteReloadProcess->kill();
-        m_remoteReloadProcess->waitForFinished(100);
-    }
-    m_remoteReloadProcess->deleteLater();
-    m_remoteReloadProcess = nullptr;
+    stopFilesystemProcess(m_remoteReloadProcess);
     setIsLoading(false);
 }
 
@@ -1653,31 +1708,7 @@ void FileSystemModel::applyRemoteReload(const QString &rootPath, const QByteArra
     setIsLoading(false);
 }
 
-QList<FileSystemModel::Entry> FileSystemModel::currentLocalEntries() const
-{
-    // Same listing the worker produces, on the calling thread. Only the
-    // syscall + QFileInfo construction: derived fields (icon name,
-    // mime-backed type, locale-formatted date, permission text) populate
-    // lazily on first data() request for each row.
-    return scanLocalEntries(m_localReloadGeneration, m_rootPath, m_showHidden, m_sortFlags, m_hiddenLast).entries;
-}
-
-FileSystemModel::Entry FileSystemModel::entryFromInfo(const QFileInfo &info, bool statted)
-{
-    Entry entry;
-    entry.name = info.fileName();
-    entry.isDir = info.isDir();
-    entry.isSymLink = info.isSymLink();
-    if (statted) {
-        entry.size = entry.isDir ? 0 : info.size();
-        const QDateTime modified = info.lastModified();
-        entry.modifiedMs = modified.isValid() ? modified.toMSecsSinceEpoch() : kNoTime;
-        entry.statted = true;
-    }
-    return entry;
-}
-
-void FileSystemModel::ensureStat(const Entry &entry, const QFileInfo &info) const
+void FileSystemModel::ensureStat(const Entry &entry, const QFileInfo &info)
 {
     if (entry.statted)
         return;
@@ -1687,12 +1718,6 @@ void FileSystemModel::ensureStat(const Entry &entry, const QFileInfo &info) cons
     entry.statted = true;
 }
 
-void FileSystemModel::ensureStat(const Entry &entry) const
-{
-    if (!entry.statted)
-        ensureStat(entry, QFileInfo(entryPath(entry)));
-}
-
 FileSystemModel::Details &FileSystemModel::detailsOf(const Entry &entry) const
 {
     if (!entry.details)
@@ -1700,16 +1725,89 @@ FileSystemModel::Details &FileSystemModel::detailsOf(const Entry &entry) const
     return *entry.details;
 }
 
-void FileSystemModel::ensurePopulated(const Entry &entry) const
+void FileSystemModel::requestEntryDetails(const QModelIndex &index, const Entry &entry) const
 {
-    Details &details = detailsOf(entry);
-    if (details.populated)
+    if (entry.details)
         return;
+    auto *self = const_cast<FileSystemModel *>(this);
+    // Test models populate inline so role reads remain deterministic.
+    if (m_synchronousReload) {
+        populateEntry(entry, entryPath(entry));
+        return;
+    }
+
+    Details &details = detailsOf(entry);
+    if (!entry.isDir)
+        details.mimeType = mimeDb().mimeTypeForFile(entry.name, QMimeDatabase::MatchExtension).name();
+    details.iconName = iconNameForEntry(entry.name, entry.isDir, details.mimeType);
+    details.fileType = fileTypeForEntry(entry.name, entry.isDir, details.mimeType);
+    self->m_pendingDetails.append(index);
+    if (!self->m_detailsDebounce.isActive())
+        self->m_detailsDebounce.start(0);
+}
+
+void FileSystemModel::loadVisibleDetails()
+{
+    struct Request {
+        Entry entry;
+        QString path;
+    };
+    struct Batch {
+        QList<QPersistentModelIndex> indexes;
+        QList<std::shared_ptr<Details>> tickets;
+        QList<Request> requests;
+    };
+
+    const MountTable mounts;
+    QHash<QByteArray, Batch> batches;
+    for (const auto &index : std::exchange(m_pendingDetails, {})) {
+        if (!index.isValid())
+            continue;
+        const Entry &entry = m_entries.at(index.row());
+        const QString path = entryPath(entry);
+        // Mount points already show as folders in their parent, and disk
+        // details there belong to the device, not to the directory row.
+        if (!entry.details || entry.details->populated || mounts.isMountPoint(path))
+            continue;
+        auto &batch = batches[mounts.forPath(path)];
+        batch.indexes.append(index);
+        batch.tickets.append(entry.details);
+        batch.requests.append({entry, path});
+        batch.requests.last().entry.details.reset();
+    }
+
+    for (auto it = batches.begin(); it != batches.end(); ++it) {
+        auto scan = [requests = std::move(it->requests)]() mutable {
+            for (auto &request : requests)
+                populateEntry(request.entry, request.path);
+            return std::move(requests);
+        };
+        watchFilesystemTask(this, it.key(), std::move(scan),
+            [this, indexes = std::move(it->indexes), tickets = std::move(it->tickets)](const QList<Request> &result) {
+                for (qsizetype i = 0; i < indexes.size(); ++i) {
+                    const auto &index = indexes.at(i);
+                    if (!index.isValid())
+                        continue;
+                    const Entry &entry = m_entries.at(index.row());
+                    if (entry.details != tickets.at(i))
+                        continue;
+                    const Entry &loaded = result.at(i).entry;
+                    entry.details = loaded.details;
+                    entry.size = loaded.size;
+                    entry.modifiedMs = loaded.modifiedMs;
+                    entry.statted = loaded.statted;
+                    emit dataChanged(index, index);
+                }
+            });
+    }
+}
+
+void FileSystemModel::populateEntry(const Entry &entry, const QString &absPath)
+{
+    entry.details = std::make_shared<Details>();
+    Details &details = *entry.details;
     const bool isDir = entry.isDir;
-    const QString absPath = entryPath(entry);
-    // One MIME lookup feeds the icon, the type column and the preview kind;
-    // each used to run its own, and MatchDefault stats the file every time.
-    if (!isDir && details.mimeType.isEmpty())
+    if (!isDir)
         details.mimeType = mimeTypeForFile(absPath).name();
     const QString &mimeName = details.mimeType;
     const QLocale locale;
@@ -1717,6 +1815,8 @@ void FileSystemModel::ensurePopulated(const Entry &entry) const
     // are actually shown.
     const QFileInfo info(absPath);
     ensureStat(entry, info);
+    if (entry.isSymLink)
+        details.symlinkTarget = info.symLinkTarget();
     details.iconName = iconNameForEntry(absPath, isDir, mimeName);
     details.fileType = fileTypeForEntry(absPath, isDir, mimeName);
     details.sizeText = isDir ? QString() : formattedSize(entry.size);
@@ -1837,13 +1937,7 @@ bool FileSystemModel::applyLocalDiff(const QList<Entry> &newEntries)
             m_entries = newEntries;
             updateLocalCounts();
             if (newCount > 0) {
-                static const QVector<int> changedRoles = {
-                    FileSizeRole, FileSizeTextRole,
-                    FileModifiedRole, FileModifiedTextRole,
-                    FilePermissionsRole,
-                    HasImagePreviewRole, HasVideoPreviewRole,
-                };
-                emit dataChanged(index(0, 0), index(newCount - 1, 0), changedRoles);
+                emit dataChanged(index(0, 0), index(newCount - 1, 0));
             }
             emit countsChanged();
             return true;
@@ -1855,12 +1949,35 @@ bool FileSystemModel::applyLocalDiff(const QList<Entry> &newEntries)
 
 void FileSystemModel::reloadTrash()
 {
-    if (m_rootPath.isEmpty()) {
-        m_fileCount = 0;
-        m_folderCount = 0;
-        return;
+    const auto scan = [sortColumn = m_sortColumn, sortAscending = m_sortAscending, hiddenLast = m_hiddenLast]() {
+        return scanTrash(sortColumn, sortAscending, hiddenLast);
+    };
+    const auto apply = [this, generation = m_localReloadGeneration](QList<QVariantMap> entries) {
+        if (generation != m_localReloadGeneration)
+            return;
+        m_loadDeadline.stop();
+        beginResetModel();
+        m_trashEntries = std::move(entries);
+        m_folderCount = static_cast<int>(std::count_if(m_trashEntries.begin(), m_trashEntries.end(),
+            [](const QVariantMap &entry) { return entry.value(QStringLiteral("isDir")).toBool(); }));
+        m_fileCount = m_trashEntries.size() - m_folderCount;
+        endResetModel();
+        setLoadError(0);
+        emit countsChanged();
+        setIsLoading(false);
+    };
+    if (m_synchronousReload)
+        apply(scan());
+    else {
+        delete m_trashWatcher.data();
+        m_trashWatcher = watchFilesystemTask(this, QByteArrayLiteral("trash"), scan, apply);
+        m_loadDeadline.start(8000);
     }
+}
 
+QList<QVariantMap> FileSystemModel::scanTrash(const QString &sortColumn, bool sortAscending, bool hiddenLast)
+{
+    QList<QVariantMap> entries;
     // Read the trash directories directly rather than asking gvfs for a
     // trash:// listing. gvfs is a session daemon, so any install without one
     // (Nix without services.gvfs.enable, AppImage, Flatpak) showed an empty
@@ -1871,50 +1988,40 @@ void FileSystemModel::reloadTrash()
     for (const XdgTrash::Entry &source : found) {
         const QVariantMap entry = buildTrashEntryFromLocal(source);
         if (!entry.isEmpty())
-            m_trashEntries.append(entry);
+            entries.append(entry);
     }
 
     QCollator collator = nameCollator();
-    std::sort(m_trashEntries.begin(), m_trashEntries.end(), [this, &collator](const QVariantMap &lhs, const QVariantMap &rhs) {
+    std::sort(entries.begin(), entries.end(), [&](const QVariantMap &lhs, const QVariantMap &rhs) {
         const bool lhsDir = lhs.value("isDir").toBool();
         const bool rhsDir = rhs.value("isDir").toBool();
         if (lhsDir != rhsDir)
             return lhsDir > rhsDir;
-        if (m_hiddenLast) {
+        if (hiddenLast) {
             const bool lhsHidden = lhs.value(QStringLiteral("fileName")).toString().startsWith(QLatin1Char('.'));
             if (lhsHidden != rhs.value(QStringLiteral("fileName")).toString().startsWith(QLatin1Char('.')))
                 return !lhsHidden;
         }
 
         int comparison = 0;
-        if (m_sortColumn == "size") {
+        if (sortColumn == "size") {
             const qint64 leftSize = lhs.value("fileSize").toLongLong();
             const qint64 rightSize = rhs.value("fileSize").toLongLong();
             comparison = (leftSize < rightSize) ? -1 : (leftSize > rightSize ? 1 : 0);
-        } else if (m_sortColumn == "modified") {
+        } else if (sortColumn == "modified") {
             const QDateTime leftModified = lhs.value("fileModified").toDateTime();
             const QDateTime rightModified = rhs.value("fileModified").toDateTime();
             comparison = (leftModified < rightModified) ? -1 : (leftModified > rightModified ? 1 : 0);
-        } else if (m_sortColumn == "type") {
+        } else if (sortColumn == "type") {
             comparison = collator.compare(lhs.value("fileType").toString(), rhs.value("fileType").toString());
         } else {
             comparison = collator.compare(lhs.value("fileName").toString(), rhs.value("fileName").toString());
         }
 
-        return m_sortAscending ? comparison < 0 : comparison > 0;
+        return sortAscending ? comparison < 0 : comparison > 0;
     });
 
-    int files = 0;
-    int folders = 0;
-    for (const auto &entry : std::as_const(m_trashEntries)) {
-        if (entry.value("isDir").toBool())
-            ++folders;
-        else
-            ++files;
-    }
-
-    m_fileCount = files;
-    m_folderCount = folders;
+    return entries;
 }
 
 // Counted with an iterator: entryList() sorted every folder's names only
@@ -1946,12 +2053,10 @@ int FileSystemModel::requestFolderItemCounts(const QStringList &paths)
     // The reply goes through the application object and checks the guard on
     // the GUI thread: the model can be destroyed (its window closed) while
     // the worker is still counting.
-    QThreadPool::globalInstance()->start([paths, id, guard = QPointer<FileSystemModel>(this)]() {
-        const QVariantMap counts = countFolderItems(paths);
-        QMetaObject::invokeMethod(QCoreApplication::instance(), [guard, id, counts]() {
-            if (guard)
-                emit guard->folderItemCountsReady(id, counts);
-        }, Qt::QueuedConnection);
+    watchFilesystemTask(this, MountTable().forPath(paths.value(0)), [paths]() {
+        return countFolderItems(paths);
+    }, [this, id](const QVariantMap &counts) {
+        emit folderItemCountsReady(id, counts);
     });
     return id;
 }
@@ -1973,6 +2078,45 @@ QVariantMap FileSystemModel::fileProperties(const QString &path) const
     if (isRemoteUri(normalizedPath))
         return remoteFileProperties(normalizedPath);
 
+    if (m_synchronousReload)
+        return localFileProperties(normalizedPath);
+
+    const QFileInfo info(normalizedPath);
+    const QString absolutePath = info.absoluteFilePath();
+    const MountTable mounts;
+    auto *self = const_cast<FileSystemModel *>(this);
+    if (!m_localPropertiesPending.contains(absolutePath)) {
+        self->m_localPropertiesPending.insert(absolutePath);
+        watchFilesystemTask(self, mounts.forPath(absolutePath), [absolutePath]() {
+            return localFileProperties(absolutePath);
+        }, [self, absolutePath](const QVariantMap &properties) {
+            self->m_localPropertiesPending.remove(absolutePath);
+            emit self->propertiesReady(absolutePath, properties);
+        });
+    }
+
+    const auto row = std::find_if(m_entries.cbegin(), m_entries.cend(), [&](const Entry &entry) {
+        return entryPath(entry) == absolutePath;
+    });
+    const bool isDir = absolutePath == m_rootPath || mounts.isMountPoint(absolutePath)
+        || (row != m_entries.cend() && row->isDir);
+    const QString mime = isDir ? QStringLiteral("inode/directory")
+        : (row != m_entries.cend() && row->details && !row->details->mimeType.isEmpty()
+            ? row->details->mimeType
+            : mimeDb().mimeTypeForFile(info.fileName(), QMimeDatabase::MatchExtension).name());
+    return {
+        {QStringLiteral("path"), absolutePath},
+        {QStringLiteral("name"), info.fileName()},
+        {QStringLiteral("parentDir"), info.absolutePath()},
+        {QStringLiteral("isDir"), isDir},
+        {QStringLiteral("iconName"), iconNameForEntry(info.fileName(), isDir, mime)},
+        {QStringLiteral("mimeType"), mime},
+        {QStringLiteral("pending"), true},
+    };
+}
+
+QVariantMap FileSystemModel::localFileProperties(const QString &normalizedPath)
+{
     const bool isRemote = isCloudMountPath(normalizedPath);
 
     QFileInfo info(normalizedPath);
@@ -2114,7 +2258,7 @@ QVariantMap FileSystemModel::remoteFileProperties(const QString &path) const
     // Not in the current listing (the listed folder itself, say): ask gio,
     // without waiting for it. That wait was up to 8 s on the GUI thread over
     // a slow link. Answer now with what the path alone says, marked pending,
-    // and deliver the rest through remotePropertiesReady.
+    // and deliver the rest through propertiesReady.
     auto *self = const_cast<FileSystemModel *>(this);
     if (!self->m_remotePropertiesPending.contains(normalizedPath)) {
         self->m_remotePropertiesPending.insert(normalizedPath);
@@ -2126,9 +2270,10 @@ QVariantMap FileSystemModel::remoteFileProperties(const QString &path) const
             self->m_remotePropertiesPending.remove(normalizedPath);
             proc->deleteLater();
             const bool ok = status == QProcess::NormalExit && exitCode == 0;
-            emit self->remotePropertiesReady(normalizedPath, ok
+            const auto properties = ok
                 ? remotePropertiesFromGioInfo(normalizedPath, QString::fromUtf8(proc->readAllStandardOutput()))
-                : buildFallbackRemoteProperties(normalizedPath));
+                : buildFallbackRemoteProperties(normalizedPath);
+            emit self->propertiesReady(normalizedPath, properties);
         });
         proc->start(QStringLiteral("gio"), {
             QStringLiteral("info"),
@@ -2427,6 +2572,25 @@ QString FileSystemModel::standardPath(const QString &key) const
 
 QVariantList FileSystemModel::pathSuggestions(const QString &input, int limit) const
 {
+    return collectPathSuggestions(input, limit, m_showHidden);
+}
+
+int FileSystemModel::requestPathSuggestions(const QString &input, int limit)
+{
+    const int request = ++m_suggestionRequest;
+    delete m_suggestionWatcher.data();
+    const QString path = expandUserPath(input.trimmed());
+    m_suggestionWatcher = watchFilesystemTask(this, MountTable().forPath(path),
+        [input, limit, showHidden = m_showHidden]() {
+            return collectPathSuggestions(input, limit, showHidden);
+        }, [this, request](const QVariantList &suggestions) {
+            emit pathSuggestionsReady(request, suggestions);
+        });
+    return request;
+}
+
+QVariantList FileSystemModel::collectPathSuggestions(const QString &input, int limit, bool showHidden)
+{
     QVariantList suggestions;
 
     const QString trimmed = input.trimmed();
@@ -2461,7 +2625,7 @@ QVariantList FileSystemModel::pathSuggestions(const QString &input, int limit) c
         return suggestions;
 
     QDir::Filters filters = QDir::Dirs | QDir::NoDotAndDotDot;
-    if (m_showHidden || fragment.startsWith(QLatin1Char('.')))
+    if (showHidden || fragment.startsWith(QLatin1Char('.')))
         filters |= QDir::Hidden;
 
     const QString foldedFragment = fragment.toCaseFolded();

@@ -1,4 +1,5 @@
 #include "services/previewservice.h"
+#include "services/filesystemtasks.h"
 #include "services/archivepassword.h"
 
 #include "services/metadataextractor.h"
@@ -16,7 +17,6 @@
 #include <QRawFont>
 #include <QStandardPaths>
 #include <QTextDocument>
-#include <QThreadPool>
 #include <QUrl>
 
 namespace {
@@ -592,71 +592,43 @@ QByteArray markdownToHtml(const QByteArray &markdown, QString *error)
 
 PreviewService::PreviewService(QObject *parent)
     : QObject(parent)
-    , m_pool(new QThreadPool(this))
 {
-    // Two threads: one preview is in flight at a time, but a request that
-    // hits loadArchivePreview's 10 s timeout must not delay the next one.
-    m_pool->setMaxThreadCount(2);
-}
-
-PreviewService::~PreviewService()
-{
-    // Workers capture `this`. Drain them before the members they touch die.
-    {
-        QMutexLocker locker(&m_generationMutex);
-        for (auto it = m_generations.begin(); it != m_generations.end(); ++it)
-            ++it.value();
-    }
-    m_pool->waitForDone();
 }
 
 void PreviewService::setMetadataExtractor(MetadataExtractor *extractor)
 {
-    m_metadata = extractor;
-}
-
-quint64 PreviewService::bumpGeneration(const QString &requester)
-{
-    QMutexLocker locker(&m_generationMutex);
-    return ++m_generations[requester];
-}
-
-bool PreviewService::isCurrent(const QString &requester, quint64 generation) const
-{
-    QMutexLocker locker(&m_generationMutex);
-    return m_generations.value(requester) == generation;
+    m_extractMetadata = extractor != nullptr;
 }
 
 void PreviewService::cancelPreview(const QString &requester)
 {
-    bumpGeneration(requester);
+    delete m_requests.take(requester);
 }
 
 void PreviewService::requestPreview(const QString &requester, const QString &path,
                                     const QString &kind, const QString &password, bool lightTheme)
 {
-    const quint64 generation = bumpGeneration(requester);
-
+    cancelPreview(requester);
     if (path.isEmpty()) {
         emit previewReady(requester, path, QVariantMap());
         return;
     }
 
-    m_pool->start([this, requester, path, kind, password, lightTheme, generation]() {
-        const QVariantMap data = buildPreview(path, kind, password, lightTheme);
-
-        // Cheap early-out so a superseded worker doesn't queue a no-op onto
-        // the GUI thread. The authoritative check is the one inside the
-        // lambda below: the generation can still move while this is queued.
-        if (!isCurrent(requester, generation))
-            return;
-
-        QMetaObject::invokeMethod(this, [this, requester, path, data, generation]() {
-            if (!isCurrent(requester, generation))
-                return;
+    m_requests.insert(requester, watchFilesystemTask(this, MountTable().forPath(path),
+        [path, kind, password, lightTheme, extractMetadata = m_extractMetadata]() {
+            // These helpers read only their arguments. Give the job its own
+            // objects so closing a window never joins a blocked preview.
+            const PreviewService worker;
+            QVariantMap data = worker.buildPreview(path, kind, password, lightTheme);
+            if (extractMetadata)
+                data["metadata"] = MetadataExtractor().extract(path);
+            return data;
+        }, [this, requester, path](QVariantMap data) {
+            m_requests.remove(requester);
+            if (data.contains(QStringLiteral("fontBytes")))
+                data["font"] = registerFontPreview(path, data.take(QStringLiteral("fontBytes")).toByteArray());
             emit previewReady(requester, path, data);
-        }, Qt::QueuedConnection);
-    });
+        }));
 }
 
 QVariantMap PreviewService::buildPreview(const QString &path, const QString &kind,
@@ -672,11 +644,12 @@ QVariantMap PreviewService::buildPreview(const QString &path, const QString &kin
         data["archive"] = loadArchivePreview(path, 200, password);
     else if (kind == QLatin1String("directory"))
         data["directory"] = loadDirectoryPreview(path);
-
-    // exiftool/ffprobe cost ~120 ms each and used to run on the GUI thread
-    // for every image, video, audio and PDF selection.
-    if (m_metadata)
-        data["metadata"] = m_metadata->extract(path);
+    else if (kind == QLatin1String("font")) {
+        bool truncated = false;
+        QString error;
+        const QByteArray bytes = readPathBytes(path, 32 * 1024 * 1024, &truncated, &error);
+        data["fontBytes"] = truncated || !error.isEmpty() ? QByteArray() : bytes;
+    }
 
     return data;
 }
@@ -921,7 +894,7 @@ QString PreviewService::localPreviewPath(const QString &path) const
     return cachedPath;
 }
 
-QVariantMap PreviewService::loadFontPreview(const QString &path)
+QVariantMap PreviewService::registerFontPreview(const QString &path, const QByteArray &bytes)
 {
     QVariantMap result;
     result["family"] = QString();
@@ -931,8 +904,8 @@ QVariantMap PreviewService::loadFontPreview(const QString &path)
     result["valid"] = false;
     result["error"] = QString();
 
-    if (path.isEmpty() || !QFileInfo(path).isFile()) {
-        result["error"] = QStringLiteral("Font file not found");
+    if (bytes.isEmpty()) {
+        result["error"] = QStringLiteral("Unable to read font file");
         return result;
     }
 
@@ -947,7 +920,7 @@ QVariantMap PreviewService::loadFontPreview(const QString &path)
             m_activeFontPreviewPath.clear();
         }
 
-        const int id = QFontDatabase::addApplicationFont(path);
+        const int id = QFontDatabase::addApplicationFontFromData(bytes);
         if (id < 0) {
             result["error"] = QStringLiteral("Unable to load font file");
             return result;
@@ -966,7 +939,7 @@ QVariantMap PreviewService::loadFontPreview(const QString &path)
 
     // Pull exact face metadata straight from the file so variants of the
     // same family (e.g. MapleMono-Bold vs MapleMono-Italic) don't alias.
-    QRawFont raw(path, 16.0);
+    QRawFont raw(bytes, 16.0);
     QString styleName = raw.isValid() ? raw.styleName() : QString();
     int weight = raw.isValid() ? raw.weight() : static_cast<int>(QFont::Normal);
     const bool italic = raw.isValid() ? (raw.style() != QFont::StyleNormal) : false;

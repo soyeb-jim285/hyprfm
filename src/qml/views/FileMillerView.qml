@@ -1312,13 +1312,20 @@ FocusScope {
 
             // Rich preview data (like QuickPreview)
             property var fileProps: ({})
+            Connections {
+                target: typeof fsModel !== "undefined" ? fsModel : null
+                ignoreUnknownSignals: true
+                function onPropertiesReady(path, properties) {
+                    if (path === previewColumn.fileProps.path)
+                        previewColumn.fileProps = properties
+                }
+            }
             readonly property var textPreview: previewLoader.textPreview
             readonly property var directoryPreview: previewLoader.directoryPreview
             readonly property var pdfPreview: previewLoader.pdfPreview
             readonly property var fileMetadata: previewLoader.fileMetadata
             readonly property bool previewLoading: previewLoader.loading
-            // Fonts stay local: QFontDatabase is GUI-thread-only.
-            property var fontPreview: ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
+                    readonly property var fontPreview: previewLoader.fontPreview
 
             PreviewLoader {
                 id: previewLoader
@@ -1336,6 +1343,7 @@ FocusScope {
                 if (previewIsDir) return "directory"
                 if (isArchive) return "archive"
                 if (isPdf) return "pdf"
+                if (isFont) return "font"
                 if (isText) return "text"
                 return ""
             }
@@ -1503,7 +1511,6 @@ FocusScope {
                 if (previewFilePath === "") {
                     fileProps = ({})
                     metadataHint = ""
-                    fontPreview = ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
                     previewLoader.stop()
                     return
                 }
@@ -1522,10 +1529,6 @@ FocusScope {
 
                 metadataHint = isRemoteUri
                     ? "" : metadataExtractor.missingDepsHint(fileProps.mimeType || "")
-
-                fontPreview = (isFont && !isRemoteUri)
-                    ? previewService.loadFontPreview(previewFilePath)
-                    : ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
 
                 previewLoader.reload()
             }
@@ -2030,7 +2033,7 @@ FocusScope {
 
                             Text {
                                 width: parent.width
-                                visible: !previewColumn.fontPreview.valid
+                                visible: !previewLoader.loading && !previewColumn.fontPreview.valid
                                 textFormat: Text.PlainText
                                 text: previewColumn.fontPreview.error || "Unable to load this font"
                                 color: Theme.error

@@ -30,6 +30,7 @@ Item {
     }
 
     function clearSuggestions() {
+        suggestionRequest = -1
         suggestionItems = []
         suggestionIndex = -1
     }
@@ -48,8 +49,10 @@ Item {
 
         // pathSuggestions keeps a typed "~" in what it offers, so only a
         // relative path is resolved here.
-        suggestionItems = fsModel.pathSuggestions(query.startsWith("~") ? query : normalizedInputPath(query),
-                                                  query.endsWith("/") ? -1 : 8)
+        suggestionItems = []
+        suggestionRequest = fsModel.requestPathSuggestions(
+            query.startsWith("~") ? query : normalizedInputPath(query),
+            query.endsWith("/") ? -1 : 8)
         // Return opens what was typed until a suggestion is explicitly chosen.
         suggestionIndex = -1
     }
@@ -88,8 +91,17 @@ Item {
     }
 
     property bool editMode: false
+    property int suggestionRequest: -1
     property var suggestionItems: []
     property int suggestionIndex: -1
+
+    Connections {
+        target: fsModel
+        function onPathSuggestionsReady(requestId, suggestions) {
+            if (root.editMode && requestId === root.suggestionRequest)
+                root.suggestionItems = suggestions
+        }
+    }
 
     // Icon components for breadcrumb context
     Component { id: bcIconHome; IconHome { size: 18; color: Theme.text } }

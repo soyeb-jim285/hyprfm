@@ -1,4 +1,5 @@
 #include "models/tablistmodel.h"
+#include "services/filesystemtasks.h"
 #include <QDir>
 #include <QJsonObject>
 #include <QFileInfo>
@@ -8,15 +9,6 @@ namespace {
 
 QString normalizedSessionPath(const QString &path)
 {
-    if (path.isEmpty())
-        return QDir::homePath();
-
-    const QUrl url(path);
-    if (url.scheme() == QStringLiteral("trash"))
-        return path;
-    if (url.isValid() && !url.scheme().isEmpty() && url.scheme() != QStringLiteral("file"))
-        return path;
-
     QFileInfo info(path);
     QString candidate = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
     while (!candidate.isEmpty() && !QFileInfo::exists(candidate)) {
@@ -27,6 +19,16 @@ QString normalizedSessionPath(const QString &path)
     }
 
     return QFileInfo::exists(candidate) ? QDir(candidate).absolutePath() : QDir::homePath();
+}
+
+QString sessionLocation(const QString &path)
+{
+    if (path.isEmpty())
+        return QDir::homePath();
+    const QUrl url(path);
+    if (url.isValid() && !url.scheme().isEmpty() && !url.isLocalFile())
+        return path;
+    return QDir::cleanPath(QFileInfo(url.isLocalFile() ? url.toLocalFile() : path).absoluteFilePath());
 }
 
 // QDir::cleanPath collapses the `//` of a URI, so only local paths go through it.
@@ -296,18 +298,41 @@ void TabListModel::restoreSession(const QJsonArray &tabs, int activeIdx)
     qDeleteAll(m_tabs);
     m_tabs.clear();
 
+    const MountTable mounts;
     for (const auto &val : tabs) {
         QJsonObject obj = val.toObject();
         auto *tab = new TabModel(this);
-        tab->navigateTo(normalizedSessionPath(obj.value("path").toString()));
+        const QString primary = sessionLocation(obj.value("path").toString());
+        const QString secondary = sessionLocation(obj.value("secondaryPath").toString(primary));
+        tab->navigateTo(primary);
         tab->setViewMode(obj.value("viewMode").toString(m_defaultViewMode));
         tab->setSplitViewEnabled(obj.value("splitViewEnabled").toBool(false));
         tab->setSplitOrientation(obj.value("splitOrientation").toString());
-        tab->setSecondaryCurrentPath(normalizedSessionPath(obj.value("secondaryPath").toString(tab->currentPath())));
+        tab->setSecondaryCurrentPath(secondary);
         tab->setSortBy(obj.value("sortBy").toString("name"));
         tab->setSortAscending(obj.value("sortAscending").toBool(true));
         m_tabs.append(tab);
         connectTab(m_tabs.size() - 1, tab);
+
+        // Show the saved location immediately. Finding a missing folder's
+        // nearest existing parent may have to wait for a filesystem.
+        if (QDir::isAbsolutePath(primary)) {
+            watchFilesystemTask(tab, mounts.forPath(primary), [primary]() {
+                return normalizedSessionPath(primary);
+            }, [tab, primary, secondary](const QString &resolved) {
+                tab->resolveRestoredPath(primary, resolved);
+                if (primary == secondary && tab->secondaryCurrentPath() == secondary && resolved != secondary)
+                    tab->setSecondaryCurrentPath(resolved);
+            });
+        }
+        if (secondary != primary && QDir::isAbsolutePath(secondary)) {
+            watchFilesystemTask(tab, mounts.forPath(secondary), [secondary]() {
+                return normalizedSessionPath(secondary);
+            }, [tab, secondary](const QString &resolved) {
+                if (tab->secondaryCurrentPath() == secondary && resolved != secondary)
+                    tab->setSecondaryCurrentPath(resolved);
+            });
+        }
     }
     endResetModel();
 

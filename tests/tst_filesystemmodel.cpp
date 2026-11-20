@@ -62,11 +62,11 @@ private slots:
 
     // Properties of a remote location outside the listing used to wait on
     // `gio info` (up to 8 s) on the GUI thread. They now answer at once with a
-    // pending placeholder and deliver the rest through remotePropertiesReady.
+    // pending placeholder and deliver the rest through propertiesReady.
     void testRemotePropertiesDoNotBlock()
     {
         FileSystemModel model;
-        QSignalSpy ready(&model, &FileSystemModel::remotePropertiesReady);
+        QSignalSpy ready(&model, &FileSystemModel::propertiesReady);
         const QString uri = QStringLiteral("sftp://127.0.0.1:1/nowhere/file.txt");
         QElapsedTimer t;
         t.start();

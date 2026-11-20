@@ -55,6 +55,7 @@ public:
     Q_INVOKABLE void secondaryGoForward();
     Q_INVOKABLE void secondaryGoUp();
     Q_INVOKABLE void resetSecondaryTo(const QString &path);
+    void resolveRestoredPath(const QString &savedPath, const QString &resolvedPath);
 
 signals:
     void currentPathChanged();

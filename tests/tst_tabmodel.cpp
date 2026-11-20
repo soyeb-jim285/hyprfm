@@ -596,8 +596,8 @@ private slots:
         model.restoreSession(tabs, 0);
 
         QVERIFY(model.activeTab() != nullptr);
-        QVERIFY(QFileInfo::exists(model.activeTab()->currentPath()));
-        QVERIFY(QFileInfo::exists(model.activeTab()->secondaryCurrentPath()));
+        QTRY_VERIFY(QFileInfo::exists(model.activeTab()->currentPath()));
+        QTRY_VERIFY(QFileInfo::exists(model.activeTab()->secondaryCurrentPath()));
     }
 };
 

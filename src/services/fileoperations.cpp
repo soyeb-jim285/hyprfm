@@ -1,4 +1,5 @@
 #include "services/fileoperations.h"
+#include "services/filesystemtasks.h"
 #include "services/archivepassword.h"
 #include "services/cloudmounts.h"
 #include "services/giotransferworker.h"
@@ -23,7 +24,6 @@
 #include <QSettings>
 #include <QSet>
 #include <QStandardPaths>
-#include <QStorageInfo>
 #include <csignal>
 #include <QTemporaryFile>
 #include <QUuid>
@@ -794,39 +794,21 @@ QString homeTrashFilesPath()
     return XdgTrash::homeRoot() + "/files";
 }
 
-QString existingLookupPathFor(const QString &path)
-{
-    QString candidate = QDir::cleanPath(path);
-    if (candidate.isEmpty())
-        return QDir::homePath();
-
-    const QFileInfo info(candidate);
-    candidate = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
-
-    while (!candidate.isEmpty() && !QFileInfo::exists(candidate)) {
-        const QString parent = QFileInfo(candidate).absolutePath();
-        if (parent == candidate)
-            break;
-        candidate = parent;
-    }
-
-    return QFileInfo::exists(candidate) ? candidate : QDir::homePath();
-}
-
 QStringList trashRootCandidatesForPath(const QString &path)
 {
     QStringList roots;
 
     const QString cleanPath = QDir::cleanPath(path);
     if (!cleanPath.isEmpty()) {
-        const QString lookupPath = existingLookupPathFor(cleanPath);
-        const QString storageRoot = QDir::cleanPath(QStorageInfo(lookupPath).rootPath());
+        // The UI calls this for each active pane. Mount-table lookup needs
+        // neither a stat of the path nor a statfs of the selected volume.
+        const MountTable mounts;
+        const QString storageRoot = mounts.mountPointForPath(cleanPath);
         // The freedesktop trash spec wants a volume's own .Trash-$uid only for files
         // on another filesystem than the home trash.  "Not on /" is not that test:
         // with /home as its own mount (btrfs subvolumes, a separate partition), every
         // file in home would be sent to /home/.Trash-$uid, which the user cannot create.
-        const QString homeTrashStorageRoot = QDir::cleanPath(
-            QStorageInfo(existingLookupPathFor(XdgTrash::homeRoot())).rootPath());
+        const QString homeTrashStorageRoot = mounts.mountPointForPath(XdgTrash::homeRoot());
         if (!storageRoot.isEmpty() && storageRoot != "/" && storageRoot != homeTrashStorageRoot) {
             const QString uid = currentUidString();
             roots.append(QDir(storageRoot).filePath(".Trash-" + uid));
@@ -846,6 +828,12 @@ QString matchingTrashFilesRoot(const QString &path)
 
     const QString cleanPath = QDir::cleanPath(path);
     if (cleanPath.isEmpty())
+        return {};
+    const QString homeFiles = homeTrashFilesPath();
+    if (cleanPath == homeFiles || cleanPath.startsWith(homeFiles + QLatin1Char('/')))
+        return homeFiles;
+    if (!cleanPath.contains(QLatin1String("/.Trash-"))
+        && !cleanPath.contains(QLatin1String("/.Trash/")))
         return {};
 
     for (const QString &trashRoot : trashRootCandidatesForPath(cleanPath)) {

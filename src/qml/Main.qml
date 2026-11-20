@@ -2685,15 +2685,16 @@ ApplicationWindow {
                     }
                 }
 
-                // A remote location outside the current listing is answered
-                // with a placeholder first; the rest arrives from gio later.
                 Connections {
                     target: propertiesDialog.fileModelRef
                     ignoreUnknownSignals: true
-                    function onRemotePropertiesReady(path, properties) {
+                    function onPropertiesReady(path, properties) {
                         if (propertiesDialog.props.path !== path)
                             return
+                        const wasPending = propertiesDialog.props.pending
                         propertiesDialog.props = properties
+                        if (wasPending)
+                            propertiesDialog.refreshFolderDiskUsage()
                         if (!properties.isDir && properties.mimeType)
                             propertiesDialog.apps = propertiesDialog.fileModelRef.availableApps(properties.mimeType)
                     }
@@ -2708,7 +2709,7 @@ ApplicationWindow {
                 function refreshFolderDiskUsage() {
                     cancelFolderDiskUsageRequest()
 
-                    if (!props.isDir || props.isTrashItem || !root.isLocalPath(props.path)) {
+                    if (props.pending || !props.isDir || props.isTrashItem || !root.isLocalPath(props.path)) {
                         folderDiskUsageText = ""
                         folderDiskUsagePending = false
                         return

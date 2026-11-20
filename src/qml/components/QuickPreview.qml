@@ -15,12 +15,19 @@ FocusScope {
     property var fileModel: fsModel
 
     property var fileProps: ({})
+    Connections {
+        target: root.fileModel
+        ignoreUnknownSignals: true
+        function onPropertiesReady(path, properties) {
+            if (root.active && path === root.fileProps.path)
+                root.fileProps = properties
+        }
+    }
     readonly property var textPreview: previewLoader.textPreview
     readonly property var directoryPreview: previewLoader.directoryPreview
     readonly property var pdfPreview: previewLoader.pdfPreview
     readonly property var fileMetadata: previewLoader.fileMetadata
-    // Fonts stay local: QFontDatabase is GUI-thread-only.
-    property var fontPreview: ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
+    readonly property var fontPreview: previewLoader.fontPreview
     property string metadataHint: ""
     property int pdfPageIndex: 0
 
@@ -170,6 +177,7 @@ FocusScope {
         if (isDirectory) return "directory"
         if (isArchive) return "archive"
         if (isPdf) return "pdf"
+        if (isFont) return "font"
         if (isText) return "text"
         return ""
     }
@@ -297,10 +305,6 @@ FocusScope {
 
         metadataHint = isRemoteUri
             ? "" : metadataExtractor.missingDepsHint(fileProps.mimeType || "")
-
-        fontPreview = (isFont && !isRemoteUri)
-            ? previewService.loadFontPreview(filePath)
-            : ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
 
         // Assigned, not bound: archivePassword() is a plain invokable with no
         // NOTIFY, so a binding would never re-evaluate after the user unlocks
@@ -1125,7 +1129,7 @@ FocusScope {
 
                                 Text {
                                     width: parent.width
-                                    visible: !root.fontPreview.valid
+                                    visible: !root.previewLoading && !root.fontPreview.valid
                                     textFormat: Text.PlainText
                                     text: root.fontPreview.error || "Unable to load this font"
                                     color: Theme.error
