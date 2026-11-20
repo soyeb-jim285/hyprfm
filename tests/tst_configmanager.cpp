@@ -597,6 +597,7 @@ private slots:
         QCOMPARE(mgr.shortcut("close_tab"), QString("Ctrl+W"));
         QCOMPARE(mgr.shortcut("open_in_new_tab"), QString("Ctrl+Return"));
         QCOMPARE(mgr.shortcut("open_in_split"), QString("Ctrl+Shift+Return"));
+        QCOMPARE(mgr.shortcut("compact_view"), QString("Ctrl+4"));
         QCOMPARE(mgr.shortcut("copy"), QString("Ctrl+C"));
         QCOMPARE(mgr.shortcut("cut"), QString("Ctrl+X"));
         QCOMPARE(mgr.shortcut("paste"), QString("Ctrl+V"));

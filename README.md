@@ -73,6 +73,7 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 
 - **Grid view** with adjustable column count (`Ctrl+Scroll` to zoom)
 - **Detailed view** with sortable columns, image/video thumbnails, and folder item counts
+- **Compact view** (`Ctrl+4`): small icons beside filenames, arranged in columns that fill downwards and scroll sideways
 - **Miller columns** (`Ctrl+2`): parent · current · live preview, the macOS Finder favorite
 - **Image and video thumbnails** in detailed and Miller views
 - **Quick preview** (`Space`): full-screen overlay for images, video (poster frame), PDFs, text and rendered Markdown, with metadata sidebar
@@ -309,6 +310,7 @@ install is needed there.
 | `Ctrl+1` | Grid view |
 | `Ctrl+2` | Miller column view |
 | `Ctrl+3` | Detailed view |
+| `Ctrl+4` | Compact view |
 | `Ctrl+Scroll` | Zoom (icon size or row height); also Settings → Layout → Icon Size |
 | `Space` | Quick preview |
 | `F3` | Toggle split pane |
@@ -389,7 +391,8 @@ light_theme = "catppuccin-latte"  # the Dark Mode switch in Settings flips
 dark_theme = "catppuccin-mocha"   # between these two
 icon_theme = "Adwaita"         # system icon theme fallback
 font_family = ""               # UI font; empty = desktop font
-default_view = "grid"          # grid | detailed | miller
+default_view = "grid"          # grid | detailed | miller | compact
+compact_full_names = false    # widen Compact columns to show complete filenames
 show_hidden = false
 builtin_terminal = false       # Open in Terminal uses the F4 panel instead of $TERMINAL
 dependency_startup_check = true # warn on startup when a required tool is missing

@@ -254,6 +254,35 @@ private slots:
         }
     }
 
+    void testFilePickerCompactViewSelectsAFile()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("chosen.txt");
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        App app;
+        QDir().mkpath(app.home.path() + "/.config/hyprfm");
+        QFile cfg(app.home.path() + "/.config/hyprfm/config.toml");
+        QVERIFY(cfg.open(QIODevice::WriteOnly));
+        cfg.write("[general]\ndefault_view = \"compact\"\n");
+        cfg.close();
+        QVERIFY(app.load(QJsonObject{{"mode", "open"}, {"current_folder", dir.path()}}));
+        QCOMPARE(app.window->property("viewMode").toString(), QString("compact"));
+        auto *container = app.item("pickerFiles");
+        QVERIFY(container);
+        QTRY_VERIFY(container->property("compactViewItem").value<QQuickItem *>());
+        auto *compact = container->property("compactViewItem").value<QQuickItem *>();
+        QTRY_COMPARE(compact->property("count").toInt(), 1);
+        compact->forceActiveFocus();
+        QTest::keyClick(app.window, Qt::Key_Home);
+        QTRY_COMPARE(app.window->property("selectedPaths").toStringList(), QStringList{path});
+        QSignalSpy complete(app.picker, &FilePicker::completed);
+        QVERIFY(QMetaObject::invokeMethod(app.window, "submit", Q_ARG(QVariant, false)));
+        QCOMPARE(complete.size(), 1);
+        QCOMPARE(complete.first().first().toJsonObject().value("uris").toArray().first().toString(), QUrl::fromLocalFile(path).toString());
+    }
+
     void testFilePickerCompactLayoutAndControls()
     {
         QTemporaryDir dir;
@@ -1859,6 +1888,7 @@ private slots:
         app.sessionState->setGridColumns(4);
         app.sessionState->setRowHeightDetailed(40);
         app.sessionState->setRowHeightMiller(48);
+        app.sessionState->setRowHeightCompact(34);
         QTRY_COMPARE(grid->property("columnCount").toInt(), 4);
 
         // A view built later has to start at the saved zoom, and must not
@@ -1873,6 +1903,13 @@ private slots:
         QTRY_COMPARE(miller->property("rowHeight").toInt(), 48);
         QCOMPARE(app.sessionState->rowHeightDetailed(), 40);
         QCOMPARE(app.sessionState->rowHeightMiller(), 48);
+        app.tabModel->activeTab()->setViewMode(QStringLiteral("compact"));
+        QTRY_VERIFY(subView("compactViewItem"));
+        QQuickItem *compact = subView("compactViewItem");
+        QTRY_COMPARE(compact->property("rowHeight").toInt(), 34);
+        app.sessionState->setRowHeightCompact(99);
+        QTRY_COMPARE(compact->property("rowHeight").toInt(), 56);
+        QCOMPARE(app.sessionState->rowHeightCompact(), 56);
 
         // Once built, a hidden view keeps following the saved zoom.
         app.sessionState->setRowHeightDetailed(36);
@@ -1940,7 +1977,7 @@ private slots:
         };
         QObject *gridSlider = slider("iconSizeGrid");
         QVERIFY(gridSlider);
-        QVERIFY(slider("iconSizeDetailed") && slider("iconSizeMiller"));
+        QVERIFY(slider("iconSizeDetailed") && slider("iconSizeMiller") && slider("iconSizeCompact"));
 
         // Dragging the grid slider one notch right must enlarge the icons,
         // which means one column fewer.
@@ -1953,6 +1990,7 @@ private slots:
         app.sessionState->setGridColumns(3);
         app.sessionState->setRowHeightDetailed(50);
         app.sessionState->setRowHeightMiller(24);
+        app.sessionState->setRowHeightCompact(32);
         QVERIFY(QMetaObject::invokeMethod(panel, "showSection", Q_ARG(QVariant, 0)));
         QVERIFY(QMetaObject::invokeMethod(panel, "showSection", Q_ARG(QVariant, 1)));
 
@@ -1962,10 +2000,11 @@ private slots:
                  reloadedGrid->property("gridSpan").toInt() - 3);
         QCOMPARE(slider("iconSizeDetailed")->property("value").toInt(), 50);
         QCOMPARE(slider("iconSizeMiller")->property("value").toInt(), 24);
+        QCOMPARE(slider("iconSizeCompact")->property("value").toInt(), 32);
     }
 
     // Switching view used to be reachable only through Ctrl+1/2/3 or the
-    // right-click menu. The toolbar now carries the three modes, and the
+    // right-click menu. The toolbar now carries the four modes, and the
     // active one is marked.
     void testToolbarViewSwitcherChangesTheViewMode()
     {
@@ -1980,7 +2019,8 @@ private slots:
         QQuickItem *grid = button("grid");
         QQuickItem *miller = button("miller");
         QQuickItem *detailed = button("detailed");
-        QVERIFY(grid && miller && detailed);
+        QQuickItem *compact = button("compact");
+        QVERIFY(grid && miller && detailed && compact);
         QVERIFY(grid->property("current").toBool());
         QVERIFY(!miller->property("current").toBool());
 
@@ -1992,11 +2032,68 @@ private slots:
         QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(detailed));
         QTRY_COMPARE(app.tabModel->activeTab()->viewMode(), QString("detailed"));
 
-        // The Ctrl+1/2/3 shortcuts still drive the same state, so the toolbar
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(compact));
+        QTRY_COMPARE(app.tabModel->activeTab()->viewMode(), QString("compact"));
+        QTRY_VERIFY(compact->property("current").toBool());
+
+        // The Ctrl+1/2/3/4 shortcuts still drive the same state, so the toolbar
         // has to follow them too.
         QTest::keyClick(app.window, Qt::Key_1, Qt::ControlModifier);
         QTRY_COMPARE(app.tabModel->activeTab()->viewMode(), QString("grid"));
         QTRY_VERIFY(grid->property("current").toBool());
+        QTest::keyClick(app.window, Qt::Key_4, Qt::ControlModifier);
+        QTRY_COMPARE(app.tabModel->activeTab()->viewMode(), QString("compact"));
+        QTRY_VERIFY(compact->property("current").toBool());
+    }
+
+    void testCompactViewRoutesSelectionInSplitPanesAndSearch()
+    {
+        App app;
+        const QString directory = app.home.path() + "/files";
+        QVERIFY(QDir().mkpath(directory));
+        const QString path = directory + "/compact-match.txt";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        tab->navigateTo(directory);
+        tab->setViewMode("compact");
+        auto *container = app.item("primaryFileView");
+        QVERIFY(container);
+        QTRY_VERIFY(container->property("compactViewItem").value<QQuickItem *>());
+        auto *compact = container->property("compactViewItem").value<QQuickItem *>();
+        QTRY_COMPARE(compact->property("count").toInt(), 1);
+        QVERIFY(QMetaObject::invokeMethod(compact, "focusPath", Q_ARG(QVariant, path), Q_ARG(QVariant, true)));
+        QVariant paths;
+        QVERIFY(QMetaObject::invokeMethod(app.window, "getSelectedPaths", Q_RETURN_ARG(QVariant, paths),
+                                          Q_ARG(QVariant, QStringLiteral("primary"))));
+        QCOMPARE(paths.toStringList(), QStringList{path});
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "toggleSplitView"));
+        QTRY_VERIFY(tab->splitViewEnabled());
+        QVariant secondary;
+        QVERIFY(QMetaObject::invokeMethod(app.window, "fileViewForPane", Q_RETURN_ARG(QVariant, secondary),
+                                          Q_ARG(QVariant, QStringLiteral("secondary"))));
+        auto *secondaryContainer = secondary.value<QObject *>();
+        QVERIFY(secondaryContainer);
+        QTRY_VERIFY(secondaryContainer->property("compactViewItem").value<QQuickItem *>());
+        auto *other = secondaryContainer->property("compactViewItem").value<QQuickItem *>();
+        QTRY_COMPARE(other->property("count").toInt(), 1);
+        app.sessionState->setRowHeightCompact(36);
+        QTRY_COMPARE(compact->property("rowHeight").toInt(), 36);
+        QCOMPARE(other->property("rowHeight").toInt(), 36);
+
+        QVERIFY(QMetaObject::invokeMethod(app.window, "setActivePane", Q_ARG(QVariant, QStringLiteral("primary"))));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "openSearch"));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "handleSearchQuery", Q_ARG(QVariant, QStringLiteral("compact-match"))));
+        QTRY_COMPARE(app.searchProxy->rowCount(), 1);
+        QTRY_COMPARE(compact->property("count").toInt(), 1);
+        QCOMPARE(compact->property("highlightQuery").toString(), QString("compact-match"));
+        QVERIFY(QMetaObject::invokeMethod(compact, "focusPath", Q_ARG(QVariant, path), Q_ARG(QVariant, true)));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "getSelectedPaths", Q_RETURN_ARG(QVariant, paths),
+                                          Q_ARG(QVariant, QStringLiteral("primary"))));
+        QCOMPARE(paths.toStringList(), QStringList{path});
     }
 
     void testToolbarSplitButtonsSelectTheirOrientation()

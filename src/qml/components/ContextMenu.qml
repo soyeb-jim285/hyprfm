@@ -808,7 +808,8 @@ Item {
                 submenuItems: [
                     { text: "Grid", shortcut: keys("grid_view"), action: "view_grid", checked: currentViewMode === "grid", icon: "Grid" },
                     { text: "Miller", shortcut: keys("miller_view"), action: "view_miller", checked: currentViewMode === "miller", icon: "Columns3" },
-                    { text: "Detailed", shortcut: keys("detailed_view"), action: "view_detailed", checked: currentViewMode === "detailed", icon: "AlignJustify" }
+                    { text: "Detailed", shortcut: keys("detailed_view"), action: "view_detailed", checked: currentViewMode === "detailed", icon: "AlignJustify" },
+                    { text: "Compact", shortcut: keys("compact_view"), action: "view_compact", checked: currentViewMode === "compact", icon: "List" }
                 ]
             })
             items.push({ text: "Sort By", shortcut: "", action: "sort_toggle", isSubmenu: true, icon: "SlidersH",
@@ -888,6 +889,7 @@ Item {
         case "view_grid": viewModeRequested("grid"); break
         case "view_miller": viewModeRequested("miller"); break
         case "view_detailed": viewModeRequested("detailed"); break
+        case "view_compact": viewModeRequested("compact"); break
         case "sort_name": sortRequested("name", currentSortAscending); break
         case "sort_size": sortRequested("size", currentSortAscending); break
         case "sort_modified": sortRequested("modified", currentSortAscending); break

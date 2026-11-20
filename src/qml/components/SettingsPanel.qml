@@ -82,6 +82,7 @@ Window {
     property bool draftShowHidden: currentShowHidden
     property bool draftHiddenLast: config.hiddenLast
     property bool draftGridFixedColumns: config.gridFixedColumns
+    property bool draftCompactFullNames: config.compactFullNames
     property bool draftRightClickToEditPath: config.rightClickToEditPath
     property bool draftSingleClickOpensFolders: config.singleClickOpensFolders
     property bool draftBuiltinTerminal: config.builtinTerminal
@@ -343,6 +344,7 @@ Window {
             draftShowHidden = currentShowHidden
             draftHiddenLast = config.hiddenLast
             draftGridFixedColumns = config.gridFixedColumns
+            draftCompactFullNames = config.compactFullNames
             draftRightClickToEditPath = config.rightClickToEditPath
             draftSingleClickOpensFolders = config.singleClickOpensFolders
             draftBuiltinTerminal = config.builtinTerminal
@@ -428,6 +430,7 @@ Window {
             showHidden: draftShowHidden,
             hiddenLast: draftHiddenLast,
             gridFixedColumns: draftGridFixedColumns,
+            compactFullNames: draftCompactFullNames,
             rightClickToEditPath: draftRightClickToEditPath,
             singleClickOpensFolders: draftSingleClickOpensFolders,
             builtinTerminal: draftBuiltinTerminal,
@@ -1043,6 +1046,28 @@ Window {
                 stepSize: 1
                 value: sessionState.rowHeightMiller > 0 ? sessionState.rowHeightMiller : 28
                 onMoved: (value) => sessionState.rowHeightMiller = Math.round(value)
+            }
+
+            Q.Slider {
+                objectName: "iconSizeCompact"
+                Layout.fillWidth: true
+                label: "Compact view"
+                from: 22
+                to: 56
+                stepSize: 1
+                value: sessionState.rowHeightCompact > 0 ? sessionState.rowHeightCompact : 28
+                onMoved: (value) => sessionState.rowHeightCompact = Math.round(value)
+            }
+
+            Q.Toggle {
+                objectName: "compactFullNames"
+                Layout.fillWidth: true
+                label: "Show full names in Compact view"
+                checked: root.draftCompactFullNames
+                onToggled: (value) => {
+                    root.draftCompactFullNames = value
+                    root.applySettingsNow()
+                }
             }
 
             Text {

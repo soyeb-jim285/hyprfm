@@ -6,7 +6,48 @@ import Quill as Q
 GridView {
     id: root
     Accessible.role: Accessible.List
-    Accessible.name: "File grid"
+    Accessible.name: compactMode ? qsTr("Compact file view") : "File grid"
+
+    property bool compactMode: false
+    property int rowHeight: 28
+    readonly property int minRowHeight: 22
+    readonly property int maxRowHeight: 56
+    readonly property int rowsPerColumn: Math.max(1, Math.floor(height / cellHeight))
+    property real compactNameWidth: 0
+    readonly property int compactColumnWidth: Math.ceil(Math.max(120 * Theme.uiScale,
+        iconSize + 28 + (config.compactFullNames ? compactNameWidth
+            : Math.min(compactNameWidth, nameMetrics.averageCharacterWidth * 32))))
+
+    FontMetrics {
+        id: nameMetrics
+        font.pointSize: Theme.fontNormal
+        onFontChanged: nameWidthTimer.restart()
+    }
+
+    function measureCompactNames() {
+        if (!compactMode) return
+        var longest = 0
+        var limit = config.compactFullNames ? Infinity : nameMetrics.averageCharacterWidth * 32
+        for (var i = 0; i < count; ++i) {
+            longest = Math.max(longest, nameMetrics.advanceWidth(fileNameForRow(i)))
+            if (longest >= limit) break
+        }
+        compactNameWidth = longest
+    }
+
+    Timer {
+        id: nameWidthTimer
+        interval: 0
+        onTriggered: root.measureCompactNames()
+    }
+    onCountChanged: nameWidthTimer.restart()
+    onModelChanged: nameWidthTimer.restart()
+    Connections {
+        target: config
+        function onConfigChanged() { nameWidthTimer.restart() }
+    }
+    flow: compactMode ? GridView.FlowTopToBottom : GridView.FlowLeftToRight
+    flickableDirection: compactMode ? Flickable.HorizontalFlick : Flickable.VerticalFlick
 
     property var selectedIndices: []
     property int lastSelectedIndex: -1   // anchor for shift-selection
@@ -84,9 +125,9 @@ GridView {
     readonly property int thumbnailRequestSize: 256 * Screen.devicePixelRatio
 
     // Spare width is shared out between the columns.
-    cellWidth: Math.floor(width / effectiveColumnCount)
-    cellHeight: targetCellSize
-    readonly property int iconSize: cellHeight - 8 - labelHeight - 5  // 8px top, 0px gap, 5px bottom
+    cellWidth: compactMode ? compactColumnWidth : Math.floor(width / effectiveColumnCount)
+    cellHeight: compactMode ? Math.max(rowHeight, Math.ceil(nameMetrics.height) + 8) : targetCellSize
+    readonly property int iconSize: compactMode ? Math.max(16, rowHeight - 8) : cellHeight - 8 - labelHeight - 5  // 8px top, 0px gap, 5px bottom
 
     focus: visible
     keyNavigationEnabled: false
@@ -148,12 +189,24 @@ GridView {
         }
     }
 
+    function zoomByWheel(delta) {
+        wheelScroller.stopAndSettle()
+        root.interactionStarted()
+        if (compactMode) {
+            var sizeStep = delta < 0 ? 2 : -2
+            rowHeight = Math.max(minRowHeight, Math.min(maxRowHeight, rowHeight + sizeStep))
+        } else {
+            var step = delta < 0 ? -1 : 1
+            columnCount = Math.max(minColumns, Math.min(maxColumns, columnCount + step))
+        }
+    }
+
     function moveSelection(delta, extend) {
         wheelScroller.stopAndSettle()
         if (count <= 0)
             return
         var current = cursorIndex >= 0 ? cursorIndex : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
-        var next = Math.max(0, Math.min(count - 1, current + delta))
+        var next = compactMode && current < 0 ? 0 : Math.max(0, Math.min(count - 1, current + delta))
         if (next === current && current >= 0) return
         if (extend && lastSelectedIndex >= 0) {
             var lo = Math.min(next, lastSelectedIndex)
@@ -190,10 +243,10 @@ GridView {
         positionViewAtIndex(next, GridView.Contain)
     }
 
-    Keys.onLeftPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
-    Keys.onRightPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
-    Keys.onUpPressed: (event) => moveSelection(-effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
-    Keys.onDownPressed: (event) => moveSelection(effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
+    Keys.onLeftPressed: (event) => moveSelection(compactMode ? -rowsPerColumn : -1, event.modifiers & Qt.ShiftModifier)
+    Keys.onRightPressed: (event) => moveSelection(compactMode ? rowsPerColumn : 1, event.modifiers & Qt.ShiftModifier)
+    Keys.onUpPressed: (event) => moveSelection(compactMode ? -1 : -effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
+    Keys.onDownPressed: (event) => moveSelection(compactMode ? 1 : effectiveColumnCount, event.modifiers & Qt.ShiftModifier)
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Home) {
             moveSelectionTo(0, event.modifiers & Qt.ShiftModifier)
@@ -231,7 +284,10 @@ GridView {
     }
 
     ScrollBar.vertical: ScrollBar {
-        policy: ScrollBar.AsNeeded
+        policy: root.compactMode ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded
+    }
+    ScrollBar.horizontal: ScrollBar {
+        policy: root.compactMode ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
     }
 
     function selectIndex(idx, ctrl, shift) {
@@ -557,10 +613,13 @@ GridView {
     }
 
     Connections {
-        target: root.model
+        target: root.model || null
         ignoreUnknownSignals: true
 
+        function onDataChanged() { nameWidthTimer.restart() }
+
         function onModelReset() {
+            nameWidthTimer.restart()
             // Indices no longer map to the same files; drop the stale selection.
             root.clearSelection()
             root.schedulePendingFocus()
@@ -579,6 +638,7 @@ GridView {
     // ── Delegate ───────────────────────────────────────────────────────────
     delegate: Item {
         id: delegateItem
+        objectName: root.compactMode ? "compactItem_" + index : ""
         width: root.cellWidth
         height: root.cellHeight
         // The hit/selection area: icon + label with a gap to the next cell, so
@@ -629,7 +689,7 @@ GridView {
             }
         }
 
-        readonly property bool hasThumbnail: !fileOps.isRemotePath(delegateItem.filePath) && !fileOps.isSlowPath(delegateItem.filePath)
+        readonly property bool hasThumbnail: !root.compactMode && !fileOps.isRemotePath(delegateItem.filePath) && !fileOps.isSlowPath(delegateItem.filePath)
             && (delegateItem.isDir || delegateItem.hasImagePreview || delegateItem.hasVideoPreview
                 || delegateItem.hasPdfPreview)
 
@@ -646,9 +706,12 @@ GridView {
             // checking only the status left those cells blank for good.
             visible: delegateItem.hasThumbnail && status === Image.Ready && implicitWidth > 0
             opacity: delegateItem.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: parent.top
-            anchors.topMargin: 8
+            anchors.horizontalCenter: root.compactMode ? undefined : parent.horizontalCenter
+            anchors.left: root.compactMode ? parent.left : undefined
+            anchors.leftMargin: 8
+            anchors.verticalCenter: root.compactMode ? parent.verticalCenter : undefined
+            anchors.top: root.compactMode ? undefined : parent.top
+            anchors.topMargin: root.compactMode ? 0 : 8
             width: root.iconSize
             height: root.iconSize
             fillMode: Image.PreserveAspectFit
@@ -669,9 +732,12 @@ GridView {
             id: iconImg
             visible: !thumbImg.visible
             opacity: delegateItem.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: parent.top
-            anchors.topMargin: 8
+            anchors.horizontalCenter: root.compactMode ? undefined : parent.horizontalCenter
+            anchors.left: root.compactMode ? parent.left : undefined
+            anchors.leftMargin: 8
+            anchors.verticalCenter: root.compactMode ? parent.verticalCenter : undefined
+            anchors.top: root.compactMode ? undefined : parent.top
+            anchors.topMargin: root.compactMode ? 0 : 8
             width: root.iconSize
             height: root.iconSize
             source: "image://icon/" + delegateItem.fileIconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
@@ -772,24 +838,29 @@ GridView {
         Text {
             id: measureText
             visible: false
-            width: labelText.width
+            width: root.compactMode ? 0 : labelText.width
             font: labelText.font
             textFormat: Text.PlainText
-            text: delegateItem.fileName
+            text: root.compactMode ? "" : delegateItem.fileName
             wrapMode: Text.WrapAnywhere
             maximumLineCount: 3
         }
 
         Text {
             id: labelText
-            width: selectionRect.width - 8
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: (iconImg.visible ? iconImg : thumbImg).bottom
+            objectName: root.compactMode ? "compactLabel_" + delegateItem.index : ""
+            width: root.compactMode ? parent.width - root.iconSize - 28 : selectionRect.width - 8
+            anchors.horizontalCenter: root.compactMode ? undefined : parent.horizontalCenter
+            anchors.left: root.compactMode ? iconImg.right : undefined
+            anchors.leftMargin: root.compactMode ? 8 : 0
+            anchors.verticalCenter: root.compactMode ? parent.verticalCenter : undefined
+            anchors.top: root.compactMode ? undefined : (iconImg.visible ? iconImg : thumbImg).bottom
             anchors.topMargin: 0
             textFormat: root.highlightQuery ? Text.StyledText : Text.PlainText
             text: root.highlightQuery ? Theme.highlightMatch(displayName, root.highlightQuery) : displayName
             readonly property string displayName: {
                 var name = delegateItem.fileName
+                if (root.compactMode) return nameMetrics.elidedText(name, Qt.ElideMiddle, labelText.width)
                 // If it fits in 2 lines, show as-is
                 if (measureText.lineCount <= 2) return name
                 // Middle-elide: keep last 6 chars (extension + some context)
@@ -805,11 +876,12 @@ GridView {
             // The file's name is the view's primary text: it gets the UI font
             // size, not the one-point-smaller secondary size.
             font.pointSize: Theme.fontNormal
-            horizontalAlignment: Text.AlignHCenter
-            maximumLineCount: 2
-            wrapMode: Text.WrapAnywhere
+            horizontalAlignment: root.compactMode ? Text.AlignLeft : Text.AlignHCenter
+            verticalAlignment: root.compactMode ? Text.AlignVCenter : Text.AlignTop
+            maximumLineCount: root.compactMode ? 1 : 2
+            wrapMode: root.compactMode ? Text.NoWrap : Text.WrapAnywhere
             clip: true
-            height: root.labelHeight
+            height: root.compactMode ? parent.height : root.labelHeight
         }
 
 
@@ -976,16 +1048,12 @@ GridView {
 
         onWheel: (wheel) => {
             if (wheel.modifiers & Qt.ControlModifier) {
-                wheelScroller.stopAndSettle()
-                root.interactionStarted()
-                // Scroll up = zoom in = fewer columns (bigger icons)
                 var delta = wheelScroller.deltaFor(wheel)
                 if (delta === 0) {
                     wheel.accepted = false
                     return
                 }
-                var step = delta < 0 ? -1 : 1
-                root.columnCount = Math.max(root.minColumns, Math.min(root.maxColumns, root.columnCount + step))
+                root.zoomByWheel(delta)
                 wheel.accepted = true
             } else {
                 wheel.accepted = false
@@ -1081,6 +1149,9 @@ GridView {
         anchors.fill: parent
         z: 12
         flickable: root
+        horizontal: root.compactMode
+        zoomEnabled: true
+        onZoomRequested: delta => root.zoomByWheel(delta)
         wheelStep: 42
         mouseWheelMultiplier: 0.75
         touchpadMultiplier: 1.35

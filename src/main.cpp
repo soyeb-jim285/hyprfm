@@ -1108,6 +1108,7 @@ int main(int argc, char *argv[])
         w->sessionState->setGridColumns(session.value("gridColumns").toInt());
         w->sessionState->setRowHeightDetailed(session.value("rowHeightDetailed").toInt());
         w->sessionState->setRowHeightMiller(session.value("rowHeightMiller").toInt());
+        w->sessionState->setRowHeightCompact(session.value("rowHeightCompact").toInt());
 
         const QString homePath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
         TabModel *activeTab = w->tabModel->activeTab();
@@ -1310,6 +1311,7 @@ int main(int argc, char *argv[])
         session["gridColumns"] = sessionWindow->sessionState->gridColumns();
         session["rowHeightDetailed"] = sessionWindow->sessionState->rowHeightDetailed();
         session["rowHeightMiller"] = sessionWindow->sessionState->rowHeightMiller();
+        session["rowHeightCompact"] = sessionWindow->sessionState->rowHeightCompact();
 
         QQuickWindow *win = sessionWindow->window;
         session["windowX"] = win->x();
@@ -1343,6 +1345,7 @@ int main(int argc, char *argv[])
         QObject::connect(sessionWindow->sessionState, &SessionState::gridColumnsChanged, &app, scheduleSessionSave);
         QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightDetailedChanged, &app, scheduleSessionSave);
         QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightMillerChanged, &app, scheduleSessionSave);
+        QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightCompactChanged, &app, scheduleSessionSave);
         QQuickWindow *win = sessionWindow->window;
         QObject::connect(win, &QQuickWindow::xChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::yChanged, &app, scheduleSessionSave);
