@@ -36,7 +36,10 @@ Rectangle {
     color: Theme.mantle
     clip: false
 
+    InterfaceZoom { anchors.fill: parent; z: 20 }
+
     Component { id: iconHome; IconHome { size: 18; color: Theme.subtext } }
+    Component { id: iconMonitor; IconMonitor { size: 18; color: Theme.subtext } }
     Component { id: iconClock; IconClock { size: 18; color: Theme.subtext } }
     Component { id: iconTrash; IconTrash { size: 18; color: Theme.subtext } }
     Component { id: iconImage; IconImage { size: 18; color: Theme.subtext } }
@@ -136,6 +139,7 @@ Rectangle {
             Repeater {
                 model: ListModel {
                     ListElement { name: "Home"; iconType: "home" }
+                    ListElement { name: "Computer"; iconType: "monitor" }
                     ListElement { name: "Recents"; iconType: "clock" }
                     ListElement { name: "Trash"; iconType: "trash" }
                     ListElement { name: "Network"; iconType: "globe" }
@@ -150,11 +154,12 @@ Rectangle {
                     // Entries the user hid via the sidebar context menu or
                     // Settings → Layout collapse away entirely.
                     visible: config.hiddenQuickAccess.indexOf(model.name) < 0
-                        && (!root.filePickerMode || ["Recents", "Trash", "Network"].indexOf(model.name) < 0)
+                        && (!root.filePickerMode || ["Computer", "Recents", "Trash", "Network"].indexOf(model.name) < 0)
 
                     readonly property string resolvedPath: {
                         const home = fsModel.homePath()
                         if (model.name === "Home") return home
+                        if (model.name === "Computer") return "computer:///"
                         if (model.name === "Recents") return ""
                         if (model.name === "Trash") return root.trashPath
                         if (model.name === "Network") return "network:///"
@@ -167,9 +172,10 @@ Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
                     height: visible ? 32 : 0
                     readonly property bool isActive: {
+                        if (model.name === "Computer") return !root.isRecentsView && /^computer:\/*$/i.test(root.currentPath)
                         if (model.name === "Recents") return root.isRecentsView
                         if (model.name === "Trash") return !root.isRecentsView && fileOps.isTrashPath(root.currentPath)
-                        if (model.name === "Network") return !root.isRecentsView && fileOps.isRemotePath(root.currentPath)
+                        if (model.name === "Network") return !root.isRecentsView && fileOps.isRemotePath(root.currentPath) && !/^computer:\/*$/i.test(root.currentPath)
                         if (resolvedPath === "") return false
                         return !root.isRecentsView && resolvedPath === root.currentPath
                     }
@@ -361,7 +367,10 @@ Rectangle {
         Item {
             id: bookmarksSection
             Layout.fillWidth: true
-            implicitHeight: Math.max(bookmarksList.height, root.activeSplitVisible ? rowHeight : 0)
+            // An empty list keeps one row as a drop target, so the first
+            // folder (or the active split) can still be dropped here.
+            implicitHeight: Math.max(bookmarksList.height,
+                                     root.activeSplitVisible || bookmarks.count === 0 ? rowHeight : 0)
 
             readonly property int rowHeight: 32
             readonly property bool externalDragActive:
@@ -433,10 +442,13 @@ Rectangle {
                     var insertAt = bookmarkDropArea._extDropIndex
                     var urls = bookmarksSection.dragUrls(drop)
                     bookmarksSection.clearExternalDrop()
+                    // insertBookmark refuses files (favourites are folders);
+                    // the next accepted folder goes after the previous one.
+                    var at = insertAt >= 0 ? insertAt : bookmarks.count
                     for (var i = 0; i < urls.length; i++) {
                         var path = bookmarksSection.decodedPath(urls[i])
-                        if (path !== "")
-                            bookmarks.insertBookmark(path, insertAt >= 0 ? insertAt : bookmarks.count)
+                        if (path !== "" && bookmarks.insertBookmark(path, at))
+                            at++
                     }
                     drop.accept()
                 }
@@ -592,9 +604,9 @@ Rectangle {
 
             Text {
                 objectName: "emptyBookmarksHint"
-                visible: bookmarks.count === 0 && root.activeSplitVisible
+                visible: bookmarks.count === 0 && !bookmarksSection.externalDragActive
                 anchors.centerIn: parent
-                text: "Drop here to save"
+                text: root.activeSplitVisible ? "Drop here to save" : "Drop folders here"
                 color: Theme.muted
                 font.pointSize: Theme.fontSmall
             }
@@ -884,11 +896,7 @@ Rectangle {
                                         : 0
                                     height: parent.height
                                     radius: parent.radius
-                                    color: model.usagePercent >= 90
-                                        ? Theme.error
-                                        : model.usagePercent >= 75
-                                            ? Theme.warning
-                                            : Theme.accent
+                                    color: Theme.usageColor(model.usagePercent)
                                 }
                             }
                         }

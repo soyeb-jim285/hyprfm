@@ -46,6 +46,20 @@ private slots:
         QTest::qWait(200);
     }
 
+    void testComputerRootIsVirtual()
+    {
+        FileSystemModel model;
+        model.setSynchronousReload(true);
+        model.setRootPath(QDir::tempPath());
+        model.setRootPath("computer:///");
+        // No asynchronous GIO enumeration starts for this model-less location.
+        QVERIFY(!model.isLoading());
+        QCOMPARE(model.rowCount(), 0);
+        QCOMPARE(model.fileCount(), 0);
+        QCOMPARE(model.folderCount(), 0);
+        QCOMPARE(model.diskFree(), qint64(-1));
+    }
+
     // Properties of a remote location outside the listing used to wait on
     // `gio info` (up to 8 s) on the GUI thread. They now answer at once with a
     // pending placeholder and deliver the rest through remotePropertiesReady.

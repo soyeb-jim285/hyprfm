@@ -1,4 +1,5 @@
 import QtQuick
+import HyprFM
 
 // Shared async driver for the two preview panels: the quick-preview overlay
 // and the Miller preview column. Both used to call PreviewService's blocking
@@ -14,7 +15,9 @@ QtObject {
 
     // Identifies this panel to PreviewService. Staleness is tracked per
     // requester, so the two panels never cancel one another.
-    property string requester: ""
+    property string requester: String(loader)
+    property bool lightTheme: Theme.base.r * 0.2126 + Theme.base.g * 0.7152 + Theme.base.b * 0.0722 > 0.5
+    onLightThemeChanged: if (path !== "" && kind === "text") reload()
 
     // Bound by the owner. Deliberately read at debounce-fire time rather
     // than inside reload(): both derive from the owner's fileProps, which is
@@ -81,7 +84,7 @@ QtObject {
             }
             loader.loading = loader.kind !== ""
             previewService.requestPreview(loader.requester, loader.path, loader.kind,
-                                          loader.password)
+                                          loader.password, loader.lightTheme)
         }
     }
 

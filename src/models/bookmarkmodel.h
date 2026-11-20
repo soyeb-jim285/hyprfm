@@ -30,7 +30,11 @@ public:
     QVariantMap names() const;
     QVariantList savedSplits() const;
 
-    Q_INVOKABLE void addBookmark(const QString &path);
+    // Favourites are folders: a local path that exists but is not a directory
+    // (a dropped file) is refused. Remote URIs and paths that are not there now
+    // (an unplugged drive) cannot be checked and are kept. Both return whether
+    // a bookmark was added; a path already in the list is not added twice.
+    Q_INVOKABLE bool addBookmark(const QString &path);
     // Inserts at index (-1 appends). Returns false for a duplicate or for two
     // panes on the same folder.
     Q_INVOKABLE bool addSplitBookmark(const QString &primaryPath, const QString &secondaryPath,
@@ -39,7 +43,7 @@ public:
     Q_INVOKABLE bool containsSplit(const QString &primaryPath, const QString &secondaryPath,
                                    const QString &orientation) const;
     Q_INVOKABLE QVariantMap splitAt(int index) const;
-    Q_INVOKABLE void insertBookmark(const QString &path, int index);
+    Q_INVOKABLE bool insertBookmark(const QString &path, int index);
     Q_INVOKABLE void removeBookmark(int index);
     Q_INVOKABLE void moveBookmark(int from, int to);
     // Empty or whitespace-only name reverts to the automatic one.
@@ -62,6 +66,7 @@ private:
 
     QList<Bookmark> m_bookmarks;
     static QString expandPath(const QString &path);
+    static bool isFolderPath(const QString &expanded);
     static QString portablePath(const QString &path);
     static QString iconForPath(const QString &path, const QString &name);
     Bookmark makeBookmark(const QString &path) const;

@@ -25,7 +25,7 @@ Item {
         // in the current one; "v1:old" is a folder name, not a scheme.
         if (trimmed !== "" && !trimmed.startsWith("/")
                 && !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed))
-            return (root.isRecentsView ? fsModel.homePath() : root.path).replace(/\/$/, "") + "/" + trimmed
+            return (root.isRecentsView || /^computer:\/*$/i.test(root.path) ? fsModel.homePath() : root.path).replace(/\/$/, "") + "/" + trimmed
         return trimmed
     }
 
@@ -115,7 +115,7 @@ Item {
         if (l === "documents" || l === "docs") return bcIconFileText
         if (l === "music" || l === "audio") return bcIconMusic
         if (l === "videos" || l === "movies") return bcIconVideo
-        if (l === "desktop") return bcIconMonitor
+        if (l === "desktop" || l === "computer") return bcIconMonitor
         if (l === ".config" || l === "config" || l === ".local") return bcIconSettings
         if (l === "projects" || l === "code" || l === "dev" || l === "src") return bcIconRocket
         return bcIconFolder
@@ -179,6 +179,7 @@ Item {
                 id: segmentsRepeater
                 model: {
                     if (root.isRecentsView) return [{ label: "Recents", fullPath: "" }]
+                    if (/^computer:\/*$/i.test(root.path)) return [{ label: "Computer", fullPath: "computer:///" }]
                     if (!root.path || root.path === "/") return []
 
                     return fileOps.breadcrumbSegments(root.path)
