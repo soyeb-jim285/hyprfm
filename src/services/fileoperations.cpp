@@ -842,6 +842,22 @@ QString matchingTrashFilesRoot(const QString &path)
     if (cleanPath.isEmpty())
         return {};
 
+    const QString homeFiles = homeTrashFilesPath();
+    if (cleanPath == homeFiles || cleanPath.startsWith(homeFiles + QLatin1Char('/')))
+        return homeFiles;
+
+    // The UI checks this during navigation. Only possible volume Trash
+    // paths need filesystem validation, which may wait for a mount.
+    const QString uid = currentUidString();
+    const auto containsTrashFiles = [&cleanPath, &uid](const QString &prefix) {
+        const QString files = prefix + uid + QStringLiteral("/files");
+        return cleanPath.endsWith(files) || cleanPath.contains(files + QLatin1Char('/'));
+    };
+    if (!containsTrashFiles(QStringLiteral("/.Trash-"))
+        && !containsTrashFiles(QStringLiteral("/.Trash/"))) {
+        return {};
+    }
+
     for (const QString &trashRoot : trashRootCandidatesForPath(cleanPath)) {
         const QString filesRoot = QDir(trashRoot).filePath("files");
         if (cleanPath == filesRoot || cleanPath.startsWith(filesRoot + "/"))
