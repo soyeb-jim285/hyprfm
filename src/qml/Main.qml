@@ -684,6 +684,7 @@ ApplicationWindow {
             && sidebarPanel.renamingBookmarkIndex < 0
             && !root.isShown(root.newFolderDialog)
             && !root.isShown(root.newFileDialog)
+            && !root.inlineEditActive()
             && !root.isShown(root.conflictDialog)
             && !root.isShown(root.deleteConfirmDialog)
             && !root.isShown(root.emptyTrashConfirmDialog)
@@ -1434,8 +1435,102 @@ ApplicationWindow {
         root.showContextMenuForPane(root.activePane, "", true, Qt.point(mapped.x, mapped.y))
     }
 
+    // ── Naming in place ───────────────────────────────────────────────
+    // Rename, New Folder and New File edit the name inside the file view
+    // (InlineEditState / InlineNameEditor). The dialogs remain for what has
+    // no visible row there: another folder's new item, Computer, a path the
+    // view is not showing.
+    function inlineEditView() {
+        if (root.paneIsComputer(root.activePane))
+            return null
+        const view = root.activeSubView()
+        return view && view.inlineEdit ? view : null
+    }
+    function inlineEditActive() {
+        const view = root.activeSubView()
+        return !!(view && view.inlineEdit && (view.inlineEdit.active || view.inlineEdit.pending))
+    }
+
+    function joinChildPath(parentPath, name) {
+        return parentPath === "/" ? "/" + name : parentPath + "/" + name
+    }
+
+    // Rename PATH to NAME; "" on success, else the reason to show.
+    // keepSelection: the user clicked elsewhere, so the selection stays there.
+    function renameEntry(path, name, keepSelection) {
+        if (!path || !name)
+            return ""
+        if (name.indexOf("/") >= 0)
+            return "A name cannot contain \u201c/\u201d"
+        const targetPath = root.joinChildPath(fileOps.parentPath(path), name)
+        if (targetPath === path)
+            return ""
+        if (fileOps.pathExists(targetPath))
+            return "\"" + name + "\" already exists"
+        if (fileOps.isRemotePath(path)) {
+            const result = fileOps.renameResolvedItems([{ sourcePath: path, targetPath: targetPath }])
+            if (!result.success)
+                return result.error || "Rename failed"
+            fsModel.refresh()
+            splitFsModel.refresh()
+        } else if (!undoManager.rename(path, name)) {
+            return "Rename failed"
+        }
+        if (!keepSelection)
+            root.focusPathInPane(root.activePane, targetPath, true)
+        return ""
+    }
+
+    function uniqueChildName(parentPath, base) {
+        var name = base
+        for (var i = 2; fileOps.pathExists(root.joinChildPath(parentPath, name)); ++i)
+            name = base + " " + i
+        return name
+    }
+
+    // New Folder / New File in the folder the active pane shows: create it
+    // under a free default name and name it in place. Escape keeps that name.
+    function createAndNameInline(parentPath, isFolder) {
+        const view = root.inlineEditView()
+        if (!view || parentPath !== root.panePath(root.activePane)
+                || root.paneIsRecents(root.activePane) || root.paneSearchMode(root.activePane))
+            return false
+        const name = root.uniqueChildName(parentPath, isFolder ? "New Folder" : "New File")
+        const created = root.joinChildPath(parentPath, name)
+        if (fileOps.isRemotePath(parentPath)) {
+            if (isFolder) fileOps.createFolder(parentPath, name)
+            else fileOps.createFile(parentPath, name)
+            fsModel.refresh()
+            splitFsModel.refresh()
+        } else if (isFolder) {
+            undoManager.createFolder(parentPath, name)
+        } else {
+            undoManager.createFile(parentPath, name)
+        }
+        if (!fileOps.pathExists(created)) {
+            toast.show("Could not create \u201c" + name + "\u201d", "error")
+            return true
+        }
+        view.inlineEdit.begin(created, name,
+            (path, typed, keepSelection) => {
+                if (typed === name) {
+                    if (!keepSelection) root.focusPathInPane(root.activePane, path, true)
+                    return ""
+                }
+                return root.renameEntry(path, typed, keepSelection)
+            },
+            path => root.focusPathInPane(root.activePane, path, true),
+            true)
+        return true
+    }
+
     function openRenameDialogForPath(path) {
         if (!path)
+            return
+
+        const view = root.inlineEditView()
+        if (view && view.inlineEdit.begin(path, path.substring(path.lastIndexOf("/") + 1),
+                                          (p, name, keepSelection) => root.renameEntry(p, name, keepSelection), null, false))
             return
 
         root.renameTargetPath = path
@@ -1453,6 +1548,11 @@ ApplicationWindow {
     }
 
     function toggleRenameWorkflow(paths) {
+        const inlineView = root.activeSubView()
+        if (inlineView && inlineView.inlineEdit && inlineView.inlineEdit.active) {
+            inlineView.inlineEdit.cancel()
+            return
+        }
         if (root.isShown(root.renameDialog)) {
             root.renameDialog.reject()
             return
@@ -1472,6 +1572,8 @@ ApplicationWindow {
     function showNewFolderDialog(parentPath) {
         if (!parentPath || root.isComputerPath(parentPath))
             return
+        if (root.createAndNameInline(parentPath, true))
+            return
 
         root.newItemParentPath = parentPath
         newFolderDialogLoader.active = true
@@ -1485,7 +1587,8 @@ ApplicationWindow {
             return
         }
 
-        if (root.isShown(root.renameDialog) || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || root.isShown(root.newFileDialog))
+        if (root.isShown(root.renameDialog) || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || root.isShown(root.newFileDialog)
+                || root.inlineEditActive())
             return
 
         showNewFolderDialog(parentPath)
@@ -1493,6 +1596,8 @@ ApplicationWindow {
 
     function showNewFileDialog(parentPath) {
         if (!parentPath || root.isComputerPath(parentPath))
+            return
+        if (root.createAndNameInline(parentPath, false))
             return
 
         root.newItemParentPath = parentPath
@@ -1507,7 +1612,8 @@ ApplicationWindow {
             return
         }
 
-        if (root.isShown(root.renameDialog) || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || root.isShown(root.newFolderDialog))
+        if (root.isShown(root.renameDialog) || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || root.isShown(root.newFolderDialog)
+                || root.inlineEditActive())
             return
 
         showNewFileDialog(parentPath)

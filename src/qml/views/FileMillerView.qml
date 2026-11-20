@@ -17,6 +17,8 @@ FocusScope {
     property var selectedIndices: currentColumn.selectedIndices
     property int lastSelectedIndex: currentColumn.lastSelectedIndex
     property int cursorIndex: currentColumn.cursorIndex
+    // Naming an entry in place (rename, new folder/file); see InlineEditState.
+    property InlineEditState inlineEdit: InlineEditState { view: root }
 
     signal fileActivated(string filePath, bool isDirectory)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
@@ -850,6 +852,9 @@ FocusScope {
                 id: currentDelegate
                 width: currentColumn.width
                 height: root.rowHeight
+                // The edited entry stacks above its neighbours, so its error label
+                // is not drawn under the next row.
+                z: root.inlineEdit.active && root.inlineEdit.path === filePath ? 2 : 0
 
                 // The remove transition leaves opacity/scale animated down, and
                 // reuseItems recycles that item as-is (view transitions never
@@ -1040,7 +1045,9 @@ FocusScope {
                         }
 
                         Text {
+                            id: currentNameText
                             width: parent.width - (root.millerIconSize + 2) - (currentDelegate.isDir ? (root.millerIconSize + 2) : 0) - parent.spacing * (currentDelegate.isDir ? 2 : 1) - parent.anchors.leftMargin - parent.anchors.rightMargin
+                            visible: !currentNameEditor.editing
                             anchors.verticalCenter: parent.verticalCenter
                             textFormat: root.highlightQuery ? Text.StyledText : Text.PlainText
                             text: root.highlightQuery
@@ -1049,6 +1056,16 @@ FocusScope {
                             color: Theme.text
                             font.pointSize: Theme.fontNormal
                             elide: Text.ElideRight
+                        }
+
+                        InlineNameEditor {
+                            id: currentNameEditor
+                            state: root.inlineEdit
+                            path: currentDelegate.filePath
+                            isDir: currentDelegate.isDir
+                            width: currentNameText.width
+                            height: Math.min(implicitHeight, currentDelegate.height)
+                            anchors.verticalCenter: parent.verticalCenter
                         }
 
                         IconChevronRight {

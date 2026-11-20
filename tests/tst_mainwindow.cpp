@@ -12,6 +12,7 @@
 #include <QDirIterator>
 #include <QRegularExpression>
 #include <QFile>
+#include <QFileInfo>
 #include <QFont>
 #include <QPainter>
 #include <QPointingDevice>
@@ -3715,6 +3716,212 @@ private slots:
         QTest::keyClick(app.window, Qt::Key_Return, Qt::ControlModifier);
         QTRY_COMPARE(app.tabModel->rowCount(), tabs + 1);
         QTRY_COMPARE(app.tabModel->activeTab()->currentPath(), mount);
+    }
+
+    // ── Naming in place ────────────────────────────────────────────────
+
+    static QQuickItem *findVisible(QQuickItem *parent, const QString &name)
+    {
+        for (QQuickItem *child : parent->childItems()) {
+            if (child->objectName() == name && child->isVisible())
+                return child;
+            if (QQuickItem *hit = findVisible(child, name))
+                return hit;
+        }
+        return nullptr;
+    }
+    // QTest::keyClicks takes widgets only.
+    static void typeText(QWindow *window, const QString &text)
+    {
+        for (const QChar c : text)
+            QTest::keyClick(window, c.toLatin1());
+    }
+    static bool dialogShown(App &app, const char *property)
+    {
+        auto *dialog = app.window->property(property).value<QQuickItem *>();
+        return dialog && dialog->isVisible();
+    }
+    static bool openHomeIn(App &app, const QString &viewMode)
+    {
+        app.tabModel->activeTab()->navigateTo(app.home.path());
+        app.tabModel->activeTab()->setViewMode(viewMode);
+        auto *baseModel = app.engine.rootContext()->contextProperty("fsModel").value<QObject *>();
+        return QTest::qWaitFor([&] {
+            return baseModel->property("rootPath").toString() == app.home.path()
+                && !baseModel->property("isLoading").toBool();
+        });
+    }
+
+    void testRenameInPlaceInEveryView_data()
+    {
+        QTest::addColumn<QString>("viewMode");
+        for (const QString &mode : {QString("grid"), QString("compact"), QString("detailed"), QString("miller")})
+            QTest::newRow(qPrintable(mode)) << mode;
+    }
+
+    // F2 edits the name inside the view instead of opening a dialog.
+    void testRenameInPlaceInEveryView()
+    {
+        QFETCH(QString, viewMode);
+        App app;
+        const QString notes = app.home.filePath("notes.txt");
+        for (const QString &path : {notes, app.home.filePath("other.txt")}) {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(app.load());
+        QVERIFY(openHomeIn(app, viewMode));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("primary")),
+                                          Q_ARG(QVariant, notes), Q_ARG(QVariant, true)));
+        QTRY_COMPARE(app.window->property("currentSelectedCount").toInt(), 1);
+
+        auto *content = app.window->contentItem();
+        QTest::keyClick(app.window, Qt::Key_F2);
+        QTRY_VERIFY(findVisible(content, "inlineNameInput"));
+        auto *input = findVisible(content, "inlineNameInput");
+        QTRY_VERIFY(input->hasActiveFocus());
+        QCOMPARE(input->property("text").toString(), QString("notes.txt"));
+        QCOMPARE(input->property("selectedText").toString(), QString("notes"));
+        QVERIFY(!dialogShown(app, "renameDialog"));
+
+        // Editing keys stay in the field: Delete removes text, not the file.
+        QTest::keyClick(app.window, Qt::Key_Delete);
+        QCOMPARE(input->property("text").toString(), QString(".txt"));
+        QVERIFY(QFile::exists(notes));
+        // A taken name keeps the field open and says why.
+        typeText(app.window, "other");
+        QTest::keyClick(app.window, Qt::Key_Return);
+        QTRY_VERIFY(findVisible(content, "inlineNameError"));
+        QVERIFY(findVisible(content, "inlineNameInput"));
+        QVERIFY(QFile::exists(notes));
+        if (qEnvironmentVariableIsSet("HYPRFM_INLINE_GRAB"))
+            app.window->grabWindow().save(qEnvironmentVariable("HYPRFM_INLINE_GRAB") + "-" + viewMode + ".png");
+        // Escape leaves the name alone.
+        QTest::keyClick(app.window, Qt::Key_Escape);
+        QTRY_VERIFY(!findVisible(content, "inlineNameInput"));
+        QVERIFY(QFile::exists(notes));
+
+        // Enter renames; a space is text, not Quick Preview.
+        QTest::keyClick(app.window, Qt::Key_F2);
+        QTRY_VERIFY(findVisible(content, "inlineNameInput"));
+        QTRY_VERIFY(findVisible(content, "inlineNameInput")->hasActiveFocus());
+        typeText(app.window, "my plans");
+        QTest::keyClick(app.window, Qt::Key_Return);
+        const QString renamed = app.home.filePath("my plans.txt");
+        QTRY_VERIFY(QFile::exists(renamed));
+        QVERIFY(!QFile::exists(notes));
+        QTRY_VERIFY(!findVisible(content, "inlineNameInput"));
+        // Keyboard focus is back in the view, not on the hidden field.
+        QTRY_VERIFY(app.window->activeFocusItem()
+                    && app.window->activeFocusItem()->objectName() != "inlineNameInput");
+        auto *quick = app.window->property("quickPreview").value<QObject *>();
+        QVERIFY(!quick || !quick->property("active").toBool());
+        QTRY_VERIFY([&] {
+            QVariant selection;
+            QMetaObject::invokeMethod(app.window, "getSelectedPaths", Q_RETURN_ARG(QVariant, selection),
+                                      Q_ARG(QVariant, QString("primary")));
+            return selection.toStringList() == QStringList{renamed};
+        }());
+    }
+
+    // Clicking another entry applies the typed name and leaves the
+    // selection on what was clicked.
+    void testClickingElsewhereAppliesTheName()
+    {
+        App app;
+        const QString first = app.home.filePath("first.txt");
+        const QString second = app.home.filePath("second.txt");
+        for (const QString &path : {first, second}) {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(app.load());
+        app.window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(app.window));
+        QVERIFY(openHomeIn(app, "grid"));
+        auto *container = app.item("primaryFileView");
+        auto *grid = container->property("gridViewItem").value<QQuickItem *>();
+        QVERIFY(grid);
+        QVERIFY(QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("primary")),
+                                          Q_ARG(QVariant, first), Q_ARG(QVariant, true)));
+        QTRY_COMPARE(app.window->property("currentSelectedCount").toInt(), 1);
+        auto *content = app.window->contentItem();
+        QTest::keyClick(app.window, Qt::Key_F2);
+        QTRY_VERIFY(findVisible(content, "inlineNameInput"));
+        QTRY_VERIFY(findVisible(content, "inlineNameInput")->hasActiveFocus());
+        typeText(app.window, "draft");
+
+        QVariant row;
+        QVERIFY(QMetaObject::invokeMethod(grid, "rowForPath", Q_RETURN_ARG(QVariant, row), Q_ARG(QVariant, second)));
+        QQuickItem *target = nullptr;
+        QVERIFY(QMetaObject::invokeMethod(grid, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, target), Q_ARG(int, row.toInt())));
+        QVERIFY(target);
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(target));
+        QTRY_VERIFY(QFile::exists(app.home.filePath("draft.txt")));
+        QVERIFY(!QFile::exists(first));
+        QTRY_VERIFY(!findVisible(content, "inlineNameInput"));
+        QTRY_VERIFY([&] {
+            QVariant selection;
+            QMetaObject::invokeMethod(app.window, "getSelectedPaths", Q_RETURN_ARG(QVariant, selection),
+                                      Q_ARG(QVariant, QString("primary")));
+            return selection.toStringList() == QStringList{second};
+        }());
+    }
+
+    void testNewFolderAndFileNamedInPlace_data()
+    {
+        QTest::addColumn<QString>("viewMode");
+        for (const QString &mode : {QString("grid"), QString("compact"), QString("detailed"), QString("miller")})
+            QTest::newRow(qPrintable(mode)) << mode;
+    }
+
+    // New Folder / New File appear at once under a default name, already
+    // being renamed in place. Escape keeps the default name.
+    void testNewFolderAndFileNamedInPlace()
+    {
+        QFETCH(QString, viewMode);
+        App app;
+        QVERIFY(app.load());
+        QVERIFY(openHomeIn(app, viewMode));
+        auto *content = app.window->contentItem();
+        auto editorReady = [&]() {
+            auto *input = findVisible(content, "inlineNameInput");
+            return input && input->hasActiveFocus();
+        };
+
+        QTest::keyClick(app.window, Qt::Key_N, Qt::ControlModifier | Qt::ShiftModifier);
+        QTRY_VERIFY(QFileInfo(app.home.filePath("New Folder")).isDir());
+        QTRY_VERIFY(editorReady());
+        auto *input = findVisible(content, "inlineNameInput");
+        QCOMPARE(input->property("text").toString(), QString("New Folder"));
+        QCOMPARE(input->property("selectedText").toString(), QString("New Folder"));
+        QVERIFY(!dialogShown(app, "newFolderDialog"));
+        typeText(app.window, "Projects");
+        QTest::keyClick(app.window, Qt::Key_Return);
+        QTRY_VERIFY(QFileInfo(app.home.filePath("Projects")).isDir());
+        QVERIFY(!QFile::exists(app.home.filePath("New Folder")));
+        QTRY_VERIFY(!findVisible(content, "inlineNameInput"));
+
+        QTest::keyClick(app.window, Qt::Key_N, Qt::ControlModifier | Qt::ShiftModifier);
+        QTRY_VERIFY(editorReady());
+        QTest::keyClick(app.window, Qt::Key_Escape);
+        QTRY_VERIFY(!findVisible(content, "inlineNameInput"));
+        QVERIFY(QFileInfo(app.home.filePath("New Folder")).isDir());
+        // The next default name does not collide with the one kept.
+        QTest::keyClick(app.window, Qt::Key_N, Qt::ControlModifier | Qt::ShiftModifier);
+        QTRY_VERIFY(QFileInfo(app.home.filePath("New Folder 2")).isDir());
+        QTRY_VERIFY(editorReady());
+        QTest::keyClick(app.window, Qt::Key_Escape);
+        QTRY_VERIFY(!findVisible(content, "inlineNameInput"));
+
+        QTest::keyClick(app.window, Qt::Key_N, Qt::ControlModifier);
+        QTRY_VERIFY(QFileInfo(app.home.filePath("New File")).isFile());
+        QTRY_VERIFY(editorReady());
+        QVERIFY(!dialogShown(app, "newFileDialog"));
+        typeText(app.window, "todo.md");
+        QTest::keyClick(app.window, Qt::Key_Return);
+        QTRY_VERIFY(QFileInfo(app.home.filePath("todo.md")).isFile());
+        QVERIFY(!QFile::exists(app.home.filePath("New File")));
     }
 
     // ── Favourites ─────────────────────────────────────────────────────

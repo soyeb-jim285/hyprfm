@@ -384,11 +384,11 @@ Run `hyprfm --help` for the full list of flags and environment variables.
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / Cut / Paste |
 | `Ctrl+A` | Select all |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / Redo |
-| `F2` | Rename |
+| `F2` | Rename in place (Enter applies, Escape cancels); several selected files open Bulk Rename |
 | `Delete` | Move to trash |
 | `Shift+Delete` | Permanent delete |
-| `Ctrl+Shift+N` | New folder |
-| `Ctrl+N` | New file |
+| `Ctrl+Shift+N` | New folder, named in place (Escape keeps "New Folder") |
+| `Ctrl+N` | New file, named in place |
 | `Alt+Return` | Properties |
 | `Ctrl+Alt+T` | Open terminal here (`$TERMINAL`, or the built-in one with `builtin_terminal = true`) |
 | `Shift+F10` | Context menu |

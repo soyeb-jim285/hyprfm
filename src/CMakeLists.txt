@@ -115,6 +115,8 @@ list(APPEND hyprfm_qml_module_args
         qml/components/Breadcrumb.qml
         qml/components/Toolbar.qml
         qml/components/HoverRect.qml
+        qml/components/InlineEditState.qml
+        qml/components/InlineNameEditor.qml
         qml/views/FileViewContainer.qml
         qml/views/ComputerView.qml
         qml/views/FileGridView.qml

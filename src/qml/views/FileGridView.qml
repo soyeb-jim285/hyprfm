@@ -52,6 +52,8 @@ GridView {
     property var selectedIndices: []
     property int lastSelectedIndex: -1   // anchor for shift-selection
     property int cursorIndex: -1         // moving end for keyboard navigation
+    // Naming an entry in place (rename, new folder/file); see InlineEditState.
+    property InlineEditState inlineEdit: InlineEditState { view: root }
 
     // Current directory path (used as drop target)
     property string currentPath: ""
@@ -684,6 +686,9 @@ GridView {
         objectName: root.compactMode ? "compactItem_" + index : ""
         width: root.cellWidth
         height: root.cellHeight
+        // The edited entry stacks above its neighbours, so its error label
+        // is not drawn under the next row.
+        z: root.inlineEdit.active && root.inlineEdit.path === filePath ? 2 : 0
         // The hit/selection area: icon + label with a gap to the next cell, so
         // the space between items is empty space (rubber band, background menu).
         readonly property alias tile: selectionRect
@@ -897,6 +902,7 @@ GridView {
         Text {
             id: labelText
             objectName: root.compactMode ? "compactLabel_" + delegateItem.index : ""
+            visible: !nameEditor.editing
             width: root.compactMode ? parent.width - root.iconSize - 28 : selectionRect.width - 8
             anchors.horizontalCenter: root.compactMode ? undefined : parent.horizontalCenter
             anchors.left: root.compactMode ? iconImg.right : undefined
@@ -930,6 +936,19 @@ GridView {
             wrapMode: root.compactMode ? Text.NoWrap : Text.WrapAnywhere
             clip: true
             height: root.compactMode ? parent.height : root.labelHeight
+        }
+
+        InlineNameEditor {
+            id: nameEditor
+            state: root.inlineEdit
+            path: delegateItem.filePath
+            isDir: delegateItem.isDir
+            anchors.left: labelText.left
+            anchors.right: labelText.right
+            anchors.top: root.compactMode ? undefined : labelText.top
+            anchors.verticalCenter: root.compactMode ? parent.verticalCenter : undefined
+            height: implicitHeight
+            horizontalAlignment: root.compactMode ? TextInput.AlignLeft : TextInput.AlignHCenter
         }
 
 

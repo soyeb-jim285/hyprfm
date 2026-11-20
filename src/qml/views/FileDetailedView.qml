@@ -12,6 +12,8 @@ FocusScope {
     property var selectedIndices: []
     property int lastSelectedIndex: -1   // anchor for shift-selection
     property int cursorIndex: -1         // moving end for keyboard navigation
+    // Naming an entry in place (rename, new folder/file); see InlineEditState.
+    property InlineEditState inlineEdit: InlineEditState { view: root }
     property string sortColumn: "name"
     property bool sortAscending: true
 
@@ -1024,6 +1026,9 @@ FocusScope {
                 id: detRow
                 width: listView.width
                 height: root.rowHeight
+                // The edited entry stacks above its neighbours, so its error label
+                // is not drawn under the next row.
+                z: root.inlineEdit.active && root.inlineEdit.path === filePath ? 2 : 0
 
                 // The remove transition leaves opacity/scale animated down, and
                 // reuseItems recycles that item as-is (view transitions never
@@ -1198,6 +1203,7 @@ FocusScope {
 
                         Text {
                             width: root.colName - 20
+                            visible: !detNameEditor.editing
                             anchors.verticalCenter: parent.verticalCenter
                             textFormat: root.highlightQuery ? Text.StyledText : Text.PlainText
                             text: root.highlightQuery
@@ -1206,6 +1212,16 @@ FocusScope {
                             color: Theme.text
                             font.pointSize: Theme.fontNormal
                             elide: Text.ElideRight
+                        }
+
+                        InlineNameEditor {
+                            id: detNameEditor
+                            state: root.inlineEdit
+                            path: detRow.filePath
+                            isDir: detRow.isDir
+                            width: root.colName - 20
+                            height: Math.min(implicitHeight, parent.height)
+                            anchors.verticalCenter: parent.verticalCenter
                         }
                     }
                 }
