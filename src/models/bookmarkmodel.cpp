@@ -144,18 +144,9 @@ QString BookmarkModel::portablePath(const QString &path)
     return path;
 }
 
-void BookmarkModel::addBookmark(const QString &path)
+bool BookmarkModel::addBookmark(const QString &path)
 {
-    QString expanded = expandPath(path);
-    if (containsPath(expanded))
-        return;
-
-    int row = m_bookmarks.size();
-    beginInsertRows(QModelIndex(), row, row);
-    m_bookmarks.append(makeBookmark(expanded));
-    endInsertRows();
-    emit countChanged();
-    emit bookmarksChanged();
+    return insertBookmark(path, m_bookmarks.size());
 }
 
 BookmarkModel::Bookmark BookmarkModel::makeSplitBookmark(const QString &primary, const QString &secondary,
@@ -226,11 +217,11 @@ QVariantList BookmarkModel::savedSplits() const
     return result;
 }
 
-void BookmarkModel::insertBookmark(const QString &path, int index)
+bool BookmarkModel::insertBookmark(const QString &path, int index)
 {
     QString expanded = expandPath(path);
-    if (containsPath(expanded))
-        return;
+    if (expanded.isEmpty() || !isFolderPath(expanded) || containsPath(expanded))
+        return false;
 
     int row = qBound(0, index, m_bookmarks.size());
     beginInsertRows(QModelIndex(), row, row);
@@ -238,6 +229,7 @@ void BookmarkModel::insertBookmark(const QString &path, int index)
     endInsertRows();
     emit countChanged();
     emit bookmarksChanged();
+    return true;
 }
 
 void BookmarkModel::removeBookmark(int index)
@@ -297,6 +289,14 @@ BookmarkModel::Bookmark BookmarkModel::makeBookmark(const QString &rawPath) cons
     QString expanded = expandPath(rawPath);
     QString name = bookmarkDisplayName(expanded);
     return {name, expanded, iconForPath(expanded, name.toLower())};
+}
+
+bool BookmarkModel::isFolderPath(const QString &expanded)
+{
+    if (!QDir::isAbsolutePath(expanded))
+        return true; // a remote URI: nothing local to check
+    const QFileInfo info(expanded);
+    return !info.exists() || info.isDir();
 }
 
 QString BookmarkModel::expandPath(const QString &path)

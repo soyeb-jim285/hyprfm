@@ -45,6 +45,7 @@
 #include "models/tablistmodel.h"
 #include "models/bookmarkmodel.h"
 #include "models/devicemodel.h"
+#include "models/computermodel.h"
 #include "models/recentfilesmodel.h"
 #include "models/searchresultsmodel.h"
 #include "models/searchproxymodel.h"
@@ -946,6 +947,8 @@ int main(int argc, char *argv[])
 
     // Create DeviceModel
     DeviceModel *devices = new DeviceModel(&app, true);
+    auto *computerModel = new ComputerModel(&app);
+    computerModel->setDevices(devices);
 
     // Aggregate runtime tools + compile-time features + DBus services for the
     // in-app MissingDependenciesDialog. Replaces the older hand-rolled
@@ -973,22 +976,28 @@ int main(int argc, char *argv[])
     // An unset icon theme follows the desktop; Adwaita is the last resort when
     // nothing answers. Resolved inside ConfigManager so QML's config.iconTheme
     // (the ?theme= in every image://icon URL) sees the same answer.
-    config->setIconThemeFallback(desktop.iconTheme.isEmpty() ? QStringLiteral("Adwaita")
-                                                             : desktop.iconTheme);
+    const QString nativeIconTheme = desktop.iconTheme.isEmpty() ? QStringLiteral("Adwaita") : desktop.iconTheme;
+    config->setIconThemeFallback(nativeIconTheme);
 
     // Set icon theme so QIcon::fromTheme() works (e.g. for drag pixmaps)
-    QIcon::setThemeName(config->iconTheme());
+    QIcon::setThemeName(config->iconTheme() == "Strata" ? nativeIconTheme : config->iconTheme());
 
     // Register image providers (keep pointer to IconProvider for DragHelper)
     auto *iconProvider = new IconProvider(config->iconTheme());
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
     engine.addImageProvider("icon", iconProvider);
+    const auto updateIconPalette = [=]() {
+        iconProvider->setPalette(theme->accent(), theme->base(), config->fileIconColors() == "theme");
+    };
+    updateIconPalette();
+    QObject::connect(theme, &ThemeLoader::themeChanged, &app, updateIconPalette);
+    QObject::connect(config, &ConfigManager::configChanged, &app, updateIconPalette);
     engine.addImageProvider("pdfpreview", new PdfPreviewProvider);
 
     DragHelper *dragHelper = new DragHelper(iconProvider, &app);
 
     QObject::connect(config, &ConfigManager::configChanged, [=]() {
-        QIcon::setThemeName(config->iconTheme());
+        QIcon::setThemeName(config->iconTheme() == "Strata" ? nativeIconTheme : config->iconTheme());
         iconProvider->setPrimaryTheme(config->iconTheme());
     });
 
@@ -1005,6 +1014,7 @@ int main(int argc, char *argv[])
     shared->setContextProperty("clipboard", clipboard);
     shared->setContextProperty("dragHelper", dragHelper);
     shared->setContextProperty("devices", devices);
+    shared->setContextProperty("computerModel", computerModel);
     shared->setContextProperty("recentFiles", recentFiles);
     shared->setContextProperty("previewService", previewService);
     shared->setContextProperty("metadataExtractor", metadataExtractor);
@@ -1106,8 +1116,15 @@ int main(int argc, char *argv[])
         // Session-scoped view state (zoom per view). 0 keeps built-in defaults.
         w->sessionState = new SessionState(w);
         w->sessionState->setGridColumns(session.value("gridColumns").toInt());
+        // Grid zoom was a column count until 0.7.x; the size it gave becomes
+        // the icon size (a cell of 1600/columns px, less the 45 px label).
+        if (session.contains("gridIconSize"))
+            w->sessionState->setGridIconSize(session.value("gridIconSize").toInt());
+        else if (const int columns = session.value("gridColumns").toInt(); columns > 0)
+            w->sessionState->setGridIconSize(qBound(32, qRound(1600.0 / columns) - 45, 512));
         w->sessionState->setRowHeightDetailed(session.value("rowHeightDetailed").toInt());
         w->sessionState->setRowHeightMiller(session.value("rowHeightMiller").toInt());
+        w->sessionState->setRowHeightCompact(session.value("rowHeightCompact").toInt());
 
         const QString homePath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
         TabModel *activeTab = w->tabModel->activeTab();
@@ -1308,8 +1325,10 @@ int main(int argc, char *argv[])
         session["tabs"] = sessionWindow->tabModel->saveSession();
         session["activeTab"] = sessionWindow->tabModel->activeIndex();
         session["gridColumns"] = sessionWindow->sessionState->gridColumns();
+        session["gridIconSize"] = sessionWindow->sessionState->gridIconSize();
         session["rowHeightDetailed"] = sessionWindow->sessionState->rowHeightDetailed();
         session["rowHeightMiller"] = sessionWindow->sessionState->rowHeightMiller();
+        session["rowHeightCompact"] = sessionWindow->sessionState->rowHeightCompact();
 
         QQuickWindow *win = sessionWindow->window;
         session["windowX"] = win->x();
@@ -1341,8 +1360,10 @@ int main(int argc, char *argv[])
         QObject::connect(sessionWindow->tabModel, &TabListModel::sessionChanged, &app, scheduleSessionSave);
         // Zoom changes are session state too, so persist them the same way.
         QObject::connect(sessionWindow->sessionState, &SessionState::gridColumnsChanged, &app, scheduleSessionSave);
+        QObject::connect(sessionWindow->sessionState, &SessionState::gridIconSizeChanged, &app, scheduleSessionSave);
         QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightDetailedChanged, &app, scheduleSessionSave);
         QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightMillerChanged, &app, scheduleSessionSave);
+        QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightCompactChanged, &app, scheduleSessionSave);
         QQuickWindow *win = sessionWindow->window;
         QObject::connect(win, &QQuickWindow::xChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::yChanged, &app, scheduleSessionSave);
