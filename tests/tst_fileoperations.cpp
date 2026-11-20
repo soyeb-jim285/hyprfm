@@ -1282,6 +1282,20 @@ private slots:
         QVERIFY(ops.isTrashPath(expectedTrashPath + "/example.txt"));
     }
 
+    void testOrdinaryPathsAreNotTrash()
+    {
+        FileOperations ops;
+        const QString documents = QDir::home().filePath(QStringLiteral("Documents"));
+        const QString uid = QString::number(geteuid());
+
+        QVERIFY(!ops.isTrashPath(documents));
+        QVERIFY(!ops.isTrashPath(documents + QStringLiteral("/missing/photo.jpg")));
+        QVERIFY(!ops.isTrashPath(documents + QStringLiteral("/.Trash-") + uid
+                                 + QStringLiteral("/files-backup/photo.jpg")));
+        QVERIFY(!ops.isTrashPath(documents + QStringLiteral("/.Trash/") + uid
+                                 + QStringLiteral("/files-backup/photo.jpg")));
+    }
+
     void testTrashHelpersForMountedVolume()
     {
         const QString mediaRoot = "/run/media/" + qEnvironmentVariable("USER");
