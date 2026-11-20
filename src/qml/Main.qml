@@ -252,6 +252,7 @@ ApplicationWindow {
     // Open in Terminal, from every menu and the shortcut. `other` picks the
     // kind the setting does not, for the second menu entry.
     function openTerminalAt(path, other) {
+        if (root.isComputerPath(path)) return
         if (root.builtinTerminalAvailable && config.builtinTerminal !== !!other)
             root.openTerminalPanel(path)
         else
@@ -369,9 +370,18 @@ ApplicationWindow {
             : tabModel.activeTab.currentPath
     }
 
+    function isComputerPath(path) {
+        return /^computer:\/*$/i.test(path || "")
+    }
+
+    function paneIsComputer(pane) {
+        return !paneIsRecents(pane) && !paneSearchMode(pane) && isComputerPath(panePath(pane))
+    }
+
     function pathDisplayName(path) {
         if (!path)
             return ""
+        if (isComputerPath(path)) return "Computer"
 
         if (fileOps.isTrashPath(path)) {
             var trashPath = path.length > 9 && path.endsWith("/") ? path.slice(0, -1) : path
@@ -492,6 +502,7 @@ ApplicationWindow {
     }
 
     function showPropertiesFor(path) {
+        if (!path || root.isComputerPath(path)) return
         propertiesDialogLoader.active = true
         root.propertiesDialog.showProperties(path)
     }
@@ -635,11 +646,7 @@ ApplicationWindow {
         if (!view)
             return null
 
-        var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-        if (vm === "grid") return view.gridViewItem
-        if (vm === "miller") return view.millerViewItem
-        if (vm === "compact") return view.compactViewItem
-        return view.detailedViewItem
+        return view.activeView()
     }
 
     function activeSubView() {
@@ -833,7 +840,7 @@ ApplicationWindow {
     }
 
     function beginTransfer(paths, destinationPath, moveOperation, clearClipboardOnSuccess) {
-        if (!paths || paths.length === 0 || !destinationPath)
+        if (!paths || paths.length === 0 || !destinationPath || root.isComputerPath(destinationPath))
             return
 
         var plan = fileOps.transferPlan(paths, destinationPath)
@@ -958,6 +965,7 @@ ApplicationWindow {
             return
 
         var currentPath = panePath(activePane)
+        if (isComputerPath(currentPath)) return
         if (fileOps.isRemotePath(currentPath)) {
             var parentRemotePath = fileOps.parentPath(currentPath)
             if (parentRemotePath && parentRemotePath !== currentPath)
@@ -1069,6 +1077,7 @@ ApplicationWindow {
     }
 
     function activeItemCount() {
+        if (root.paneIsComputer(activePane)) return computerModel.count
         if (root.paneIsRecents(activePane))
             return recentFiles.count
         if (root.paneShowsSearchResults(activePane))
@@ -1079,7 +1088,7 @@ ApplicationWindow {
     }
 
     function activeFolderCount() {
-        if (root.paneIsRecents(activePane) || root.paneShowsSearchResults(activePane))
+        if (root.paneIsComputer(activePane) || root.paneIsRecents(activePane) || root.paneShowsSearchResults(activePane))
             return 0
 
         return paneBaseModel(activePane).folderCount
@@ -1089,11 +1098,11 @@ ApplicationWindow {
     // nothing about them. Everything else, search included, is one directory
     // and the model reports -1 wherever a disk is meaningless anyway.
     function activeDiskFree() {
-        return root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskFree
+        return root.paneIsComputer(activePane) || root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskFree
     }
 
     function activeDiskTotal() {
-        return root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskTotal
+        return root.paneIsComputer(activePane) || root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskTotal
     }
 
     function applyActiveTabSort() {
@@ -1131,6 +1140,14 @@ ApplicationWindow {
 
     function updateSelectionStatus() {
         var subView = activeSubView()
+
+        if (paneIsComputer(activePane)) {
+            cancelSelectedSizeRequest()
+            currentSelectedCount = subView && subView.selectedDevices ? subView.selectedDevices.length : 0
+            currentSelectedSize = ""
+            currentSelectedSizePending = false
+            return
+        }
 
         if (!subView || !subView.selectedIndices) {
             cancelSelectedSizeRequest()
@@ -1230,6 +1247,11 @@ ApplicationWindow {
     }
 
     function currentOrSelectedDirectoryPath() {
+        if (root.paneIsComputer(root.activePane)) {
+            var view = root.activeSubView()
+            return view && view.selectedDevices && view.selectedDevices.length
+                ? view.selectedMountPath() : root.panePath(root.activePane)
+        }
         var items = root.getSelectedItems(root.activePane)
         if (items.length === 1 && items[0].isDir)
             return items[0].path
@@ -1241,6 +1263,10 @@ ApplicationWindow {
     }
 
     function selectedOrCurrentPropertiesPath() {
+        if (root.paneIsComputer(root.activePane)) {
+            var view = root.activeSubView()
+            return view && view.selectedMountPath ? view.selectedMountPath() : ""
+        }
         var items = root.getSelectedItems(root.activePane)
         if (items.length === 1)
             return items[0].path
@@ -1252,6 +1278,10 @@ ApplicationWindow {
     }
 
     function selectedOrCurrentTerminalPath() {
+        if (root.paneIsComputer(root.activePane)) {
+            var view = root.activeSubView()
+            return view && view.selectedMountPath ? view.selectedMountPath() : ""
+        }
         var items = root.getSelectedItems(root.activePane)
         if (items.length === 1)
             return items[0].isDir ? items[0].path : fileOps.parentPath(items[0].path)
@@ -1353,7 +1383,7 @@ ApplicationWindow {
     }
 
     function showNewFolderDialog(parentPath) {
-        if (!parentPath)
+        if (!parentPath || root.isComputerPath(parentPath))
             return
 
         root.newItemParentPath = parentPath
@@ -1375,7 +1405,7 @@ ApplicationWindow {
     }
 
     function showNewFileDialog(parentPath) {
-        if (!parentPath)
+        if (!parentPath || root.isComputerPath(parentPath))
             return
 
         root.newItemParentPath = parentPath
@@ -3559,6 +3589,10 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcutMap["refresh"]
         onActivated: {
+            if (root.paneIsComputer(activePane)) {
+                root.activeSubView().refresh()
+                return
+            }
             fsModel.refresh()
             splitFsModel.refresh()
         }
@@ -3874,6 +3908,15 @@ ApplicationWindow {
                     hideEntry
                 ]
 
+            if (root.isComputerPath(item.path))
+                return [
+                    { text: "Open", shortcut: config.shortcutMap["open"] || "Return", action: "open" },
+                    { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
+                    { text: "Open in Split View", shortcut: "", action: "split_open", icon: "SquareSplitHorizontal" },
+                    { separator: true },
+                    hideEntry
+                ]
+
             if (fileOps.isTrashPath(item.path))
                 return [
                     { text: "Open", shortcut: config.shortcutMap["open"] || "Return", action: "open" },
@@ -4070,7 +4113,7 @@ ApplicationWindow {
     }
 
     function pasteIntoDirectory(destPath) {
-        if (!destPath)
+        if (!destPath || root.isComputerPath(destPath))
             return
 
         if (clipboard.hasContent) {
@@ -4405,9 +4448,13 @@ ApplicationWindow {
                                     ? "" : root.paneBaseModel("primary").loadError
                                 viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                                 currentPath: root.panePath("primary")
+                                showComputer: root.paneIsComputer("primary")
 
                                 onInteractionStarted: root.setActivePane("primary")
                                 onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("primary", filePath, isDirectory)
+                                onOpenInNewTabRequested: path => root.openPathInNewTab(path)
+                                onOpenInSplitViewRequested: path => root.openPathInSplitView(path)
+                                onFeatureHintRequested: message => toast.show(message, "info")
                                 // Model resets also clear selection; only an
                                 // interaction should switch the active pane.
                                 onSelectionChanged: {
@@ -4503,9 +4550,13 @@ ApplicationWindow {
                                         ? "" : root.paneBaseModel("secondary").loadError
                                     viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                                     currentPath: root.panePath("secondary")
+                                    showComputer: root.paneIsComputer("secondary")
 
                                     onInteractionStarted: root.setActivePane("secondary")
                                     onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("secondary", filePath, isDirectory)
+                                    onOpenInNewTabRequested: path => root.openPathInNewTab(path)
+                                    onOpenInSplitViewRequested: path => root.openPathInSplitView(path)
+                                    onFeatureHintRequested: message => toast.show(message, "info")
                                     onSelectionChanged: {
                                         root.updateSelectionStatus()
                                     }
@@ -4579,6 +4630,7 @@ ApplicationWindow {
                     objectName: "statusBar"
                     Layout.fillWidth: true
                     itemCount: root.activeItemCount()
+                    itemSummary: root.paneIsComputer(activePane) ? computerModel.count + (computerModel.count === 1 ? " drive" : " drives") : ""
                     folderCount: root.activeFolderCount()
                     searchStatus: root.searchMode && root.searchServiceForPane(activePane).isSearching
                         ? "Searching... " + root.searchServiceForPane(activePane).resultCount + " results"

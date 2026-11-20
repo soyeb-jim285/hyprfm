@@ -77,6 +77,8 @@ HyprFM is a Qt6/QML file manager designed to feel native on Hyprland: lightweigh
 - **Miller columns** (`Ctrl+2`): parent · current · live preview, the macOS Finder favorite
 - **Image and video thumbnails** in detailed and Miller views
 - **Quick preview** (`Space`): full-screen overlay for images, video (poster frame), PDFs, text and rendered Markdown, with metadata sidebar
+- **Preview zoom**: 25–400% in quick preview and the Miller preview pane, with a slider, `Ctrl+Scroll`, and `Ctrl+0` to reset while the preview has focus. Zoom stays with that preview when switching files; magnified images and PDF pages scroll.
+- **Computer**: open the sidebar shortcut or `computer:///` for drive cards with device icons, used-space bars, and free/total capacity. Double-click or press Enter to open a drive; its menu also offers mount and unmount actions.
 - **Split pane** (`F3`): work in two directories side by side
 - **Built-in terminal** (`F4`): a shell under the file view, on Ghostty's terminal core (libghostty-vt), with mouse selection, `Ctrl+Shift+C`/`Ctrl+Shift+V`, and mouse support for programs like htop and vim
 
@@ -407,7 +409,7 @@ position = "left"
 width = 200
 visible = true
 # Quick-access entries to hide. Valid names:
-# "Home", "Recents", "Trash", "Network", "Pictures", "Downloads"
+# "Home", "Computer", "Recents", "Trash", "Network", "Pictures", "Downloads"
 hidden_quick_access = []
 
 [appearance]

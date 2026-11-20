@@ -840,7 +840,7 @@ header = "name"
 # 0 turns it off; anything else is clamped to 320-2000.
 auto_hide_width = 700
 # Quick-access entries to hide. Valid names:
-# "Home", "Recents", "Trash", "Network", "Pictures", "Downloads"
+# "Home", "Computer", "Recents", "Trash", "Network", "Pictures", "Downloads"
 hidden_quick_access = []
 
 [appearance]

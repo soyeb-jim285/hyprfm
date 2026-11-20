@@ -230,6 +230,7 @@ add_executable(tst_mainwindow tst_mainwindow.cpp
     ${CMAKE_SOURCE_DIR}/src/models/filesystemmodel.cpp
     ${CMAKE_SOURCE_DIR}/src/services/xdgtrash.cpp
     ${CMAKE_SOURCE_DIR}/src/models/devicemodel.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/computermodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/recentfilesmodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/searchresultsmodel.cpp
     ${CMAKE_SOURCE_DIR}/src/models/searchproxymodel.cpp
@@ -274,6 +275,13 @@ add_executable(tst_devicemodel tst_devicemodel.cpp
 target_include_directories(tst_devicemodel PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_devicemodel PRIVATE Qt6::Test Qt6::Core Qt6::DBus PkgConfig::GIO)
 add_test(NAME tst_devicemodel COMMAND tst_devicemodel)
+
+add_executable(tst_computermodel tst_computermodel.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/computermodel.cpp
+)
+target_include_directories(tst_computermodel PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_computermodel PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+add_test(NAME tst_computermodel COMMAND tst_computermodel)
 
 add_executable(tst_iconprovider tst_iconprovider.cpp)
 target_include_directories(tst_iconprovider PRIVATE ${CMAKE_SOURCE_DIR}/src)

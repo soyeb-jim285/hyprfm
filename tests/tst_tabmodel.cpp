@@ -224,6 +224,21 @@ private slots:
         QCOMPARE(tab.currentPath(), QString("sftp://example.com/"));
     }
 
+    void testComputerTitleAndHistory()
+    {
+        TabModel tab;
+        tab.navigateTo("/tmp");
+        for (const QString &path : {QString("computer:///"), QString("computer://"), QString("COMPUTER:///")}) {
+            tab.navigateTo(path);
+            QCOMPARE(tab.title(), QString("Computer"));
+            tab.goUp();
+            QCOMPARE(tab.currentPath(), path);
+        }
+        tab.navigateTo("/");
+        tab.goBack();
+        QCOMPARE(tab.title(), QString("Computer"));
+    }
+
     // === TabListModel tests ===
 
     void testTabListModelInitialState()

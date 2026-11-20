@@ -11,6 +11,11 @@
 #include <QDirIterator>
 #include <QRegularExpression>
 #include <QFile>
+#include <QFont>
+#include <QPainter>
+#include <QPdfWriter>
+#include <QQuickTextDocument>
+#include <QTextDocument>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickItem>
@@ -18,12 +23,14 @@
 #include <QQuickWindow>
 #include <QScopeGuard>
 #include <QStyleHints>
+#include <QStandardPaths>
 #include <algorithm>
 #include <functional>
 #include <QTemporaryDir>
 #include <QWheelEvent>
 #include "models/bookmarkmodel.h"
 #include "models/devicemodel.h"
+#include "models/computermodel.h"
 #include "models/filesystemmodel.h"
 #include "models/recentfilesmodel.h"
 #include "models/searchproxymodel.h"
@@ -119,6 +126,8 @@ class TestMainWindow : public QObject
             auto *runtimeFeatures = new RuntimeFeaturesService(&owner);
             auto *recentFiles = new RecentFilesModel(configDir + "/recents.json", &owner);
             auto *devices = new DeviceModel(&owner, true);
+            auto *computerModel = new ComputerModel(&owner);
+            computerModel->setDevices(devices);
             auto *dependencies = new DependencyChecker(&owner);
             sessionState = new SessionState(&owner);
             auto *iconProvider = new IconProvider(config->iconTheme());
@@ -143,6 +152,7 @@ class TestMainWindow : public QObject
             ctx->setContextProperty("millerParentModel", millerParentModel);
             ctx->setContextProperty("millerPreviewModel", millerPreviewModel);
             ctx->setContextProperty("devices", devices);
+            ctx->setContextProperty("computerModel", computerModel);
             ctx->setContextProperty("recentFiles", recentFiles);
             ctx->setContextProperty("searchProxy", searchProxy);
             ctx->setContextProperty("searchResults", searchResults);
@@ -268,6 +278,170 @@ private slots:
         auto *compact = container->property("compactViewItem").value<QQuickItem *>();
         QTRY_VERIFY(fileImage(compact));
         QVERIFY(fileImage(compact)->property("source").toString().contains("fileColors=theme"));
+    }
+
+    void testPreviewZoomIsLocalAndFollowsContent_data()
+    {
+        QTest::addColumn<bool>("quick");
+        QTest::newRow("quick-preview") << true;
+        QTest::newRow("miller-pane") << false;
+    }
+
+    void testPreviewZoomIsLocalAndFollowsContent()
+    {
+        QFETCH(bool, quick);
+        App app;
+        const QString first = app.home.filePath("first.txt");
+        const QString second = app.home.filePath("second.txt");
+        for (const auto &path : {first, second}) {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(QByteArray("Preview zoom content\n").repeated(120));
+        }
+        QVERIFY(app.load());
+        app.tabModel->activeTab()->navigateTo(app.home.path());
+        if (!quick) app.tabModel->activeTab()->setViewMode("miller");
+        auto *baseModel = app.engine.rootContext()->contextProperty("fsModel").value<QObject *>();
+        QTRY_COMPARE(baseModel->property("rootPath").toString(), app.home.path());
+        QTRY_VERIFY(!baseModel->property("isLoading").toBool());
+        // The two entry points have different signatures.
+        auto preview = [&](const QString &path) {
+            if (quick) return QMetaObject::invokeMethod(app.window, "showQuickPreview", Q_ARG(QVariant, path));
+            return QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("primary")),
+                                             Q_ARG(QVariant, path), Q_ARG(QVariant, true));
+        };
+        QVERIFY(preview(first));
+        QTRY_VERIFY(app.item(quick ? "quickPreviewZoom" : "millerPreviewZoom"));
+        auto *controls = app.item(quick ? "quickPreviewZoom" : "millerPreviewZoom");
+        QTRY_VERIFY(controls->property("available").toBool());
+        auto *scope = quick ? app.window->property("quickPreview").value<QQuickItem *>() : app.item("millerPreviewColumn");
+        QVERIFY(scope);
+        QTRY_COMPARE(scope->property(quick ? "filePath" : "previewFilePath").toString(), first);
+        auto *text = app.item(quick ? "quickPreviewText" : "millerPreviewText");
+        QVERIFY(text);
+        auto *document = text->property("textDocument").value<QQuickTextDocument *>();
+        QVERIFY(document);
+        QTRY_VERIFY2(document->textDocument()->toPlainText().contains("Preview zoom content"),
+                     qPrintable(document->textDocument()->toPlainText().left(300)));
+        QCOMPARE(controls->property("factor").toReal(), 1.0);
+        const qreal fontSize = text->property("font").value<QFont>().pointSizeF();
+        const int fileRowSize = app.sessionState->rowHeightMiller();
+        const int gridZoom = app.sessionState->gridColumns();
+        auto *slider = App::findItem(controls, "previewZoomSlider");
+        QVERIFY(slider);
+        QVERIFY(QMetaObject::invokeMethod(slider, "moved", Q_ARG(qreal, 2.0)));
+        QTRY_COMPARE(controls->property("factor").toReal(), 2.0);
+        QTRY_COMPARE(text->property("font").value<QFont>().pointSizeF(), fontSize * 2);
+        QCOMPARE(app.sessionState->rowHeightMiller(), fileRowSize);
+        QCOMPARE(app.sessionState->gridColumns(), gridZoom);
+        QVERIFY(QMetaObject::invokeMethod(controls, "setFactor", Q_ARG(QVariant, 99)));
+        QCOMPARE(controls->property("factor").toReal(), 4.0);
+        QVERIFY(QMetaObject::invokeMethod(controls, "setFactor", Q_ARG(QVariant, 0)));
+        QCOMPARE(controls->property("factor").toReal(), 0.25);
+        scope->forceActiveFocus();
+        QTest::keyClick(app.window, Qt::Key_0, Qt::ControlModifier);
+        QTRY_COMPARE(controls->property("factor").toReal(), 1.0);
+        const QPoint point = app.center(controls);
+        QWheelEvent wheel(point, app.window->mapToGlobal(point), {}, QPoint(0, 120),
+                          Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(app.window, &wheel);
+        QTRY_VERIFY(controls->property("factor").toReal() > 1.0);
+        QCOMPARE(app.sessionState->rowHeightMiller(), fileRowSize);
+        QVERIFY(QMetaObject::invokeMethod(controls, "setFactor", Q_ARG(QVariant, 2.5)));
+        QVERIFY(preview(second));
+        QTRY_COMPARE(scope->property(quick ? "filePath" : "previewFilePath").toString(), second);
+        QCOMPARE(controls->property("factor").toReal(), 2.5);
+        auto *reset = App::findItem(controls, "resetPreviewZoom");
+        QVERIFY(reset);
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(reset));
+        QTRY_COMPARE(controls->property("factor").toReal(), 1.0);
+    }
+
+    void testMagnifiedImageCanScroll()
+    {
+        App app;
+        const QString path = app.home.filePath("image.png");
+        QImage fixture(800, 600, QImage::Format_RGB32);
+        fixture.fill(Qt::red);
+        QVERIFY(fixture.save(path));
+        QVERIFY(app.load());
+        QVERIFY(QMetaObject::invokeMethod(app.window, "showQuickPreview", Q_ARG(QVariant, path)));
+        auto *controls = app.item("quickPreviewZoom");
+        auto *image = app.item("quickVisualPreview");
+        QVERIFY(controls && image);
+        QTRY_COMPARE(image->property("status").toInt(), 1); // Image.Ready
+        QVERIFY(QMetaObject::invokeMethod(controls, "setFactor", Q_ARG(QVariant, 3)));
+        QTRY_VERIFY(image->property("contentHeight").toReal() > image->height());
+        const QPoint point = app.center(image);
+        app.wheel(point, QPoint(0, -120));
+        QTRY_VERIFY(image->property("contentY").toReal() > 0);
+        QCOMPARE(controls->property("factor").toReal(), 3.0);
+    }
+
+    void testPdfAndTablePreviewZoom_data()
+    {
+        QTest::addColumn<bool>("quick");
+        QTest::newRow("quick-preview") << true;
+        QTest::newRow("miller-pane") << false;
+    }
+
+    void testPdfAndTablePreviewZoom()
+    {
+        if (QStandardPaths::findExecutable("pdftoppm").isEmpty()
+            || QStandardPaths::findExecutable("pdfinfo").isEmpty())
+            QSKIP("PDF preview requires poppler-utils");
+        QFETCH(bool, quick);
+        App app;
+        const QString pdf = app.home.filePath("preview.pdf");
+        {
+            QPdfWriter writer(pdf);
+            writer.setPageSize(QPageSize(QPageSize::A4));
+            QPainter painter(&writer);
+            painter.drawText(QPoint(100, 200), "Preview zoom page one");
+            QVERIFY(writer.newPage());
+            painter.drawText(QPoint(100, 200), "Preview zoom page two");
+        }
+        const QString csv = app.home.filePath("preview.csv");
+        QFile tableFile(csv);
+        QVERIFY(tableFile.open(QIODevice::WriteOnly));
+        tableFile.write("Name,Value\nZoom,3\n");
+        tableFile.close();
+        QVERIFY(app.load());
+        app.tabModel->activeTab()->navigateTo(app.home.path());
+        if (!quick) app.tabModel->activeTab()->setViewMode("miller");
+        auto *model = app.engine.rootContext()->contextProperty("fsModel").value<QObject *>();
+        QTRY_COMPARE(model->property("rootPath").toString(), app.home.path());
+        QTRY_VERIFY(!model->property("isLoading").toBool());
+        auto preview = [&](const QString &path) {
+            if (quick) return QMetaObject::invokeMethod(app.window, "showQuickPreview", Q_ARG(QVariant, path));
+            return QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("primary")),
+                                             Q_ARG(QVariant, path), Q_ARG(QVariant, true));
+        };
+        QVERIFY(preview(pdf));
+        QTRY_VERIFY(app.item(quick ? "quickPdfPreviewImage" : "millerPdfPreviewImage"));
+        auto *image = app.item(quick ? "quickPdfPreviewImage" : "millerPdfPreviewImage");
+        auto *controls = app.item(quick ? "quickPreviewZoom" : "millerPreviewZoom");
+        auto *scope = quick ? app.window->property("quickPreview").value<QQuickItem *>() : app.item("millerPreviewColumn");
+        QVERIFY(image && controls && scope);
+        QTRY_VERIFY(image->isVisible());
+        QTRY_COMPARE_WITH_TIMEOUT(image->property("status").toInt(), 1, 15000);
+        const QPoint point = app.center(image);
+        app.wheel(point, QPoint(0, -120));
+        QTRY_COMPARE(scope->property("pdfPageIndex").toInt(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(image->property("status").toInt(), 1, 15000);
+        QVERIFY(QMetaObject::invokeMethod(controls, "setFactor", Q_ARG(QVariant, 3)));
+        QTRY_VERIFY(image->property("contentHeight").toReal() > image->height());
+        app.wheel(point, QPoint(0, -120));
+        QTRY_VERIFY(image->property("contentY").toReal() > 0);
+        QCOMPARE(scope->property("pdfPageIndex").toInt(), 1);
+        QVERIFY(preview(csv));
+        QTRY_VERIFY(scope->property("isTable").toBool());
+        auto *table = app.item(quick ? "quickPreviewTable" : "millerPreviewTable");
+        QVERIFY(table && table->isVisible());
+        QCOMPARE(controls->property("factor").toReal(), 3.0);
+        const qreal magnifiedFont = table->property("fontSize").toReal();
+        QVERIFY(QMetaObject::invokeMethod(controls, "reset"));
+        QTRY_COMPARE(table->property("fontSize").toReal(), magnifiedFont / 3);
     }
 
     void testFilePickerSaveAndOverwrite()
@@ -1328,7 +1502,7 @@ private slots:
         const auto currentPath = [&]() { return pane == "primary" ? tab->currentPath() : tab->secondaryCurrentPath(); };
         auto *sidebar = app.item("sidebarPanel");
         QVERIFY(sidebar);
-        for (const QString &action : {QString("Home"), QString("Recents"), QString("Trash"), QString("Network"),
+        for (const QString &action : {QString("Home"), QString("Computer"), QString("Recents"), QString("Trash"), QString("Network"),
                                       QString("Pictures"), QString("Downloads"), QString("bookmark_0"),
                                       QString("bookmark_1"), QString("mounted")}) {
             QVERIFY(QMetaObject::invokeMethod(root, "setActivePane", Q_ARG(QVariant, pane)));
@@ -1367,6 +1541,71 @@ private slots:
             QVERIFY2(root->property(otherSearchProperty).toBool(), qPrintable(action));
             QCOMPARE(root->property(recentsProperty).toBool(), action == "Recents");
         }
+    }
+
+    void testComputerOverview_data()
+    {
+        QTest::addColumn<QString>("viewMode");
+        for (const QString &view : {QString("grid"), QString("compact"), QString("detailed"), QString("miller")})
+            QTest::newRow(qPrintable(view)) << view;
+    }
+
+    void testComputerOverview()
+    {
+        QFETCH(QString, viewMode);
+        App app;
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        tab->navigateTo(app.home.path());
+        tab->resetSecondaryTo(app.home.path());
+        tab->setViewMode(viewMode);
+        tab->setSplitViewEnabled(true);
+        QVERIFY(QMetaObject::invokeMethod(app.window, "setActivePane", Q_ARG(QVariant, QString("secondary"))));
+        auto *shortcut = app.item("quickAccess_Computer");
+        QVERIFY(shortcut && shortcut->isVisible());
+        QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(shortcut));
+        QTRY_COMPARE(tab->secondaryCurrentPath(), QString("computer:///"));
+        QTRY_VERIFY(app.item("computerView"));
+        auto *view = app.item("computerView");
+        QTRY_VERIFY(view->isVisible());
+        auto *model = app.engine.rootContext()->contextProperty("computerModel").value<QObject *>();
+        QVERIFY(model);
+        QTRY_VERIFY(model->property("count").toInt() > 0);
+        QTRY_VERIFY(app.item("computerDrive_0"));
+        QVERIFY(QMetaObject::invokeMethod(view, "choose", Q_ARG(QVariant, 0), Q_ARG(QVariant, false), Q_ARG(QVariant, false)));
+        // Background discovery and capacity updates preserve drive identity,
+        // including replacing the fallback root with the discovered root.
+        QVERIFY(QMetaObject::invokeMethod(model, "refresh"));
+        QCOMPARE(view->property("cursorIndex").toInt(), 0);
+        QCOMPARE(app.window->property("currentSelectedCount").toInt(), 1);
+        for (const auto *action : {"currentOrSelectedDirectoryPath", "selectedOrCurrentPropertiesPath", "selectedOrCurrentTerminalPath"}) {
+            QVariant target;
+            QVERIFY(QMetaObject::invokeMethod(app.window, action, Q_RETURN_ARG(QVariant, target)));
+            QCOMPARE(target.toString(), QString("/"));
+        }
+        QVariant paths;
+        QVERIFY(QMetaObject::invokeMethod(app.window, "getSelectedPaths", Q_RETURN_ARG(QVariant, paths),
+                                          Q_ARG(QVariant, QString("secondary"))));
+        QVERIFY(paths.toStringList().isEmpty());
+        // Drive selection cannot become a delete/rename target or paste destination.
+        QVERIFY(QMetaObject::invokeMethod(app.window, "showNewFolderDialog", Q_ARG(QVariant, QString("computer:///"))));
+        QVERIFY(!app.window->property("newFolderDialog").value<QObject *>());
+        QVERIFY(QMetaObject::invokeMethod(app.window, "goActivePaneUp"));
+        QCOMPARE(tab->secondaryCurrentPath(), QString("computer:///"));
+        if (qEnvironmentVariableIsSet("HYPRFM_COMPUTER_GRAB")) {
+            QTRY_COMPARE(app.window->property("splitTransitionProgress").toReal(), 1.0);
+            app.window->grabWindow().save(qEnvironmentVariable("HYPRFM_COMPUTER_GRAB") + "-" + viewMode + ".png");
+        }
+        QTest::keyClick(app.window, Qt::Key_Return);
+        QTRY_COMPARE(tab->secondaryCurrentPath(), QString("/"));
+        QCOMPARE(tab->currentPath(), app.home.path());
+        QVERIFY(tab->splitViewEnabled());
+        QVERIFY(QMetaObject::invokeMethod(app.window, "goActivePaneBack"));
+        QTRY_COMPARE(tab->secondaryCurrentPath(), QString("computer:///"));
+        QTRY_VERIFY(view->isVisible());
+        QVERIFY(QMetaObject::invokeMethod(app.window, "goActivePaneBack"));
+        QTRY_COMPARE(tab->secondaryCurrentPath(), app.home.path());
+        QTRY_VERIFY(!view->isVisible());
     }
 
     // Both panes get about half the space in either orientation. The

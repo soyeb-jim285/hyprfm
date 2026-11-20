@@ -8,6 +8,7 @@ Item {
     property string viewMode: "grid"
     property var fileModel: null
     property string currentPath: ""
+    property bool showComputer: false
     // Why the folder could not be listed; shown instead of an empty view (#74).
     property string loadError: ""
     // How much wider this view will be once a running pane animation ends
@@ -16,6 +17,9 @@ Item {
     property real settledWidthOffset: 0
 
     signal fileActivated(string filePath, bool isDirectory)
+    signal openInNewTabRequested(string path)
+    signal openInSplitViewRequested(string path)
+    signal featureHintRequested(string message)
     signal contextMenuRequested(string filePath, bool isDirectory, point position)
     signal selectionChanged()
     signal interactionStarted()
@@ -29,6 +33,7 @@ Item {
     readonly property var detailedViewItem: detailedLoader.item
     readonly property var millerViewItem: millerLoader.item
     readonly property var compactViewItem: compactLoader.item
+    readonly property var computerViewItem: computerLoader.item
 
     function clamp(value, lo, hi) {
         return Math.max(lo, Math.min(hi, value))
@@ -69,6 +74,7 @@ Item {
     }
 
     function activeView() {
+        if (showComputer) return computerViewItem
         if (viewMode === "grid") return gridViewItem
         if (viewMode === "miller") return millerViewItem
         if (viewMode === "compact") return compactViewItem
@@ -99,7 +105,7 @@ Item {
         sourceComponent: Component {
             FileGridView {
                 property bool zoomReady: false
-                visible: root.viewMode === "grid"
+                visible: !root.showComputer && root.viewMode === "grid"
                 model: visible ? root.fileModel : null
                 currentPath: root.currentPath
 
@@ -127,7 +133,7 @@ Item {
         sourceComponent: Component {
             FileDetailedView {
                 property bool zoomReady: false
-                visible: root.viewMode === "detailed"
+                visible: !root.showComputer && root.viewMode === "detailed"
                 viewModel: visible ? root.fileModel : null
                 currentPath: root.currentPath
 
@@ -156,7 +162,7 @@ Item {
         sourceComponent: Component {
             FileMillerView {
                 property bool zoomReady: false
-                visible: root.viewMode === "miller"
+                visible: !root.showComputer && root.viewMode === "miller"
                 fileModel: visible ? root.fileModel : null
                 currentPath: root.currentPath
 
@@ -184,7 +190,7 @@ Item {
         sourceComponent: Component {
             FileCompactView {
                 property bool zoomReady: false
-                visible: root.viewMode === "compact"
+                visible: !root.showComputer && root.viewMode === "compact"
                 model: visible ? root.fileModel : null
                 currentPath: root.currentPath
 
@@ -205,11 +211,30 @@ Item {
         }
     }
 
+    Loader {
+        id: computerLoader
+        anchors.fill: parent
+        active: root.showComputer || item !== null
+        sourceComponent: Component {
+            ComputerView {
+                objectName: "computerView"
+                visible: root.showComputer
+                viewMode: root.viewMode
+                onFileActivated: (path, isDir) => root.fileActivated(path, isDir)
+                onOpenInNewTabRequested: path => root.openInNewTabRequested(path)
+                onOpenInSplitViewRequested: path => root.openInSplitViewRequested(path)
+                onFeatureHintRequested: message => root.featureHintRequested(message)
+                onInteractionStarted: root.interactionStarted()
+                onSelectionChanged: root.selectionChanged()
+            }
+        }
+    }
+
     Text {
         objectName: "loadErrorText"
         anchors.centerIn: parent
         width: Math.min(parent.width - 48, 420)
-        visible: root.loadError !== ""
+        visible: !root.showComputer && root.loadError !== ""
         text: root.loadError
         color: Theme.subtext
         font.pointSize: Theme.fontNormal
