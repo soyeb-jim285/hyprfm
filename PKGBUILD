@@ -14,6 +14,7 @@ depends=(
     'qt6-declarative'
     'qt6-svg'
     'qt6-wayland'
+    'qt6-multimedia'
     'xdg-utils'
 )
 makedepends=(
@@ -25,6 +26,7 @@ makedepends=(
     'qt6-base'
     'qt6-declarative'
     'qt6-svg'
+    'qt6-multimedia'
 )
 optdepends=(
     'wl-clipboard: clipboard support via wl-copy and wl-paste'
