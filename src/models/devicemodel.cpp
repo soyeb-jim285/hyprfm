@@ -1,5 +1,6 @@
 #include "models/devicemodel.h"
 
+#include <QCoreApplication>
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -13,11 +14,14 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QDebug>
+#include <QLocale>
 #include <QMetaObject>
+#include <QMutexLocker>
 #include <QPointer>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
+#include <QStandardPaths>
 #include <QStorageInfo>
 #include <QUrl>
 #undef signals
@@ -25,6 +29,7 @@
 #define signals Q_SIGNALS
 #include <algorithm>
 #include <memory>
+#include <thread>
 
 static const QStringList kVirtualTypes = {
     "tmpfs", "devtmpfs", "proc", "sysfs",
@@ -37,6 +42,7 @@ static const QStringList kVirtualTypes = {
 DeviceModel::DeviceModel(QObject *parent, bool deferInitialRefresh)
     : QAbstractListModel(parent)
 {
+    m_fuseProbeContext->model = this;
     m_refreshTimer.setSingleShot(true);
     m_refreshTimer.setInterval(600);
     connect(&m_refreshTimer, &QTimer::timeout, this, &DeviceModel::refreshAsync);
@@ -65,6 +71,10 @@ DeviceModel::DeviceModel(QObject *parent, bool deferInitialRefresh)
 
 DeviceModel::~DeviceModel()
 {
+    {
+        QMutexLocker locker(&m_fuseProbeContext->mutex);
+        m_fuseProbeContext->model = nullptr;
+    }
     clearDevices();
     if (m_volumeMonitor) {
         g_signal_handlers_disconnect_by_data(m_volumeMonitor, this);
@@ -288,6 +298,48 @@ QString mobileUdidFromUri(const QString &uri)
     return hyphenateUdid(match.captured(1).toUpper());
 }
 
+// Mount point -> filesystem type of the user's FUSE mounts in their home, read
+// from /proc/self/mountinfo: a file read, never a call into a FUSE daemon.
+QHash<QString, QString> userFuseMountTypes()
+{
+    QHash<QString, QString> types;
+    QFile file(QStringLiteral("/proc/self/mountinfo"));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return types;
+    const auto unescape = [](const QString &field) {
+        QString out;
+        out.reserve(field.size());
+        for (int i = 0; i < field.size(); ++i) {
+            if (field.at(i) == QLatin1Char('\\') && i + 3 < field.size()) {
+                bool ok = false;
+                const int code = field.mid(i + 1, 3).toInt(&ok, 8);
+                if (ok) {
+                    out.append(QChar(code));
+                    i += 3;
+                    continue;
+                }
+            }
+            out.append(field.at(i));
+        }
+        return out;
+    };
+    const QString home = QDir::homePath();
+    const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        const int sep = line.indexOf(QStringLiteral(" - "));
+        if (sep < 0)
+            continue;
+        const QStringList pre = line.left(sep).split(QLatin1Char(' '));
+        const QStringList post = line.mid(sep + 3).split(QLatin1Char(' '));
+        if (pre.size() < 5 || post.isEmpty())
+            continue;
+        const QString path = unescape(pre.at(4));
+        if (DeviceModel::isUserFuseMount(post.at(0), path, home))
+            types.insert(path, post.at(0));
+    }
+    return types;
+}
+
 bool isMobileDeviceScheme(const QString &scheme)
 {
     static const QSet<QString> schemes = {
@@ -351,6 +403,8 @@ struct BlockInfo {
     bool hasFilesystem = false;
     QStringList mountPoints;
     QString partitionType;   // GPT GUID / MBR type, lowercased
+    bool hasEncrypted = false;   // a LUKS / BitLocker container
+    QString cleartextDevice;     // object path of its opened filesystem, "/" while locked
 };
 
 void onGioVolumeMounted(GObject *sourceObject, GAsyncResult *result, gpointer userData)
@@ -569,6 +623,11 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
                     BlockInfo &b = blocks[path];
                     b.partitionType = properties.value(QStringLiteral("Type"))
                                           .toString().toLower();
+                } else if (interfaceName == QLatin1String("org.freedesktop.UDisks2.Encrypted")) {
+                    BlockInfo &b = blocks[path];
+                    b.hasEncrypted = true;
+                    b.cleartextDevice = properties.value(QStringLiteral("CleartextDevice"))
+                                            .value<QDBusObjectPath>().path();
                 }
             }
             outer.endMap();
@@ -593,6 +652,11 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
             continue;
         if (b.partitionType == kEfiGuid)
             continue;
+        // An unlocked container: its opened filesystem is listed in its place.
+        const bool locked = b.hasEncrypted
+            && (b.cleartextDevice.isEmpty() || b.cleartextDevice == QLatin1String("/"));
+        if (b.hasEncrypted && !locked)
+            continue;
 
         const bool mounted = !b.mountPoints.isEmpty();
         const QString mountPoint = mounted ? b.mountPoints.constFirst() : QString();
@@ -608,15 +672,19 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
             || drive.connectionBus == QLatin1String("usb")
             || drive.connectionBus == QLatin1String("sdio");
 
+        // Without a label, an automatic mount point is named after the UUID
+        // ("E79B-1256"), and an unmounted device only has its kernel name
+        // ("nvme1n1p3"): say what it is instead.
         QString name;
+        const QString mountName = mountPoint.section(QLatin1Char('/'), -1);
         if (!b.idLabel.isEmpty())
             name = b.idLabel;
         else if (mounted && mountPoint == QLatin1String("/"))
             name = QStringLiteral("/");
-        else if (mounted)
-            name = mountPoint.section(QLatin1Char('/'), -1);
+        else if (mounted && !looksLikeVolumeId(mountName))
+            name = mountName;
         else
-            name = b.device.section(QLatin1Char('/'), -1);
+            name = fallbackName(b.size, b.idType);
 
         qint64 total = 0;
         qint64 free = 0;
@@ -661,8 +729,7 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
             if (storage.isValid()) {
                 total = storage.bytesTotal();
                 free = storage.bytesAvailable();
-                if (total > 0)
-                    usage = static_cast<int>((total - free) * 100 / total);
+                usage = usagePercentFor(total, free);
             }
         } else {
             total = b.size;
@@ -670,9 +737,11 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
 
         m_devices.append({name, b.device, mountPoint, b.idType.toLower(),
                           total, free, usage, removable, mounted,
-                          QString(), DeviceBackend::UDisks2, nullptr, nullptr});
+                          QString(), DeviceBackend::UDisks2, nullptr, nullptr, locked});
     }
 
+    QStringList fuseToProbe;
+    const QHash<QString, QString> fuseMountTypes = userFuseMountTypes();
     GVolumeMonitor *volumeMonitor = m_volumeMonitor ? m_volumeMonitor : g_volume_monitor_get();
     if (volumeMonitor) {
         QList<DeviceEntry> gioDevices;
@@ -693,6 +762,41 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
 
             const QString uri = uriFromGFile(location);
             const QString scheme = schemeFromUri(uri);
+
+            // Cloud and network folders mounted with FUSE (rclone, sshfs, ...): no
+            // block device, so UDisks2 never reports them; GIO lists them as mounts
+            // without a volume.  Their size is what the filesystem reports -- for an
+            // rclone remote, the account's storage quota.
+            if (scheme == QLatin1String("file") && location) {
+                const QString path = qStringFromGChar(g_file_get_path(location));
+                GVolume *volume = g_mount_get_volume(mount);
+                const bool hasVolume = volume != nullptr;
+                if (volume)
+                    g_object_unref(volume);
+                const QString fsType = fuseMountTypes.value(path);
+                if (!hasVolume && isUserFuseMount(fsType, path, QDir::homePath())
+                    && !seenMobileDevices.contains(uri)) {
+                    seenMobileDevices.insert(uri);
+                    // statfs on a FUSE mount waits for its daemon, which can hang
+                    // (11-20: a wedged Filen rclone): the size comes from a probe off
+                    // this thread; meanwhile the last known one.
+                    const FuseUsage known = m_fuseUsage.value(path);
+                    const qint64 total = known.total;
+                    const qint64 free = known.free;
+                    const int usage = usagePercentFor(total, free);
+                    fuseToProbe.append(path);
+                    QString name = qStringFromGChar(g_mount_get_name(mount));
+                    if (name.isEmpty())
+                        name = QFileInfo(path).fileName();
+                    gioDevices.append({name, uri, path, fsType,
+                                       total, free, usage, true, true,
+                                       QString(), DeviceBackend::Gio, nullptr,
+                                       G_MOUNT(g_object_ref(mount))});
+                }
+                g_object_unref(location);
+                continue;
+            }
+
             if (!isMobileDeviceScheme(scheme)) {
                 if (location)
                     g_object_unref(location);
@@ -849,6 +953,60 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
               });
 
     endResetModel();
+
+    for (const QString &mountPoint : std::as_const(fuseToProbe))
+        probeFuseUsage(mountPoint);
+}
+
+void DeviceModel::probeFuseUsage(const QString &mountPoint)
+{
+    if (m_fuseProbesPending.contains(mountPoint))
+        return;   // the last one has not answered: this mount may hang
+    m_fuseProbesPending.insert(mountPoint);
+
+    // A plain detached thread, not QtConcurrent: Qt waits for its global pool at
+    // exit, and a probe stuck in a dead FUSE daemon would then hang the quit.
+    const std::shared_ptr<FuseProbeContext> ctx = m_fuseProbeContext;
+    std::thread([ctx, mountPoint]() {
+        const QStorageInfo storage(mountPoint);
+        qint64 total = 0;
+        qint64 free = 0;
+        if (storage.isValid() && storage.rootPath() == mountPoint) {
+            total = storage.bytesTotal();
+            free = storage.bytesAvailable();
+        }
+        QMutexLocker locker(&ctx->mutex);
+        if (ctx->model) {
+            QMetaObject::invokeMethod(ctx->model, [ctx, mountPoint, total, free]() {
+                if (ctx->model)
+                    ctx->model->applyFuseUsage(mountPoint, total, free);
+            }, Qt::QueuedConnection);
+        }
+    }).detach();
+}
+
+void DeviceModel::applyFuseUsage(const QString &mountPoint, qint64 total, qint64 free)
+{
+    m_fuseProbesPending.remove(mountPoint);
+    m_fuseUsage.insert(mountPoint, {total, free});
+    for (int i = 0; i < m_devices.size(); ++i) {
+        DeviceEntry &dev = m_devices[i];
+        if (dev.backend != DeviceBackend::Gio || dev.mountPoint != mountPoint)
+            continue;
+        dev.totalSize = total;
+        dev.freeSpace = free;
+        dev.usagePercent = usagePercentFor(total, free);
+        const QModelIndex idx = index(i);
+        emit dataChanged(idx, idx, {TotalSizeRole, FreeSpaceRole, UsagePercentRole});
+    }
+}
+
+int DeviceModel::usagePercentFor(qint64 total, qint64 free)
+{
+    if (total <= 0)
+        return 0;
+    const qint64 clampedFree = qBound(qint64(0), free, total);
+    return qBound(0, static_cast<int>(100.0 * static_cast<double>(total - clampedFree) / static_cast<double>(total)), 100);
 }
 
 // Map a /dev/<basename> path to its UDisks2 object path. D-Bus object paths
@@ -900,6 +1058,13 @@ void DeviceModel::unmount(int index)
 
     const QString label = dev.deviceName;
 
+    // A FUSE mount is the user's own: fusermount takes it down without polkit,
+    // which GIO's generic unmount (umount) cannot do for it.
+    if (dev.backend == DeviceBackend::Gio && isUserFuseMount(dev.fsType, dev.mountPoint, QDir::homePath())) {
+        unmountFuse(dev.mountPoint, label);
+        return;
+    }
+
     if (dev.backend == DeviceBackend::Gio) {
         if (!dev.gioMount) {
             refresh();
@@ -940,6 +1105,63 @@ void DeviceModel::unmount(int index)
         }
         watcher->deleteLater();
     });
+}
+
+bool DeviceModel::isUserFuseMount(const QString &fsType, const QString &path, const QString &home)
+{
+    if (fsType != QLatin1String("fuse") && !fsType.startsWith(QLatin1String("fuse.")))
+        return false;
+    // The desktop's own FUSE helpers live under /run/user anyway; name them so
+    // a home-relocated runtime dir cannot turn them into "devices".
+    if (fsType == QLatin1String("fuse.portal") || fsType == QLatin1String("fuse.gvfsd-fuse"))
+        return false;
+    if (home.isEmpty() || home == QLatin1String("/"))
+        return false;
+    const QString prefix = home.endsWith(QLatin1Char('/')) ? home : home + QLatin1Char('/');
+    return path.startsWith(prefix) && path.length() > prefix.length();
+}
+
+bool DeviceModel::isUserUnmountable(const QString &mountPoint, bool gioBackend)
+{
+    if (mountPoint.isEmpty() || mountPoint == QLatin1String("/"))
+        return false;
+    return gioBackend
+        || mountPoint.startsWith(QLatin1String("/run/media/"))
+        || mountPoint.startsWith(QLatin1String("/media/"));
+}
+
+void DeviceModel::unmountFuse(const QString &mountPoint, const QString &label)
+{
+    QString tool = QStandardPaths::findExecutable(QStringLiteral("fusermount3"),
+                                                  {QStringLiteral("/run/wrappers/bin")});
+    if (tool.isEmpty())
+        tool = QStandardPaths::findExecutable(QStringLiteral("fusermount3"));
+    if (tool.isEmpty())
+        tool = QStandardPaths::findExecutable(QStringLiteral("fusermount"));
+    if (tool.isEmpty()) {
+        emit mountError(tr("Could not unmount %1: fusermount3 is not installed").arg(label));
+        return;
+    }
+
+    auto *process = new QProcess(this);
+    connect(process, &QProcess::errorOccurred, this,
+            [this, process, label](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            emit mountError(tr("Could not unmount %1: %2").arg(label, process->errorString()));
+            process->deleteLater();
+        }
+    });
+    connect(process, &QProcess::finished, this,
+            [this, process, label](int exitCode, QProcess::ExitStatus status) {
+        if (status != QProcess::NormalExit || exitCode != 0) {
+            const QString err = QString::fromLocal8Bit(process->readAllStandardError()).trimmed();
+            emit mountError(tr("Could not unmount %1: %2")
+                                .arg(label, err.isEmpty() ? tr("fusermount failed") : err));
+        }
+        refresh();
+        process->deleteLater();
+    });
+    process->start(tool, {QStringLiteral("-u"), mountPoint});
 }
 
 void DeviceModel::mount(int index)
@@ -1026,9 +1248,64 @@ void DeviceModel::mount(int index)
 
     const QString devicePath = entry.devicePath;
 
+    // A locked LUKS / BitLocker container has no filesystem to mount yet:
+    // Filesystem.Mount could only fail.  Ask for its passphrase; unlock()
+    // then mounts what it holds.
+    if (entry.encrypted) {
+        emit unlockRequested(devicePath, label);
+        return;
+    }
+
+    mountUDisksFilesystem(udisksObjectPathFor(devicePath), fsType, label);
+}
+
+void DeviceModel::unlock(const QString &devicePath, const QString &passphrase)
+{
+    QString label = QFileInfo(devicePath).fileName();
+    for (const DeviceEntry &entry : std::as_const(m_devices)) {
+        if (entry.devicePath == devicePath) {
+            label = entry.deviceName;
+            break;
+        }
+    }
+
     QDBusMessage msg = QDBusMessage::createMethodCall(
         QStringLiteral("org.freedesktop.UDisks2"),
         udisksObjectPathFor(devicePath),
+        QStringLiteral("org.freedesktop.UDisks2.Encrypted"),
+        QStringLiteral("Unlock"));
+    msg << passphrase << QVariant::fromValue(QVariantMap{});
+
+    QDBusPendingCall pending = QDBusConnection::systemBus().asyncCall(msg);
+    auto *watcher = new QDBusPendingCallWatcher(pending, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher, devicePath, label]() {
+        watcher->deleteLater();
+        QDBusPendingReply<QDBusObjectPath> reply = *watcher;
+        if (reply.isError()) {
+            const QString err = reply.error().message();
+            QString friendly;
+            if (isWrongPassphraseError(err))
+                friendly = tr("Wrong passphrase. Try again.");
+            else if (isPolkitAuthError(err))
+                friendly = tr("Could not unlock %1: %2").arg(label, polkitAgentHint());
+            else
+                friendly = tr("Could not unlock %1: %2").arg(label, err);
+            emit unlockFailed(devicePath, friendly);
+            return;
+        }
+        emit deviceUnlocked(devicePath);
+        refresh();
+        mountUDisksFilesystem(reply.value().path(), QString(), label);
+    });
+}
+
+void DeviceModel::mountUDisksFilesystem(const QString &objectPath, const QString &fsType,
+                                        const QString &label)
+{
+    QDBusMessage msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.UDisks2"),
+        objectPath,
         QStringLiteral("org.freedesktop.UDisks2.Filesystem"),
         QStringLiteral("Mount"));
     msg << QVariant::fromValue(QVariantMap{});
@@ -1109,8 +1386,59 @@ QVariant DeviceModel::data(const QModelIndex &index, int role) const
         case DeviceBackend::UDisks2:    break;
         }
         return QStringLiteral("udisks2");
+    case UserUnmountableRole:
+        return d.mounted && isUserUnmountable(d.mountPoint, d.backend == DeviceBackend::Gio);
+    case EncryptedRole:
+        return d.encrypted;
     }
     return {};
+}
+
+QString DeviceModel::fallbackName(qint64 size, const QString &idType)
+{
+    static const QHash<QString, QString> kinds = {
+        {QStringLiteral("crypto_luks"), QStringLiteral("encrypted")},
+        {QStringLiteral("bitlocker"),   QStringLiteral("BitLocker")},
+        {QStringLiteral("vfat"),        QStringLiteral("FAT")},
+        {QStringLiteral("exfat"),       QStringLiteral("exFAT")},
+        {QStringLiteral("ntfs"),        QStringLiteral("NTFS")},
+        {QStringLiteral("btrfs"),       QStringLiteral("Btrfs")},
+        {QStringLiteral("xfs"),         QStringLiteral("XFS")},
+        {QStringLiteral("f2fs"),        QStringLiteral("F2FS")},
+        {QStringLiteral("iso9660"),     QStringLiteral("disc")},
+    };
+    const QString type = idType.toLower();
+    const QString kind = kinds.value(type, type);
+    QStringList parts;
+    if (size > 0)
+        parts << QLocale().formattedDataSize(size, 1, QLocale::DataSizeSIFormat);
+    if (!kind.isEmpty())
+        parts << kind;
+    parts << tr("volume");
+    QString name = parts.join(QLatin1Char(' '));
+    name[0] = name.at(0).toUpper();
+    return name;
+}
+
+bool DeviceModel::looksLikeVolumeId(const QString &name)
+{
+    // FAT/exFAT serial, filesystem UUID, NTFS serial.
+    static const QRegularExpression id(QStringLiteral(
+        "^(?:[0-9a-f]{4}-[0-9a-f]{4}"
+        "|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        "|[0-9a-f]{16})$"),
+        QRegularExpression::CaseInsensitiveOption);
+    return id.match(name).hasMatch();
+}
+
+bool DeviceModel::isWrongPassphraseError(const QString &message)
+{
+    // cryptsetup refuses a wrong LUKS or BitLocker passphrase with EPERM;
+    // udisks words it "Incorrect passphrase", "No key available with this
+    // passphrase" or "Operation not permitted", depending on the version.
+    return message.contains(QStringLiteral("passphrase"), Qt::CaseInsensitive)
+        || message.contains(QStringLiteral("No key available"), Qt::CaseInsensitive)
+        || message.contains(QStringLiteral("Operation not permitted"), Qt::CaseInsensitive);
 }
 
 QHash<int, QByteArray> DeviceModel::roleNames() const
@@ -1125,5 +1453,7 @@ QHash<int, QByteArray> DeviceModel::roleNames() const
         {RemovableRole,    "removable"},
         {MountedRole,      "mounted"},
         {BackendRole,      "backend"},
+        {UserUnmountableRole, "userUnmountable"},
+        {EncryptedRole,    "encrypted"},
     };
 }

@@ -1159,6 +1159,24 @@ void FileSystemModel::reload()
     // remote roots never start one of their own to supersede it.
     ++m_localReloadGeneration;
 
+    // The Computer overview has its own device model. Do not send its virtual
+    // root through GIO or expose drive mount points as filesystem entries.
+    const QUrl location(m_rootPath);
+    if (location.scheme() == QStringLiteral("computer") && location.host().isEmpty()
+        && (location.path().isEmpty() || location.path() == QStringLiteral("/"))) {
+        setLoadError(0);
+        beginResetModel();
+        m_entries.clear();
+        m_remoteEntries.clear();
+        m_trashEntries.clear();
+        m_fileCount = 0;
+        m_folderCount = 0;
+        endResetModel();
+        emit countsChanged();
+        setIsLoading(false);
+        return;
+    }
+
     if (isTrashRoot()) {
         // Trash scan runs gio synchronously already; wrap in the reset.
         setLoadError(0);
