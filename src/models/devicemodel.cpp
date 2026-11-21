@@ -14,6 +14,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QDebug>
+#include <QLocale>
 #include <QMetaObject>
 #include <QMutexLocker>
 #include <QPointer>
@@ -402,6 +403,8 @@ struct BlockInfo {
     bool hasFilesystem = false;
     QStringList mountPoints;
     QString partitionType;   // GPT GUID / MBR type, lowercased
+    bool hasEncrypted = false;   // a LUKS / BitLocker container
+    QString cleartextDevice;     // object path of its opened filesystem, "/" while locked
 };
 
 void onGioVolumeMounted(GObject *sourceObject, GAsyncResult *result, gpointer userData)
@@ -620,6 +623,11 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
                     BlockInfo &b = blocks[path];
                     b.partitionType = properties.value(QStringLiteral("Type"))
                                           .toString().toLower();
+                } else if (interfaceName == QLatin1String("org.freedesktop.UDisks2.Encrypted")) {
+                    BlockInfo &b = blocks[path];
+                    b.hasEncrypted = true;
+                    b.cleartextDevice = properties.value(QStringLiteral("CleartextDevice"))
+                                            .value<QDBusObjectPath>().path();
                 }
             }
             outer.endMap();
@@ -644,6 +652,11 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
             continue;
         if (b.partitionType == kEfiGuid)
             continue;
+        // An unlocked container: its opened filesystem is listed in its place.
+        const bool locked = b.hasEncrypted
+            && (b.cleartextDevice.isEmpty() || b.cleartextDevice == QLatin1String("/"));
+        if (b.hasEncrypted && !locked)
+            continue;
 
         const bool mounted = !b.mountPoints.isEmpty();
         const QString mountPoint = mounted ? b.mountPoints.constFirst() : QString();
@@ -659,15 +672,19 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
             || drive.connectionBus == QLatin1String("usb")
             || drive.connectionBus == QLatin1String("sdio");
 
+        // Without a label, an automatic mount point is named after the UUID
+        // ("E79B-1256"), and an unmounted device only has its kernel name
+        // ("nvme1n1p3"): say what it is instead.
         QString name;
+        const QString mountName = mountPoint.section(QLatin1Char('/'), -1);
         if (!b.idLabel.isEmpty())
             name = b.idLabel;
         else if (mounted && mountPoint == QLatin1String("/"))
             name = QStringLiteral("/");
-        else if (mounted)
-            name = mountPoint.section(QLatin1Char('/'), -1);
+        else if (mounted && !looksLikeVolumeId(mountName))
+            name = mountName;
         else
-            name = b.device.section(QLatin1Char('/'), -1);
+            name = fallbackName(b.size, b.idType);
 
         qint64 total = 0;
         qint64 free = 0;
@@ -720,7 +737,7 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
 
         m_devices.append({name, b.device, mountPoint, b.idType.toLower(),
                           total, free, usage, removable, mounted,
-                          QString(), DeviceBackend::UDisks2, nullptr, nullptr});
+                          QString(), DeviceBackend::UDisks2, nullptr, nullptr, locked});
     }
 
     QStringList fuseToProbe;
@@ -1231,9 +1248,64 @@ void DeviceModel::mount(int index)
 
     const QString devicePath = entry.devicePath;
 
+    // A locked LUKS / BitLocker container has no filesystem to mount yet:
+    // Filesystem.Mount could only fail.  Ask for its passphrase; unlock()
+    // then mounts what it holds.
+    if (entry.encrypted) {
+        emit unlockRequested(devicePath, label);
+        return;
+    }
+
+    mountUDisksFilesystem(udisksObjectPathFor(devicePath), fsType, label);
+}
+
+void DeviceModel::unlock(const QString &devicePath, const QString &passphrase)
+{
+    QString label = QFileInfo(devicePath).fileName();
+    for (const DeviceEntry &entry : std::as_const(m_devices)) {
+        if (entry.devicePath == devicePath) {
+            label = entry.deviceName;
+            break;
+        }
+    }
+
     QDBusMessage msg = QDBusMessage::createMethodCall(
         QStringLiteral("org.freedesktop.UDisks2"),
         udisksObjectPathFor(devicePath),
+        QStringLiteral("org.freedesktop.UDisks2.Encrypted"),
+        QStringLiteral("Unlock"));
+    msg << passphrase << QVariant::fromValue(QVariantMap{});
+
+    QDBusPendingCall pending = QDBusConnection::systemBus().asyncCall(msg);
+    auto *watcher = new QDBusPendingCallWatcher(pending, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher, devicePath, label]() {
+        watcher->deleteLater();
+        QDBusPendingReply<QDBusObjectPath> reply = *watcher;
+        if (reply.isError()) {
+            const QString err = reply.error().message();
+            QString friendly;
+            if (isWrongPassphraseError(err))
+                friendly = tr("Wrong passphrase. Try again.");
+            else if (isPolkitAuthError(err))
+                friendly = tr("Could not unlock %1: %2").arg(label, polkitAgentHint());
+            else
+                friendly = tr("Could not unlock %1: %2").arg(label, err);
+            emit unlockFailed(devicePath, friendly);
+            return;
+        }
+        emit deviceUnlocked(devicePath);
+        refresh();
+        mountUDisksFilesystem(reply.value().path(), QString(), label);
+    });
+}
+
+void DeviceModel::mountUDisksFilesystem(const QString &objectPath, const QString &fsType,
+                                        const QString &label)
+{
+    QDBusMessage msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.UDisks2"),
+        objectPath,
         QStringLiteral("org.freedesktop.UDisks2.Filesystem"),
         QStringLiteral("Mount"));
     msg << QVariant::fromValue(QVariantMap{});
@@ -1316,8 +1388,57 @@ QVariant DeviceModel::data(const QModelIndex &index, int role) const
         return QStringLiteral("udisks2");
     case UserUnmountableRole:
         return d.mounted && isUserUnmountable(d.mountPoint, d.backend == DeviceBackend::Gio);
+    case EncryptedRole:
+        return d.encrypted;
     }
     return {};
+}
+
+QString DeviceModel::fallbackName(qint64 size, const QString &idType)
+{
+    static const QHash<QString, QString> kinds = {
+        {QStringLiteral("crypto_luks"), QStringLiteral("encrypted")},
+        {QStringLiteral("bitlocker"),   QStringLiteral("BitLocker")},
+        {QStringLiteral("vfat"),        QStringLiteral("FAT")},
+        {QStringLiteral("exfat"),       QStringLiteral("exFAT")},
+        {QStringLiteral("ntfs"),        QStringLiteral("NTFS")},
+        {QStringLiteral("btrfs"),       QStringLiteral("Btrfs")},
+        {QStringLiteral("xfs"),         QStringLiteral("XFS")},
+        {QStringLiteral("f2fs"),        QStringLiteral("F2FS")},
+        {QStringLiteral("iso9660"),     QStringLiteral("disc")},
+    };
+    const QString type = idType.toLower();
+    const QString kind = kinds.value(type, type);
+    QStringList parts;
+    if (size > 0)
+        parts << QLocale().formattedDataSize(size, 1, QLocale::DataSizeSIFormat);
+    if (!kind.isEmpty())
+        parts << kind;
+    parts << tr("volume");
+    QString name = parts.join(QLatin1Char(' '));
+    name[0] = name.at(0).toUpper();
+    return name;
+}
+
+bool DeviceModel::looksLikeVolumeId(const QString &name)
+{
+    // FAT/exFAT serial, filesystem UUID, NTFS serial.
+    static const QRegularExpression id(QStringLiteral(
+        "^(?:[0-9a-f]{4}-[0-9a-f]{4}"
+        "|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        "|[0-9a-f]{16})$"),
+        QRegularExpression::CaseInsensitiveOption);
+    return id.match(name).hasMatch();
+}
+
+bool DeviceModel::isWrongPassphraseError(const QString &message)
+{
+    // cryptsetup refuses a wrong LUKS or BitLocker passphrase with EPERM;
+    // udisks words it "Incorrect passphrase", "No key available with this
+    // passphrase" or "Operation not permitted", depending on the version.
+    return message.contains(QStringLiteral("passphrase"), Qt::CaseInsensitive)
+        || message.contains(QStringLiteral("No key available"), Qt::CaseInsensitive)
+        || message.contains(QStringLiteral("Operation not permitted"), Qt::CaseInsensitive);
 }
 
 QHash<int, QByteArray> DeviceModel::roleNames() const
@@ -1333,5 +1454,6 @@ QHash<int, QByteArray> DeviceModel::roleNames() const
         {MountedRole,      "mounted"},
         {BackendRole,      "backend"},
         {UserUnmountableRole, "userUnmountable"},
+        {EncryptedRole,    "encrypted"},
     };
 }

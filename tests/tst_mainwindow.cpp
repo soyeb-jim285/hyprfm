@@ -1969,6 +1969,50 @@ private slots:
         QCOMPARE(dialog->property("checking").toBool(), false);
     }
 
+    // Mount on a locked LUKS / BitLocker drive used to end in an error toast
+    // (udisks has no Filesystem.Mount on a container that is still locked). It
+    // now asks for the passphrase; a refused one keeps the prompt open with the
+    // reason, ready to retry, and only an unlocked drive closes it.
+    void testEncryptedDriveMountAsksForThePassphrase()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *devices = app.engine.rootContext()->contextProperty("devices").value<QObject *>();
+        QVERIFY(devices);
+        const QString missing = QStringLiteral("/dev/hyprfm-test-missing");
+
+        // What DeviceModel::mount() emits for a locked container.
+        QVERIFY(QMetaObject::invokeMethod(devices, "unlockRequested",
+                                          Q_ARG(QString, missing),
+                                          Q_ARG(QString, QStringLiteral("256.0 GB encrypted volume"))));
+        QQuickItem *dialog = app.item("unlockDeviceDialog");
+        QVERIFY(dialog);
+        QTRY_VERIFY(dialog->isVisible());
+        QCOMPARE(dialog->property("subtitle").toString(), QStringLiteral("256.0 GB encrypted volume"));
+        QCOMPARE(dialog->property("devicePath").toString(), missing);
+
+        // An empty passphrase is not sent.
+        QVERIFY(QMetaObject::invokeMethod(dialog, "submit"));
+        QVERIFY(!dialog->property("errorText").toString().isEmpty());
+        QCOMPARE(dialog->property("checking").toBool(), false);
+
+        // A typed passphrase goes to udisks.  This device does not exist, so the
+        // answer is a failure, shown in place: the prompt stays up.
+        QQuickItem *field = app.item("unlockPassphraseField");
+        QVERIFY2(field, "passphrase field not found");
+        field->setProperty("text", QStringLiteral("secret"));
+        QVERIFY(QMetaObject::invokeMethod(dialog, "submit"));
+        QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("checking").toBool(), 30000);
+        QTest::qWait(400);
+        QVERIFY2(dialog->isVisible(), "the prompt closed on a failed unlock");
+        QVERIFY(!dialog->property("errorText").toString().isEmpty());
+
+        // Unlocked: the prompt closes and does not keep the passphrase.
+        QVERIFY(QMetaObject::invokeMethod(devices, "deviceUnlocked", Q_ARG(QString, missing)));
+        QTRY_VERIFY(!dialog->isVisible());
+        QCOMPARE(field->property("text").toString(), QString());
+    }
+
     // Closing an overlay has to hand keyboard focus back to the file view, or
     // arrows and Backspace do nothing until you click something (issue #37).
     // Only the properties dialog did; rename, new folder and new file did not.

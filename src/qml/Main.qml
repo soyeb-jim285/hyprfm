@@ -1851,6 +1851,26 @@ ApplicationWindow {
     }
     readonly property var archivePasswordDialog: archivePasswordDialogLoader.item
 
+    // Mount on a locked LUKS / BitLocker drive asks for its passphrase here
+    // (DeviceModel::unlockRequested); the drive is mounted once it opens.
+    Loader {
+        id: unlockDeviceDialogLoader
+        objectName: "unlockDeviceDialogLoader"
+        anchors.fill: parent
+        z: 1000
+        active: false
+        sourceComponent: Component {
+            UnlockDeviceDialog {
+                objectName: "unlockDeviceDialog"
+                onConfirmed: (passphrase) => {
+                    if (devices)
+                        devices.unlock(devicePath, passphrase)
+                }
+            }
+        }
+    }
+    readonly property var unlockDeviceDialog: unlockDeviceDialogLoader.item
+
     Loader {
         id: remoteConnectDialogLoader
         objectName: "remoteConnectDialogLoader"
@@ -5093,6 +5113,22 @@ ApplicationWindow {
         target: devices
         function onMountError(message) {
             toast.show(message, "error")
+        }
+        function onUnlockRequested(devicePath, name) {
+            unlockDeviceDialogLoader.active = true
+            root.unlockDeviceDialog.openFor(devicePath, name)
+        }
+        function onUnlockFailed(devicePath, message) {
+            var dialog = root.unlockDeviceDialog
+            if (dialog && dialog.visible && dialog.devicePath === devicePath)
+                dialog.failed(message)
+            else
+                toast.show(message, "error")
+        }
+        function onDeviceUnlocked(devicePath) {
+            var dialog = root.unlockDeviceDialog
+            if (dialog && dialog.devicePath === devicePath)
+                dialog.succeeded()
         }
     }
 

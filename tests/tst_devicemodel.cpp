@@ -2,7 +2,9 @@
 #include <QAbstractItemModelTester>
 #include <QDir>
 #include <QFile>
+#include <QLocale>
 #include <QRegularExpression>
+#include <QSignalSpy>
 #include <QStorageInfo>
 #include "models/devicemodel.h"
 
@@ -41,8 +43,9 @@ private slots:
         QCOMPARE(roles.value(DeviceModel::MountedRole),      QByteArray("mounted"));
         QCOMPARE(roles.value(DeviceModel::BackendRole),      QByteArray("backend"));
         QCOMPARE(roles.value(DeviceModel::UserUnmountableRole), QByteArray("userUnmountable"));
+        QCOMPARE(roles.value(DeviceModel::EncryptedRole),    QByteArray("encrypted"));
 
-        QCOMPARE(roles.size(), 10);
+        QCOMPARE(roles.size(), 11);
     }
 
     void testRootDevicePresent()
@@ -277,6 +280,63 @@ private slots:
                                     .arg(i)
                                     .arg(backend)));
         }
+    }
+
+    // Unlabelled filesystems used to show the UUID that names their automatic
+    // mount point ("E79B-1256") or their kernel name ("nvme1n1p3").
+    void testFallbackNamesSayWhatTheVolumeIs_data()
+    {
+        QTest::addColumn<qint64>("size");
+        QTest::addColumn<QString>("idType");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("fat")       << qint64(2000000000000) << "vfat"        << "2.0 TB FAT volume";
+        QTest::newRow("ext4")      << qint64(1600000000000) << "ext4"        << "1.6 TB ext4 volume";
+        QTest::newRow("luks")      << qint64(256000000000)  << "crypto_LUKS" << "256.0 GB encrypted volume";
+        QTest::newRow("bitlocker") << qint64(236000000000)  << "BitLocker"   << "236.0 GB BitLocker volume";
+        QTest::newRow("no size")   << qint64(0)             << "crypto_LUKS" << "Encrypted volume";
+        QTest::newRow("no type")   << qint64(0)             << ""            << "Volume";
+    }
+
+    void testFallbackNamesSayWhatTheVolumeIs()
+    {
+        QFETCH(qint64, size);
+        QFETCH(QString, idType);
+        QFETCH(QString, expected);
+        QLocale::setDefault(QLocale::c());
+        QCOMPARE(DeviceModel::fallbackName(size, idType), expected);
+    }
+
+    void testVolumeIdsAreRecognised()
+    {
+        for (const char *id : {"E79B-1256", "63f1d802-9a75-48b0-9dbe-89a0352456c9", "545A35095A34E97E"})
+            QVERIFY2(DeviceModel::looksLikeVolumeId(QString::fromLatin1(id)), id);
+        for (const char *name : {"nixos", "WIN-BACKUP", "winapps", "Linux-Data", "CRUCIALDATA", "/"})
+            QVERIFY2(!DeviceModel::looksLikeVolumeId(QString::fromLatin1(name)), name);
+    }
+
+    void testWrongPassphraseIsTold()
+    {
+        QVERIFY(DeviceModel::isWrongPassphraseError(
+            "Error unlocking /dev/sdb2: Failed to activate device: Incorrect passphrase"));
+        QVERIFY(DeviceModel::isWrongPassphraseError(
+            "Error unlocking /dev/sdb2: Failed to activate device: Operation not permitted"));
+        QVERIFY(DeviceModel::isWrongPassphraseError("No key available with this passphrase."));
+        QVERIFY(!DeviceModel::isWrongPassphraseError("Not authorized to perform operation"));
+        QVERIFY(!DeviceModel::isWrongPassphraseError("Object does not exist at path"));
+    }
+
+    // Unlock always answers: here the device does not exist (or there is no
+    // system bus at all), and the prompt must hear a failure, not wait forever.
+    void testUnlockOfAMissingDeviceReportsAFailure()
+    {
+        DeviceModel model(nullptr, true);
+        QSignalSpy failed(&model, &DeviceModel::unlockFailed);
+        QSignalSpy unlocked(&model, &DeviceModel::deviceUnlocked);
+        model.unlock(QStringLiteral("/dev/hyprfm-test-missing"), QStringLiteral("secret"));
+        QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 30000);
+        QCOMPARE(failed.at(0).at(0).toString(), QStringLiteral("/dev/hyprfm-test-missing"));
+        QVERIFY(!failed.at(0).at(1).toString().isEmpty());
+        QCOMPARE(unlocked.size(), 0);
     }
 };
 
