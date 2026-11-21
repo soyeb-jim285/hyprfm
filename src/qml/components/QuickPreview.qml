@@ -3,23 +3,31 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import HyprFM
 
-Item {
+FocusScope {
     id: root
     Accessible.role: Accessible.Pane
     Accessible.name: "Quick preview" + (root.filePath ? ": " + root.filePath.split("/").pop() : "")
 
     property string filePath: ""
+    property alias previewZoom: zoomControls.factor
     property var directoryFiles: []
     property bool active: false
     property var fileModel: fsModel
 
     property var fileProps: ({})
+    Connections {
+        target: root.fileModel
+        ignoreUnknownSignals: true
+        function onPropertiesReady(path, properties) {
+            if (root.active && path === root.fileProps.path)
+                root.fileProps = properties
+        }
+    }
     readonly property var textPreview: previewLoader.textPreview
     readonly property var directoryPreview: previewLoader.directoryPreview
     readonly property var pdfPreview: previewLoader.pdfPreview
     readonly property var fileMetadata: previewLoader.fileMetadata
-    // Fonts stay local: QFontDatabase is GUI-thread-only.
-    property var fontPreview: ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
+    readonly property var fontPreview: previewLoader.fontPreview
     property string metadataHint: ""
     property int pdfPageIndex: 0
 
@@ -169,13 +177,13 @@ Item {
         if (isDirectory) return "directory"
         if (isArchive) return "archive"
         if (isPdf) return "pdf"
+        if (isFont) return "font"
         if (isText) return "text"
         return ""
     }
 
     PreviewLoader {
         id: previewLoader
-        requester: "quick"
         path: root.isRemoteUri ? "" : root.filePath
         kind: root.previewKind
         onPdfPageCountChanged: {
@@ -297,10 +305,6 @@ Item {
 
         metadataHint = isRemoteUri
             ? "" : metadataExtractor.missingDepsHint(fileProps.mimeType || "")
-
-        fontPreview = (isFont && !isRemoteUri)
-            ? previewService.loadFontPreview(filePath)
-            : ({ family: "", styleName: "", weight: 400, italic: false, valid: false, error: "" })
 
         // Assigned, not bound: archivePassword() is a plain invokable with no
         // NOTIFY, so a binding would never re-evaluate after the user unlocks
@@ -727,6 +731,17 @@ Item {
                 color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
             }
 
+            PreviewZoomControls {
+                id: zoomControls
+                objectName: "quickPreviewZoom"
+                Layout.fillWidth: true
+                scope: root
+                scrollTarget: root.isImage ? visualPreview : root.isPdf ? pdfPreviewImage
+                    : root.isTable ? previewTable : textPreviewFlick
+                pageWheel: root.isPdf ? root.handlePdfWheel : null
+                available: root.active && (root.isImage || root.isPdf || root.isText)
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -744,12 +759,13 @@ Item {
                         anchors.fill: parent
                         anchors.margins: 12
 
-                        Image {
+                        ZoomablePreviewImage {
                             id: visualPreview
+                            objectName: "quickVisualPreview"
+                            zoomFactor: (root.isImage ? zoomControls.factor : 1)
                             anchors.fill: parent
                             visible: root.hasVisualPreview
                             source: root.visualSource
-                            sourceSize: Qt.size(width, height)
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
                             smooth: true
@@ -757,8 +773,10 @@ Item {
 
                         // Outgoing page, drawn underneath while the next one
                         // loads. Cleared as soon as pdfPreviewImage is Ready.
-                        Image {
+                        ZoomablePreviewImage {
                             id: pdfHoldImage
+                            zoomFactor: zoomControls.factor
+                            enabled: false
                             anchors.fill: parent
                             visible: root.pdfHoldSource !== ""
                                 && pdfPreviewImage.status !== Image.Ready
@@ -769,12 +787,13 @@ Item {
                             smooth: true
                         }
 
-                        Image {
+                        ZoomablePreviewImage {
                             id: pdfPreviewImage
+                            objectName: "quickPdfPreviewImage"
+                            zoomFactor: zoomControls.factor
                             anchors.fill: parent
                             visible: root.isPdf && root.pdfPreviewAvailable && root.pdfPreview.localPath !== "" && root.pdfPreview.error === ""
                             source: root.pdfImageSource
-                            sourceSize: Qt.size(width, height)
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
                             smooth: true
@@ -812,6 +831,7 @@ Item {
                             anchors.fill: parent
                             visible: root.isPdf && root.pdfPreviewAvailable && root.pdfPreview.localPath !== "" && root.pdfPreview.error === ""
                             acceptedButtons: Qt.NoButton
+                            enabled: zoomControls.factor <= 1
                             onWheel: (wheel) => root.handlePdfWheel(wheel)
                         }
 
@@ -825,7 +845,7 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 64
                                 height: 64
-                                source: "image://icon/" + (root.fileProps.iconName || (root.isPdf ? "application-pdf" : "image-x-generic")) + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                                source: Theme.fileIconSource((root.fileProps.iconName || (root.isPdf ? "application-pdf" : "image-x-generic")), root.fileProps.name, 48, false)
                                 sourceSize: Qt.size(width, height)
                                 fillMode: Image.PreserveAspectFit
                             }
@@ -877,6 +897,16 @@ Item {
 
                             TextEdit {
                                 id: textArea
+                                objectName: "quickPreviewText"
+                                Keys.onShortcutOverride: event => {
+                                    if (config.keyEventMatches("focus_previous_column", event.key, event.modifiers)) event.accepted = true
+                                }
+                                Keys.onPressed: event => {
+                                    if (config.keyEventMatches("focus_previous_column", event.key, event.modifiers)) {
+                                        root.closePreview()
+                                        event.accepted = true
+                                    }
+                                }
                                 readOnly: true
                                 selectByMouse: true
                                 width: root.isMarkdown ? textPreviewFlick.width : Math.max(implicitWidth, textPreviewFlick.width)
@@ -898,7 +928,7 @@ Item {
                                 color: Theme.text
                                 wrapMode: root.isMarkdown ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
                                 font.family: root.isMarkdown ? Qt.application.font.family : "monospace"
-                                font.pointSize: Theme.fontSmall
+                                font.pointSize: Theme.fontSmall * zoomControls.factor
 
                                 onCursorRectangleChanged: {
                                     var r = cursorRectangle
@@ -923,9 +953,12 @@ Item {
                         }
 
                         CsvTable {
+                            id: previewTable
+                            objectName: "quickPreviewTable"
                             anchors.fill: parent
                             visible: root.isText && root.isTable && !root.hasVisualPreview && !root.isPdf
                             table: visible ? textPreview.table : ({})
+                            fontSize: Theme.fontSmall * zoomControls.factor
                         }
 
                         KineticWheelScroller {
@@ -1046,7 +1079,7 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 96
                                 height: 96
-                                source: "image://icon/" + (root.fileProps.iconName || "application-pdf") + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                                source: Theme.fileIconSource((root.fileProps.iconName || "application-pdf"), root.fileProps.name, 48, false)
                                 sourceSize: Qt.size(width, height)
                                 fillMode: Image.PreserveAspectFit
                             }
@@ -1096,7 +1129,7 @@ Item {
 
                                 Text {
                                     width: parent.width
-                                    visible: !root.fontPreview.valid
+                                    visible: !root.previewLoading && !root.fontPreview.valid
                                     textFormat: Text.PlainText
                                     text: root.fontPreview.error || "Unable to load this font"
                                     color: Theme.error
@@ -1187,7 +1220,7 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 96
                                 height: 96
-                                source: "image://icon/" + (root.fileProps.iconName || "text-x-generic") + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                                source: Theme.fileIconSource((root.fileProps.iconName || "text-x-generic"), root.fileProps.name, 48, false)
                                 sourceSize: Qt.size(width, height)
                                 fillMode: Image.PreserveAspectFit
                             }
@@ -1250,7 +1283,7 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 72
                                 height: 72
-                                source: "image://icon/" + (root.fileProps.iconName || "text-x-generic") + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                                source: Theme.fileIconSource((root.fileProps.iconName || "text-x-generic"), root.fileProps.name, 48, false)
                                 sourceSize: Qt.size(width, height)
                                 fillMode: Image.PreserveAspectFit
                             }

@@ -9,6 +9,10 @@ Item {
 
     required property var flickable
 
+    property bool horizontal: false
+    property bool zoomEnabled: false
+    readonly property string positionProperty: horizontal ? "contentX" : "contentY"
+
     property real wheelStep: 56
     property real mouseWheelMultiplier: 1.0
     property real touchpadMultiplier: 1.35
@@ -52,32 +56,41 @@ Item {
         : -rubberDistance(overshootInput)
 
     signal scrollStarted()
+    signal zoomRequested(real delta)
 
     WheelHandler {
         id: wheelHandler
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-        // `blocking` decides whether the event continues to the Flickable
-        // underneath; handleWheel() flips it per event (the old MouseArea
-        // code toggled wheel.accepted for the same purpose).
-        onWheel: (wheel) => root.handleWheel(wheel)
+        onWheel: (wheel) => { wheelHandler.blocking = root.handleWheel(wheel) }
     }
 
-    function minimumContentY() {
+    // A WheelHandler only receives deltas on its configured axis. Compact
+    // listings accept both a normal vertical wheel and a sideways swipe.
+    WheelHandler {
+        id: horizontalWheelHandler
+        blocking: false
+        enabled: root.horizontal
+        orientation: Qt.Horizontal
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        onWheel: (wheel) => { horizontalWheelHandler.blocking = root.handleWheel(wheel) }
+    }
+
+    function minimumContentPosition() {
         if (!flickable)
             return 0
 
-        return flickable.originY
+        return flickable[horizontal ? "originX" : "originY"]
     }
 
-    function maximumContentY() {
+    function maximumContentPosition() {
         if (!flickable)
             return 0
 
-        return Math.max(minimumContentY(), minimumContentY() + flickable.contentHeight - flickable.height)
+        return Math.max(minimumContentPosition(), minimumContentPosition() + (horizontal ? flickable.contentWidth - flickable.width : flickable.contentHeight - flickable.height))
     }
 
-    function boundedContentY(value) {
-        return Math.max(minimumContentY(), Math.min(maximumContentY(), value))
+    function boundedContentPosition(value) {
+        return Math.max(minimumContentPosition(), Math.min(maximumContentPosition(), value))
     }
 
     function rubberDistance(distance) {
@@ -120,17 +133,18 @@ Item {
     }
 
     function deltaFor(wheel) {
-        var isTouchpad = wheel.pixelDelta.y !== 0
-        var rawDelta = isTouchpad
-            ? wheel.pixelDelta.y * touchpadMultiplier
-            : (wheel.angleDelta.y / 120.0) * wheelStep * mouseWheelMultiplier
+        var pixels = horizontal && wheel.pixelDelta.x !== 0 ? wheel.pixelDelta.x : wheel.pixelDelta.y
+        var angle = horizontal && wheel.angleDelta.x !== 0 ? wheel.angleDelta.x : wheel.angleDelta.y
+        var rawDelta = pixels !== 0
+            ? pixels * touchpadMultiplier
+            : (angle / 120.0) * wheelStep * mouseWheelMultiplier
 
         return wheel.inverted ? rawDelta : -rawDelta
     }
 
     function shouldUseKinetic(wheel, gap) {
-        return wheel.pixelDelta.y !== 0
-            || (wheel.phase !== Qt.NoScrollPhase && wheel.angleDelta.y === 0)
+        return (wheel.pixelDelta.y !== 0 || (horizontal && wheel.pixelDelta.x !== 0))
+            || (wheel.phase !== Qt.NoScrollPhase && (wheel.angleDelta.y === 0 && (!horizontal || wheel.angleDelta.x === 0)))
     }
 
     function scrollBy(delta) {
@@ -144,23 +158,23 @@ Item {
         if (Math.abs(remainingDelta) < 0.01)
             return
 
-        var minY = minimumContentY()
-        var maxY = maximumContentY()
-        var next = flickable.contentY + remainingDelta
+        var minimum = minimumContentPosition()
+        var maximum = maximumContentPosition()
+        var next = flickable[positionProperty] + remainingDelta
 
-        if (next < minY) {
-            flickable.contentY = minY
-            setOvershootInput(overshootInput + next - minY)
+        if (next < minimum) {
+            flickable[positionProperty] = minimum
+            setOvershootInput(overshootInput + next - minimum)
             return
         }
 
-        if (next > maxY) {
-            flickable.contentY = maxY
-            setOvershootInput(overshootInput + next - maxY)
+        if (next > maximum) {
+            flickable[positionProperty] = maximum
+            setOvershootInput(overshootInput + next - maximum)
             return
         }
 
-        flickable.contentY = next
+        flickable[positionProperty] = next
     }
 
     function remainingDistanceFor(velocityValue) {
@@ -168,10 +182,10 @@ Item {
             return 0
 
         if (velocityValue > 0)
-            return Math.max(0, maximumContentY() - flickable.contentY)
+            return Math.max(0, maximumContentPosition() - flickable[positionProperty])
 
         if (velocityValue < 0)
-            return Math.max(0, flickable.contentY - minimumContentY())
+            return Math.max(0, flickable[positionProperty] - minimumContentPosition())
 
         return 0
     }
@@ -228,8 +242,8 @@ Item {
         if (!flickable || contentVelocity === 0)
             return
 
-        var atTop = flickable.contentY <= minimumContentY() + edgeEpsilon
-        var atBottom = flickable.contentY >= maximumContentY() - edgeEpsilon
+        var atTop = flickable[positionProperty] <= minimumContentPosition() + edgeEpsilon
+        var atBottom = flickable[positionProperty] >= maximumContentPosition() - edgeEpsilon
         if ((contentVelocity < 0 && !atTop) || (contentVelocity > 0 && !atBottom))
             return
 
@@ -270,16 +284,15 @@ Item {
     }
 
     function runKineticGlide(contentVelocity) {
-        // contentVelocity > 0 means the content should scroll downward
-        // (contentY increases), matching deltaFor()'s sign convention.
+        // Positive velocity advances along the view's scrolling axis.
         if (!flickable || contentVelocity === 0) {
             pendingImpactVelocity = 0
             return false
         }
 
-        var current = flickable.contentY
+        var current = flickable[positionProperty]
         var unclampedTarget = current + contentVelocity * kineticTau
-        var target = boundedContentY(unclampedTarget)
+        var target = boundedContentPosition(unclampedTarget)
         var distUnclamped = Math.abs(unclampedTarget - current)
         var distActual = Math.abs(target - current)
         if (distActual < 4) {
@@ -317,9 +330,9 @@ Item {
     function atEdgeFor(contentVelocity) {
         if (!flickable) return false
         if (contentVelocity > 0)
-            return flickable.contentY >= maximumContentY() - edgeEpsilon
+            return flickable[positionProperty] >= maximumContentPosition() - edgeEpsilon
         if (contentVelocity < 0)
-            return flickable.contentY <= minimumContentY() + edgeEpsilon
+            return flickable[positionProperty] <= minimumContentPosition() + edgeEpsilon
         return false
     }
 
@@ -368,26 +381,27 @@ Item {
     }
 
     function handleWheel(wheel) {
-        wheelHandler.blocking = true
         if (!enabled || !visible || !flickable || !flickable.visible || !flickable.interactive) {
-            wheelHandler.blocking = false
-            return
+            return false
         }
 
+        if (zoomEnabled && (wheel.modifiers & Qt.ControlModifier)) {
+            var zoomDelta = deltaFor(wheel)
+            if (zoomDelta === 0) return false
+            zoomRequested(zoomDelta)
+            return true
+        }
         if (wheel.modifiers !== Qt.NoModifier) {
-            wheelHandler.blocking = false
-            return
+            return false
         }
 
-        if (maximumContentY() <= minimumContentY()) {
-            wheelHandler.blocking = false
-            return
+        if (maximumContentPosition() <= minimumContentPosition()) {
+            return false
         }
 
         var delta = deltaFor(wheel)
         if (delta === 0) {
-            wheelHandler.blocking = false
-            return
+            return false
         }
 
         // Cancel any in-flight glide — user input always wins, position
@@ -409,8 +423,8 @@ Item {
         var gap = lastWheelTimestamp > 0 ? now - lastWheelTimestamp : 16
         var dt = Math.max(8, Math.min(24, gap))
         var instantVelocity = (delta / dt) * 1000
-        var isTouchpad = wheel.pixelDelta.y !== 0
-            || (wheel.phase !== Qt.NoScrollPhase && wheel.angleDelta.y === 0)
+        var isTouchpad = (wheel.pixelDelta.y !== 0 || (horizontal && wheel.pixelDelta.x !== 0))
+            || (wheel.phase !== Qt.NoScrollPhase && (wheel.angleDelta.y === 0 && (!horizontal || wheel.angleDelta.x === 0)))
 
         kineticCandidate = isTouchpad && (kineticCandidate || shouldUseKinetic(wheel, gap))
         scrollStarted()
@@ -423,7 +437,7 @@ Item {
             kineticCandidate = false
             lastWheelTimestamp = now
             finishTimer.restart()
-            return
+            return true
         }
 
         velocity = isTouchpad
@@ -441,6 +455,7 @@ Item {
         if (wheel.phase === Qt.ScrollEnd)
             finishScroll()
 
+        return true
     }
 
     Timer {
@@ -453,7 +468,7 @@ Item {
     NumberAnimation {
         id: kineticAnim
         target: root.flickable
-        property: "contentY"
+        property: root.positionProperty
         easing.type: Easing.OutQuart
         onFinished: {
             // Prefer the impact-time velocity (computed in runKineticGlide)
@@ -497,7 +512,8 @@ Item {
 
     Translate {
         id: overshootTranslate
-        y: root.visualOvershoot
+        x: root.horizontal ? root.visualOvershoot : 0
+        y: root.horizontal ? 0 : root.visualOvershoot
     }
 
     Connections {
@@ -508,19 +524,17 @@ Item {
                 root.stopAndSettle()
         }
 
-        function onContentHeightChanged() {
+        function settleAfterResize() {
             if (!root.flickable.moving) {
-                root.flickable.contentY = root.boundedContentY(root.flickable.contentY)
+                root.flickable[root.positionProperty] = root.boundedContentPosition(
+                    root.flickable[root.positionProperty])
                 root.bounceBack()
             }
         }
-
-        function onHeightChanged() {
-            if (!root.flickable.moving) {
-                root.flickable.contentY = root.boundedContentY(root.flickable.contentY)
-                root.bounceBack()
-            }
-        }
+        function onContentHeightChanged() { if (!root.horizontal) settleAfterResize() }
+        function onHeightChanged() { if (!root.horizontal) settleAfterResize() }
+        function onContentWidthChanged() { if (root.horizontal) settleAfterResize() }
+        function onWidthChanged() { if (root.horizontal) settleAfterResize() }
 
         function onVisibleChanged() {
             if (!root.flickable.visible)

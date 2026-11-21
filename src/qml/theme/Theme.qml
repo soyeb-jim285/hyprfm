@@ -1,10 +1,13 @@
 pragma Singleton
+import "../strataicons/IconMapping.js" as StrataMapping
 import QtQuick
 
 QtObject {
     id: root
 
     property color base: theme.base
+    // Whether the loaded theme reads as dark (relative luminance of its base).
+    readonly property bool isDark: 0.2126 * base.r + 0.7152 * base.g + 0.0722 * base.b < 0.5
     property color mantle: theme.mantle
     property color crust: theme.crust
     property color surface: theme.surface
@@ -12,16 +15,48 @@ QtObject {
     property color text: theme.text
     property color subtext: theme.subtext
     property color muted: theme.muted
+    function iconComponentSource(type) {
+        return Qt.resolvedUrl((StrataMapping.types[type] ? "../strataicons/" : "../icons/") + type + ".qml")
+    }
+
+    function fileIconSource(iconName, fileName, logicalSize, grid) {
+        return "image://icon/" + encodeURIComponent(iconName || "text-x-generic")
+            + "?theme=" + encodeURIComponent(config.iconTheme)
+            + "&r=" + config.iconRevision
+            + "&accent=" + encodeURIComponent(theme.accent)
+            + "&background=" + encodeURIComponent(theme.base)
+            + "&fileColors=" + config.fileIconColors
+            + "&name=" + encodeURIComponent(fileName || "")
+            + "&logicalSize=" + (logicalSize || 48)
+            + "&context=" + (grid ? "grid" : "interface")
+    }
+
     property color accent: theme.accent
     property color success: theme.success
     property color warning: theme.warning
     property color error: theme.error
     property var terminalPalette: theme.terminalPalette
 
+    // Disk space bars turn yellow from 75% used and red from 90% in every
+    // theme: a theme's warning and error colours where they read as yellow
+    // and red, a fixed amber and red where they do not (several themes have
+    // a teal, blue or grey warning or error).
+    function _hueWithin(c, from, to) {
+        const h = c.hslHue * 360
+        return c.hslHue >= 0 && c.hslSaturation > 0.35
+            && (from <= to ? h >= from && h <= to : h >= from || h <= to)
+    }
+    readonly property color usageWarning: _hueWithin(warning, 25, 70) ? warning : "#e5a50a"
+    readonly property color usageCritical: _hueWithin(error, 330, 20) ? error : "#e01b24"
+    function usageColor(percent) {
+        return percent >= 90 ? usageCritical : percent >= 75 ? usageWarning : accent
+    }
+
     property int radiusSmall: config.radiusSmall
     property int radiusMedium: config.radiusMedium
     property int radiusLarge: config.radiusLarge
     readonly property real baseFontSize: {
+        if (config.fontSize > 0) return config.fontSize
         var pointSize = Qt.application.font.pointSize
         return pointSize > 0 ? pointSize : 10
     }
@@ -29,9 +64,9 @@ QtObject {
     readonly property real hiddenIconOpacity: 0.55
     readonly property real uiScale: Math.max(1.0, baseFontSize / 10.0)
     readonly property int spacing: Math.round(8 * uiScale)
-    readonly property int fontSmall: Math.max(9, Math.round(baseFontSize - 1))
-    readonly property int fontNormal: Math.max(10, Math.round(baseFontSize))
-    readonly property int fontLarge: Math.max(12, Math.round(baseFontSize + 2))
+    readonly property int fontSmall: Math.max(7, Math.round(baseFontSize - 1))
+    readonly property int fontNormal: Math.max(8, Math.round(baseFontSize))
+    readonly property int fontLarge: Math.max(10, Math.round(baseFontSize + 2))
     readonly property int controlSize: Math.round(32 * uiScale)
     readonly property int compactControlSize: Math.round(28 * uiScale)
     readonly property int titleBarHeight: Math.round(34 * uiScale)

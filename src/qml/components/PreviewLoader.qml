@@ -1,4 +1,5 @@
 import QtQuick
+import HyprFM
 
 // Shared async driver for the two preview panels: the quick-preview overlay
 // and the Miller preview column. Both used to call PreviewService's blocking
@@ -14,7 +15,9 @@ QtObject {
 
     // Identifies this panel to PreviewService. Staleness is tracked per
     // requester, so the two panels never cancel one another.
-    property string requester: ""
+    property string requester: String(loader)
+    property bool lightTheme: Theme.base.r * 0.2126 + Theme.base.g * 0.7152 + Theme.base.b * 0.0722 > 0.5
+    onLightThemeChanged: if (path !== "" && kind === "text") reload()
 
     // Bound by the owner. Deliberately read at debounce-fire time rather
     // than inside reload(): both derive from the owner's fileProps, which is
@@ -25,7 +28,7 @@ QtObject {
     // zip as a folder.
     property string path: ""
 
-    // "text" | "pdf" | "archive" | "directory" | "" (metadata only)
+    // "text" | "pdf" | "archive" | "directory" | "font" | "" (metadata only)
     property string kind: ""
 
     // Only meaningful for encrypted archives. Set by the owner alongside
@@ -39,6 +42,10 @@ QtObject {
     property var directoryPreview: ({ entries: [], truncated: false, error: "", count: 0 })
     property var pdfPreview: ({ localPath: "", pageCount: 0, error: "" })
     property var fileMetadata: ({})
+    readonly property var emptyFontPreview: ({
+        family: "", styleName: "", weight: 400, italic: false, valid: false, error: ""
+    })
+    property var fontPreview: emptyFontPreview
 
     signal pdfPageCountChanged()
 
@@ -47,6 +54,7 @@ QtObject {
         directoryPreview = ({ entries: [], truncated: false, error: "", count: 0 })
         pdfPreview = ({ localPath: "", pageCount: 0, error: "" })
         fileMetadata = ({})
+        fontPreview = emptyFontPreview
     }
 
     // Drops any in-flight request and clears the panel.
@@ -81,7 +89,7 @@ QtObject {
             }
             loader.loading = loader.kind !== ""
             previewService.requestPreview(loader.requester, loader.path, loader.kind,
-                                          loader.password)
+                                          loader.password, loader.lightTheme)
         }
     }
 
@@ -102,6 +110,8 @@ QtObject {
                 loader.directoryPreview = data.directory
             if (data.archive !== undefined)
                 loader.directoryPreview = data.archive
+            if (data.font !== undefined)
+                loader.fontPreview = data.font
             if (data.metadata !== undefined)
                 loader.fileMetadata = data.metadata
             if (data.pdf !== undefined) {

@@ -1,5 +1,7 @@
 #include "models/devicemodel.h"
+#include "services/filesystemtasks.h"
 
+#include <QCoreApplication>
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -18,13 +20,13 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
+#include <QStandardPaths>
 #include <QStorageInfo>
 #include <QUrl>
 #undef signals
 #include <gio/gio.h>
 #define signals Q_SIGNALS
 #include <algorithm>
-#include <memory>
 
 static const QStringList kVirtualTypes = {
     "tmpfs", "devtmpfs", "proc", "sysfs",
@@ -286,6 +288,48 @@ QString mobileUdidFromUri(const QString &uri)
     if (!match.hasMatch())
         return {};
     return hyphenateUdid(match.captured(1).toUpper());
+}
+
+// Mount point -> filesystem type of the user's FUSE mounts in their home, read
+// from /proc/self/mountinfo: a file read, never a call into a FUSE daemon.
+QHash<QString, QString> userFuseMountTypes()
+{
+    QHash<QString, QString> types;
+    QFile file(QStringLiteral("/proc/self/mountinfo"));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return types;
+    const auto unescape = [](const QString &field) {
+        QString out;
+        out.reserve(field.size());
+        for (int i = 0; i < field.size(); ++i) {
+            if (field.at(i) == QLatin1Char('\\') && i + 3 < field.size()) {
+                bool ok = false;
+                const int code = field.mid(i + 1, 3).toInt(&ok, 8);
+                if (ok) {
+                    out.append(QChar(code));
+                    i += 3;
+                    continue;
+                }
+            }
+            out.append(field.at(i));
+        }
+        return out;
+    };
+    const QString home = QDir::homePath();
+    const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        const int sep = line.indexOf(QStringLiteral(" - "));
+        if (sep < 0)
+            continue;
+        const QStringList pre = line.left(sep).split(QLatin1Char(' '));
+        const QStringList post = line.mid(sep + 3).split(QLatin1Char(' '));
+        if (pre.size() < 5 || post.isEmpty())
+            continue;
+        const QString path = unescape(pre.at(4));
+        if (DeviceModel::isUserFuseMount(post.at(0), path, home))
+            types.insert(path, post.at(0));
+    }
+    return types;
 }
 
 bool isMobileDeviceScheme(const QString &scheme)
@@ -579,6 +623,7 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
 
     static const QString kEfiGuid = QStringLiteral("c12a7328-f81f-11d2-ba4b-00a098cb80e7");
 
+    QStringList mountsToProbe;
     for (auto it = blocks.constBegin(); it != blocks.constEnd(); ++it) {
         const BlockInfo &b = it.value();
 
@@ -618,61 +663,19 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
         else
             name = b.device.section(QLatin1Char('/'), -1);
 
-        qint64 total = 0;
-        qint64 free = 0;
-        int usage = 0;
-        if (mounted) {
-            // Inside a Flatpak the sandbox's `/` is a tmpfs runtime
-            // overlay, not the host root. With --filesystem=host the host
-            // file system is exposed under /run/host as individual bind
-            // mounts (/run/host/usr, /run/host/etc, /run/host/var, etc.).
-            // Note: /run/host itself is the tmpfs, so we cannot just stat
-            // it — we have to stat one of the sub-mounts that lives on
-            // the host root partition.
-            //
-            // Strategy: try the mount point directly first (works for
-            // /home, /tmp, /opt, /media, /mnt, /run/media which are bind
-            // mounted at the same path). If that fails or gives bogus
-            // numbers and we're in Flatpak, fall back to a host-side
-            // probe. For "/" specifically, /run/host/usr is the safest
-            // bet — every distro has /usr on the root partition.
-            const bool inFlatpak = QFile::exists(QStringLiteral("/.flatpak-info"));
-            QStorageInfo storage(mountPoint);
-            if (inFlatpak && (!storage.isValid() || storage.bytesTotal() == 0
-                              || storage.device() == QByteArrayLiteral("tmpfs"))) {
-                QStringList probes;
-                if (mountPoint == QLatin1String("/")) {
-                    probes << QStringLiteral("/run/host/usr")
-                           << QStringLiteral("/run/host/etc");
-                } else {
-                    probes << QStringLiteral("/run/host") + mountPoint;
-                }
-                for (const QString &probe : std::as_const(probes)) {
-                    if (!QFileInfo(probe).exists())
-                        continue;
-                    QStorageInfo s(probe);
-                    if (s.isValid() && s.bytesTotal() > 0
-                        && s.device() != QByteArrayLiteral("tmpfs")) {
-                        storage = s;
-                        break;
-                    }
-                }
-            }
-            if (storage.isValid()) {
-                total = storage.bytesTotal();
-                free = storage.bytesAvailable();
-                if (total > 0)
-                    usage = static_cast<int>((total - free) * 100 / total);
-            }
-        } else {
-            total = b.size;
-        }
+        const MountUsage known = m_mountUsage.value(mountPoint);
+        const qint64 total = mounted && known.total > 0 ? known.total : b.size;
+        const qint64 free = known.free;
+        const int usage = usagePercentFor(known.total, free);
+        if (mounted)
+            mountsToProbe.append(mountPoint);
 
         m_devices.append({name, b.device, mountPoint, b.idType.toLower(),
                           total, free, usage, removable, mounted,
                           QString(), DeviceBackend::UDisks2, nullptr, nullptr});
     }
 
+    const QHash<QString, QString> fuseMountTypes = userFuseMountTypes();
     GVolumeMonitor *volumeMonitor = m_volumeMonitor ? m_volumeMonitor : g_volume_monitor_get();
     if (volumeMonitor) {
         QList<DeviceEntry> gioDevices;
@@ -693,6 +696,41 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
 
             const QString uri = uriFromGFile(location);
             const QString scheme = schemeFromUri(uri);
+
+            // Cloud and network folders mounted with FUSE (rclone, sshfs, ...): no
+            // block device, so UDisks2 never reports them; GIO lists them as mounts
+            // without a volume.  Their size is what the filesystem reports -- for an
+            // rclone remote, the account's storage quota.
+            if (scheme == QLatin1String("file") && location) {
+                const QString path = qStringFromGChar(g_file_get_path(location));
+                GVolume *volume = g_mount_get_volume(mount);
+                const bool hasVolume = volume != nullptr;
+                if (volume)
+                    g_object_unref(volume);
+                const QString fsType = fuseMountTypes.value(path);
+                if (!hasVolume && isUserFuseMount(fsType, path, QDir::homePath())
+                    && !seenMobileDevices.contains(uri)) {
+                    seenMobileDevices.insert(uri);
+                    // statfs on a FUSE mount waits for its daemon, which can hang
+                    // (11-20: a wedged Filen rclone): the size comes from a probe off
+                    // this thread; meanwhile the last known one.
+                    const MountUsage known = m_mountUsage.value(path);
+                    const qint64 total = known.total;
+                    const qint64 free = known.free;
+                    const int usage = usagePercentFor(total, free);
+                    mountsToProbe.append(path);
+                    QString name = qStringFromGChar(g_mount_get_name(mount));
+                    if (name.isEmpty())
+                        name = QFileInfo(path).fileName();
+                    gioDevices.append({name, uri, path, fsType,
+                                       total, free, usage, true, true,
+                                       QString(), DeviceBackend::Gio, nullptr,
+                                       G_MOUNT(g_object_ref(mount))});
+                }
+                g_object_unref(location);
+                continue;
+            }
+
             if (!isMobileDeviceScheme(scheme)) {
                 if (location)
                     g_object_unref(location);
@@ -849,6 +887,74 @@ void DeviceModel::applyUDisksReply(const QDBusMessage &reply)
               });
 
     endResetModel();
+
+    for (const QString &mountPoint : std::as_const(mountsToProbe))
+        probeMountUsage(mountPoint);
+}
+
+void DeviceModel::probeMountUsage(const QString &mountPoint)
+{
+    const auto mount = MountTable().forPath(mountPoint);
+    const auto key = qMakePair(mountPoint, mount);
+    if (m_mountProbesPending.contains(key))
+        return;
+    m_mountProbesPending.insert(key);
+
+    const auto probe = [mountPoint]() {
+        QStorageInfo storage(mountPoint);
+        // Flatpak sees a tmpfs at /. The host disk's bind-mounted directories
+        // under /run/host still report its real capacity.
+        if (QFile::exists(QStringLiteral("/.flatpak-info"))
+            && (!storage.isValid() || storage.bytesTotal() == 0
+                || storage.device() == QByteArrayLiteral("tmpfs"))) {
+            const QStringList paths = mountPoint == QStringLiteral("/")
+                ? QStringList{QStringLiteral("/run/host/usr"), QStringLiteral("/run/host/etc")}
+                : QStringList{QStringLiteral("/run/host") + mountPoint};
+            for (const QString &path : paths) {
+                if (!QFileInfo::exists(path))
+                    continue;
+                const QStorageInfo candidate(path);
+                if (candidate.isValid() && candidate.bytesTotal() > 0
+                    && candidate.device() != QByteArrayLiteral("tmpfs")) {
+                    storage = candidate;
+                    break;
+                }
+            }
+        }
+        return storage.isValid() && storage.isReady()
+            ? MountUsage{storage.bytesTotal(), storage.bytesAvailable()} : MountUsage{};
+    };
+    watchFilesystemTask(this, mount, probe, [this, key](MountUsage usage) {
+        m_mountProbesPending.remove(key);
+        if (MountTable().forPath(key.first) == key.second)
+            applyMountUsage(key.first, usage.total, usage.free);
+    });
+}
+
+void DeviceModel::applyMountUsage(const QString &mountPoint, qint64 total, qint64 free)
+{
+    const MountUsage previous = m_mountUsage.value(mountPoint);
+    if (previous.total == total && previous.free == free)
+        return;
+    m_mountUsage.insert(mountPoint, {total, free});
+    for (int i = 0; i < m_devices.size(); ++i) {
+        DeviceEntry &dev = m_devices[i];
+        if (!dev.mounted || dev.mountPoint != mountPoint)
+            continue;
+        dev.totalSize = total;
+        dev.freeSpace = free;
+        dev.usagePercent = usagePercentFor(total, free);
+        const QModelIndex idx = index(i);
+        emit dataChanged(idx, idx, {TotalSizeRole, FreeSpaceRole, UsagePercentRole});
+    }
+}
+
+int DeviceModel::usagePercentFor(qint64 total, qint64 free)
+{
+    if (total <= 0)
+        return 0;
+    const qint64 clampedFree = qBound(qint64(0), free, total);
+    return qBound(0, static_cast<int>(100.0 * static_cast<double>(total - clampedFree) / static_cast<double>(total)), 100);
 }
 
 // Map a /dev/<basename> path to its UDisks2 object path. D-Bus object paths
@@ -900,6 +1006,13 @@ void DeviceModel::unmount(int index)
 
     const QString label = dev.deviceName;
 
+    // A FUSE mount is the user's own: fusermount takes it down without polkit,
+    // which GIO's generic unmount (umount) cannot do for it.
+    if (dev.backend == DeviceBackend::Gio && isUserFuseMount(dev.fsType, dev.mountPoint, QDir::homePath())) {
+        unmountFuse(dev.mountPoint, label);
+        return;
+    }
+
     if (dev.backend == DeviceBackend::Gio) {
         if (!dev.gioMount) {
             refresh();
@@ -940,6 +1053,63 @@ void DeviceModel::unmount(int index)
         }
         watcher->deleteLater();
     });
+}
+
+bool DeviceModel::isUserFuseMount(const QString &fsType, const QString &path, const QString &home)
+{
+    if (fsType != QLatin1String("fuse") && !fsType.startsWith(QLatin1String("fuse.")))
+        return false;
+    // The desktop's own FUSE helpers live under /run/user anyway; name them so
+    // a home-relocated runtime dir cannot turn them into "devices".
+    if (fsType == QLatin1String("fuse.portal") || fsType == QLatin1String("fuse.gvfsd-fuse"))
+        return false;
+    if (home.isEmpty() || home == QLatin1String("/"))
+        return false;
+    const QString prefix = home.endsWith(QLatin1Char('/')) ? home : home + QLatin1Char('/');
+    return path.startsWith(prefix) && path.length() > prefix.length();
+}
+
+bool DeviceModel::isUserUnmountable(const QString &mountPoint, bool gioBackend)
+{
+    if (mountPoint.isEmpty() || mountPoint == QLatin1String("/"))
+        return false;
+    return gioBackend
+        || mountPoint.startsWith(QLatin1String("/run/media/"))
+        || mountPoint.startsWith(QLatin1String("/media/"));
+}
+
+void DeviceModel::unmountFuse(const QString &mountPoint, const QString &label)
+{
+    QString tool = QStandardPaths::findExecutable(QStringLiteral("fusermount3"),
+                                                  {QStringLiteral("/run/wrappers/bin")});
+    if (tool.isEmpty())
+        tool = QStandardPaths::findExecutable(QStringLiteral("fusermount3"));
+    if (tool.isEmpty())
+        tool = QStandardPaths::findExecutable(QStringLiteral("fusermount"));
+    if (tool.isEmpty()) {
+        emit mountError(tr("Could not unmount %1: fusermount3 is not installed").arg(label));
+        return;
+    }
+
+    auto *process = new QProcess(this);
+    connect(process, &QProcess::errorOccurred, this,
+            [this, process, label](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            emit mountError(tr("Could not unmount %1: %2").arg(label, process->errorString()));
+            process->deleteLater();
+        }
+    });
+    connect(process, &QProcess::finished, this,
+            [this, process, label](int exitCode, QProcess::ExitStatus status) {
+        if (status != QProcess::NormalExit || exitCode != 0) {
+            const QString err = QString::fromLocal8Bit(process->readAllStandardError()).trimmed();
+            emit mountError(tr("Could not unmount %1: %2")
+                                .arg(label, err.isEmpty() ? tr("fusermount failed") : err));
+        }
+        refresh();
+        process->deleteLater();
+    });
+    process->start(tool, {QStringLiteral("-u"), mountPoint});
 }
 
 void DeviceModel::mount(int index)
@@ -1109,6 +1279,8 @@ QVariant DeviceModel::data(const QModelIndex &index, int role) const
         case DeviceBackend::UDisks2:    break;
         }
         return QStringLiteral("udisks2");
+    case UserUnmountableRole:
+        return d.mounted && isUserUnmountable(d.mountPoint, d.backend == DeviceBackend::Gio);
     }
     return {};
 }
@@ -1125,5 +1297,6 @@ QHash<int, QByteArray> DeviceModel::roleNames() const
         {RemovableRole,    "removable"},
         {MountedRole,      "mounted"},
         {BackendRole,      "backend"},
+        {UserUnmountableRole, "userUnmountable"},
     };
 }

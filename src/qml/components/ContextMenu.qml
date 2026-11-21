@@ -23,6 +23,9 @@ Item {
     property int menuWidth: 260
     property bool splitViewEnabled: false
     property bool isTrashView: false
+    // Folder an "Add to Favourites" item would add; empty hides the item
+    // (a file, a virtual place, or a folder already in Favourites).
+    property string favouritePath: ""
 
     signal openRequested(string path, bool isDir)
     signal openWithRequested(string path, string desktopFile)
@@ -45,6 +48,7 @@ Item {
     signal selectAllRequested()
     signal propertiesRequested(string path)
     signal splitViewRequested(string path)
+    signal addFavouriteRequested(string path)
     signal viewModeRequested(string mode)
     signal sortRequested(string column, bool ascending)
     signal emptyTrashRequested()
@@ -726,7 +730,13 @@ Item {
                 })
             } else if (splitViewEnabled) {
                 items.push({ text: "Close Split View", shortcut: keys("split_view"), action: "close_split", icon: "SquareSplitHorizontal" })
+                if (!isTrashView) {
+                    items.push({ text: "Copy to Other Pane", shortcut: keys("copy_to_other_pane"), action: "copy_other_pane", icon: "Copy" })
+                    items.push({ text: "Move to Other Pane", shortcut: keys("move_to_other_pane"), action: "move_other_pane", icon: "Scissors" })
+                }
             }
+            if (targetIsDir && favouritePath !== "")
+                items.push({ text: "Add to Favourites", shortcut: keys("add_to_favourites"), action: "add_favourite", icon: "Bookmark" })
             var mime = ""
             if (!targetIsDir && fileModel) {
                 var props = fileModel.fileProperties(targetPath)
@@ -808,7 +818,8 @@ Item {
                 submenuItems: [
                     { text: "Grid", shortcut: keys("grid_view"), action: "view_grid", checked: currentViewMode === "grid", icon: "Grid" },
                     { text: "Miller", shortcut: keys("miller_view"), action: "view_miller", checked: currentViewMode === "miller", icon: "Columns3" },
-                    { text: "Detailed", shortcut: keys("detailed_view"), action: "view_detailed", checked: currentViewMode === "detailed", icon: "AlignJustify" }
+                    { text: "Detailed", shortcut: keys("detailed_view"), action: "view_detailed", checked: currentViewMode === "detailed", icon: "AlignJustify" },
+                    { text: "Compact", shortcut: keys("compact_view"), action: "view_compact", checked: currentViewMode === "compact", icon: "LayoutList" }
                 ]
             })
             items.push({ text: "Sort By", shortcut: "", action: "sort_toggle", isSubmenu: true, icon: "SlidersH",
@@ -841,6 +852,8 @@ Item {
                     items.push({ text: "Close Split View", shortcut: keys("split_view"), action: "close_split", icon: "SquareSplitHorizontal" })
                     items.push({ text: "Save Split to Bookmarks", shortcut: "", action: "save_current_split", icon: "Bookmark" })
                 }
+                if (favouritePath !== "")
+                    items.push({ text: "Add Folder to Favourites", shortcut: keys("add_to_favourites"), action: "add_favourite", icon: "Bookmark" })
                 items.push({ separator: true })
                 if (!remoteContext) {
                     items.push({ text: "Open in Terminal", shortcut: keys("open_terminal"), action: "terminal", icon: "Terminal" })
@@ -882,12 +895,16 @@ Item {
         case "newfile": newFileRequested(effectiveDir); break
         case "properties": propertiesRequested(targetPath); break
         case "split_open": splitViewRequested(targetPath); break
+        case "add_favourite": addFavouriteRequested(favouritePath); break
         case "split_here": splitViewRequested(effectiveDir); break
         case "close_split": customActionRequested("close_split"); break
+        case "copy_other_pane": customActionRequested("copy_other_pane"); break
+        case "move_other_pane": customActionRequested("move_other_pane"); break
         case "save_current_split": customActionRequested("save_current_split"); break
         case "view_grid": viewModeRequested("grid"); break
         case "view_miller": viewModeRequested("miller"); break
         case "view_detailed": viewModeRequested("detailed"); break
+        case "view_compact": viewModeRequested("compact"); break
         case "sort_name": sortRequested("name", currentSortAscending); break
         case "sort_size": sortRequested("size", currentSortAscending); break
         case "sort_modified": sortRequested("modified", currentSortAscending); break
@@ -947,7 +964,7 @@ Item {
                     Layout.preferredHeight: 16
                     Layout.alignment: Qt.AlignVCenter
                     active: !!(itemData && itemData.icon)
-                    source: (itemData && itemData.icon) ? "../icons/Icon" + itemData.icon + ".qml" : ""
+                    source: (itemData && itemData.icon) ? Theme.iconComponentSource("Icon" + itemData.icon) : ""
                     onLoaded: {
                         item.size = 16
                         item.color = Qt.binding(() => itemData && itemData.destructive ? Theme.error : Theme.muted)
@@ -1007,7 +1024,7 @@ Item {
                     Layout.preferredHeight: 16
                     Layout.alignment: Qt.AlignVCenter
                     active: !!(itemData && itemData.icon)
-                    source: (itemData && itemData.icon) ? "../icons/Icon" + itemData.icon + ".qml" : ""
+                    source: (itemData && itemData.icon) ? Theme.iconComponentSource("Icon" + itemData.icon) : ""
                     onLoaded: {
                         item.size = 16
                         item.color = Qt.binding(() => submenuTrigger.isActive ? Theme.text : Theme.muted)
@@ -1064,7 +1081,7 @@ Item {
                 spacing: 8
                 Image {
                     source: subItemData && subItemData.iconName
-                        ? ("image://icon/" + subItemData.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                        ? Theme.fileIconSource(subItemData.iconName, "", 24, false)
                         : ""
                     sourceSize: Qt.size(18, 18)
                     Layout.preferredWidth: visible ? 18 : 0
@@ -1077,7 +1094,7 @@ Item {
                     Layout.preferredHeight: 14
                     Layout.alignment: Qt.AlignVCenter
                     active: !!(subItemData && subItemData.icon)
-                    source: (subItemData && subItemData.icon) ? "../icons/Icon" + subItemData.icon + ".qml" : ""
+                    source: (subItemData && subItemData.icon) ? Theme.iconComponentSource("Icon" + subItemData.icon) : ""
                     onLoaded: {
                         item.size = 14
                         item.color = Qt.binding(() => Theme.muted)

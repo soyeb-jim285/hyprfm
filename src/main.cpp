@@ -26,6 +26,7 @@
 #include <QDBusReply>
 #include <QStyleHints>
 #include <QFileInfo>
+#include "services/filesystemtasks.h"
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <unistd.h>
@@ -45,6 +46,7 @@
 #include "models/tablistmodel.h"
 #include "models/bookmarkmodel.h"
 #include "models/devicemodel.h"
+#include "models/computermodel.h"
 #include "models/recentfilesmodel.h"
 #include "models/searchresultsmodel.h"
 #include "models/searchproxymodel.h"
@@ -650,25 +652,13 @@ int main(int argc, char *argv[])
         else if (initialSecondaryPath.isEmpty())
             initialSecondaryPath = a;
     }
-    // A split needs two folders. Anything else in the second slot (another
-    // file from the desktop's %F, the value of `-style fusion`, a typo) keeps
-    // the plain one-path launch.
-    // ponytail: a real folder named like a Qt option value still matches.
-    const auto isSplitLocation = [](const QString &path) {
-        return path.contains(QLatin1String("://")) || QFileInfo(path).isDir();
+    auto absoluteLaunchPath = [](const QString &path) {
+        if (path.isEmpty() || path.contains(QLatin1String("://")))
+            return path;
+        return QFileInfo(path).absoluteFilePath();
     };
-    if (!isSplitLocation(initialOpenPath) || !isSplitLocation(initialSecondaryPath))
-        initialSecondaryPath.clear();
-    if (!initialOpenPath.isEmpty()) {
-        QFileInfo fi(initialOpenPath);
-        if (fi.exists())
-            initialOpenPath = fi.absoluteFilePath();
-    }
-    if (!initialSecondaryPath.isEmpty()) {
-        QFileInfo fi(initialSecondaryPath);
-        if (fi.exists())
-            initialSecondaryPath = fi.absoluteFilePath();
-    }
+    initialOpenPath = absoluteLaunchPath(initialOpenPath);
+    initialSecondaryPath = absoluteLaunchPath(initialSecondaryPath);
 
     // Before QGuiApplication: it may set VK_DRIVER_FILES, which is only safe
     // while this is the only thread.
@@ -946,6 +936,8 @@ int main(int argc, char *argv[])
 
     // Create DeviceModel
     DeviceModel *devices = new DeviceModel(&app, true);
+    auto *computerModel = new ComputerModel(&app);
+    computerModel->setDevices(devices);
 
     // Aggregate runtime tools + compile-time features + DBus services for the
     // in-app MissingDependenciesDialog. Replaces the older hand-rolled
@@ -973,22 +965,28 @@ int main(int argc, char *argv[])
     // An unset icon theme follows the desktop; Adwaita is the last resort when
     // nothing answers. Resolved inside ConfigManager so QML's config.iconTheme
     // (the ?theme= in every image://icon URL) sees the same answer.
-    config->setIconThemeFallback(desktop.iconTheme.isEmpty() ? QStringLiteral("Adwaita")
-                                                             : desktop.iconTheme);
+    const QString nativeIconTheme = desktop.iconTheme.isEmpty() ? QStringLiteral("Adwaita") : desktop.iconTheme;
+    config->setIconThemeFallback(nativeIconTheme);
 
     // Set icon theme so QIcon::fromTheme() works (e.g. for drag pixmaps)
-    QIcon::setThemeName(config->iconTheme());
+    QIcon::setThemeName(config->iconTheme() == "Strata" ? nativeIconTheme : config->iconTheme());
 
     // Register image providers (keep pointer to IconProvider for DragHelper)
     auto *iconProvider = new IconProvider(config->iconTheme());
     engine.addImageProvider("thumbnail", new ThumbnailProvider);
     engine.addImageProvider("icon", iconProvider);
+    const auto updateIconPalette = [=]() {
+        iconProvider->setPalette(theme->accent(), theme->base(), config->fileIconColors() == "theme");
+    };
+    updateIconPalette();
+    QObject::connect(theme, &ThemeLoader::themeChanged, &app, updateIconPalette);
+    QObject::connect(config, &ConfigManager::configChanged, &app, updateIconPalette);
     engine.addImageProvider("pdfpreview", new PdfPreviewProvider);
 
     DragHelper *dragHelper = new DragHelper(iconProvider, &app);
 
     QObject::connect(config, &ConfigManager::configChanged, [=]() {
-        QIcon::setThemeName(config->iconTheme());
+        QIcon::setThemeName(config->iconTheme() == "Strata" ? nativeIconTheme : config->iconTheme());
         iconProvider->setPrimaryTheme(config->iconTheme());
     });
 
@@ -1005,6 +1003,7 @@ int main(int argc, char *argv[])
     shared->setContextProperty("clipboard", clipboard);
     shared->setContextProperty("dragHelper", dragHelper);
     shared->setContextProperty("devices", devices);
+    shared->setContextProperty("computerModel", computerModel);
     shared->setContextProperty("recentFiles", recentFiles);
     shared->setContextProperty("previewService", previewService);
     shared->setContextProperty("metadataExtractor", metadataExtractor);
@@ -1080,6 +1079,18 @@ int main(int argc, char *argv[])
     QList<AppWindow *> windows;
     AppWindow *sessionWindow = nullptr;   // the one whose state is session.json
     AppWindow *lastActiveWindow = nullptr;
+    QObject windowLifetime;
+
+    // Desktop launchers can send more than one file. Only two directories
+    // request a split, and checking them must not hold up either process.
+    auto validateSplit = [](QObject *owner, const QString &primary, const QString &secondary, auto onReady) {
+        watchFilesystemTask(owner, MountTable().forPath(secondary), [primary, secondary]() {
+            auto isDirectory = [](const QString &path) {
+                return path.contains(QLatin1String("://")) || QFileInfo(path).isDir();
+            };
+            return isDirectory(secondary) && isDirectory(primary);
+        }, onReady);
+    };
 
     auto createWindow = [&](const QJsonObject &session, const QString &openPath, const QString &secondaryPath = QString()) -> AppWindow * {
         auto *w = new AppWindow(&app);
@@ -1096,18 +1107,28 @@ int main(int argc, char *argv[])
             // one tab rather than opening a second tab for it later.
             if (auto *tab = w->tabModel->activeTab()) {
                 tab->navigateTo(openPath);
-                if (!secondaryPath.isEmpty()) {
-                    tab->setSplitViewEnabled(true);
-                    tab->resetSecondaryTo(secondaryPath);
-                }
+                if (!secondaryPath.isEmpty())
+                    validateSplit(tab, openPath, secondaryPath, [tab, openPath, secondaryPath](bool valid) {
+                        if (valid && tab->currentPath() == openPath && !tab->splitViewEnabled()) {
+                            tab->resetSecondaryTo(secondaryPath);
+                            tab->setSplitViewEnabled(true);
+                        }
+                    });
             }
         }
 
         // Session-scoped view state (zoom per view). 0 keeps built-in defaults.
         w->sessionState = new SessionState(w);
         w->sessionState->setGridColumns(session.value("gridColumns").toInt());
+        // Grid zoom was a column count until 0.7.x; the size it gave becomes
+        // the icon size (a cell of 1600/columns px, less the 45 px label).
+        if (session.contains("gridIconSize"))
+            w->sessionState->setGridIconSize(session.value("gridIconSize").toInt());
+        else if (const int columns = session.value("gridColumns").toInt(); columns > 0)
+            w->sessionState->setGridIconSize(qBound(32, qRound(1600.0 / columns) - 45, 512));
         w->sessionState->setRowHeightDetailed(session.value("rowHeightDetailed").toInt());
         w->sessionState->setRowHeightMiller(session.value("rowHeightMiller").toInt());
+        w->sessionState->setRowHeightCompact(session.value("rowHeightCompact").toInt());
 
         const QString homePath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
         TabModel *activeTab = w->tabModel->activeTab();
@@ -1233,7 +1254,7 @@ int main(int argc, char *argv[])
         });
 
         windows.append(w);
-        QObject::connect(w, &QObject::destroyed, &app, [&windows, &sessionWindow, &lastActiveWindow, w, &app, &engine]() {
+        QObject::connect(w, &QObject::destroyed, &windowLifetime, [&windows, &sessionWindow, &lastActiveWindow, w, &windowLifetime, &engine]() {
             windows.removeAll(w);
             // A closed window frees a whole window's worth of objects at once,
             // but the JS heap only shrinks on the engine's next collection and
@@ -1241,7 +1262,7 @@ int main(int argc, char *argv[])
             // behind, 112 -> 202 MB after eight. Collecting and trimming once
             // things settle keeps it at ~1.5 MB (the collection costs ~30 ms,
             // so not during the close itself).
-            QTimer::singleShot(1000, &app, [&engine]() {
+            QTimer::singleShot(1000, &windowLifetime, [&engine]() {
                 engine.collectGarbage();
 #ifdef __GLIBC__
                 malloc_trim(0);
@@ -1253,7 +1274,7 @@ int main(int argc, char *argv[])
         return w;
     };
 
-    QObject::connect(&app, &QGuiApplication::focusWindowChanged, &app, [&](QWindow *focused) {
+    QObject::connect(&app, &QGuiApplication::focusWindowChanged, &windowLifetime, [&](QWindow *focused) {
         for (AppWindow *w : std::as_const(windows))
             if (w->window == focused)
                 lastActiveWindow = w;
@@ -1308,8 +1329,10 @@ int main(int argc, char *argv[])
         session["tabs"] = sessionWindow->tabModel->saveSession();
         session["activeTab"] = sessionWindow->tabModel->activeIndex();
         session["gridColumns"] = sessionWindow->sessionState->gridColumns();
+        session["gridIconSize"] = sessionWindow->sessionState->gridIconSize();
         session["rowHeightDetailed"] = sessionWindow->sessionState->rowHeightDetailed();
         session["rowHeightMiller"] = sessionWindow->sessionState->rowHeightMiller();
+        session["rowHeightCompact"] = sessionWindow->sessionState->rowHeightCompact();
 
         QQuickWindow *win = sessionWindow->window;
         session["windowX"] = win->x();
@@ -1341,8 +1364,10 @@ int main(int argc, char *argv[])
         QObject::connect(sessionWindow->tabModel, &TabListModel::sessionChanged, &app, scheduleSessionSave);
         // Zoom changes are session state too, so persist them the same way.
         QObject::connect(sessionWindow->sessionState, &SessionState::gridColumnsChanged, &app, scheduleSessionSave);
+        QObject::connect(sessionWindow->sessionState, &SessionState::gridIconSizeChanged, &app, scheduleSessionSave);
         QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightDetailedChanged, &app, scheduleSessionSave);
         QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightMillerChanged, &app, scheduleSessionSave);
+        QObject::connect(sessionWindow->sessionState, &SessionState::rowHeightCompactChanged, &app, scheduleSessionSave);
         QQuickWindow *win = sessionWindow->window;
         QObject::connect(win, &QQuickWindow::xChanged, &app, scheduleSessionSave);
         QObject::connect(win, &QQuickWindow::yChanged, &app, scheduleSessionSave);
@@ -1405,10 +1430,17 @@ int main(int argc, char *argv[])
         if (!target)
             return;
         if (!path.isEmpty()) {
-            if (!secondaryPath.isEmpty())
-                target->tabModel->openSplit(path, secondaryPath);
-            else
+            if (!secondaryPath.isEmpty()) {
+                auto *tabs = target->tabModel;
+                validateSplit(tabs, path, secondaryPath, [tabs, path, secondaryPath](bool valid) {
+                    if (valid)
+                        tabs->openSplit(path, secondaryPath);
+                    else
+                        tabs->openPath(path);
+                });
+            } else {
                 target->tabModel->openPath(path);
+            }
         }
         QQuickWindow *win = target->window;
         if (win->visibility() == QWindow::Minimized || win->visibility() == QWindow::Hidden)

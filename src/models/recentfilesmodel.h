@@ -6,6 +6,9 @@
 #include <QList>
 #include <QDateTime>
 
+class QFileInfo;
+class QMimeType;
+
 class RecentFilesModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -48,13 +51,16 @@ signals:
 
 private:
     void load();
-    void dropMissingInBackground();
     void save() const;
 
     struct RecentEntry {
         QString path;
         QDateTime accessTime;
+        QHash<int, QVariant> details;
     };
+
+    void probeEntries(const QList<RecentEntry> &entries);
+    static QVariant readRole(const QFileInfo &info, const QMimeType &mime, int role);
 
     QList<RecentEntry> m_entries;
     QString m_storagePath;

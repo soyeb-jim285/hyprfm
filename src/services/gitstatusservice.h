@@ -12,6 +12,7 @@ class GitStatusService : public QObject
 
 public:
     explicit GitStatusService(QObject *parent = nullptr);
+    ~GitStatusService() override;
 
     void setRootPath(const QString &path);
     QString statusForPath(const QString &path) const;

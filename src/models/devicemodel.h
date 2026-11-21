@@ -2,6 +2,8 @@
 
 #include <QAbstractListModel>
 #include <QFileSystemWatcher>
+#include <QHash>
+#include <QSet>
 #include <QList>
 #include <QTimer>
 
@@ -48,6 +50,7 @@ public:
         RemovableRole,
         MountedRole,
         BackendRole,
+        UserUnmountableRole,
     };
 
     explicit DeviceModel(QObject *parent = nullptr, bool deferInitialRefresh = false);
@@ -59,6 +62,16 @@ public:
 
     Q_INVOKABLE void unmount(int index);
     Q_INVOKABLE void mount(int index);
+
+    // A FUSE filesystem the user mounted inside their home folder -- an rclone
+    // remote (Google Drive, Filen, ...), sshfs and the like.  These are listed
+    // as devices while mounted, with their size, and unmounted with fusermount.
+    static bool isUserFuseMount(const QString &fsType, const QString &path, const QString &home);
+    // Mounted by the user, so the sidebar may offer to unmount it with one click:
+    // phones and FUSE mounts (GIO), and drives auto-mounted under /run/media or
+    // /media -- never /, nor fixed mounts such as /mnt/... from fstab.
+    static bool isUserUnmountable(const QString &mountPoint, bool gioBackend);
+    static int usagePercentFor(qint64 total, qint64 free);
 
 public slots:
     void refresh();
@@ -77,6 +90,13 @@ private:
     void appendUnbrowsableMtpDevices();
     void setupMtpWatcher();
     static bool isVirtual(const QString &fsType);
+    void unmountFuse(const QString &mountPoint, const QString &label);
+    void probeMountUsage(const QString &mountPoint);
+    void applyMountUsage(const QString &mountPoint, qint64 total, qint64 free);
+
+    struct MountUsage { qint64 total = 0; qint64 free = 0; };
+    QHash<QString, MountUsage> m_mountUsage;
+    QSet<QPair<QString, QByteArray>> m_mountProbesPending;
 
     QList<DeviceEntry> m_devices;
     GVolumeMonitor *m_volumeMonitor = nullptr;

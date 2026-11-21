@@ -1,11 +1,12 @@
 #pragma once
 
 #include <QAbstractListModel>
-#include <QFileSystemWatcher>
 #include <QTimer>
 #include <QFileInfo>
-#include <QStorageInfo>
 #include <QFutureWatcher>
+#include <QPersistentModelIndex>
+#include <QPointer>
+#include <QSocketNotifier>
 #include <QDir>
 #include <QList>
 #include <QProcess>
@@ -15,6 +16,7 @@
 #include <QVariantMap>
 #include <limits>
 #include <memory>
+#include <utility>
 
 class GitStatusService;
 
@@ -100,7 +102,8 @@ public:
     Q_INVOKABLE bool setFilePermissions(const QString &path, int ownerAccess, int groupAccess, int otherAccess);
     Q_INVOKABLE QString homePath() const;
     Q_INVOKABLE QString standardPath(const QString &key) const;
-    Q_INVOKABLE QVariantList pathSuggestions(const QString &input, int limit = 8) const;
+    Q_INVOKABLE int requestPathSuggestions(const QString &input, int limit = 8);
+    QVariantList pathSuggestions(const QString &input, int limit = 8) const;
 
     // Tests need a predictable "rowCount is correct right after setRootPath()"
     // guarantee, so expose a switch that runs local scans on the calling
@@ -120,9 +123,9 @@ signals:
     void isLoadingChanged();
     void loadErrorChanged();
     void watchedDirectoryChanged(const QString &path);
-    // The full properties of a remote location fileProperties() answered
-    // with a pending placeholder.
-    void remotePropertiesReady(const QString &path, const QVariantMap &properties);
+    // The full properties for a pending fileProperties() response.
+    void propertiesReady(const QString &path, const QVariantMap &properties);
+    void pathSuggestionsReady(int requestId, const QVariantList &suggestions);
     void folderItemCountsReady(int requestId, const QVariantMap &counts);
 
 private:
@@ -143,6 +146,7 @@ private:
         QString createdText;
         QString accessedText;
         QString mimeType;   // also filled alone by a MimeTypeRole read
+        QString symlinkTarget;
         bool hasImagePreview = false;
         bool hasVideoPreview = false;
         bool hasPdfPreview = false;
@@ -166,26 +170,28 @@ private:
         mutable bool statted = false;
         mutable std::shared_ptr<Details> details;
     };
-    static Entry entryFromInfo(const QFileInfo &info, bool statted);
     static QList<Entry> readLocalEntries(const QString &rootPath, bool showHidden, bool wantStat,
                                          int *error = nullptr);
     static void sortEntries(QList<Entry> &entries, QDir::SortFlags flags, bool hiddenLast = false);
     static QVariantMap countFolderItems(const QStringList &paths);
-    void ensureStat(const Entry &entry, const QFileInfo &info) const;
-    void ensureStat(const Entry &entry) const;
+    static void ensureStat(const Entry &entry, const QFileInfo &info);
     QString entryPath(const Entry &entry) const { return m_entryPrefix + entry.name; }
     Details &detailsOf(const Entry &entry) const;
+    static void populateEntry(const Entry &entry, const QString &path);
+    void requestEntryDetails(const QModelIndex &index, const Entry &entry) const;
+    void loadVisibleDetails();
 
     // Packaged so the worker can carry its own generation number back to
     // the handler, letting us drop results from scans the user has already
     // navigated away from even if the QFutureWatcher fired.
+    struct DirectoryWatch;
     struct LocalReloadResult {
         quint64 generation = 0;
         QList<Entry> entries;
         int error = 0;   // errno from opening the folder
+        std::shared_ptr<DirectoryWatch> watch;
     };
 
-    void ensurePopulated(const Entry &entry) const;
 
     void reload();
     void reloadLocal();
@@ -193,20 +199,21 @@ private:
     void startRemoteList(const QString &rootPath, int generation, bool afterMount);
     void startRemoteMount(const QString &rootPath, int generation);
     void reloadTrash();
+    static QList<QVariantMap> scanTrash(const QString &sortColumn, bool sortAscending, bool hiddenLast);
+    static QVariantMap localFileProperties(const QString &path);
+    static QVariantList collectPathSuggestions(const QString &input, int limit, bool showHidden);
     void cancelRemoteReload();
     void applyRemoteReload(const QString &rootPath, const QByteArray &output);
-    // Local scans go through a QtConcurrent future so the GUI thread never
-    // blocks on QDir::entryInfoList. Generation counter ensures stale
-    // results (user navigated away mid-scan) are discarded.
+    // Generation counter discards results from a folder the user has left.
     void scheduleLocalReload(bool tryDiff);
-    void cancelLocalReload();
     void applyLocalReload(LocalReloadResult result, bool tryDiff);
+    void installDirectoryWatch(std::shared_ptr<DirectoryWatch> watch);
+    void refreshDiskSpace();
     static LocalReloadResult scanLocalEntries(quint64 generation,
                                               const QString &rootPath,
                                               bool showHidden,
                                               QDir::SortFlags sortFlags,
-                                              bool hiddenLast);
-    QList<Entry> currentLocalEntries() const;
+                                              bool hiddenLast, bool watchDirectory);
     void updateLocalCounts();
     bool applyLocalDiff(const QList<Entry> &newEntries);
     bool isTrashRoot() const;
@@ -216,10 +223,6 @@ private:
     const QVariantMap *findTrashEntry(const QString &path) const;
     void setIsLoading(bool loading);
 
-    // QStorageInfo for rootPath, or an invalid one where reporting a disk
-    // would mislead.
-    QStorageInfo rootStorage() const;
-
     QString m_rootPath;
     QString m_entryPrefix;  // m_rootPath as an absolute path ending in '/'
     bool m_showHidden = false;
@@ -227,6 +230,10 @@ private:
     QList<Entry> m_entries;
     QList<QVariantMap> m_remoteEntries;
     QSet<QString> m_remotePropertiesPending;
+    QSet<QString> m_localPropertiesPending;
+    QPointer<QFutureWatcher<QVariantList>> m_suggestionWatcher;
+    QPointer<QFutureWatcher<QList<QVariantMap>>> m_trashWatcher;
+    int m_suggestionRequest = 0;
     int m_folderCountRequest = 0;
     QList<QVariantMap> m_trashEntries;
     int m_fileCount = 0;
@@ -236,9 +243,15 @@ private:
     int m_remoteReloadGeneration = 0;
     QFutureWatcher<LocalReloadResult> *m_localReloadWatcher = nullptr;
     quint64 m_localReloadGeneration = 0;
-    bool m_localReloadTryDiff = false;
     bool m_synchronousReload = false;
-    QFileSystemWatcher m_watcher;
+    std::shared_ptr<DirectoryWatch> m_directoryWatch;
+    std::unique_ptr<QSocketNotifier> m_directoryNotifier;
+    QList<QPersistentModelIndex> m_pendingDetails;
+    QTimer m_detailsDebounce;
+    QTimer m_loadDeadline;
+    QPointer<QFutureWatcher<std::pair<qint64, qint64>>> m_diskProbe;
+    qint64 m_diskFree = -1;
+    qint64 m_diskTotal = -1;
     QTimer m_refreshDebounce;
     QDir::SortFlags m_sortFlags = QDir::Name | QDir::DirsFirst | QDir::IgnoreCase;
     QString m_sortColumn = "name";
