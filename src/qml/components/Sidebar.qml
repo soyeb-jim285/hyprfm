@@ -768,12 +768,28 @@ Rectangle {
 
         // Separator between bookmarks and devices
         Rectangle {
-            visible: bookmarks.count > 0
+            visible: bookmarks.count > 0 && devicesRepeater.count > 0
             Layout.fillWidth: true
             Layout.leftMargin: Theme.spacing
             Layout.rightMargin: Theme.spacing
             height: 1
             color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+        }
+
+        Item {
+            id: devicesHeader
+            visible: devicesRepeater.count > 0
+            Layout.fillWidth: true
+            Layout.preferredHeight: visible ? 25 : 0
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.spacing + 3
+                anchors.verticalCenter: parent.verticalCenter
+                text: "DEVICES"
+                color: Theme.muted
+                font.pointSize: Theme.fontSmall
+                font.weight: Font.DemiBold
+            }
         }
 
         // Auto-navigate after mounting an unmounted device
@@ -789,6 +805,7 @@ Rectangle {
             Layout.fillWidth: true
 
             Repeater {
+                id: devicesRepeater
                 model: devices
 
                 delegate: Rectangle {
