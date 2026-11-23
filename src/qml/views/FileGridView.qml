@@ -24,6 +24,14 @@ GridView {
         onFontChanged: nameWidthTimer.restart()
     }
 
+    // Include CJK and emoji fallback fonts when measuring wrapped names.
+    Text {
+        id: wrappedNameMetrics
+        visible: false
+        font.pointSize: Math.max(10, Theme.fontNormal)
+        text: "Ag字📄\nAg字📄"
+    }
+
     function measureCompactNames() {
         if (!compactMode) return
         var longest = 0
@@ -128,9 +136,7 @@ GridView {
     readonly property int effectiveColumnCount: config.gridFixedColumns
         ? Math.max(minColumns, Math.min(columnCount, Math.min(maxColumns, Math.max(1, Math.floor(width / minCellWidth)))))
         : Math.max(1, Math.floor(width / targetCellSize))
-    // Two lines of the label font, so a larger desktop font does not get
-    // clipped: 32 px was exactly two lines at 10 pt and nothing more.
-    readonly property int labelHeight: Math.round(baseLabelHeight * Theme.uiScale)
+    readonly property int labelHeight: Math.max(baseLabelHeight, Math.ceil(wrappedNameMetrics.implicitHeight))
     readonly property int baseLabelHeight: 32
     // Ask for exactly the size the icon is drawn at. A fixed 96 was being
     // stretched to iconSize (~229 at seven columns on a 1080p window), and
@@ -154,10 +160,8 @@ GridView {
 
     // Spare width is shared out between the columns.
     cellWidth: compactMode ? compactColumnWidth : Math.floor(width / effectiveColumnCount)
-    // The zoom step (Ctrl+Wheel) sizes the icon: the cell's height at the
-    // 10 pt label. Larger interface text (Ctrl+Shift+Wheel) makes the cell taller by
-    // what the label gains, as Strata's Icons view does, rather than taking
-    // that room from the icon -- which shrank icons as the text grew.
+    // Reserve two lines at the current font and display DPI while keeping
+    // the icon size tied to the zoom level.
     cellHeight: compactMode ? Math.max(rowHeight, Math.ceil(nameMetrics.height) + 8)
                             : targetCellSize + labelHeight - baseLabelHeight
     readonly property int iconSize: compactMode ? Math.max(16, rowHeight - 8)
@@ -896,7 +900,7 @@ GridView {
 
         Text {
             id: labelText
-            objectName: root.compactMode ? "compactLabel_" + delegateItem.index : ""
+            objectName: (root.compactMode ? "compactLabel_" : "gridLabel_") + delegateItem.index
             width: root.compactMode ? parent.width - root.iconSize - 28 : selectionRect.width - 8
             anchors.horizontalCenter: root.compactMode ? undefined : parent.horizontalCenter
             anchors.left: root.compactMode ? iconImg.right : undefined
@@ -929,7 +933,7 @@ GridView {
             maximumLineCount: root.compactMode ? 1 : 2
             wrapMode: root.compactMode ? Text.NoWrap : Text.WrapAnywhere
             clip: true
-            height: root.compactMode ? parent.height : root.labelHeight
+            height: root.compactMode ? parent.height : Math.max(root.labelHeight, implicitHeight)
         }
 
 

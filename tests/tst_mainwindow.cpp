@@ -2727,6 +2727,35 @@ private slots:
         QCOMPARE(grid->property("effectiveColumnCount").toInt(), 4);
     }
 
+    void testGridFitsTwoLinesOfFilename()
+    {
+        App app;
+        const QString folder = app.home.path() + "/wrapped";
+        QVERIFY(QDir().mkpath(folder));
+        const QString filename = QStringLiteral("備份-gjpqy-data.pdf");
+        QFile file(folder + "/" + filename);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        QVERIFY(app.load());
+        auto *config = app.engine.rootContext()->contextProperty("config").value<ConfigManager *>();
+        config->saveSettings({{"fontSize", 20}});
+        app.tabModel->activeTab()->navigateTo(folder);
+
+        auto *container = app.item("primaryFileView");
+        QVERIFY(container);
+        auto *grid = container->property("gridViewItem").value<QQuickItem *>();
+        QVERIFY(grid);
+        QTRY_COMPARE(grid->property("count").toInt(), 1);
+        QTRY_VERIFY(App::findItem(grid, "gridLabel_0"));
+        auto *label = App::findItem(grid, "gridLabel_0");
+        QTRY_COMPARE(label->property("lineCount").toInt(), 2);
+        QCOMPARE(label->property("text").toString(), filename);
+        const qreal contentHeight = label->property("contentHeight").toReal();
+        QVERIFY(grid->property("labelHeight").toReal() >= contentHeight);
+        QVERIFY(label->height() >= contentHeight);
+        QVERIFY(label->y() + contentHeight <= grid->property("cellHeight").toReal());
+    }
+
     // The Icon Size sliders sit on the Layout page (section 1), which lives in
     // a Loader. Dragging one has to move the zoom, and coming back to the page
     // has to show whatever the zoom is now — including a Ctrl+wheel made while
