@@ -8,7 +8,8 @@ Item {
     id: root
     property Item scope: null
     property bool available: true
-    property Item scrollTarget: null
+    property Flickable scrollTarget: null
+    property Flickable keyboardScrollTarget: scrollTarget
     property var pageWheel: null
     property real factor: 1.0
     readonly property real minimum: 0.25
@@ -47,6 +48,31 @@ Item {
         scrollTarget.contentX = Math.max(0, Math.min(scrollTarget.contentWidth - scrollTarget.width, scrollTarget.contentX - dx))
         scrollTarget.contentY = Math.max(0, Math.min(scrollTarget.contentHeight - scrollTarget.height, scrollTarget.contentY - dy))
         return dx !== 0 || dy !== 0
+    }
+
+    function handleScrollKey(event) {
+        const target = keyboardScrollTarget
+        if (!target || !target.visible || (event.modifiers & ~Qt.KeypadModifier) !== 0)
+            return
+
+        const top = target.originY - target.topMargin
+        const bottom = Math.max(top, target.originY + target.contentHeight - target.height + target.bottomMargin)
+        const step = 42
+        const page = Math.max(step, target.height - step)
+        let position = target.contentY
+        switch (event.key) {
+        case Qt.Key_Up: position -= step; break
+        case Qt.Key_Down: position += step; break
+        case Qt.Key_PageUp: position -= page; break
+        case Qt.Key_PageDown: position += page; break
+        case Qt.Key_Home: position = top; break
+        case Qt.Key_End: position = bottom; break
+        default: return
+        }
+
+        target.cancelFlick()
+        target.contentY = Math.max(top, Math.min(bottom, position))
+        event.accepted = true
     }
 
     RowLayout {

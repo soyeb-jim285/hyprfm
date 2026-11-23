@@ -693,6 +693,99 @@ private slots:
         QCOMPARE(config->fontSize(), 8.0);
     }
 
+    void testPreviewKeyboardScrolling_data()
+    {
+        QTest::addColumn<bool>("quick");
+        QTest::addColumn<QString>("extension");
+        for (bool quick : {false, true}) {
+            for (const QString &ext : {QString("json"), QString("txt"), QString("md"), QString("csv")})
+                QTest::newRow(qPrintable((quick ? "quick-" : "miller-") + ext)) << quick << ext;
+        }
+    }
+
+    void testPreviewKeyboardScrolling()
+    {
+        QFETCH(bool, quick);
+        QFETCH(QString, extension);
+        App app;
+        QFile file(app.home.filePath("preview." + extension));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        if (extension == "json")
+            file.write("[\n");
+        else if (extension == "csv")
+            file.write("Name,Value\n");
+        for (int row = 0; row < 140; ++row) {
+            if (extension == "json")
+                file.write(row == 139 ? "  \"preview row\"\n" : "  \"preview row\",\n");
+            else if (extension == "csv")
+                file.write("preview row,1\n");
+            else
+                file.write("preview row\n\n");
+        }
+        if (extension == "json")
+            file.write("]\n");
+        file.close();
+
+        QVERIFY(app.load());
+        auto *tab = app.tabModel->activeTab();
+        tab->navigateTo(app.home.path());
+        tab->setViewMode("miller");
+        auto *model = app.engine.rootContext()->contextProperty("fsModel").value<QObject *>();
+        QTRY_COMPARE(model->property("rootPath").toString(), app.home.path());
+        QTRY_VERIFY(!model->property("isLoading").toBool());
+        QVERIFY(QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("primary")),
+                                          Q_ARG(QVariant, file.fileName()), Q_ARG(QVariant, true)));
+        auto *current = app.item("millerCurrentColumn");
+        QVERIFY(current);
+        QTRY_VERIFY(current->hasActiveFocus());
+        QTest::keyClick(app.window, quick ? Qt::Key_Space : Qt::Key_Right);
+        auto *scope = quick ? app.window->property("quickPreview").value<QQuickItem *>() : app.item("millerPreviewColumn");
+        QVERIFY(scope);
+        QTRY_VERIFY(scope->hasActiveFocus());
+        auto *controls = app.item(quick ? "quickPreviewZoom" : "millerPreviewZoom");
+        QVERIFY(controls);
+        auto scrollTarget = [&] {
+            return controls->property("scrollTarget").value<QQuickItem *>();
+        };
+        if (extension == "csv")
+            QTRY_COMPARE(scrollTarget(), app.item(quick ? "quickPreviewTable" : "millerPreviewTable"));
+        QTRY_VERIFY(scrollTarget() && scrollTarget()->isVisible());
+        auto *viewport = scrollTarget();
+        QTRY_VERIFY(viewport->property("contentHeight").toReal() > 2 * viewport->height());
+        auto offset = [&] { return viewport->property("contentY").toReal(); };
+
+        const qreal top = offset();
+        QTest::keyClick(app.window, Qt::Key_Down);
+        QVERIFY(offset() > top);
+        QTest::keyClick(app.window, Qt::Key_Up);
+        QCOMPARE(offset(), top);
+        QTest::keyClick(app.window, Qt::Key_PageDown);
+        QVERIFY(offset() > top);
+        QTest::keyClick(app.window, Qt::Key_PageUp);
+        QCOMPARE(offset(), top);
+        QTest::keyClick(app.window, Qt::Key_End);
+        QTRY_VERIFY(viewport->property("atYEnd").toBool());
+        QTest::keyClick(app.window, Qt::Key_Home);
+        QTRY_VERIFY(viewport->property("atYBeginning").toBool());
+
+        if (extension != "csv") {
+            auto *text = app.item(quick ? "quickPreviewText" : "millerPreviewText");
+            QVERIFY(text);
+            QTest::mouseClick(app.window, Qt::LeftButton, {}, app.center(viewport));
+            QTRY_VERIFY(text->hasActiveFocus());
+            const qreal clickedOffset = offset();
+            QTest::keyClick(app.window, Qt::Key_PageDown);
+            QVERIFY(offset() > clickedOffset);
+            QTest::keyClick(app.window, Qt::Key_PageUp);
+            QVERIFY(offset() <= clickedOffset);
+        }
+        if (!quick) {
+            QTest::keyClick(app.window, Qt::Key_Left);
+            QTRY_VERIFY(current->hasActiveFocus());
+            QCOMPARE(tab->currentPath(), app.home.path());
+        }
+    }
+
     void testPdfAndTablePreviewZoom_data()
     {
         QTest::addColumn<bool>("quick");

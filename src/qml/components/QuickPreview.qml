@@ -392,25 +392,15 @@ FocusScope {
         event.accepted = true
         cycleFile(1)
     }
-    Keys.onUpPressed: (event) => {
-        if (!isPdf)
-            return
-        event.accepted = true
-        changePdfPage(-1)
-    }
-    Keys.onDownPressed: (event) => {
-        if (!isPdf)
-            return
-        event.accepted = true
-        changePdfPage(1)
-    }
     Keys.onPressed: (event) => {
-        if (!isPdf)
+        if (!isPdf) {
+            zoomControls.handleScrollKey(event)
             return
-        if (event.key === Qt.Key_PageUp) {
+        }
+        if (event.key === Qt.Key_Up || event.key === Qt.Key_PageUp) {
             event.accepted = true
             changePdfPage(-1)
-        } else if (event.key === Qt.Key_PageDown) {
+        } else if (event.key === Qt.Key_Down || event.key === Qt.Key_PageDown) {
             event.accepted = true
             changePdfPage(1)
         }
@@ -734,6 +724,8 @@ FocusScope {
                 scope: root
                 scrollTarget: root.isImage ? visualPreview : root.isPdf ? pdfPreviewImage
                     : root.isTable ? previewTable : textPreviewFlick
+                keyboardScrollTarget: (root.isDirectory || root.isArchive) ? directoryPreviewList
+                    : root.isFont ? fontPreviewFlick : scrollTarget
                 pageWheel: root.isPdf ? root.handlePdfWheel : null
                 available: root.active && (root.isImage || root.isPdf || root.isText)
             }
@@ -901,6 +893,8 @@ FocusScope {
                                     if (config.keyEventMatches("focus_previous_column", event.key, event.modifiers)) {
                                         root.closePreview()
                                         event.accepted = true
+                                    } else {
+                                        zoomControls.handleScrollKey(event)
                                     }
                                 }
                                 readOnly: true
