@@ -20,3 +20,10 @@ void SessionState::setRowHeightMiller(int value)
     m_rowHeightMiller = value;
     emit rowHeightMillerChanged();
 }
+
+void SessionState::setRowHeightCompact(int value)
+{
+    if (m_rowHeightCompact == value) return;
+    m_rowHeightCompact = value;
+    emit rowHeightCompactChanged();
+}

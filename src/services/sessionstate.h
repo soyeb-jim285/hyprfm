@@ -11,6 +11,7 @@ class SessionState : public QObject
     Q_PROPERTY(int gridColumns READ gridColumns WRITE setGridColumns NOTIFY gridColumnsChanged)
     Q_PROPERTY(int rowHeightDetailed READ rowHeightDetailed WRITE setRowHeightDetailed NOTIFY rowHeightDetailedChanged)
     Q_PROPERTY(int rowHeightMiller READ rowHeightMiller WRITE setRowHeightMiller NOTIFY rowHeightMillerChanged)
+    Q_PROPERTY(int rowHeightCompact READ rowHeightCompact WRITE setRowHeightCompact NOTIFY rowHeightCompactChanged)
 
 public:
     explicit SessionState(QObject *parent = nullptr) : QObject(parent) {}
@@ -24,13 +25,18 @@ public:
     int rowHeightMiller() const { return m_rowHeightMiller; }
     void setRowHeightMiller(int value);
 
+    int rowHeightCompact() const { return m_rowHeightCompact; }
+    void setRowHeightCompact(int value);
+
 signals:
     void gridColumnsChanged();
     void rowHeightDetailedChanged();
     void rowHeightMillerChanged();
+    void rowHeightCompactChanged();
 
 private:
     int m_gridColumns = 0;
     int m_rowHeightDetailed = 0;
     int m_rowHeightMiller = 0;
+    int m_rowHeightCompact = 0;
 };

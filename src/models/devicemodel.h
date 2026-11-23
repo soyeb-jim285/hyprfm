@@ -2,8 +2,12 @@
 
 #include <QAbstractListModel>
 #include <QFileSystemWatcher>
+#include <QHash>
+#include <QMutex>
+#include <QSet>
 #include <QList>
 #include <QTimer>
+#include <memory>
 
 typedef struct _GMount GMount;
 typedef struct _GVolume GVolume;
@@ -48,6 +52,7 @@ public:
         RemovableRole,
         MountedRole,
         BackendRole,
+        FileSystemTypeRole,
     };
 
     explicit DeviceModel(QObject *parent = nullptr, bool deferInitialRefresh = false);
@@ -59,6 +64,12 @@ public:
 
     Q_INVOKABLE void unmount(int index);
     Q_INVOKABLE void mount(int index);
+
+    // A FUSE filesystem the user mounted inside their home folder -- an rclone
+    // remote (Google Drive, Filen, ...), sshfs and the like.  These are listed
+    // as devices while mounted, with their size, and unmounted with fusermount.
+    static bool isUserFuseMount(const QString &fsType, const QString &path, const QString &home);
+    static int usagePercentFor(qint64 total, qint64 free);
 
 public slots:
     void refresh();
@@ -77,6 +88,20 @@ private:
     void appendUnbrowsableMtpDevices();
     void setupMtpWatcher();
     static bool isVirtual(const QString &fsType);
+    void unmountFuse(const QString &mountPoint, const QString &label);
+    void probeFuseUsage(const QString &mountPoint);
+    void applyFuseUsage(const QString &mountPoint, qint64 total, qint64 free);
+
+    // Size of each user FUSE mount, as last answered, so a refresh shows it at once;
+    // probes in flight, at most one per mount (a hung daemon keeps its probe).
+    struct FuseUsage { qint64 total = 0; qint64 free = 0; };
+    struct FuseProbeContext {
+        QMutex mutex;
+        DeviceModel *model = nullptr;
+    };
+    std::shared_ptr<FuseProbeContext> m_fuseProbeContext = std::make_shared<FuseProbeContext>();
+    QHash<QString, FuseUsage> m_fuseUsage;
+    QSet<QString> m_fuseProbesPending;
 
     QList<DeviceEntry> m_devices;
     GVolumeMonitor *m_volumeMonitor = nullptr;
