@@ -737,7 +737,7 @@ private slots:
         if (quick)
             QTest::keyClick(app.window, Qt::Key_Space);
         else
-            QTest::keyClick(app.window, Qt::Key_Right, Qt::ControlModifier);
+            QTest::keyClick(app.window, Qt::Key_Right);
         QTRY_VERIFY(app.item(quick ? "quickPdfPreviewImage" : "millerPdfPreviewImage"));
         auto *image = app.item(quick ? "quickPdfPreviewImage" : "millerPdfPreviewImage");
         auto *controls = app.item(quick ? "quickPreviewZoom" : "millerPreviewZoom");

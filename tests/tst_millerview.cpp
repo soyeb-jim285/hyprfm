@@ -1,7 +1,8 @@
-// Headless interaction test for the Miller view's draggable column dividers.
+// Headless interaction tests for the Miller view.
 #include <QTest>
 #include <QQmlComponent>
 #include <QRegularExpression>
+#include <QSignalSpy>
 #include <memory>
 #include "viewharness.h"
 #include "services/metadataextractor.h"
@@ -86,6 +87,41 @@ private slots:
         QVERIFY(divider);
         h.drag(h.center(divider), h.center(divider) + QPoint(-400, 0));
         QVERIFY(h.config->millerFractions().value("parent").toDouble() >= ConfigManager::kMillerMinFraction - 1e-9);
+    }
+
+    void testArrowNavigationBetweenFileAndPreview()
+    {
+        MillerHarness h;
+        const QString folder = h.files.createDir("folder");
+        QVERIFY(h.loadMiller());
+        auto *current = h.item("millerCurrentColumn");
+        auto *preview = h.item("millerPreviewColumn");
+        QVERIFY(current && preview);
+        QSignalSpy activation(h.view.rootObject(), SIGNAL(fileActivated(QString,bool)));
+        QVERIFY(activation.isValid());
+        const QString file = h.files.filePath("a.txt");
+        auto focusPath = [&](const QString &path) {
+            return QMetaObject::invokeMethod(h.view.rootObject(), "focusPath",
+                                             Q_ARG(QVariant, path), Q_ARG(QVariant, true));
+        };
+
+        QVERIFY(focusPath(file));
+        QTRY_VERIFY(current->hasActiveFocus());
+        QTest::keyClick(&h.view, Qt::Key_Right);
+        QCOMPARE(activation.size(), 0);
+        QTRY_VERIFY(preview->hasActiveFocus());
+        QCOMPARE(preview->property("previewFilePath").toString(), file);
+
+        QTest::keyClick(&h.view, Qt::Key_Left);
+        QTRY_VERIFY(current->hasActiveFocus());
+        QTest::keyClick(&h.view, Qt::Key_Return);
+        QCOMPARE(activation.size(), 1);
+        QCOMPARE(activation.takeFirst(), QVariantList({file, false}));
+
+        QVERIFY(focusPath(folder));
+        QTest::keyClick(&h.view, Qt::Key_Right);
+        QCOMPARE(activation.size(), 1);
+        QCOMPARE(activation.takeFirst(), QVariantList({folder, true}));
     }
 
     // The owner calls reload() while PreviewLoader.path still holds the
