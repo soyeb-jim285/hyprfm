@@ -25,11 +25,12 @@ Item {
         // in the current one; "v1:old" is a folder name, not a scheme.
         if (trimmed !== "" && !trimmed.startsWith("/")
                 && !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed))
-            return (root.isRecentsView ? fsModel.homePath() : root.path).replace(/\/$/, "") + "/" + trimmed
+            return (root.isRecentsView || /^computer:\/*$/i.test(root.path) ? fsModel.homePath() : root.path).replace(/\/$/, "") + "/" + trimmed
         return trimmed
     }
 
     function clearSuggestions() {
+        suggestionRequest = -1
         suggestionItems = []
         suggestionIndex = -1
     }
@@ -48,8 +49,10 @@ Item {
 
         // pathSuggestions keeps a typed "~" in what it offers, so only a
         // relative path is resolved here.
-        suggestionItems = fsModel.pathSuggestions(query.startsWith("~") ? query : normalizedInputPath(query),
-                                                  query.endsWith("/") ? -1 : 8)
+        suggestionItems = []
+        suggestionRequest = fsModel.requestPathSuggestions(
+            query.startsWith("~") ? query : normalizedInputPath(query),
+            query.endsWith("/") ? -1 : 8)
         // Return opens what was typed until a suggestion is explicitly chosen.
         suggestionIndex = -1
     }
@@ -88,8 +91,17 @@ Item {
     }
 
     property bool editMode: false
+    property int suggestionRequest: -1
     property var suggestionItems: []
     property int suggestionIndex: -1
+
+    Connections {
+        target: fsModel
+        function onPathSuggestionsReady(requestId, suggestions) {
+            if (root.editMode && requestId === root.suggestionRequest)
+                root.suggestionItems = suggestions
+        }
+    }
 
     // Icon components for breadcrumb context
     Component { id: bcIconHome; IconHome { size: 18; color: Theme.text } }
@@ -115,7 +127,7 @@ Item {
         if (l === "documents" || l === "docs") return bcIconFileText
         if (l === "music" || l === "audio") return bcIconMusic
         if (l === "videos" || l === "movies") return bcIconVideo
-        if (l === "desktop") return bcIconMonitor
+        if (l === "desktop" || l === "computer") return bcIconMonitor
         if (l === ".config" || l === "config" || l === ".local") return bcIconSettings
         if (l === "projects" || l === "code" || l === "dev" || l === "src") return bcIconRocket
         return bcIconFolder
@@ -179,6 +191,7 @@ Item {
                 id: segmentsRepeater
                 model: {
                     if (root.isRecentsView) return [{ label: "Recents", fullPath: "" }]
+                    if (/^computer:\/*$/i.test(root.path)) return [{ label: "Computer", fullPath: "computer:///" }]
                     if (!root.path || root.path === "/") return []
 
                     return fileOps.breadcrumbSegments(root.path)

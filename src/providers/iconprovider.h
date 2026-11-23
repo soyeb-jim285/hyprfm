@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QQuickImageProvider>
+#include <QUrlQuery>
+#include "strataicons.h"
 #include <algorithm>
 #include <QSvgRenderer>
 #include <QPainter>
@@ -26,6 +28,14 @@ public:
         setPrimaryTheme(primaryTheme);
     }
 
+    void setPalette(const QColor &accent, const QColor &background, bool themeColors)
+    {
+        QMutexLocker locker(&m_cacheMutex);
+        m_accent = accent;
+        m_background = background;
+        m_themeColors = themeColors;
+    }
+
     void clearCache()
     {
         QMutexLocker locker(&m_cacheMutex);
@@ -37,7 +47,7 @@ public:
         const QString themeName = primaryTheme.trimmed().isEmpty() ? QStringLiteral("Adwaita")
                                                                     : primaryTheme.trimmed();
         QMutexLocker locker(&m_cacheMutex);
-        if (m_primaryTheme == themeName && !m_primaryDirs.isEmpty())
+        if (m_primaryTheme == themeName && (!m_primaryDirs.isEmpty() || themeName == "Strata"))
             return;
 
         m_primaryTheme = themeName;
@@ -57,6 +67,10 @@ public:
         // coloured ones instead of a blank.
         QStringList fallbacks;
         QStringList pending = {themeName};
+        if (themeName == "Strata" && !QIcon::themeName().isEmpty() && QIcon::themeName() != "Strata") {
+            fallbacks.append(QIcon::themeName());
+            pending.append(QIcon::themeName());
+        }
         while (!pending.isEmpty()) {
             const QString theme = pending.takeFirst();
             for (const auto &dir : m_searchDirs) {
@@ -111,37 +125,51 @@ public:
         // config reload QML re-requests icons before the configChanged slot
         // that switches the provider runs, so trusting the current theme
         // served the old theme's icons under the new URLs.
-        QString iconName = id;
-        QColor tintColor;
-        QString requestedTheme;
-        QString revision;
-        int qmark = id.indexOf('?');
-        if (qmark >= 0) {
-            iconName = id.left(qmark);
-            QString params = id.mid(qmark + 1);
-            for (const auto &param : params.split('&')) {
-                if (param.startsWith("color="))
-                    tintColor = QColor(param.mid(6));
-                else if (param.startsWith("theme="))
-                    requestedTheme = param.mid(6);
-                else if (param.startsWith("r="))
-                    revision = param.mid(2);
-            }
-        }
+        const int qmark = id.indexOf('?');
+        const QString iconName = qmark < 0 ? id : id.left(qmark);
+        const QUrlQuery params(qmark < 0 ? QString() : id.mid(qmark + 1));
+        const auto param = [&](const char *key) { return params.queryItemValue(QLatin1String(key), QUrl::FullyDecoded); };
+        const QColor tintColor(param("color"));
+        const QString requestedTheme = param("theme");
+        const QString revision = param("r");
         if (!requestedTheme.isEmpty())
             setPrimaryTheme(requestedTheme);
 
         bool isSymbolic = iconName.endsWith("-symbolic");
 
         const QString tintKey = tintColor.isValid() ? tintColor.name(QColor::HexArgb) : QString();
+        const int logicalSize = param("logicalSize").toInt() > 0 ? param("logicalSize").toInt() : sz;
+        const bool gridContext = param("context") == QLatin1String("grid");
+        const double strokeScale = params.hasQueryItem(QStringLiteral("strokeScale"))
+            ? qBound(0.0, param("strokeScale").toDouble(), 10.0) : 1.0;
         QStringList primaryDirs;
         QStringList fallbackDirs;
         QString cacheKey;
+        QColor accent, background;
+        bool themeColors;
+        QString primaryTheme;
+        bool useStrata = false;
+        QString resolvedIcon;
         {
             QMutexLocker locker(&m_cacheMutex);
-            cacheKey = m_primaryTheme + QLatin1Char('\x1f')
+            primaryTheme = m_primaryTheme;
+            useStrata = (primaryTheme == QLatin1String("Strata") || iconName.startsWith(QLatin1String("strata-")));
+            resolvedIcon = useStrata ? StrataIcons::resolve(iconName, param("name")) : iconName;
+            accent = QColor(param("accent"));
+            if (!accent.isValid()) accent = m_accent;
+            background = QColor(param("background"));
+            if (!background.isValid()) background = m_background;
+            themeColors = params.hasQueryItem("fileColors") ? param("fileColors") == "theme" : m_themeColors;
+            cacheKey = primaryTheme + QLatin1Char('\x1f')
+                + resolvedIcon + QLatin1Char('\x1f')
                 + iconName + QLatin1Char('\x1f')
                 + QString::number(sz) + QLatin1Char('\x1f')
+                + QString::number(logicalSize) + QLatin1Char('\x1f')
+                + QString::number(gridContext) + QLatin1Char('\x1f')
+                + QString::number(strokeScale, 'g', 4) + QLatin1Char('\x1f')
+                + accent.name(QColor::HexArgb) + QLatin1Char('\x1f')
+                + background.name(QColor::HexArgb) + QLatin1Char('\x1f')
+                + QString::number(themeColors) + QLatin1Char('\x1f')
                 + tintKey + QLatin1Char('\x1f')
                 + revision;
             if (const QImage *cached = m_cache.object(cacheKey)) {
@@ -152,6 +180,16 @@ public:
 
             primaryDirs = m_primaryDirs;
             fallbackDirs = m_fallbackDirs;
+        }
+
+        if (useStrata) {
+            QImage bundled = StrataIcons::render(resolvedIcon, sz, tintColor.isValid() ? tintColor : accent,
+                                                 background, themeColors, logicalSize, gridContext, strokeScale);
+            if (!bundled.isNull()) {
+                if (size) *size = bundled.size();
+                remember(cacheKey, bundled);
+                return bundled;
+            }
         }
 
         // For symbolic (UI) icons: ONLY search primary theme
@@ -371,6 +409,9 @@ private:
         return {};
     }
 
+    QColor m_accent{"#89b4fa"};
+    QColor m_background{"#1e1e2e"};
+    bool m_themeColors = false;
     QString m_primaryTheme;
     QStringList m_searchDirs;
     QStringList m_primaryDirs;

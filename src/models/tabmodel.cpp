@@ -16,6 +16,9 @@ bool isRemoteUri(const QString &path)
 QString displayNameForPath(const QString &path)
 {
     const QUrl url(path);
+    if (url.scheme() == QStringLiteral("computer") && url.host().isEmpty()
+        && (url.path().isEmpty() || url.path() == QStringLiteral("/")))
+        return QStringLiteral("Computer");
     if (url.scheme() == QStringLiteral("trash")) {
         const QString fileName = url.fileName();
         return fileName.isEmpty() ? QStringLiteral("Trash") : fileName;
@@ -62,10 +65,7 @@ QString parentLocation(const QString &path)
         return parentUrl.toString(QUrl::FullyEncoded);
     }
 
-    QDir dir(path);
-    if (dir.cdUp())
-        return dir.absolutePath();
-    return path;
+    return QFileInfo(QDir::cleanPath(path)).absolutePath();
 }
 
 }
@@ -109,7 +109,7 @@ bool TabModel::sortAscending() const { return m_sortAscending; }
 QString TabModel::normalizeViewMode(const QString &mode)
 {
     if (mode == QStringLiteral("grid") || mode == QStringLiteral("detailed")
-        || mode == QStringLiteral("miller"))
+        || mode == QStringLiteral("miller") || mode == QStringLiteral("compact"))
         return mode;
     if (mode == QStringLiteral("list"))
         return QStringLiteral("detailed");
@@ -285,4 +285,13 @@ void TabModel::resetSecondaryTo(const QString &path)
     }
     if (historyChanged)
         emit secondaryHistoryChanged();
+}
+
+void TabModel::resolveRestoredPath(const QString &savedPath, const QString &resolvedPath)
+{
+    if (savedPath != m_currentPath || resolvedPath == m_currentPath)
+        return;
+    m_currentPath = resolvedPath;
+    emit currentPathChanged();
+    emit titleChanged();
 }

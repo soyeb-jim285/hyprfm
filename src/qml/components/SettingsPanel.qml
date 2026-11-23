@@ -34,7 +34,7 @@ Window {
 
     readonly property color sectionBorderColor: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
     readonly property string defaultThemeName: "catppuccin-mocha"
-    readonly property string defaultIconThemeName: "Adwaita"
+    readonly property string defaultIconThemeName: "Strata"
     readonly property string defaultSidebarPosition: "left"
     readonly property int defaultSidebarWidth: 200
     readonly property int defaultSidebarAutoHideWidth: 700
@@ -78,10 +78,14 @@ Window {
     property string draftFontFamily: config.fontFamily
     property bool draftAutoRefreshIcons: config.autoRefreshIcons
     property string draftIconTheme: config.iconTheme
-    property bool draftDarkMode: true
+    property string draftFileIconColors: config.fileIconColors
+    // Same rule as Main.qml darkModeActive, for the theme being edited.
+    readonly property bool draftDarkMode: draftTheme === draftDarkTheme
+        || (draftTheme !== draftLightTheme && Theme.isDark)
     property bool draftShowHidden: currentShowHidden
     property bool draftHiddenLast: config.hiddenLast
     property bool draftGridFixedColumns: config.gridFixedColumns
+    property bool draftCompactFullNames: config.compactFullNames
     property bool draftRightClickToEditPath: config.rightClickToEditPath
     property bool draftSingleClickOpensFolders: config.singleClickOpensFolders
     property bool draftBuiltinTerminal: config.builtinTerminal
@@ -95,7 +99,7 @@ Window {
     property bool draftSidebarVisible: currentSidebarVisible
     property string draftSidebarHeader: config.sidebarHeader
     // Must stay in sync with the quick-access entries in Sidebar.qml.
-    readonly property var quickAccessNames: ["Home", "Recents", "Trash", "Network", "Pictures", "Downloads"]
+    readonly property var quickAccessNames: ["Home", "Computer", "Recents", "Trash", "Network", "Pictures", "Downloads"]
     property var draftHiddenQuickAccess: config.hiddenQuickAccess
     property string draftSidebarPosition: config.sidebarPosition
     property string draftSplitOrientation: config.splitOrientation
@@ -246,14 +250,19 @@ Window {
     property var lightThemeOptions: []
     property var darkThemeOptions: []
 
-    function isDarkTheme(themeName) {
-        return (0.2126 * Theme.base.r + 0.7152 * Theme.base.g
-                + 0.0722 * Theme.base.b) < 0.5
-    }
-
     function setDraftTheme(themeName) {
         draftTheme = themeName
-        draftDarkMode = isDarkTheme(themeName)
+    }
+
+    // The toolbar's Dark Mode toggle can change the theme while this window
+    // is open. Follow it, or the next change made here would save the old
+    // theme back over it.
+    Connections {
+        target: config
+        function onConfigChanged() {
+            if (root.draftTheme !== config.theme)
+                root.draftTheme = config.theme
+        }
     }
 
     function bindAppearancePreview() {
@@ -281,6 +290,7 @@ Window {
         setDraftTheme(defaultThemeName)
         draftFontFamily = ""
         draftIconTheme = defaultIconThemeName
+        draftFileIconColors = "brand"
         draftAutoRefreshIcons = true
         draftShowHidden = false
         draftHiddenLast = false
@@ -326,7 +336,6 @@ Window {
         syncingFromConfig = true
         try {
             draftTheme = config.theme
-            draftDarkMode = isDarkTheme(draftTheme)
             themeOptions = buildOptions(availableThemeValues, draftTheme, "catppuccin-mocha")
             draftLightTheme = config.lightTheme
             draftDarkTheme = config.darkTheme
@@ -337,12 +346,14 @@ Window {
             fontOptions = buildFontOptions()
 
             draftIconTheme = config.iconTheme
+            draftFileIconColors = config.fileIconColors
             draftAutoRefreshIcons = config.autoRefreshIcons
             iconThemeOptions = buildOptions(availableIconThemeValues, draftIconTheme, "Adwaita")
 
             draftShowHidden = currentShowHidden
             draftHiddenLast = config.hiddenLast
             draftGridFixedColumns = config.gridFixedColumns
+            draftCompactFullNames = config.compactFullNames
             draftRightClickToEditPath = config.rightClickToEditPath
             draftSingleClickOpensFolders = config.singleClickOpensFolders
             draftBuiltinTerminal = config.builtinTerminal
@@ -424,10 +435,12 @@ Window {
             darkTheme: draftDarkTheme,
             fontFamily: draftFontFamily,
             iconTheme: draftIconTheme,
+            fileIconColors: draftFileIconColors,
             autoRefreshIcons: draftAutoRefreshIcons,
             showHidden: draftShowHidden,
             hiddenLast: draftHiddenLast,
             gridFixedColumns: draftGridFixedColumns,
+            compactFullNames: draftCompactFullNames,
             rightClickToEditPath: draftRightClickToEditPath,
             singleClickOpensFolders: draftSingleClickOpensFolders,
             builtinTerminal: draftBuiltinTerminal,
@@ -539,8 +552,11 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 Q.Toggle {
+                    objectName: "darkModeSwitch"
                     label: ""
-                    checked: root.draftDarkMode
+                    // Toggle assigns checked itself on click, which would drop a
+                    // plain binding; Binding keeps it following draftDarkMode.
+                    Binding on checked { value: root.draftDarkMode }
                     onToggled: (value) => {
                         root.setDraftTheme(value ? root.draftDarkTheme : root.draftLightTheme)
                         root.applySettingsNow()
@@ -576,7 +592,7 @@ Window {
             // element reasserts itself whenever draftTheme changes, which is
             // what the Dark Mode switch does without touching the dropdown.
             Text {
-                text: "The Dark Mode switch above flips between these two."
+                text: "The Dark Mode switch above and the sun/moon button in the toolbar flip between these two."
                 color: Theme.subtext
                 font.pointSize: Theme.fontSmall
                 wrapMode: Text.WordWrap
@@ -631,6 +647,19 @@ Window {
                 currentIndex: root.optionIndex(root.iconThemeOptions, root.draftIconTheme, 0)
                 onSelected: (_, value) => {
                     root.draftIconTheme = value
+                    root.applySettingsNow()
+                }
+            }
+
+            Q.Dropdown {
+                objectName: "fileIconColors"
+                Layout.fillWidth: true
+                label: "File icon colors"
+                enabled: root.draftIconTheme === "Strata"
+                model: ["Brand colors", "Theme accent"]
+                currentIndex: root.draftFileIconColors === "theme" ? 1 : 0
+                onSelected: (index, value) => {
+                    root.draftFileIconColors = index === 1 ? "theme" : "brand"
                     root.applySettingsNow()
                 }
             }
@@ -980,7 +1009,7 @@ Window {
             }
 
             Text {
-                text: "Ctrl + scroll wheel does the same inside any view."
+                text: "Ctrl + scroll wheel does the same in the pane under the pointer. Ctrl + Shift + scroll wheel sizes interface text."
                 color: Theme.subtext
                 font.pointSize: Theme.fontSmall
                 Layout.fillWidth: true
@@ -995,20 +1024,38 @@ Window {
             // Loader that is rebuilt every time it is shown, so reopening the
             // page picks up a Ctrl+wheel made in the meantime.
             //
-            // The grid zooms by column count, where fewer columns means bigger
-            // icons. The slider is flipped so dragging right always enlarges,
-            // hence `gridSpan - columns` in both directions.
+            // The grid zooms by icon size (px); with fixed columns it zooms by
+            // column count instead, where fewer columns means bigger icons, so
+            // that slider is flipped (`gridSpan - columns`) to enlarge to the
+            // right. Sliders mean every pane: applyZoomToAllPanes().
             Q.Slider {
                 objectName: "iconSizeGrid"
+                visible: !root.draftGridFixedColumns
+                Layout.fillWidth: true
+                label: "Grid view"
+                from: 32
+                to: 512
+                stepSize: 8
+                value: sessionState.gridIconSize > 0 ? sessionState.gridIconSize : 184
+                onMoved: (value) => {
+                    sessionState.gridIconSize = Math.round(value)
+                    sessionState.applyZoomToAllPanes()
+                }
+            }
+            Q.Slider {
+                objectName: "gridColumnsFixed"
                 readonly property int gridSpan: 14   // minColumns 2 + maxColumns 12
-
+                visible: root.draftGridFixedColumns
                 Layout.fillWidth: true
                 label: "Grid view"
                 from: 2
                 to: 12
                 stepSize: 1
                 value: gridSpan - (sessionState.gridColumns > 0 ? sessionState.gridColumns : 7)
-                onMoved: (value) => sessionState.gridColumns = gridSpan - Math.round(value)
+                onMoved: (value) => {
+                    sessionState.gridColumns = gridSpan - Math.round(value)
+                    sessionState.applyZoomToAllPanes()
+                }
             }
 
             Q.Toggle {
@@ -1031,7 +1078,10 @@ Window {
                 to: 56
                 stepSize: 1
                 value: sessionState.rowHeightDetailed > 0 ? sessionState.rowHeightDetailed : 28
-                onMoved: (value) => sessionState.rowHeightDetailed = Math.round(value)
+                onMoved: (value) => {
+                    sessionState.rowHeightDetailed = Math.round(value)
+                    sessionState.applyZoomToAllPanes()
+                }
             }
 
             Q.Slider {
@@ -1042,7 +1092,35 @@ Window {
                 to: 56
                 stepSize: 1
                 value: sessionState.rowHeightMiller > 0 ? sessionState.rowHeightMiller : 28
-                onMoved: (value) => sessionState.rowHeightMiller = Math.round(value)
+                onMoved: (value) => {
+                    sessionState.rowHeightMiller = Math.round(value)
+                    sessionState.applyZoomToAllPanes()
+                }
+            }
+
+            Q.Slider {
+                objectName: "iconSizeCompact"
+                Layout.fillWidth: true
+                label: "Compact view"
+                from: 22
+                to: 56
+                stepSize: 1
+                value: sessionState.rowHeightCompact > 0 ? sessionState.rowHeightCompact : 28
+                onMoved: (value) => {
+                    sessionState.rowHeightCompact = Math.round(value)
+                    sessionState.applyZoomToAllPanes()
+                }
+            }
+
+            Q.Toggle {
+                objectName: "compactFullNames"
+                Layout.fillWidth: true
+                label: "Show full names in Compact view"
+                checked: root.draftCompactFullNames
+                onToggled: (value) => {
+                    root.draftCompactFullNames = value
+                    root.applySettingsNow()
+                }
             }
 
             Text {

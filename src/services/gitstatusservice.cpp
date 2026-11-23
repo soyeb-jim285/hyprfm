@@ -1,5 +1,6 @@
 #include "services/gitstatusservice.h"
 #include "services/cloudmounts.h"
+#include "services/filesystemtasks.h"
 
 #include <QDir>
 #include <QFile>
@@ -65,6 +66,11 @@ GitStatusService::GitStatusService(QObject *parent)
     connect(&m_statusDebounce, &QTimer::timeout, this, &GitStatusService::queryGitStatus);
 }
 
+GitStatusService::~GitStatusService()
+{
+    stopProcesses();
+}
+
 void GitStatusService::setRootPath(const QString &path)
 {
     if (path == m_rootPath)
@@ -119,38 +125,14 @@ bool GitStatusService::isGitRepo() const
 
 void GitStatusService::stopProcesses()
 {
-    if (m_repoProcess) {
-        m_repoProcess->disconnect();
-        if (m_repoProcess->state() != QProcess::NotRunning) {
-            m_repoProcess->kill();
-            m_repoProcess->waitForFinished(200);
-        }
-        m_repoProcess->deleteLater();
-        m_repoProcess = nullptr;
-    }
-
-    if (m_gitProcess) {
-        m_gitProcess->disconnect();
-        if (m_gitProcess->state() != QProcess::NotRunning) {
-            m_gitProcess->kill();
-            m_gitProcess->waitForFinished(200);
-        }
-        m_gitProcess->deleteLater();
-        m_gitProcess = nullptr;
-    }
+    stopFilesystemProcess(m_repoProcess);
+    stopFilesystemProcess(m_gitProcess);
 }
 
 void GitStatusService::startFindRepoRoot(const QString &path)
 {
-    QDir dir(path);
-    if (!dir.exists()) {
-        emit statusChanged();
-        return;
-    }
-
     auto *process = new QProcess(this);
     m_repoProcess = process;
-    process->setWorkingDirectory(path);
 
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this, process](int exitCode, QProcess::ExitStatus) {
@@ -178,12 +160,12 @@ void GitStatusService::startFindRepoRoot(const QString &path)
         scheduleGitStatus();
     });
 
-    QTimer::singleShot(2000, process, [this, process]() {
-        if (process == m_repoProcess && process->state() != QProcess::NotRunning)
+    QTimer::singleShot(2000, this, [this, process = QPointer(process)]() {
+        if (process && process == m_repoProcess && process->state() != QProcess::NotRunning)
             process->kill();
     });
 
-    startGitTool(process, {QStringLiteral("rev-parse"), QStringLiteral("--show-toplevel")});
+    startGitTool(process, {QStringLiteral("-C"), path, QStringLiteral("rev-parse"), QStringLiteral("--show-toplevel")});
 }
 
 void GitStatusService::queryGitStatus()
@@ -191,22 +173,14 @@ void GitStatusService::queryGitStatus()
     if (m_repoRoot.isEmpty())
         return;
 
-    // Kill any running process
-    if (m_gitProcess) {
-        m_gitProcess->disconnect();
-        if (m_gitProcess->state() != QProcess::NotRunning)
-            m_gitProcess->kill();
-        m_gitProcess->deleteLater();
-    }
-
+    stopFilesystemProcess(m_gitProcess);
     m_gitProcess = new QProcess(this);
-    m_gitProcess->setWorkingDirectory(m_repoRoot);
 
     connect(m_gitProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &GitStatusService::onGitStatusFinished);
 
     startGitTool(m_gitProcess,
-                 {QStringLiteral("status"),
+                 {QStringLiteral("-C"), m_repoRoot, QStringLiteral("status"),
                   QStringLiteral("--porcelain=v1"),
                   QStringLiteral("-z"),
                   QStringLiteral("--ignored=matching")});

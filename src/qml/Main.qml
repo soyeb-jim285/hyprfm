@@ -203,38 +203,105 @@ ApplicationWindow {
         root.sidebarWaitingForWidth = false
     }
 
-    // ── Built-in terminal panel ──────────────────────────────────────────────
-    property bool terminalPanelOpen: false
-    // The panel is created on first open and kept while hidden, so the shell
-    // survives F4; it goes when the shell exits.
-    property bool terminalPanelCreated: false
+    // ── Built-in terminal panels: one per pane ─────────────────────────────
+    // Each pane has its own panel under its file view (PaneTerminal), so split
+    // panes in different folders each get a shell in their own folder. F4 and
+    // Open in Terminal act on the active pane; clicking into a pane's terminal
+    // makes that pane active.
     // Set by main.cpp in builds with HYPRFM_TERMINAL; tests leave it unset.
     readonly property bool builtinTerminalAvailable:
         typeof hyprfmBuiltinTerminal !== "undefined" && hyprfmBuiltinTerminal
 
-    function toggleTerminalPanel() {
-        if (root.terminalPanelOpen)
-            root.closeTerminalPanel()
-        else
-            root.openTerminalPanel("")
+    function paneTerminal(pane) {
+        if (pane === "secondary")
+            return secondaryPaneLoader.item ? secondaryPaneLoader.item.paneTerminal : null
+        return primaryPaneTerminal
     }
 
-    // Shows the panel. A new shell starts in `path` (or the active folder);
-    // a running one is taken to `path` if it is at its prompt.
-    function openTerminalPanel(path) {
+    // The pane whose terminal has keyboard focus, or "".
+    function terminalFocusPane() {
+        for (const pane of ["primary", "secondary"]) {
+            const holder = root.paneTerminal(pane)
+            if (holder && holder.terminal && holder.terminal.activeFocus)
+                return pane
+        }
+        return ""
+    }
+
+    function toggleTerminalPanel() {
+        const pane = root.activePane
+        const holder = root.paneTerminal(pane)
+        if (holder && holder.open)
+            root.closeTerminalPanel(pane)
+        else
+            root.openTerminalPanel(root.isLocalPath(root.panePath(pane)) ? root.panePath(pane) : fsModel.homePath(), pane)
+    }
+
+    // Shows a pane's panel (the active pane's by default). A new shell starts
+    // in `path` (or that pane's folder); a running one is taken to `path` if
+    // it is at its prompt.
+    function openTerminalPanel(path, pane) {
         if (!root.builtinTerminalAvailable)
             return
-        root.terminalPanelCreated = true
-        root.terminalPanelOpen = true
-        var view = terminalPanelLoader.item.terminal
+        pane = pane || root.activePane
+        if (pane === "secondary" && !root.splitViewEnabled())
+            pane = "primary"
+        const holder = root.paneTerminal(pane)
+        if (!holder)
+            return
+        holder.created = true
+        holder.open = true
+        var view = holder.terminal
         if (!view.running) {
-            var dir = path || root.panePath(root.activePane)
+            var dir = path || root.panePath(pane)
             view.workingDirectory = root.isLocalPath(dir) ? dir : ""
             view.start()
         } else if (path) {
             view.changeDirectory(path)
         }
+        root.activatePaneKeepingFocus(pane)
         view.forceActiveFocus()
+    }
+
+    function closeTerminalPanel(pane) {
+        const holder = root.paneTerminal(pane || root.activePane)
+        if (holder)
+            holder.open = false
+        root.scheduleActivePaneFocus()
+    }
+
+    // The last shell of a pane's panel exited: the panel goes (and a later
+    // F4 starts a fresh one).
+    function paneTerminalFinished(pane) {
+        root.closeTerminalPanel(pane)
+        // Not from inside the shell's own signal.
+        Qt.callLater(() => {
+            const holder = root.paneTerminal(pane)
+            if (holder)
+                holder.created = false
+        })
+    }
+
+    function confirmTerminalPaste(view, text) {
+        root.pendingTerminalPasteView = view
+        root.pendingTerminalPaste = text
+        root.openDialog(terminalPasteConfirmDialogLoader)
+    }
+
+    // Focus moving into a pane's terminal makes that pane the active one,
+    // without handing focus back to its file view.
+    function activatePaneKeepingFocus(pane) {
+        if (pane === "secondary" && !root.splitViewEnabled())
+            return
+        if (root.activePane === pane)
+            return
+        root.activePane = pane
+        root.updateSelectionStatus()
+    }
+    onActiveFocusItemChanged: {
+        const pane = root.terminalFocusPane()
+        if (pane)
+            root.activatePaneKeepingFocus(pane)
     }
 
     function otherTerminalItems() {
@@ -244,14 +311,10 @@ ApplicationWindow {
                   shortcut: "", action: "terminal_other" }]
     }
 
-    function closeTerminalPanel() {
-        root.terminalPanelOpen = false
-        root.scheduleActivePaneFocus()
-    }
-
     // Open in Terminal, from every menu and the shortcut. `other` picks the
     // kind the setting does not, for the second menu entry.
     function openTerminalAt(path, other) {
+        if (root.isComputerPath(path)) return
         if (root.builtinTerminalAvailable && config.builtinTerminal !== !!other)
             root.openTerminalPanel(path)
         else
@@ -369,9 +432,18 @@ ApplicationWindow {
             : tabModel.activeTab.currentPath
     }
 
+    function isComputerPath(path) {
+        return /^computer:\/*$/i.test(path || "")
+    }
+
+    function paneIsComputer(pane) {
+        return !paneIsRecents(pane) && !paneShowsSearchResults(pane) && isComputerPath(panePath(pane))
+    }
+
     function pathDisplayName(path) {
         if (!path)
             return ""
+        if (isComputerPath(path)) return "Computer"
 
         if (fileOps.isTrashPath(path)) {
             var trashPath = path.length > 9 && path.endsWith("/") ? path.slice(0, -1) : path
@@ -413,9 +485,17 @@ ApplicationWindow {
 
         property string title: ""
         property bool activePaneHeader: false
+        // A press on the header bar makes its pane the active one.
+        signal activated()
 
         Layout.fillWidth: true
         Layout.preferredHeight: 34
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+            onPressed: splitPaneHeader.activated()
+        }
 
         Rectangle {
             anchors.fill: parent
@@ -492,6 +572,7 @@ ApplicationWindow {
     }
 
     function showPropertiesFor(path) {
+        if (!path || root.isComputerPath(path)) return
         propertiesDialogLoader.active = true
         root.propertiesDialog.showProperties(path)
     }
@@ -523,6 +604,12 @@ ApplicationWindow {
             secondaryPaneIsRecents = enabled
         else
             primaryPaneIsRecents = enabled
+    }
+
+    function openRecents() {
+        root.clearPaneSearch(activePane)
+        root.setPaneRecents(activePane, true)
+        root.scheduleActivePaneFocus()
     }
 
     function searchProxyForPane(pane) {
@@ -629,10 +716,7 @@ ApplicationWindow {
         if (!view)
             return null
 
-        var vm = tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
-        if (vm === "grid") return view.gridViewItem
-        if (vm === "miller") return view.millerViewItem
-        return view.detailedViewItem
+        return view.activeView()
     }
 
     function activeSubView() {
@@ -662,6 +746,7 @@ ApplicationWindow {
             && sidebarPanel.renamingBookmarkIndex < 0
             && !root.isShown(root.newFolderDialog)
             && !root.isShown(root.newFileDialog)
+            && !root.inlineEditActive()
             && !root.isShown(root.conflictDialog)
             && !root.isShown(root.deleteConfirmDialog)
             && !root.isShown(root.emptyTrashConfirmDialog)
@@ -703,8 +788,52 @@ ApplicationWindow {
     function focusNextPane() {
         if (!splitViewEnabled())
             return
-
+        if (root.quickPreview && root.quickPreview.active) root.quickPreview.closePreview()
         root.setActivePane(activePane === "primary" ? "secondary" : "primary")
+    }
+
+    function previewOwnsFocus() {
+        if (root.quickPreview && root.quickPreview.active && root.quickPreview.activeFocus) return true
+        const view = root.activeSubView()
+        return view && view.previewControls && view.previewControls.scope.activeFocus
+    }
+
+    function paneCommandsEnabled() {
+        const focus = root.activeFocusItem
+        if (focus && focus.text !== undefined && focus.readOnly === false) return false
+        if (root.terminalFocusPane() !== "") return false
+        if (toolbar.pathEditing || sidebarPanel.renamingBookmarkIndex >= 0) return false
+        const dialogs = [root.renameDialog, root.bulkRenameDialog, root.newFolderDialog,
+            root.newFileDialog, root.settingsPanel, root.shortcutsDialog, root.propertiesDialog,
+            root.deleteConfirmDialog, root.conflictDialog, root.emptyTrashConfirmDialog,
+            root.remoteConnectDialog, root.customActionConfirmDialog, root.terminalPasteConfirmDialog,
+            root.runExecutableDialog]
+        for (var i = 0; i < dialogs.length; ++i) if (root.isShown(dialogs[i])) return false
+        return true
+    }
+
+    function focusColumn(direction) {
+        if (root.quickPreview && root.quickPreview.active) {
+            if (direction < 0) { root.quickPreview.closePreview(); root.scheduleActivePaneFocus() }
+            return
+        }
+        const view = root.activeSubView()
+        if (!view) return
+        if (direction < 0 && view.focusPreviousColumn) view.focusPreviousColumn()
+        else if (direction > 0 && view.focusNextColumn) view.focusNextColumn()
+    }
+
+    function transferToOtherPane(move, paths) {
+        if (!root.splitViewEnabled() || !root.paneCommandsEnabled()) return
+        const targetPane = activePane === "primary" ? "secondary" : "primary"
+        if (root.paneIsRecents(targetPane) || root.paneIsComputer(targetPane)) return
+        root.beginTransfer(paths || root.getSelectedPaths(), root.panePath(targetPane), move, false)
+    }
+    function resizeGridIcons(steps) {
+        const view = root.activeSubView()
+        if (!view || !tabModel.activeTab || tabModel.activeTab.viewMode !== "grid" || root.paneIsComputer(activePane)) return
+        if (steps === 0) view.resetZoom()
+        else view.zoomByWheel(-steps * 42)
     }
 
     function ensureMountedAndRun(path, callback) {
@@ -741,8 +870,8 @@ ApplicationWindow {
         navigatePaneTo(activePane, path)
     }
 
-    // Home (toolbar, shortcut, sidebar) closes a split and shows Home across
-    // the whole window. Other ways of reaching ~ keep the split.
+    // The toolbar/keyboard Home action shows Home across the whole window.
+    // Sidebar destinations use ordinary navigation within the active pane.
     function goHome() {
         if (tabModel.activeTab && splitViewEnabled())
             root.toggleSplitView()
@@ -826,7 +955,7 @@ ApplicationWindow {
     }
 
     function beginTransfer(paths, destinationPath, moveOperation, clearClipboardOnSuccess) {
-        if (!paths || paths.length === 0 || !destinationPath)
+        if (!paths || paths.length === 0 || !destinationPath || root.isComputerPath(destinationPath))
             return
 
         var plan = fileOps.transferPlan(paths, destinationPath)
@@ -951,6 +1080,7 @@ ApplicationWindow {
             return
 
         var currentPath = panePath(activePane)
+        if (isComputerPath(currentPath)) return
         if (fileOps.isRemotePath(currentPath)) {
             var parentRemotePath = fileOps.parentPath(currentPath)
             if (parentRemotePath && parentRemotePath !== currentPath)
@@ -989,10 +1119,28 @@ ApplicationWindow {
         }
 
         if (!enable) {
+            const secTerm = root.paneTerminal("secondary")
+            if (secTerm && secTerm.open)
+                secTerm.open = false
+            if (activePane === "secondary") {
+                const fromComputer = root.paneIsComputer("secondary")
+                const selected = fromComputer ? [] : root.getSelectedPaths("secondary")
+                const view = root.activeSubView()
+                const cursorPath = (!fromComputer && view)
+                    ? root.filePathFromModel(root.paneModel("secondary"), view.cursorIndex) : ""
+                // The primary pane takes over the secondary's folder; its own
+                // search or filter belonged to the folder it is leaving.
+                root.clearPaneSearch("primary")
+                tabModel.activeTab.navigateTo(tabModel.activeTab.secondaryCurrentPath)
+                root.setPaneRecents("primary", root.paneIsRecents("secondary"))
+                if (!fromComputer)
+                    primaryFileViewContainer.restoreSelection(selected, cursorPath, tabModel.activeTab.currentPath)
+            }
             root.clearPaneSearch("secondary")
             root.setPaneRecents("secondary", false)
             if (activePane === "secondary")
                 activePane = "primary"
+            root.scheduleActivePaneFocus()
         }
 
         tabModel.activeTab.splitViewEnabled = enable
@@ -1062,6 +1210,7 @@ ApplicationWindow {
     }
 
     function activeItemCount() {
+        if (root.paneIsComputer(activePane)) return computerModel.count
         if (root.paneIsRecents(activePane))
             return recentFiles.count
         if (root.paneShowsSearchResults(activePane))
@@ -1072,7 +1221,7 @@ ApplicationWindow {
     }
 
     function activeFolderCount() {
-        if (root.paneIsRecents(activePane) || root.paneShowsSearchResults(activePane))
+        if (root.paneIsComputer(activePane) || root.paneIsRecents(activePane) || root.paneShowsSearchResults(activePane))
             return 0
 
         return paneBaseModel(activePane).folderCount
@@ -1082,11 +1231,11 @@ ApplicationWindow {
     // nothing about them. Everything else, search included, is one directory
     // and the model reports -1 wherever a disk is meaningless anyway.
     function activeDiskFree() {
-        return root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskFree
+        return root.paneIsComputer(activePane) || root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskFree
     }
 
     function activeDiskTotal() {
-        return root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskTotal
+        return root.paneIsComputer(activePane) || root.paneIsRecents(activePane) ? -1 : paneBaseModel(activePane).diskTotal
     }
 
     function applyActiveTabSort() {
@@ -1124,6 +1273,14 @@ ApplicationWindow {
 
     function updateSelectionStatus() {
         var subView = activeSubView()
+
+        if (paneIsComputer(activePane)) {
+            cancelSelectedSizeRequest()
+            currentSelectedCount = subView && subView.selectedDevices ? subView.selectedDevices.length : 0
+            currentSelectedSize = ""
+            currentSelectedSizePending = false
+            return
+        }
 
         if (!subView || !subView.selectedIndices) {
             cancelSelectedSizeRequest()
@@ -1211,7 +1368,43 @@ ApplicationWindow {
         return items
     }
 
+    // A folder Favourites can take: not empty, not a virtual place
+    // (Computer, Trash) and not already listed. Files never reach here.
+    // Dark Mode, shared by the toolbar's sun/moon toggle and Settings: the
+    // configured dark theme is dark and the light theme light; any other
+    // theme counts by its own background.
+    readonly property bool darkModeActive: config.theme === config.darkTheme
+        || (config.theme !== config.lightTheme && Theme.isDark)
+    function toggleDarkMode() {
+        const target = root.darkModeActive ? config.lightTheme : config.darkTheme
+        if (target && target !== config.theme)
+            config.saveSettings({ theme: target })
+    }
+
+    function favouriteCandidate(path) {
+        if (!path || root.isComputerPath(path) || fileOps.isTrashPath(path) || bookmarks.containsPath(path))
+            return ""
+        return path
+    }
+    function addFavourite(path) {
+        if (!path || root.isComputerPath(path) || fileOps.isTrashPath(path))
+            return
+        const trimmed = path.replace(/\/+$/, "")
+        const name = trimmed.substring(trimmed.lastIndexOf("/") + 1) || path
+        if (bookmarks.containsPath(path))
+            toast.show("\u201c" + name + "\u201d is already in Favourites", "info")
+        else if (bookmarks.addBookmark(path))
+            toast.show("Added \u201c" + name + "\u201d to Favourites", "success")
+        else
+            toast.show("Only folders can be added to Favourites", "info")
+    }
+
     function currentOrSelectedDirectoryPath() {
+        if (root.paneIsComputer(root.activePane)) {
+            var view = root.activeSubView()
+            return view && view.selectedDevices && view.selectedDevices.length
+                ? view.selectedMountPath() : root.panePath(root.activePane)
+        }
         var items = root.getSelectedItems(root.activePane)
         if (items.length === 1 && items[0].isDir)
             return items[0].path
@@ -1223,6 +1416,10 @@ ApplicationWindow {
     }
 
     function selectedOrCurrentPropertiesPath() {
+        if (root.paneIsComputer(root.activePane)) {
+            var view = root.activeSubView()
+            return view && view.selectedMountPath ? view.selectedMountPath() : ""
+        }
         var items = root.getSelectedItems(root.activePane)
         if (items.length === 1)
             return items[0].path
@@ -1234,6 +1431,10 @@ ApplicationWindow {
     }
 
     function selectedOrCurrentTerminalPath() {
+        if (root.paneIsComputer(root.activePane)) {
+            var view = root.activeSubView()
+            return view && view.selectedMountPath ? view.selectedMountPath() : ""
+        }
         var items = root.getSelectedItems(root.activePane)
         if (items.length === 1)
             return items[0].isDir ? items[0].path : fileOps.parentPath(items[0].path)
@@ -1299,8 +1500,102 @@ ApplicationWindow {
         root.showContextMenuForPane(root.activePane, "", true, Qt.point(mapped.x, mapped.y))
     }
 
+    // ── Naming in place ───────────────────────────────────────────────
+    // Rename, New Folder and New File edit the name inside the file view
+    // (InlineEditState / InlineNameEditor). The dialogs remain for what has
+    // no visible row there: another folder's new item, Computer, a path the
+    // view is not showing.
+    function inlineEditView() {
+        if (root.paneIsComputer(root.activePane))
+            return null
+        const view = root.activeSubView()
+        return view && view.inlineEdit ? view : null
+    }
+    function inlineEditActive() {
+        const view = root.activeSubView()
+        return !!(view && view.inlineEdit && (view.inlineEdit.active || view.inlineEdit.pending))
+    }
+
+    function joinChildPath(parentPath, name) {
+        return parentPath === "/" ? "/" + name : parentPath + "/" + name
+    }
+
+    // Rename PATH to NAME; "" on success, else the reason to show.
+    // keepSelection: the user clicked elsewhere, so the selection stays there.
+    function renameEntry(path, name, keepSelection) {
+        if (!path || !name)
+            return ""
+        if (name.indexOf("/") >= 0)
+            return "A name cannot contain \u201c/\u201d"
+        const targetPath = root.joinChildPath(fileOps.parentPath(path), name)
+        if (targetPath === path)
+            return ""
+        if (fileOps.pathExists(targetPath))
+            return "\"" + name + "\" already exists"
+        if (fileOps.isRemotePath(path)) {
+            const result = fileOps.renameResolvedItems([{ sourcePath: path, targetPath: targetPath }])
+            if (!result.success)
+                return result.error || "Rename failed"
+            fsModel.refresh()
+            splitFsModel.refresh()
+        } else if (!undoManager.rename(path, name)) {
+            return "Rename failed"
+        }
+        if (!keepSelection)
+            root.focusPathInPane(root.activePane, targetPath, true)
+        return ""
+    }
+
+    function uniqueChildName(parentPath, base) {
+        var name = base
+        for (var i = 2; fileOps.pathExists(root.joinChildPath(parentPath, name)); ++i)
+            name = base + " " + i
+        return name
+    }
+
+    // New Folder / New File in the folder the active pane shows: create it
+    // under a free default name and name it in place. Escape keeps that name.
+    function createAndNameInline(parentPath, isFolder) {
+        const view = root.inlineEditView()
+        if (!view || parentPath !== root.panePath(root.activePane)
+                || root.paneIsRecents(root.activePane) || root.paneShowsSearchResults(root.activePane))
+            return false
+        const name = root.uniqueChildName(parentPath, isFolder ? "New Folder" : "New File")
+        const created = root.joinChildPath(parentPath, name)
+        if (fileOps.isRemotePath(parentPath)) {
+            if (isFolder) fileOps.createFolder(parentPath, name)
+            else fileOps.createFile(parentPath, name)
+            fsModel.refresh()
+            splitFsModel.refresh()
+        } else if (isFolder) {
+            undoManager.createFolder(parentPath, name)
+        } else {
+            undoManager.createFile(parentPath, name)
+        }
+        if (!fileOps.pathExists(created)) {
+            toast.show("Could not create \u201c" + name + "\u201d", "error")
+            return true
+        }
+        view.inlineEdit.begin(created, name,
+            (path, typed, keepSelection) => {
+                if (typed === name) {
+                    if (!keepSelection) root.focusPathInPane(root.activePane, path, true)
+                    return ""
+                }
+                return root.renameEntry(path, typed, keepSelection)
+            },
+            path => root.focusPathInPane(root.activePane, path, true),
+            true)
+        return true
+    }
+
     function openRenameDialogForPath(path) {
         if (!path)
+            return
+
+        const view = root.inlineEditView()
+        if (view && view.inlineEdit.begin(path, path.substring(path.lastIndexOf("/") + 1),
+                                          (p, name, keepSelection) => root.renameEntry(p, name, keepSelection), null, false))
             return
 
         root.renameTargetPath = path
@@ -1318,6 +1613,11 @@ ApplicationWindow {
     }
 
     function toggleRenameWorkflow(paths) {
+        const inlineView = root.activeSubView()
+        if (inlineView && inlineView.inlineEdit && inlineView.inlineEdit.active) {
+            inlineView.inlineEdit.cancel()
+            return
+        }
         if (root.isShown(root.renameDialog)) {
             root.renameDialog.reject()
             return
@@ -1335,7 +1635,9 @@ ApplicationWindow {
     }
 
     function showNewFolderDialog(parentPath) {
-        if (!parentPath)
+        if (!parentPath || root.isComputerPath(parentPath))
+            return
+        if (root.createAndNameInline(parentPath, true))
             return
 
         root.newItemParentPath = parentPath
@@ -1350,14 +1652,17 @@ ApplicationWindow {
             return
         }
 
-        if (root.isShown(root.renameDialog) || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || root.isShown(root.newFileDialog))
+        if (root.isShown(root.renameDialog) || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || root.isShown(root.newFileDialog)
+                || root.inlineEditActive())
             return
 
         showNewFolderDialog(parentPath)
     }
 
     function showNewFileDialog(parentPath) {
-        if (!parentPath)
+        if (!parentPath || root.isComputerPath(parentPath))
+            return
+        if (root.createAndNameInline(parentPath, false))
             return
 
         root.newItemParentPath = parentPath
@@ -1372,7 +1677,8 @@ ApplicationWindow {
             return
         }
 
-        if (root.isShown(root.renameDialog) || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || root.isShown(root.newFolderDialog))
+        if (root.isShown(root.renameDialog) || (root.bulkRenameDialog && root.bulkRenameDialog.visible) || root.isShown(root.newFolderDialog)
+                || root.inlineEditActive())
             return
 
         showNewFileDialog(parentPath)
@@ -2250,7 +2556,7 @@ ApplicationWindow {
                                 Image {
                                     id: appChooserIcon
                                     source: modelData.iconName
-                                        ? ("image://icon/" + modelData.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                                        ? Theme.fileIconSource(modelData.iconName, "", 24, false)
                                         : ""
                                     sourceSize: Qt.size(22, 22)
                                     Layout.preferredWidth: 22
@@ -2379,15 +2685,16 @@ ApplicationWindow {
                     }
                 }
 
-                // A remote location outside the current listing is answered
-                // with a placeholder first; the rest arrives from gio later.
                 Connections {
                     target: propertiesDialog.fileModelRef
                     ignoreUnknownSignals: true
-                    function onRemotePropertiesReady(path, properties) {
+                    function onPropertiesReady(path, properties) {
                         if (propertiesDialog.props.path !== path)
                             return
+                        const wasPending = propertiesDialog.props.pending
                         propertiesDialog.props = properties
+                        if (wasPending)
+                            propertiesDialog.refreshFolderDiskUsage()
                         if (!properties.isDir && properties.mimeType)
                             propertiesDialog.apps = propertiesDialog.fileModelRef.availableApps(properties.mimeType)
                     }
@@ -2402,7 +2709,7 @@ ApplicationWindow {
                 function refreshFolderDiskUsage() {
                     cancelFolderDiskUsageRequest()
 
-                    if (!props.isDir || props.isTrashItem || !root.isLocalPath(props.path)) {
+                    if (props.pending || !props.isDir || props.isTrashItem || !root.isLocalPath(props.path)) {
                         folderDiskUsageText = ""
                         folderDiskUsagePending = false
                         return
@@ -2532,7 +2839,7 @@ ApplicationWindow {
                                 Image {
                                     anchors.centerIn: parent; width: 32; height: 32
                                     source: propertiesDialog.props.iconName
-                                        ? ("image://icon/" + propertiesDialog.props.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                                        ? Theme.fileIconSource(propertiesDialog.props.iconName, propertiesDialog.props.name, 48, false)
                                         : ""
                                     sourceSize: Qt.size(32, 32); smooth: true
                                 }
@@ -2752,7 +3059,7 @@ ApplicationWindow {
                                         Image {
                                             id: owAppIcon
                                             source: modelData.iconName
-                                                ? ("image://icon/" + modelData.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                                                ? Theme.fileIconSource(modelData.iconName, "", 24, false)
                                                 : ""
                                             sourceSize: Qt.size(18, 18)
                                             width: 18; height: 18
@@ -2809,7 +3116,7 @@ ApplicationWindow {
                                         spacing: 6
 
                                         Loader {
-                                            source: "icons/IconSearch.qml"
+                                            source: Theme.iconComponentSource("IconSearch")
                                             width: 14; height: 14
                                             anchors.verticalCenter: parent.verticalCenter
                                             onLoaded: {
@@ -3335,11 +3642,15 @@ ApplicationWindow {
                     root.openPathInSplitView(path)
                 }
 
+                onAddFavouriteRequested: (path) => root.addFavourite(path)
+
                 onCustomActionRequested: (action) => {
                     if (action === "close_split")
                         root.toggleSplitView()
                     else if (action === "save_current_split")
                         root.saveCurrentSplit()
+                    else if (action === "copy_other_pane" || action === "move_other_pane")
+                        root.transferToOtherPane(action === "move_other_pane", root.contextMenu.selectedPaths)
                 }
 
                 onViewModeRequested: (mode) => {
@@ -3368,7 +3679,7 @@ ApplicationWindow {
 
                 onOpenRequested: (path) => {
                     if (sidebarItem.isRecents) {
-                        root.setPaneRecents(root.activePane, true)
+                        root.openRecents()
                         return
                     }
 
@@ -3508,8 +3819,20 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: config.shortcutMap["add_to_favourites"]
+        enabled: root.paneCommandsEnabled()
+        onActivated: root.addFavourite(root.currentOrSelectedDirectoryPath())
+    }
+
+    Shortcut {
         sequence: config.shortcutMap["open_in_split"]
-        onActivated: root.openPathInSplitView(root.currentOrSelectedDirectoryPath())
+        // No target (e.g. an unmounted or several drives selected in
+        // Computer) means nothing to open, as for open_in_new_tab; an empty
+        // path would make openPathInSplitView fall back to the pane itself.
+        onActivated: {
+            const path = root.currentOrSelectedDirectoryPath()
+            if (path) root.openPathInSplitView(path)
+        }
     }
 
     // Navigation
@@ -3541,6 +3864,12 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcutMap["refresh"]
         onActivated: {
+            if (root.paneIsComputer(activePane)) {
+                const view = root.activeSubView()
+                if (view && view.refresh)
+                    view.refresh()
+                return
+            }
             fsModel.refresh()
             splitFsModel.refresh()
         }
@@ -3589,6 +3918,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: config.shortcutMap["split_view"]
+        enabled: root.paneCommandsEnabled()
         onActivated: root.toggleSplitView()
     }
 
@@ -3623,12 +3953,67 @@ ApplicationWindow {
 
     Shortcut {
         sequence: config.shortcutMap["focus_next_pane"]
+        enabled: root.paneCommandsEnabled()
         onActivated: root.focusNextPane()
     }
 
     Shortcut {
         sequence: config.shortcutMap["focus_previous_pane"]
+        enabled: root.paneCommandsEnabled()
         onActivated: root.focusNextPane()
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["focus_previous_column"]
+        enabled: root.paneCommandsEnabled()
+        onActivated: root.focusColumn(-1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["focus_next_column"]
+        enabled: root.paneCommandsEnabled()
+        onActivated: root.focusColumn(1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["copy_to_other_pane"]
+        enabled: root.paneCommandsEnabled() && !root.previewOwnsFocus()
+        onActivated: root.transferToOtherPane(false)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["move_to_other_pane"]
+        enabled: root.paneCommandsEnabled() && !root.previewOwnsFocus()
+        onActivated: root.transferToOtherPane(true)
+    }
+    // Interface text size. A focused preview zooms itself with the same keys
+    // (PreviewZoomControls), and editors, the terminal and dialogs keep them.
+    Shortcut {
+        sequences: [config.shortcutMap["text_larger"], "Ctrl+="]
+        enabled: root.paneCommandsEnabled() && !root.previewOwnsFocus()
+        onActivated: primaryFileViewContainer.interfaceZoom.adjust(1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["text_smaller"]
+        enabled: root.paneCommandsEnabled() && !root.previewOwnsFocus()
+        onActivated: primaryFileViewContainer.interfaceZoom.adjust(-1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["text_reset"]
+        enabled: root.paneCommandsEnabled() && !root.previewOwnsFocus()
+        onActivated: primaryFileViewContainer.interfaceZoom.reset()
+    }
+    Shortcut {
+        sequences: [config.shortcutMap["icons_larger"], "Ctrl+Alt+="]
+        enabled: root.paneCommandsEnabled()
+        onActivated: root.resizeGridIcons(1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["icons_smaller"]
+        enabled: root.paneCommandsEnabled()
+        onActivated: root.resizeGridIcons(-1)
+    }
+    Shortcut {
+        sequence: config.shortcutMap["icons_reset"]
+        enabled: root.paneCommandsEnabled()
+        onActivated: root.resizeGridIcons(0)
     }
 
     // View mode switching
@@ -3640,6 +4025,11 @@ ApplicationWindow {
     Shortcut {
         sequence: config.shortcutMap["miller_view"]
         onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "miller" }
+    }
+
+    Shortcut {
+        sequence: config.shortcutMap["compact_view"]
+        onActivated: { if (tabModel.activeTab) tabModel.activeTab.viewMode = "compact" }
     }
 
     Shortcut {
@@ -3851,6 +4241,15 @@ ApplicationWindow {
                     hideEntry
                 ]
 
+            if (root.isComputerPath(item.path))
+                return [
+                    { text: "Open", shortcut: config.shortcutMap["open"] || "Return", action: "open" },
+                    { text: "Open in New Tab", shortcut: "", action: "opennewtab" },
+                    { text: "Open in Split View", shortcut: "", action: "split_open", icon: "SquareSplitHorizontal" },
+                    { separator: true },
+                    hideEntry
+                ]
+
             if (fileOps.isTrashPath(item.path))
                 return [
                     { text: "Open", shortcut: config.shortcutMap["open"] || "Return", action: "open" },
@@ -4018,6 +4417,11 @@ ApplicationWindow {
         menu.targetPath = filePath !== "" ? filePath : currentDir
         menu.targetIsDir = filePath !== "" ? isDirectory : true
         menu.isEmptySpace = (filePath === "")
+        // A folder row offers itself; empty space offers the folder shown,
+        // except in Recents and search results, which are not one folder.
+        menu.favouritePath = filePath !== ""
+            ? (isDirectory ? root.favouriteCandidate(filePath) : "")
+            : (root.paneIsRecents(pane) || root.paneSearchMode(pane) ? "" : root.favouriteCandidate(currentDir))
         var sel = getSelectedPaths(pane)
         menu.selectedPaths = (sel.length > 1) ? sel : (filePath !== "" ? [filePath] : [])
         var selectedItems = getSelectedItems(pane)
@@ -4047,7 +4451,7 @@ ApplicationWindow {
     }
 
     function pasteIntoDirectory(destPath) {
-        if (!destPath)
+        if (!destPath || root.isComputerPath(destPath))
             return
 
         if (clipboard.hasContent) {
@@ -4098,12 +4502,7 @@ ApplicationWindow {
                     activeSplitHorizontal: root.isSplitHorizontal
                     trashPath: root.unifiedTrashPath
                     isRecentsView: root.isRecentsView
-                    onBookmarkClicked: (path) => {
-                        if (path === fsModel.homePath())
-                            root.goHome()
-                        else
-                            root.navigateActivePaneTo(path)
-                    }
+                    onBookmarkClicked: path => root.navigateActivePaneTo(path)
                     onSavedSplitClicked: (split) => {
                         root.restoreSavedSplit(split)
                     }
@@ -4125,9 +4524,7 @@ ApplicationWindow {
                         menu.selectedFolderPaths = []
                         menu.popup(position.x, position.y)
                     }
-                    onRecentsClicked: {
-                        root.setPaneRecents(root.activePane, true)
-                    }
+                    onRecentsClicked: root.openRecents()
                     onCollapseClicked: root.toggleSidebar()
                     onFeatureHintRequested: (message) => toast.show(message, "info")
                 }
@@ -4231,6 +4628,8 @@ ApplicationWindow {
                 onConnectRemoteRequested: root.openRemoteConnectDialog()
                 onSettingsRequested: root.openSettingsPanel()
                 onKeyboardShortcutsRequested: root.openKeyboardShortcutsDialog()
+                darkMode: root.darkModeActive
+                onDarkModeToggleRequested: root.toggleDarkMode()
                 onCloseRequested: root.close()
                 onMinimizeRequested: root.showMinimized()
                 onMaximizeRequested: root.visibility === Window.Maximized ? root.showNormal() : root.showMaximized()
@@ -4369,6 +4768,8 @@ ApplicationWindow {
                             SplitPaneHeader {
                                 Layout.preferredHeight: visible ? 34 : 0
                                 visible: root.splitViewPresented
+                                objectName: "primaryPaneHeader"
+                                onActivated: root.setActivePane("primary")
                                 title: root.paneDisplayName("primary")
                                 activePaneHeader: root.activePane === "primary"
                             }
@@ -4387,9 +4788,13 @@ ApplicationWindow {
                                     ? "" : root.paneBaseModel("primary").loadError
                                 viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                                 currentPath: root.panePath("primary")
+                                showComputer: root.paneIsComputer("primary")
 
                                 onInteractionStarted: root.setActivePane("primary")
                                 onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("primary", filePath, isDirectory)
+                                onOpenInNewTabRequested: path => root.openPathInNewTab(path)
+                                onOpenInSplitViewRequested: path => root.openPathInSplitView(path)
+                                onFeatureHintRequested: message => toast.show(message, "info")
                                 // Model resets also clear selection; only an
                                 // interaction should switch the active pane.
                                 onSelectionChanged: {
@@ -4405,6 +4810,16 @@ ApplicationWindow {
                                     root.setActivePane("primary")
                                     root.applySortChange(column, ascending)
                                 }
+                            }
+
+                            PaneTerminal {
+                                id: primaryPaneTerminal
+                                pane: "primary"
+                                paneHeight: primaryPaneFrame.height
+                                windowShortcuts: [config.shortcutMap["toggle_terminal"]]
+                                onFinished: root.paneTerminalFinished("primary")
+                                onUnsafePaste: (view, text) => root.confirmTerminalPaste(view, text)
+                                onFolderActivated: path => root.navigatePaneTo("primary", path)
                             }
                         }
 
@@ -4455,6 +4870,7 @@ ApplicationWindow {
                         sourceComponent: Rectangle {
                             id: secondaryPaneFrame
                             property alias fileView: secondaryFileViewContainer
+                            property alias paneTerminal: secondaryPaneTerminal
                             opacity: root.splitTransitionProgress
                             scale: 0.96 + (0.04 * root.splitTransitionProgress)
                             transformOrigin: root.isSplitHorizontal ? Item.Bottom : Item.Right
@@ -4467,6 +4883,8 @@ ApplicationWindow {
                                 spacing: 0
 
                                 SplitPaneHeader {
+                                    objectName: "secondaryPaneHeader"
+                                    onActivated: root.setActivePane("secondary")
                                     title: root.paneDisplayName("secondary")
                                     activePaneHeader: root.activePane === "secondary"
                                 }
@@ -4485,9 +4903,13 @@ ApplicationWindow {
                                         ? "" : root.paneBaseModel("secondary").loadError
                                     viewMode: tabModel.activeTab ? tabModel.activeTab.viewMode : "grid"
                                     currentPath: root.panePath("secondary")
+                                    showComputer: root.paneIsComputer("secondary")
 
                                     onInteractionStarted: root.setActivePane("secondary")
                                     onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("secondary", filePath, isDirectory)
+                                    onOpenInNewTabRequested: path => root.openPathInNewTab(path)
+                                    onOpenInSplitViewRequested: path => root.openPathInSplitView(path)
+                                    onFeatureHintRequested: message => toast.show(message, "info")
                                     onSelectionChanged: {
                                         root.updateSelectionStatus()
                                     }
@@ -4501,6 +4923,18 @@ ApplicationWindow {
                                         root.setActivePane("secondary")
                                         root.applySortChange(column, ascending)
                                     }
+                                }
+
+                                // Closing the split closes this pane's shells
+                                // with it, as closing a terminal tab does.
+                                PaneTerminal {
+                                    id: secondaryPaneTerminal
+                                    pane: "secondary"
+                                    paneHeight: secondaryPaneFrame.height
+                                    windowShortcuts: [config.shortcutMap["toggle_terminal"]]
+                                    onFinished: root.paneTerminalFinished("secondary")
+                                    onUnsafePaste: (view, text) => root.confirmTerminalPaste(view, text)
+                                    onFolderActivated: path => root.navigatePaneTo("secondary", path)
                                 }
                             }
 
@@ -4520,47 +4954,11 @@ ApplicationWindow {
                 }
                 }
 
-                Loader {
-                    id: terminalPanelLoader
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: item ? item.implicitHeight : 0
-                    visible: root.terminalPanelOpen
-                    active: root.terminalPanelCreated
-                    // By URL: the file is only in the module when the terminal
-                    // is built in.
-                    source: Qt.resolvedUrl("components/TerminalPanel.qml")
-                    onLoaded: {
-                        item.maximumHeight = Qt.binding(() => root.height * 0.7)
-                        item.windowShortcuts = Qt.binding(() => [config.shortcutMap["toggle_terminal"]])
-                    }
-
-                    Connections {
-                        target: terminalPanelLoader.item
-                        function onFinished() {
-                            root.closeTerminalPanel()
-                            // Not from inside the shell's own signal.
-                            Qt.callLater(() => { root.terminalPanelCreated = false })
-                        }
-                        function onUnsafePaste(view, text) {
-                            root.pendingTerminalPasteView = view
-                            root.pendingTerminalPaste = text
-                            root.openDialog(terminalPasteConfirmDialogLoader)
-                        }
-                        // The view only passes on web, mail and local
-                        // folder links; see TerminalView::activateLink().
-                        function onLinkActivated(url) {
-                            Qt.openUrlExternally(url)
-                        }
-                        function onFolderActivated(path) {
-                            root.navigateActivePaneTo(path)
-                        }
-                    }
-                }
-
                 StatusBar {
                     objectName: "statusBar"
                     Layout.fillWidth: true
                     itemCount: root.activeItemCount()
+                    itemSummary: root.paneIsComputer(activePane) ? computerModel.count + (computerModel.count === 1 ? " drive" : " drives") : ""
                     folderCount: root.activeFolderCount()
                     searchStatus: root.searchMode && root.searchServiceForPane(activePane).isSearching
                         ? "Searching... " + root.searchServiceForPane(activePane).resultCount + " results"

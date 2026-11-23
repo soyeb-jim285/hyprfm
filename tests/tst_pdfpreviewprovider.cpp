@@ -1,6 +1,7 @@
 #include <QElapsedTimer>
 #include <QTest>
 #include <QThread>
+#include <QThreadPool>
 #include <QPainter>
 #include <QPdfWriter>
 #include <QQuickTextureFactory>
@@ -81,8 +82,7 @@ private slots:
     // QML requests the same page more than once on first paint (an Image's
     // sourceSize is part of Qt's cache key and changes as the item lays out),
     // and the adjacent-page prefetch adds more. Those requests are issued
-    // concurrently, so without the render lock every one of them misses the
-    // cache and spawns its own pdftoppm.
+    // concurrently, so serialising work for a mount lets them share the cache.
     void testConcurrentRequestsForSamePageAgree()
     {
         if (QStandardPaths::findExecutable("pdftoppm").isEmpty()
@@ -115,6 +115,54 @@ private slots:
         QCOMPARE(ia, ib);
 
         delete fa; delete fb; delete a; delete b;
+    }
+
+    void testSlowRenderDoesNotHoldQtOpen()
+    {
+#ifndef Q_OS_UNIX
+        QSKIP("Requires a shell stub for pdftoppm");
+#else
+        if (QStandardPaths::findExecutable("pdftoppm").isEmpty()
+            || QStandardPaths::findExecutable("pdfinfo").isEmpty())
+            QSKIP("poppler-utils (pdftoppm/pdfinfo) not installed");
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString pdf = createPdf(dir.path());
+        const QString id = QString::fromLatin1(QUrl::toPercentEncoding(pdf)) + "?page=0";
+        const QString started = dir.filePath("started");
+        QFile renderer(dir.filePath("pdftoppm"));
+        QVERIFY(renderer.open(QIODevice::WriteOnly));
+        QVERIFY(renderer.write("#!/bin/sh\nprintf '%s\\n' started > \"${0%/*}/started\"\nexec sleep 30\n") > 0);
+        renderer.close();
+        QVERIFY(renderer.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QByteArray previousPath = qgetenv("PATH");
+        qputenv("PATH", dir.path().toLocal8Bit() + ':' + previousPath);
+        const auto restorePath = qScopeGuard([&] { qputenv("PATH", previousPath); });
+
+        PdfPreviewProvider provider;
+        auto *running = provider.requestImageResponse(id, QSize(400, 500));
+        QSignalSpy runningFinished(running, &QQuickImageResponse::finished);
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(started), 5000);
+
+        // QCoreApplication waits for its global pool during shutdown.
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(500));
+
+        auto *queued = provider.requestImageResponse(id, QSize(460, 520));
+        QSignalSpy queuedFinished(queued, &QQuickImageResponse::finished);
+        queued->cancel();
+        QVERIFY(queuedFinished.wait(2000));
+        QCOMPARE(runningFinished.size(), 0);
+        delete queued;
+
+        running->cancel();
+        QVERIFY(runningFinished.wait(2000));
+        delete running;
+
+        // Cancellation must leave this page eligible to render again.
+        qputenv("PATH", previousPath);
+        QVERIFY(!renderAndWait(provider, id, QSize(400, 500)).isNull());
+#endif
     }
 
     // finished() must reach a listener that connects after
