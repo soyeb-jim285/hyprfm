@@ -509,6 +509,12 @@ ApplicationWindow {
         loader.item.open()
     }
 
+    function showDriveProperties(drive) {
+        drivePropertiesDialogLoader.active = true
+        drivePropertiesDialogLoader.item.drive = drive
+        drivePropertiesDialogLoader.item.open()
+    }
+
     function showPropertiesFor(path) {
         if (!path || root.isComputerPath(path)) return
         propertiesDialogLoader.active = true
@@ -1600,6 +1606,19 @@ ApplicationWindow {
         }
     }
     readonly property var archivePasswordDialog: archivePasswordDialogLoader.item
+
+    Loader {
+        id: drivePropertiesDialogLoader
+        anchors.fill: parent
+        z: 1000
+        active: false
+        sourceComponent: Component {
+            DrivePropertiesDialog {
+                objectName: "drivePropertiesDialog"
+                onClosed: root.scheduleActivePaneFocus()
+            }
+        }
+    }
 
     Loader {
         id: remoteConnectDialogLoader
@@ -3897,6 +3916,7 @@ ApplicationWindow {
                  && !root.isShown(root.renameDialog)
                  && !root.isShown(root.newFolderDialog)
                  && !root.isShown(root.newFileDialog)
+                 && !root.isShown(drivePropertiesDialogLoader.item)
                  && !root.isShown(root.deleteConfirmDialog)
                  && !root.isShown(root.emptyTrashConfirmDialog)
         onActivated: root.closeSearch()
@@ -4464,6 +4484,7 @@ ApplicationWindow {
                                 onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("primary", filePath, isDirectory)
                                 onOpenInNewTabRequested: path => root.openPathInNewTab(path)
                                 onOpenInSplitViewRequested: path => root.openPathInSplitView(path)
+                                onDrivePropertiesRequested: drive => root.showDriveProperties(drive)
                                 onFeatureHintRequested: message => toast.show(message, "info")
                                 // Model resets also clear selection; only an
                                 // interaction should switch the active pane.
@@ -4568,6 +4589,7 @@ ApplicationWindow {
                                     onFileActivated: (filePath, isDirectory) => root.handlePaneFileActivated("secondary", filePath, isDirectory)
                                     onOpenInNewTabRequested: path => root.openPathInNewTab(path)
                                     onOpenInSplitViewRequested: path => root.openPathInSplitView(path)
+                                    onDrivePropertiesRequested: drive => root.showDriveProperties(drive)
                                     onFeatureHintRequested: message => toast.show(message, "info")
                                     onSelectionChanged: {
                                         root.updateSelectionStatus()

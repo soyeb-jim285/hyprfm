@@ -1305,6 +1305,8 @@ QVariant DeviceModel::data(const QModelIndex &index, int role) const
         case DeviceBackend::UDisks2:    break;
         }
         return QStringLiteral("udisks2");
+    case FileSystemTypeRole:
+        return d.fsType;
     }
     return {};
 }
@@ -1321,5 +1323,6 @@ QHash<int, QByteArray> DeviceModel::roleNames() const
         {RemovableRole,    "removable"},
         {MountedRole,      "mounted"},
         {BackendRole,      "backend"},
+        {FileSystemTypeRole, "fileSystemType"},
     };
 }

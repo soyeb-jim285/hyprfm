@@ -18,6 +18,7 @@ FocusScope {
     signal fileActivated(string filePath, bool isDirectory)
     signal openInNewTabRequested(string path)
     signal openInSplitViewRequested(string path)
+    signal drivePropertiesRequested(var drive)
     signal featureHintRequested(string message)
     signal interactionStarted()
     signal selectionChanged()
@@ -27,6 +28,13 @@ FocusScope {
         var selection = []
         for (var i = 0; i < deviceModel.count; ++i) selection.push(i)
         selectedDevices = selection
+        selectionChanged()
+    }
+    function clearSelection() {
+        if (selectedDevices.length === 0 && cursorIndex === -1 && anchorIndex === -1) return
+        selectedDevices = []
+        cursorIndex = -1
+        anchorIndex = -1
         selectionChanged()
     }
     function focusPath(path, reveal) { return false }
@@ -104,7 +112,7 @@ FocusScope {
         else if (event.key === Qt.Key_Home) { choose(0, false, !!(event.modifiers & Qt.ShiftModifier)); event.accepted = true; return }
         else if (event.key === Qt.Key_End) { choose(deviceModel.count - 1, false, !!(event.modifiers & Qt.ShiftModifier)); event.accepted = true; return }
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { openDevice(cursorIndex); event.accepted = true; return }
-        else if (event.key === Qt.Key_Escape) { selectedDevices = []; cursorIndex = -1; selectionChanged(); event.accepted = true; return }
+        else if (event.key === Qt.Key_Escape) { clearSelection(); event.accepted = true; return }
         if (step) { choose(Math.max(0, Math.min(deviceModel.count - 1, cursorIndex < 0 ? 0 : cursorIndex + step)), false, !!(event.modifiers & Qt.ShiftModifier)); event.accepted = true }
     }
     Connections {
@@ -135,6 +143,7 @@ FocusScope {
         Text { text: qsTr("Devices and drives"); color: Theme.subtext; font.pointSize: Theme.fontSmall }
         GridView {
             id: grid
+            objectName: "computerDriveGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
@@ -216,12 +225,10 @@ FocusScope {
             }
         }
     }
-    // Any press on the page makes its pane the active one and takes the
-    // keyboard, as a press on a file view's empty space does, then goes on to
-    // the card, button or list under it. Only a drive card did this before,
-    // so a click elsewhere on the page left the other split pane active: F4
-    // toggled that pane's terminal and a sidebar place opened over there.
+    // Activate the pane and clear selections on the background before
+    // forwarding the press to cards or controls.
     MouseArea {
+        id: pagePress
         objectName: "computerPagePress"
         anchors.fill: parent
         z: 100
@@ -229,6 +236,10 @@ FocusScope {
         onPressed: mouse => {
             root.interactionStarted()
             root.forceActiveFocus()
+            const point = grid.mapFromItem(pagePress, mouse.x, mouse.y)
+            const contentPoint = grid.contentItem.mapFromItem(grid, point)
+            if (!grid.contains(point) || !grid.itemAt(contentPoint.x, contentPoint.y))
+                root.clearSelection()
             mouse.accepted = false
         }
     }
@@ -258,6 +269,13 @@ FocusScope {
             text: qsTr("Unmount")
             visible: !!driveMenu.drive.mounted && driveMenu.drive.mountPoint !== "/" && driveMenu.drive.sourceIndex >= 0
             onTriggered: root.deviceActions.unmount(driveMenu.drive.sourceIndex)
+        }
+        MenuSeparator {}
+        MenuItem {
+            objectName: "computerDrivePropertiesAction"
+            text: qsTr("Properties")
+            enabled: driveMenu.driveIndex >= 0
+            onTriggered: root.drivePropertiesRequested(driveMenu.drive)
         }
     }
 }

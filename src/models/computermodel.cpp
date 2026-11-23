@@ -86,6 +86,7 @@ void ComputerModel::refresh()
         const QStorageInfo root = QStorageInfo::root();
         rows.prepend({{"deviceName", tr("File System")}, {"devicePath", QString::fromUtf8(root.device())},
                       {"mountPoint", "/"}, {"totalSize", root.bytesTotal()}, {"freeSpace", root.bytesAvailable()},
+                      {"fileSystemType", QString::fromUtf8(root.fileSystemType())},
                       {"mounted", true}, {"removable", false}, {"backend", "local"}, {"sourceIndex", -1}});
     }
     for (auto &row : rows) {
@@ -93,6 +94,7 @@ void ComputerModel::refresh()
         const qint64 free = row.value("freeSpace").toLongLong();
         const bool known = row.value("mounted").toBool() && validCapacity(total, free);
         row["capacityKnown"] = known;
+        row["deviceSize"] = validCapacity(total, 0) ? total : qint64(0);
         row["totalSize"] = known ? total : qint64(0);
         row["freeSpace"] = known ? qBound(qint64(0), free, total) : qint64(0);
         row["usagePercent"] = known ? qBound(0, int(100.0 * (total - qMin(free, total)) / total), 100) : 0;

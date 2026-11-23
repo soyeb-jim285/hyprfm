@@ -52,6 +52,7 @@ public:
         RemovableRole,
         MountedRole,
         BackendRole,
+        FileSystemTypeRole,
     };
 
     explicit DeviceModel(QObject *parent = nullptr, bool deferInitialRefresh = false);
