@@ -133,8 +133,17 @@ FocusScope {
             onReleased: config.saveMillerFractions(root.parentFraction, root.currentFraction)
         }
     }
-    readonly property int minRowHeight: 22
+    readonly property int minRowHeight: Math.max(22, Math.ceil(Theme.fontNormal * 4 / 3) + 8)
     readonly property int maxRowHeight: 56
+    // Row-height zoom: Ctrl+Wheel over the list (the file container's
+    // InterfaceZoom, or the list itself where none sits on top). Like FileGridView.zoomByWheel, a
+    // negative delta (wheel up) makes rows taller.
+    function zoomByWheel(delta) {
+        currentWheelScroller.stopAndSettle()
+        root.interactionStarted()
+        var step = delta < 0 ? 2 : -2
+        root.rowHeight = Math.max(root.minRowHeight, Math.min(root.maxRowHeight, root.rowHeight + step))
+    }
     readonly property int millerIconSize: Math.round(rowHeight * 0.571)  // 16 at default 28
 
     function syncParentModel() {
@@ -164,12 +173,32 @@ FocusScope {
     function focusPath(path, reveal) {
         currentColumn.focusPath(path, reveal)
     }
+    property alias previewControls: zoomControls
+    function rowForPath(path) { return currentColumn.rowForPath(path) }
+    function restoreSelection(indices, cursor) {
+        currentColumn.selectedIndices = indices
+        currentColumn.cursorIndex = cursor
+        currentColumn.lastSelectedIndex = indices.length ? indices[0] : -1
+        if (cursor >= 0) currentColumn.positionViewAtIndex(cursor, ListView.Contain)
+        root.updatePreview()
+        root.selectionChanged()
+    }
+    function focusPreviousColumn() {
+        if (previewColumn.activeFocus) { currentColumn.forceActiveFocus(); return }
+        if (parentColumn.activeFocus) return
+        if (root.parentPath) parentColumn.forceActiveFocus()
+    }
+    function focusNextColumn() {
+        if (parentColumn.activeFocus) { root.ensureCurrentColumnFocus(); return }
+        if (previewColumn.previewFilePath !== "") previewColumn.forceActiveFocus()
+    }
 
     function clearSelection() {
         currentColumn.clearSelection()
     }
 
     function ensureCurrentColumnFocus() {
+        if (!root.visible || !root.fileModel) return
         currentColumn.forceActiveFocus()
         if (currentColumn.cursorIndex >= 0) {
             currentColumn.positionViewAtIndex(currentColumn.cursorIndex, ListView.Contain)
@@ -379,7 +408,7 @@ FocusScope {
                         Image {
                             width: root.millerIconSize; height: root.millerIconSize
                             anchors.verticalCenter: parent.verticalCenter
-                            source: "image://icon/" + parentDelegate.fileIconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                            source: Theme.fileIconSource(parentDelegate.fileIconName, parentDelegate.fileName, 24, false)
                             sourceSize: Qt.size(root.millerIconSize * Screen.devicePixelRatio,
                                                 root.millerIconSize * Screen.devicePixelRatio)
                             asynchronous: true
@@ -656,7 +685,7 @@ FocusScope {
                 root.selectionChanged()
             }
 
-            function activateCurrentSelection() {
+            function activateCurrentSelection(enterPreview) {
                 var idx = cursorIndex >= 0 ? cursorIndex
                     : (selectedIndices.length > 0 ? selectedIndices[selectedIndices.length - 1] : -1)
                 if (idx < 0) return
@@ -664,6 +693,8 @@ FocusScope {
                 var isDir = isDirForRow(idx)
                 if (isDir) {
                     root.enterDirectory(fp)
+                } else if (enterPreview) {
+                    root.focusNextColumn()
                 } else {
                     root.fileActivated(fp, false)
                 }
@@ -780,10 +811,6 @@ FocusScope {
 
             Keys.onUpPressed: (event) => moveSelection(-1, event.modifiers & Qt.ShiftModifier)
             Keys.onDownPressed: (event) => moveSelection(1, event.modifiers & Qt.ShiftModifier)
-            Keys.onRightPressed: (event) => {
-                activateCurrentSelection()
-                event.accepted = true
-            }
             Keys.onLeftPressed: (event) => {
                 root.goUp()
                 event.accepted = true
@@ -801,6 +828,11 @@ FocusScope {
                 }
                 if (config.keyEventMatches("open", event.key, event.modifiers)) {
                     activateCurrentSelection()
+                    event.accepted = true
+                    return
+                }
+                if (event.key === Qt.Key_Right && (event.modifiers & ~Qt.KeypadModifier) === 0) {
+                    activateCurrentSelection(true)
                     event.accepted = true
                     return
                 }
@@ -900,7 +932,7 @@ FocusScope {
                                 anchors.fill: parent
                                 visible: !millerThumb.visible
                                 opacity: currentDelegate.fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
-                                source: "image://icon/" + currentDelegate.fileIconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                                source: Theme.fileIconSource(currentDelegate.fileIconName, currentDelegate.fileName, 24, false)
                                 sourceSize: Qt.size((root.millerIconSize + 2) * Screen.devicePixelRatio,
                                                     (root.millerIconSize + 2) * Screen.devicePixelRatio)
                                 asynchronous: true
@@ -1134,15 +1166,12 @@ FocusScope {
 
                 onWheel: (wheel) => {
                     if (wheel.modifiers & Qt.ControlModifier) {
-                        currentWheelScroller.stopAndSettle()
-                        root.interactionStarted()
                         var delta = currentWheelScroller.deltaFor(wheel)
                         if (delta === 0) {
                             wheel.accepted = false
                             return
                         }
-                        var step = delta < 0 ? 2 : -2
-                        root.rowHeight = Math.max(root.minRowHeight, Math.min(root.maxRowHeight, root.rowHeight + step))
+                        root.zoomByWheel(delta)
                         wheel.accepted = true
                     } else {
                         wheel.accepted = false
@@ -1249,7 +1278,7 @@ FocusScope {
         ColumnDivider { objectName: "millerDivider_right"; movesPreview: true }
 
         // ── Preview column (30%) ─────────────────────────────────────────
-        Item {
+        FocusScope {
             id: previewColumn
             objectName: "millerPreviewColumn"
             width: root.width - root.parentColumnWidth - root.currentColumnWidth - 2
@@ -1257,6 +1286,7 @@ FocusScope {
             clip: true
 
             property string previewFilePath: ""
+            property alias previewZoom: zoomControls.factor
             property bool previewIsDir: false
 
             // The page we are navigating away from, held on screen until the
@@ -1278,7 +1308,6 @@ FocusScope {
 
             PreviewLoader {
                 id: previewLoader
-                requester: "miller"
                 path: previewColumn.isRemoteUri ? "" : previewColumn.previewFilePath
                 kind: previewColumn.previewKind
                 onPdfPageCountChanged: {
@@ -1309,9 +1338,9 @@ FocusScope {
             readonly property bool isVideo: !isRemoteUri && !previewIsDir && _mime.startsWith("video/")
             readonly property bool isAudio: !isRemoteUri && !previewIsDir && (_mime.startsWith("audio/") || false)
             readonly property bool isPdf: !isRemoteUri && !previewIsDir && _mime === "application/pdf"
-            readonly property bool pdfPreviewAvailable: previewService.pdfPreviewAvailable
-            readonly property bool videoPreviewAvailable: runtimeFeatures.ffmpegAvailable
-            readonly property bool textHighlightAvailable: runtimeFeatures.batAvailable
+            readonly property bool pdfPreviewAvailable: previewService ? previewService.pdfPreviewAvailable : false
+            readonly property bool videoPreviewAvailable: typeof runtimeFeatures !== "undefined" && runtimeFeatures ? runtimeFeatures.ffmpegAvailable : false
+            readonly property bool textHighlightAvailable: typeof runtimeFeatures !== "undefined" && runtimeFeatures ? runtimeFeatures.batAvailable : false
             readonly property bool hasVisualPreview: isImage || (isVideo && videoPreviewAvailable)
             readonly property string visualSource: {
                 if (!hasVisualPreview || previewFilePath === "") return ""
@@ -1430,6 +1459,26 @@ FocusScope {
                 pdfPageIndex = next
             }
 
+            function handlePreviewKey(event) {
+                if ((event.modifiers & ~Qt.KeypadModifier) !== 0)
+                    return
+                if (event.key === Qt.Key_Left) {
+                    root.focusPreviousColumn()
+                } else if (!isPdf) {
+                    zoomControls.handleScrollKey(event)
+                    return
+                } else if (event.key === Qt.Key_Up || event.key === Qt.Key_PageUp) {
+                    changePdfPage(-1)
+                } else if (event.key === Qt.Key_Down || event.key === Qt.Key_PageDown) {
+                    changePdfPage(1)
+                } else {
+                    return
+                }
+                event.accepted = true
+            }
+
+            Keys.onPressed: event => handlePreviewKey(event)
+
             function handlePdfWheel(wheel) {
                 if (!isPdf || pdfPreview.pageCount <= 1)
                     return
@@ -1472,7 +1521,7 @@ FocusScope {
                 // handles local / trash:// / remote URIs internally.
                 // This is an in-memory lookup, so the info bar updates
                 // immediately while the body is still being read.
-                if (fsModel && fsModel.fileProperties)
+                if (typeof fsModel !== "undefined" && fsModel && fsModel.fileProperties)
                     fileProps = fsModel.fileProperties(previewFilePath)
                 else
                     fileProps = ({})
@@ -1498,11 +1547,27 @@ FocusScope {
             Column {
                 anchors.fill: parent
 
+                PreviewZoomControls {
+                    id: zoomControls
+                    objectName: "millerPreviewZoom"
+                    width: parent.width
+                    scope: previewColumn
+                    scrollTarget: previewColumn.isImage ? visualPreview : previewColumn.isPdf ? pdfPreviewImage
+                        : previewColumn.isTable ? previewTable : textPreviewFlick
+                    keyboardScrollTarget: previewColumn.previewIsDir ? previewDirList
+                        : previewColumn.isArchive ? archivePreviewList
+                        : previewColumn.isFont ? millerFontFlick : scrollTarget
+                    pageWheel: previewColumn.isPdf ? previewColumn.handlePdfWheel : null
+                    available: root.visible && !previewColumn.previewIsDir
+                        && (previewColumn.isImage || previewColumn.isPdf || previewColumn.isText)
+                    onInteracted: root.interactionStarted()
+                }
+
                 // Preview area
                 Item {
                     id: previewArea
                     width: parent.width
-                    height: parent.height - infoBar.height
+                    height: parent.height - infoBar.height - zoomControls.height
 
                     // Directory listing
                     ListView {
@@ -1536,7 +1601,7 @@ FocusScope {
                                 Image {
                                     width: 14; height: 14
                                     anchors.verticalCenter: parent.verticalCenter
-                                    source: "image://icon/" + fileIconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                                    source: Theme.fileIconSource(fileIconName, fileName, 24, false)
                                     opacity: fileName.startsWith(".") ? Theme.hiddenIconOpacity : 1
                                     sourceSize: Qt.size(14 * Screen.devicePixelRatio,
                                                         14 * Screen.devicePixelRatio)
@@ -1612,13 +1677,14 @@ FocusScope {
                     }
 
                     // Image/Video preview
-                    Image {
+                    ZoomablePreviewImage {
                         id: visualPreview
+                        objectName: "millerVisualPreview"
+                        zoomFactor: (previewColumn.isImage ? zoomControls.factor : 1)
                         anchors.fill: parent
                         anchors.margins: 8
                         visible: previewColumn.hasVisualPreview && !previewColumn.previewIsDir && !previewColumn.isPdf
                         source: previewColumn.visualSource
-                        sourceSize: Qt.size(width, height)
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
                         smooth: true
@@ -1626,8 +1692,10 @@ FocusScope {
 
                     // Outgoing page, drawn underneath while the next one
                     // loads. Cleared as soon as pdfPreviewImage is Ready.
-                    Image {
+                    ZoomablePreviewImage {
                         id: pdfHoldImage
+                        zoomFactor: zoomControls.factor
+                        enabled: false
                         anchors.fill: parent
                         anchors.margins: 8
                         visible: previewColumn.pdfHoldSource !== ""
@@ -1640,8 +1708,10 @@ FocusScope {
                     }
 
                     // PDF preview
-                    Image {
+                    ZoomablePreviewImage {
                         id: pdfPreviewImage
+                        objectName: "millerPdfPreviewImage"
+                        zoomFactor: zoomControls.factor
                         anchors.fill: parent
                         anchors.margins: 8
                         visible: previewColumn.isPdf
@@ -1649,7 +1719,6 @@ FocusScope {
                             && previewColumn.pdfPreview.localPath !== ""
                             && previewColumn.pdfPreview.error === ""
                         source: previewColumn.pdfImageSource
-                        sourceSize: Qt.size(width * Screen.devicePixelRatio, height * Screen.devicePixelRatio)
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
                         smooth: true
@@ -1685,6 +1754,7 @@ FocusScope {
                         anchors.fill: parent
                         visible: pdfPreviewImage.visible
                         acceptedButtons: Qt.NoButton
+                        enabled: zoomControls.factor <= 1
                         onWheel: (wheel) => previewColumn.handlePdfWheel(wheel)
                     }
 
@@ -1783,7 +1853,7 @@ FocusScope {
                         Image {
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: 64; height: 64
-                            source: "image://icon/" + (previewColumn.fileProps.iconName || (previewColumn.isPdf ? "application-pdf" : "image-x-generic")) + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                            source: Theme.fileIconSource((previewColumn.fileProps.iconName || (previewColumn.isPdf ? "application-pdf" : "image-x-generic")), previewColumn.fileProps.name, 48, false)
                             sourceSize: Qt.size(64, 64)
                             asynchronous: true
                         }
@@ -1825,6 +1895,18 @@ FocusScope {
 
                         TextEdit {
                             id: textArea
+                            objectName: "millerPreviewText"
+                            Keys.onShortcutOverride: event => {
+                                if (config.keyEventMatches("focus_previous_column", event.key, event.modifiers)) event.accepted = true
+                            }
+                            Keys.onPressed: event => {
+                                if (config.keyEventMatches("focus_previous_column", event.key, event.modifiers)) {
+                                    root.ensureCurrentColumnFocus()
+                                    event.accepted = true
+                                } else {
+                                    previewColumn.handlePreviewKey(event)
+                                }
+                            }
                             readOnly: true
                             selectByMouse: true
                             width: previewColumn.isMarkdown ? textPreviewFlick.markdownWidth : Math.max(implicitWidth, textPreviewFlick.width)
@@ -1847,7 +1929,7 @@ FocusScope {
                             color: Theme.text
                             wrapMode: previewColumn.isMarkdown ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
                             font.family: previewColumn.isMarkdown ? Qt.application.font.family : "monospace"
-                            font.pointSize: Theme.fontSmall - 1
+                            font.pointSize: (Theme.fontSmall - 1) * zoomControls.factor
 
                             onCursorRectangleChanged: {
                                 var r = cursorRectangle
@@ -1872,12 +1954,14 @@ FocusScope {
                     }
 
                     CsvTable {
+                        id: previewTable
+                        objectName: "millerPreviewTable"
                         anchors.fill: parent
                         anchors.margins: 6
                         visible: previewColumn.isText && previewColumn.isTable && !previewColumn.hasVisualPreview
                             && !previewColumn.previewIsDir && !previewColumn.isPdf && !previewColumn.isArchive
                         table: visible ? previewColumn.textPreview.table : ({})
-                        fontSize: Theme.fontSmall - 1
+                        fontSize: (Theme.fontSmall - 1) * zoomControls.factor
                     }
 
                     Text {
@@ -1890,7 +1974,7 @@ FocusScope {
                             && !previewColumn.textPreview.isBinary
                             && !previewColumn.textPreview.usesBat
                             && !previewColumn.textHighlightAvailable
-                        text: runtimeFeatures.installHint("textHighlight")
+                        text: typeof runtimeFeatures !== "undefined" && runtimeFeatures ? runtimeFeatures.installHint("textHighlight") : ""
                         color: Theme.subtext
                         font.pointSize: Theme.fontSmall
                         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
@@ -1906,7 +1990,7 @@ FocusScope {
                         Image {
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: 72; height: 72
-                            source: "image://icon/" + (previewColumn.fileProps.iconName || "application-pdf") + "?theme=" + config.iconTheme + "&r=" + config.iconRevision
+                            source: Theme.fileIconSource((previewColumn.fileProps.iconName || "application-pdf"), previewColumn.fileProps.name, 48, false)
                             sourceSize: Qt.size(72, 72)
                             asynchronous: true
                         }
@@ -1929,7 +2013,7 @@ FocusScope {
                             textFormat: Text.PlainText
                             text: previewColumn.pdfPreview.error !== ""
                                 ? previewColumn.pdfPreview.error
-                                : runtimeFeatures.installHint("pdfPreview")
+                                : (typeof runtimeFeatures !== "undefined" && runtimeFeatures ? runtimeFeatures.installHint("pdfPreview") : "")
                             color: Theme.subtext
                             font.pointSize: Theme.fontSmall
                             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
@@ -2052,8 +2136,8 @@ FocusScope {
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: 64; height: 64
                             source: previewColumn.fileProps.iconName
-                                ? ("image://icon/" + previewColumn.fileProps.iconName + "?theme=" + config.iconTheme + "&r=" + config.iconRevision)
-                                : ("image://icon/text-x-generic?theme=" + config.iconTheme + "&r=" + config.iconRevision)
+                                ? Theme.fileIconSource(previewColumn.fileProps.iconName, previewColumn.fileProps.name, 64, false)
+                                : Theme.fileIconSource("text-x-generic", "", 48, false)
                             sourceSize: Qt.size(64, 64)
                             asynchronous: true
                         }

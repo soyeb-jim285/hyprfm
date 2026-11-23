@@ -22,6 +22,8 @@ Rectangle {
     property bool sidebarOnRight: false
     property string currentViewMode: "grid"
     property bool showWindowControls: false
+    // Dark Mode state shown by the sun/moon toggle (Main.qml darkModeActive).
+    property bool darkMode: Theme.isDark
     property string windowButtonLayout: ":minimize,maximize,close"
     property var window: null
     property string currentSearchQuery: ""
@@ -80,6 +82,7 @@ Rectangle {
     signal emptyTrashRequested()
     signal settingsRequested()
     signal keyboardShortcutsRequested()
+    signal darkModeToggleRequested()
     signal closeRequested()
     signal minimizeRequested()
     signal maximizeRequested()
@@ -303,7 +306,8 @@ Rectangle {
                             model: [
                                 { mode: "grid",     icon: "Grid",         name: "Grid view" },
                                 { mode: "miller",   icon: "Columns3",     name: "Miller column view" },
-                                { mode: "detailed", icon: "AlignJustify", name: "Detailed view" }
+                                { mode: "detailed", icon: "AlignJustify", name: "Detailed view" },
+                                { mode: "compact",  icon: "LayoutList",         name: "Compact view" }
                             ].filter(mode => !root.filePickerMode || mode.mode !== "miller")
 
                             delegate: HoverRect {
@@ -332,7 +336,7 @@ Rectangle {
 
                                 Loader {
                                     anchors.centerIn: parent
-                                    source: "../icons/Icon" + viewButton.modelData.icon + ".qml"
+                                    source: Theme.iconComponentSource("Icon" + viewButton.modelData.icon)
                                     onLoaded: {
                                         item.size = 16
                                         item.color = Qt.binding(() => viewButton.current ? Theme.accent : Theme.text)
@@ -462,6 +466,18 @@ Rectangle {
                     shortcut: "search"
                     onClicked: root.searchClicked()
                     IconSearch { anchors.centerIn: parent; size: 18; color: Theme.text }
+                }
+
+                // Flips between the Light and Dark themes chosen in Settings.
+                HoverRect {
+                    objectName: "darkModeButton"
+                    width: Theme.controlSize; height: Theme.controlSize
+                    visible: !root.filePickerMode && !root.searchMode
+                    tooltip: root.darkMode ? "Switch to light theme" : "Switch to dark theme"
+                    Accessible.role: Accessible.Button
+                    onClicked: root.darkModeToggleRequested()
+                    IconSun { anchors.centerIn: parent; size: 18; color: Theme.text; visible: root.darkMode }
+                    IconMoon { anchors.centerIn: parent; size: 18; color: Theme.text; visible: !root.darkMode }
                 }
 
                 HoverRect {

@@ -266,7 +266,7 @@ QByteArray readBoundedOutput(QProcess &proc, qint64 readLimit)
 
 // bat highlights `data` (already capped by the caller) rather than the file
 // itself: one 300 MB line would otherwise come back as 300 MB of HTML.
-QByteArray batPreview(const QString &path, const QByteArray &data, int maxLines, QString *error)
+QByteArray batPreview(const QString &path, const QByteArray &data, int maxLines, bool lightTheme, QString *error)
 {
     if (error)
         error->clear();
@@ -281,6 +281,9 @@ QByteArray batPreview(const QString &path, const QByteArray &data, int maxLines,
         QStringLiteral("--style=plain"),
         QStringLiteral("--wrap=never")
     };
+    // An explicit palette overrides BAT_THEME and the user's bat config,
+    // which otherwise keep a fixed palette after an app theme change.
+    args.append(lightTheme ? QStringLiteral("--theme=GitHub") : QStringLiteral("--theme=Monokai Extended"));
     if (maxLines > 0)
         args.append(QStringLiteral("--line-range=:%1").arg(maxLines));
     args.append(QStringLiteral("--file-name"));
@@ -630,7 +633,7 @@ void PreviewService::cancelPreview(const QString &requester)
 }
 
 void PreviewService::requestPreview(const QString &requester, const QString &path,
-                                    const QString &kind, const QString &password)
+                                    const QString &kind, const QString &password, bool lightTheme)
 {
     const quint64 generation = bumpGeneration(requester);
 
@@ -639,8 +642,8 @@ void PreviewService::requestPreview(const QString &requester, const QString &pat
         return;
     }
 
-    m_pool->start([this, requester, path, kind, password, generation]() {
-        const QVariantMap data = buildPreview(path, kind, password);
+    m_pool->start([this, requester, path, kind, password, lightTheme, generation]() {
+        const QVariantMap data = buildPreview(path, kind, password, lightTheme);
 
         // Cheap early-out so a superseded worker doesn't queue a no-op onto
         // the GUI thread. The authoritative check is the one inside the
@@ -657,12 +660,12 @@ void PreviewService::requestPreview(const QString &requester, const QString &pat
 }
 
 QVariantMap PreviewService::buildPreview(const QString &path, const QString &kind,
-                                         const QString &password) const
+                                         const QString &password, bool lightTheme) const
 {
     QVariantMap data;
 
     if (kind == QLatin1String("text"))
-        data["text"] = loadTextPreview(path);
+        data["text"] = loadTextPreview(path, 131072, 400, lightTheme);
     else if (kind == QLatin1String("pdf"))
         data["pdf"] = loadPdfPreview(path);
     else if (kind == QLatin1String("archive"))
@@ -689,7 +692,7 @@ void PreviewService::refreshSupport()
     emit supportChanged();
 }
 
-QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, int maxLines) const
+QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, int maxLines, bool lightTheme) const
 {
     QVariantMap result;
     bool truncated = false;
@@ -758,7 +761,7 @@ QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, i
 
     if (!binary) {
         QString batError;
-        const QByteArray coloredOutput = batPreview(path, data, maxLines, &batError);
+        const QByteArray coloredOutput = batPreview(path, data, maxLines, lightTheme, &batError);
         if (!coloredOutput.isEmpty()) {
             result["html"] = ansiToHtml(coloredOutput);
             result["usesBat"] = true;

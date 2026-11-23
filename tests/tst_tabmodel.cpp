@@ -224,6 +224,21 @@ private slots:
         QCOMPARE(tab.currentPath(), QString("sftp://example.com/"));
     }
 
+    void testComputerTitleAndHistory()
+    {
+        TabModel tab;
+        tab.navigateTo("/tmp");
+        for (const QString &path : {QString("computer:///"), QString("computer://"), QString("COMPUTER:///")}) {
+            tab.navigateTo(path);
+            QCOMPARE(tab.title(), QString("Computer"));
+            tab.goUp();
+            QCOMPARE(tab.currentPath(), path);
+        }
+        tab.navigateTo("/");
+        tab.goBack();
+        QCOMPARE(tab.title(), QString("Computer"));
+    }
+
     // === TabListModel tests ===
 
     void testTabListModelInitialState()
@@ -434,10 +449,21 @@ private slots:
         QCOMPARE(model.activeTab()->viewMode(), QString("grid"));
     }
 
+    void testCompactViewSurvivesSessionRestoreAndNewTabs()
+    {
+        TabListModel model;
+        model.activeTab()->setViewMode("compact");
+        model.addTab();
+        QCOMPARE(model.activeTab()->viewMode(), QString("compact"));
+        TabListModel restored;
+        restored.restoreSession(model.saveSession(), 1);
+        QCOMPARE(restored.activeTab()->viewMode(), QString("compact"));
+    }
+
     void testNormalizeViewModeKeepsValidModes()
     {
         for (const QString &mode : {QStringLiteral("grid"), QStringLiteral("detailed"),
-                                    QStringLiteral("miller")})
+                                    QStringLiteral("miller"), QStringLiteral("compact")})
             QCOMPARE(TabModel::normalizeViewMode(mode), mode);
         QCOMPARE(TabModel::normalizeViewMode("list"), QString("detailed"));
         QCOMPARE(TabModel::normalizeViewMode(""), QString("grid"));

@@ -2,6 +2,7 @@
 // grips, drag-to-reorder and the column toggle menu, driven with QTest mouse
 // events against the real QML.
 #include <QTest>
+#include <QRegularExpression>
 #include <QGuiApplication>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -21,6 +22,15 @@ class TestDetailedView : public QObject
     using Harness = ViewHarness;
 
 private slots:
+    // QML binding warnings from the view itself are failures: an unbound
+    // model used to log "Unable to assign [undefined] to QObject*", and a
+    // missing preview service a TypeError on pdfPreviewAvailable.
+    void init()
+    {
+        QTest::failOnWarning(QRegularExpression(QStringLiteral("Unable to assign \\[undefined\\]")));
+        QTest::failOnWarning(QRegularExpression(QStringLiteral("pdfPreviewAvailable")));
+    }
+
     // A PDF should draw its first page, not the generic mimetype icon. The
     // delegate reads model roles through `required property`, so referencing
     // hasPdfPreview without declaring it left it undefined, silently falsy,

@@ -1,6 +1,8 @@
-// Headless interaction test for the Miller view's draggable column dividers.
+// Headless interaction tests for the Miller view.
 #include <QTest>
 #include <QQmlComponent>
+#include <QRegularExpression>
+#include <QSignalSpy>
 #include <memory>
 #include "viewharness.h"
 #include "services/metadataextractor.h"
@@ -34,6 +36,15 @@ class TestMillerView : public QObject
     };
 
 private slots:
+    // QML binding warnings from the view itself are failures: an unbound
+    // model used to log "Unable to assign [undefined] to QObject*", and a
+    // missing preview service a TypeError on pdfPreviewAvailable.
+    void init()
+    {
+        QTest::failOnWarning(QRegularExpression(QStringLiteral("Unable to assign \\[undefined\\]")));
+        QTest::failOnWarning(QRegularExpression(QStringLiteral("pdfPreviewAvailable")));
+    }
+
     void testLeftDividerDragChangesParentFraction()
     {
         MillerHarness h;
@@ -78,6 +89,41 @@ private slots:
         QVERIFY(h.config->millerFractions().value("parent").toDouble() >= ConfigManager::kMillerMinFraction - 1e-9);
     }
 
+    void testArrowNavigationBetweenFileAndPreview()
+    {
+        MillerHarness h;
+        const QString folder = h.files.createDir("folder");
+        QVERIFY(h.loadMiller());
+        auto *current = h.item("millerCurrentColumn");
+        auto *preview = h.item("millerPreviewColumn");
+        QVERIFY(current && preview);
+        QSignalSpy activation(h.view.rootObject(), SIGNAL(fileActivated(QString,bool)));
+        QVERIFY(activation.isValid());
+        const QString file = h.files.filePath("a.txt");
+        auto focusPath = [&](const QString &path) {
+            return QMetaObject::invokeMethod(h.view.rootObject(), "focusPath",
+                                             Q_ARG(QVariant, path), Q_ARG(QVariant, true));
+        };
+
+        QVERIFY(focusPath(file));
+        QTRY_VERIFY(current->hasActiveFocus());
+        QTest::keyClick(&h.view, Qt::Key_Right);
+        QCOMPARE(activation.size(), 0);
+        QTRY_VERIFY(preview->hasActiveFocus());
+        QCOMPARE(preview->property("previewFilePath").toString(), file);
+
+        QTest::keyClick(&h.view, Qt::Key_Left);
+        QTRY_VERIFY(current->hasActiveFocus());
+        QTest::keyClick(&h.view, Qt::Key_Return);
+        QCOMPARE(activation.size(), 1);
+        QCOMPARE(activation.takeFirst(), QVariantList({file, false}));
+
+        QVERIFY(focusPath(folder));
+        QTest::keyClick(&h.view, Qt::Key_Right);
+        QCOMPARE(activation.size(), 1);
+        QCOMPARE(activation.takeFirst(), QVariantList({folder, true}));
+    }
+
     // The owner calls reload() while PreviewLoader.path still holds the
     // previous value (the binding updates after the owner's handler). Going
     // from no selection to a file -- entering a folder auto-selects its first
@@ -91,12 +137,13 @@ private slots:
         f.write("hello preview\n");
         f.close();
 
-        QQmlEngine engine;
-        PreviewService previewService;
-        engine.rootContext()->setContextProperty("previewService", &previewService);
-        QQmlComponent component(&engine, QUrl::fromLocalFile(
+        // The loader imports HyprFM (Theme picks the preview's light or dark
+        // highlighting), so it needs the harness's staged module and context.
+        MillerHarness h;
+        QVERIFY(h.loadMiller());
+        QQmlComponent component(h.view.engine(), QUrl::fromLocalFile(
             QStringLiteral(TEST_SOURCE_DIR "/src/qml/components/PreviewLoader.qml")));
-        std::unique_ptr<QObject> loader(component.create());
+        std::unique_ptr<QObject> loader(component.create(h.view.rootContext()));
         QVERIFY2(loader, qPrintable(component.errorString()));
         loader->setProperty("requester", "test");
         loader->setProperty("kind", "text");

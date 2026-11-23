@@ -1,5 +1,8 @@
 #include <QTest>
 #include <QDir>
+#include <QFile>
+#include <QTemporaryDir>
+#include <QUrl>
 #include <QSignalSpy>
 #include <QAbstractItemModelTester>
 #include "models/bookmarkmodel.h"
@@ -9,6 +12,34 @@ class TestBookmarkModel : public QObject
     Q_OBJECT
 
 private slots:
+    // Favourites are folders: dropping a file on the sidebar used to add it.
+    void testOnlyFoldersBecomeFavourites()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString folder = dir.filePath("folder");
+        const QString file = dir.filePath("file.txt");
+        QVERIFY(QDir().mkpath(folder));
+        QFile out(file);
+        QVERIFY(out.open(QIODevice::WriteOnly));
+        out.close();
+
+        BookmarkModel model;
+        QAbstractItemModelTester modelTester(&model, QAbstractItemModelTester::FailureReportingMode::QtTest);
+        QVERIFY(!model.addBookmark(file));
+        QVERIFY(!model.insertBookmark(QUrl::fromLocalFile(file).toString(), 0));
+        QVERIFY(!model.addBookmark(QString()));
+        QCOMPARE(model.rowCount(), 0);
+
+        QVERIFY(model.addBookmark(folder));
+        QVERIFY(!model.addBookmark(folder + "/")); // already there
+        // Nothing local to check: an unplugged drive's folder and a remote URI stay addable.
+        QVERIFY(model.insertBookmark(dir.filePath("unplugged"), 0));
+        QVERIFY(model.addBookmark("sftp://host/srv"));
+        QCOMPARE(model.rowCount(), 3);
+        QCOMPARE(model.data(model.index(1), BookmarkModel::PathRole).toString(), folder);
+    }
+
     void testSplitBookmarkRoundTripAndReorder()
     {
         BookmarkModel model;
