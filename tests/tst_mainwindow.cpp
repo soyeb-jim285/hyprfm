@@ -723,7 +723,7 @@ private slots:
         tableFile.close();
         QVERIFY(app.load());
         app.tabModel->activeTab()->navigateTo(app.home.path());
-        if (!quick) app.tabModel->activeTab()->setViewMode("miller");
+        app.tabModel->activeTab()->setViewMode("miller");
         auto *model = app.engine.rootContext()->contextProperty("fsModel").value<QObject *>();
         QTRY_COMPARE(model->property("rootPath").toString(), app.home.path());
         QTRY_VERIFY(!model->property("isLoading").toBool());
@@ -732,14 +732,36 @@ private slots:
             return QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("primary")),
                                              Q_ARG(QVariant, path), Q_ARG(QVariant, true));
         };
-        QVERIFY(preview(pdf));
+        QVERIFY(QMetaObject::invokeMethod(app.window, "focusPathInPane", Q_ARG(QVariant, QString("primary")),
+                                          Q_ARG(QVariant, pdf), Q_ARG(QVariant, true)));
+        if (quick)
+            QTest::keyClick(app.window, Qt::Key_Space);
+        else
+            QTest::keyClick(app.window, Qt::Key_Right, Qt::ControlModifier);
         QTRY_VERIFY(app.item(quick ? "quickPdfPreviewImage" : "millerPdfPreviewImage"));
         auto *image = app.item(quick ? "quickPdfPreviewImage" : "millerPdfPreviewImage");
         auto *controls = app.item(quick ? "quickPreviewZoom" : "millerPreviewZoom");
         auto *scope = quick ? app.window->property("quickPreview").value<QQuickItem *>() : app.item("millerPreviewColumn");
         QVERIFY(image && controls && scope);
+        QTRY_VERIFY(scope->hasActiveFocus());
         QTRY_VERIFY(image->isVisible());
         QTRY_COMPARE_WITH_TIMEOUT(image->property("status").toInt(), 1, 15000);
+
+        if (quick) {
+            QTest::keyClick(app.window, Qt::Key_Right);
+            QTRY_COMPARE(scope->property("filePath").toString(), csv);
+            QTest::keyClick(app.window, Qt::Key_Left);
+            QTRY_COMPARE(scope->property("filePath").toString(), pdf);
+            QTRY_COMPARE_WITH_TIMEOUT(image->property("status").toInt(), 1, 15000);
+        }
+
+        QTest::keyClick(app.window, Qt::Key_Down);
+        QTRY_COMPARE(scope->property("pdfPageIndex").toInt(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(image->property("status").toInt(), 1, 15000);
+        QTest::keyClick(app.window, Qt::Key_PageUp);
+        QTRY_COMPARE(scope->property("pdfPageIndex").toInt(), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(image->property("status").toInt(), 1, 15000);
+
         const QPoint point = app.center(image);
         app.wheel(point, QPoint(0, -120));
         QTRY_COMPARE(scope->property("pdfPageIndex").toInt(), 1);

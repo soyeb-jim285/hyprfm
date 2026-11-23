@@ -1456,6 +1456,18 @@ FocusScope {
                 pdfPageIndex = next
             }
 
+            Keys.onPressed: event => {
+                if (!isPdf || (event.modifiers & ~Qt.KeypadModifier) !== 0)
+                    return
+                if (event.key === Qt.Key_Up || event.key === Qt.Key_PageUp)
+                    changePdfPage(-1)
+                else if (event.key === Qt.Key_Down || event.key === Qt.Key_PageDown)
+                    changePdfPage(1)
+                else
+                    return
+                event.accepted = true
+            }
+
             function handlePdfWheel(wheel) {
                 if (!isPdf || pdfPreview.pageCount <= 1)
                     return
