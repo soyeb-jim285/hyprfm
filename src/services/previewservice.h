@@ -39,13 +39,13 @@ public:
     // ignores it.
     Q_INVOKABLE void requestPreview(const QString &requester, const QString &path,
                                     const QString &kind,
-                                    const QString &password = QString());
+                                    const QString &password = QString(), bool lightTheme = false);
 
     // Invalidates that requester's in-flight work without starting more.
     Q_INVOKABLE void cancelPreview(const QString &requester);
 
     Q_INVOKABLE QVariantMap loadTextPreview(const QString &path, int maxBytes = 131072,
-                                            int maxLines = 400) const;
+                                            int maxLines = 400, bool lightTheme = false) const;
     Q_INVOKABLE QVariantMap loadDirectoryPreview(const QString &path, int maxEntries = 40) const;
     Q_INVOKABLE QVariantMap loadArchivePreview(const QString &path, int maxEntries = 200,
                                                const QString &password = QString()) const;
@@ -72,7 +72,7 @@ private:
     // QFontDatabase is GUI-thread-only, so QML still calls loadFontPreview
     // directly (it is a local file read, not a subprocess).
     QVariantMap buildPreview(const QString &path, const QString &kind,
-                             const QString &password) const;
+                             const QString &password, bool lightTheme) const;
 
     QByteArray readPathBytes(const QString &path, qint64 maxBytes, bool *truncated,
                              QString *error) const;

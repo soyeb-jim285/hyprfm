@@ -10,7 +10,7 @@ Rectangle {
     Accessible.name: {
         var parts = []
         if (selectedCount > 0) parts.push(selectedCount + " selected")
-        else parts.push(itemCount + " items")
+        else parts.push(itemSummary || itemCount + " items")
         if (folderCount > 0) parts.push(folderCount + " folders")
         if (selectedSize) parts.push(selectedSize)
         if (diskTotal > 0) {
@@ -21,6 +21,7 @@ Rectangle {
     }
 
     property int itemCount: 0
+    property string itemSummary: ""
     property int folderCount: 0
     property int selectedCount: 0
     property string selectedSize: ""
@@ -137,6 +138,7 @@ Rectangle {
             Layout.fillWidth: true
             visible: !statusBar.showLoading
             text: {
+                if (statusBar.itemSummary !== "") return statusBar.itemSummary
                 const files = statusBar.itemCount - statusBar.folderCount
                 return statusBar.itemCount + " items (" + statusBar.folderCount + " folders, " + files + " files)"
             }
@@ -172,9 +174,7 @@ Rectangle {
             readonly property real usedFraction: statusBar.diskTotal > 0
                 ? Math.max(0, Math.min(1, 1 - statusBar.diskFree / statusBar.diskTotal))
                 : 0
-            readonly property color fillColor: usedFraction >= 0.90
-                ? Theme.error
-                : usedFraction >= 0.75 ? Theme.warning : Theme.accent
+            readonly property color fillColor: Theme.usageColor(usedFraction * 100)
 
             Layout.preferredWidth: diskLabel.implicitWidth + 20
             Layout.preferredHeight: 18

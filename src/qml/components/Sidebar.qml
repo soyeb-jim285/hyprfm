@@ -36,7 +36,26 @@ Rectangle {
     color: Theme.mantle
     clip: false
 
+    // Section headings: PLACES, FAVOURITES, DEVICES look alike.
+    component SectionHeader: Item {
+        property alias text: headerLabel.text
+        Layout.fillWidth: true
+        Layout.preferredHeight: 25
+        Text {
+            id: headerLabel
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.spacing + 3
+            anchors.verticalCenter: parent.verticalCenter
+            color: Theme.muted
+            font.pointSize: Theme.fontSmall
+            font.weight: Font.DemiBold
+        }
+    }
+
+    InterfaceZoom { anchors.fill: parent; z: 20 }
+
     Component { id: iconHome; IconHome { size: 18; color: Theme.subtext } }
+    Component { id: iconMonitor; IconMonitor { size: 18; color: Theme.subtext } }
     Component { id: iconClock; IconClock { size: 18; color: Theme.subtext } }
     Component { id: iconTrash; IconTrash { size: 18; color: Theme.subtext } }
     Component { id: iconImage; IconImage { size: 18; color: Theme.subtext } }
@@ -44,6 +63,8 @@ Rectangle {
     Component { id: iconGlobe; IconGlobe { size: 18; color: Theme.subtext } }
     Component { id: iconHardDrive; IconHardDrive { size: 18; color: Theme.subtext } }
     Component { id: iconHardDriveOff; IconHardDriveOff { size: 18; color: Theme.muted } }
+    Component { id: iconMountAction; IconPlay { size: 14; color: Theme.subtext } }
+    Component { id: iconUnmountAction; IconEject { size: 14; color: Theme.subtext } }
     Component { id: iconUsb; IconUsb { size: 18; color: Theme.subtext } }
     Component { id: iconUsbOff; IconUsb { size: 18; color: Theme.muted } }
     Component { id: iconFolder; IconFolder { size: 18; color: Theme.subtext } }
@@ -128,6 +149,8 @@ Rectangle {
             }
         }
 
+        SectionHeader { text: "PLACES" }
+
         // Quick access section
         Column {
             Layout.fillWidth: true
@@ -136,6 +159,7 @@ Rectangle {
             Repeater {
                 model: ListModel {
                     ListElement { name: "Home"; iconType: "home" }
+                    ListElement { name: "Computer"; iconType: "monitor" }
                     ListElement { name: "Recents"; iconType: "clock" }
                     ListElement { name: "Trash"; iconType: "trash" }
                     ListElement { name: "Network"; iconType: "globe" }
@@ -150,11 +174,12 @@ Rectangle {
                     // Entries the user hid via the sidebar context menu or
                     // Settings → Layout collapse away entirely.
                     visible: config.hiddenQuickAccess.indexOf(model.name) < 0
-                        && (!root.filePickerMode || ["Recents", "Trash", "Network"].indexOf(model.name) < 0)
+                        && (!root.filePickerMode || ["Computer", "Recents", "Trash", "Network"].indexOf(model.name) < 0)
 
                     readonly property string resolvedPath: {
                         const home = fsModel.homePath()
                         if (model.name === "Home") return home
+                        if (model.name === "Computer") return "computer:///"
                         if (model.name === "Recents") return ""
                         if (model.name === "Trash") return root.trashPath
                         if (model.name === "Network") return "network:///"
@@ -167,9 +192,10 @@ Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
                     height: visible ? 32 : 0
                     readonly property bool isActive: {
+                        if (model.name === "Computer") return !root.isRecentsView && /^computer:\/*$/i.test(root.currentPath)
                         if (model.name === "Recents") return root.isRecentsView
                         if (model.name === "Trash") return !root.isRecentsView && fileOps.isTrashPath(root.currentPath)
-                        if (model.name === "Network") return !root.isRecentsView && fileOps.isRemotePath(root.currentPath)
+                        if (model.name === "Network") return !root.isRecentsView && fileOps.isRemotePath(root.currentPath) && !/^computer:\/*$/i.test(root.currentPath)
                         if (resolvedPath === "") return false
                         return !root.isRecentsView && resolvedPath === root.currentPath
                     }
@@ -343,25 +369,16 @@ Rectangle {
             }
         }
 
-        Item {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 25
-            Text {
-                anchors.left: parent.left
-                anchors.leftMargin: Theme.spacing + 3
-                anchors.verticalCenter: parent.verticalCenter
-                text: "FAVOURITES"
-                color: Theme.muted
-                font.pointSize: Theme.fontSmall
-                font.weight: Font.DemiBold
-            }
-        }
+        SectionHeader { text: "FAVOURITES" }
 
         // Bookmarks section — drag folders to add, drag items to reorder
         Item {
             id: bookmarksSection
             Layout.fillWidth: true
-            implicitHeight: Math.max(bookmarksList.height, root.activeSplitVisible ? rowHeight : 0)
+            // An empty list keeps one row as a drop target, so the first
+            // folder (or the active split) can still be dropped here.
+            implicitHeight: Math.max(bookmarksList.height,
+                                     root.activeSplitVisible || bookmarks.count === 0 ? rowHeight : 0)
 
             readonly property int rowHeight: 32
             readonly property bool externalDragActive:
@@ -433,10 +450,13 @@ Rectangle {
                     var insertAt = bookmarkDropArea._extDropIndex
                     var urls = bookmarksSection.dragUrls(drop)
                     bookmarksSection.clearExternalDrop()
+                    // insertBookmark refuses files (favourites are folders);
+                    // the next accepted folder goes after the previous one.
+                    var at = insertAt >= 0 ? insertAt : bookmarks.count
                     for (var i = 0; i < urls.length; i++) {
                         var path = bookmarksSection.decodedPath(urls[i])
-                        if (path !== "")
-                            bookmarks.insertBookmark(path, insertAt >= 0 ? insertAt : bookmarks.count)
+                        if (path !== "" && bookmarks.insertBookmark(path, at))
+                            at++
                     }
                     drop.accept()
                 }
@@ -592,9 +612,9 @@ Rectangle {
 
             Text {
                 objectName: "emptyBookmarksHint"
-                visible: bookmarks.count === 0 && root.activeSplitVisible
+                visible: bookmarks.count === 0 && !bookmarksSection.externalDragActive
                 anchors.centerIn: parent
-                text: "Drop here to save"
+                text: root.activeSplitVisible ? "Drop here to save" : "Drop folders here"
                 color: Theme.muted
                 font.pointSize: Theme.fontSmall
             }
@@ -784,11 +804,17 @@ Rectangle {
             }
         }
 
+        SectionHeader {
+            text: "DEVICES"
+            visible: deviceRepeater.count > 0
+        }
+
         // Devices section
         Column {
             Layout.fillWidth: true
 
             Repeater {
+                id: deviceRepeater
                 model: devices
 
                 delegate: Rectangle {
@@ -860,6 +886,7 @@ Rectangle {
                         // Right side: name + progress bar
                         Column {
                             width: parent.width - 18 - Theme.spacing
+                                   - (deviceMountButton.visible ? deviceMountButton.width + Theme.spacing : 0)
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 3
 
@@ -884,11 +911,7 @@ Rectangle {
                                         : 0
                                     height: parent.height
                                     radius: parent.radius
-                                    color: model.usagePercent >= 90
-                                        ? Theme.error
-                                        : model.usagePercent >= 75
-                                            ? Theme.warning
-                                            : Theme.accent
+                                    color: Theme.usageColor(model.usagePercent)
                                 }
                             }
                         }
@@ -933,6 +956,41 @@ Rectangle {
                                 root.featureHintRequested(runtimeFeatures.installHint("deviceMount"))
                             else
                                 devices.mount(index)
+                        }
+                    }
+
+                    // Mount (play, as GNOME Disks) an unmounted device; eject one the
+                    // user mounted (a phone, a cloud/FUSE mount, a drive under /run/media).
+                    // Never / or a fixed mount: model.userUnmountable says which.
+                    HoverRect {
+                        id: deviceMountButton
+                        objectName: "deviceMountButton"
+                        readonly property bool mountAction: !model.mounted
+                        readonly property string deviceName: model.deviceName
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.spacing - 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 24; height: 24
+                        z: 2
+                        visible: mountAction ? model.backend !== "mtp-missing" : model.userUnmountable
+                        tooltip: mountAction ? "Mount" : "Unmount"
+                        Accessible.role: Accessible.Button
+                        Accessible.name: (mountAction ? "Mount " : "Unmount ") + model.deviceName
+                        onClicked: {
+                            if (mountAction) {
+                                if (model.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable)
+                                    root.featureHintRequested(runtimeFeatures.installHint("deviceMount"))
+                                else
+                                    devices.mount(index)
+                            } else if (model.backend === "udisks2" && !runtimeFeatures.udisksctlAvailable) {
+                                root.featureHintRequested(runtimeFeatures.installHint("deviceMount"))
+                            } else {
+                                devices.unmount(index)
+                            }
+                        }
+                        Loader {
+                            anchors.centerIn: parent
+                            sourceComponent: deviceMountButton.mountAction ? iconMountAction : iconUnmountAction
                         }
                     }
 
