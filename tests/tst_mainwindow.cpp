@@ -2013,6 +2013,42 @@ private slots:
         QCOMPARE(field->property("text").toString(), QString());
     }
 
+    void testEncryptedDriveCancelKeepsHoverHighlight()
+    {
+        App app;
+        QVERIFY(app.load());
+        auto *context = app.engine.rootContext();
+        auto *theme = context->contextProperty("theme").value<ThemeLoader *>();
+        auto *config = context->contextProperty("config").value<ConfigManager *>();
+        auto *devices = context->contextProperty("devices").value<QObject *>();
+        QVERIFY(theme && config && devices);
+        theme->loadTheme(QStringLiteral("strata-omarchy-light"), {QStringLiteral(TEST_SOURCE_DIR "/themes")});
+
+        QTest::mouseMove(app.window, QPoint(1, 1));
+        QVERIFY(QMetaObject::invokeMethod(devices, "unlockRequested",
+                                          Q_ARG(QString, QStringLiteral("/dev/hyprfm-test-missing")),
+                                          Q_ARG(QString, QStringLiteral("Encrypted volume"))));
+        auto *dialog = app.item("unlockDeviceDialog");
+        auto *cancel = app.item("unlockDeviceCancelButton");
+        QVERIFY(dialog && cancel);
+        QTRY_VERIFY(dialog->isVisible());
+        QTest::qWait(config->animDurationSlow());
+
+        const auto fill = [&] { return cancel->property("color").value<QColor>(); };
+        QCOMPARE(fill().alpha(), 0);
+        QColor hoverFill = theme->text();
+        hoverFill.setAlphaF(0.12);
+        QTest::mouseMove(app.window, app.center(cancel));
+        QTRY_COMPARE(fill(), hoverFill);
+        QTest::qWait(config->animDurationFast() + 50);
+        QCOMPARE(fill(), hoverFill);
+
+        QTest::mouseMove(app.window, QPoint(1, 1));
+        QTRY_COMPARE(fill().alpha(), 0);
+        QTest::mouseClick(app.window, Qt::LeftButton, Qt::NoModifier, app.center(cancel));
+        QTRY_VERIFY(!dialog->isVisible());
+    }
+
     // Closing an overlay has to hand keyboard focus back to the file view, or
     // arrows and Backspace do nothing until you click something (issue #37).
     // Only the properties dialog did; rename, new folder and new file did not.

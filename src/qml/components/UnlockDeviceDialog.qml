@@ -91,9 +91,15 @@ Q.Dialog {
         spacing: 12
 
         Q.Button {
+            objectName: "unlockDeviceCancelButton"
             text: "Cancel"
             variant: "ghost"
             size: "small"
+            // Keep the same tint through the fade. Animating from transparent
+            // black to a light surface briefly darkens the button.
+            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b,
+                           activeFocus ? 0.18 : cancelHover.hovered ? 0.12 : 0)
+            HoverHandler { id: cancelHover }
             onClicked: root.reject()
         }
 
