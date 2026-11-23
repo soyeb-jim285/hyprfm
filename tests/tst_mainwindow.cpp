@@ -2013,7 +2013,7 @@ private slots:
         QCOMPARE(field->property("text").toString(), QString());
     }
 
-    void testEncryptedDriveCancelKeepsHoverHighlight()
+    void testEncryptedDriveDialogInputAndCancel()
     {
         App app;
         QVERIFY(app.load());
@@ -2030,9 +2030,31 @@ private slots:
                                           Q_ARG(QString, QStringLiteral("Encrypted volume"))));
         auto *dialog = app.item("unlockDeviceDialog");
         auto *cancel = app.item("unlockDeviceCancelButton");
-        QVERIFY(dialog && cancel);
+        auto *field = app.item("unlockPassphraseField");
+        QVERIFY(dialog && cancel && field);
         QTRY_VERIFY(dialog->isVisible());
+        QTRY_VERIFY(field->hasActiveFocus());
         QTest::qWait(config->animDurationSlow());
+
+        const auto fieldChildren = field->childItems();
+        const auto hint = std::find_if(fieldChildren.cbegin(), fieldChildren.cend(), [](QQuickItem *child) {
+            return child->property("text").toString() == QStringLiteral("Passphrase");
+        });
+        QVERIFY(hint != fieldChildren.cend());
+        QVERIFY((*hint)->isVisible());
+
+        QTest::mouseMove(app.window, app.center(field));
+        QTRY_COMPARE(app.window->cursor().shape(), Qt::IBeamCursor);
+        QTest::keyClick(app.window, Qt::Key_A);
+        QCOMPARE(field->property("text").toString(), QStringLiteral("a"));
+        QTRY_VERIFY(!(*hint)->isVisible());
+
+        QTest::mouseClick(app.window, Qt::LeftButton, Qt::NoModifier, QPoint(1, 1));
+        QTest::qWait(config->animDurationFast() + 50);
+        QVERIFY(dialog->isVisible());
+        QTest::keyClick(app.window, Qt::Key_Escape);
+        QTest::qWait(config->animDurationFast() + 50);
+        QVERIFY(dialog->isVisible());
 
         const auto fill = [&] { return cancel->property("color").value<QColor>(); };
         QCOMPARE(fill().alpha(), 0);
@@ -2047,6 +2069,7 @@ private slots:
         QTRY_COMPARE(fill().alpha(), 0);
         QTest::mouseClick(app.window, Qt::LeftButton, Qt::NoModifier, app.center(cancel));
         QTRY_VERIFY(!dialog->isVisible());
+        QCOMPARE(field->property("text").toString(), QString());
     }
 
     // Closing an overlay has to hand keyboard focus back to the file view, or

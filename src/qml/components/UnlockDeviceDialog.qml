@@ -5,9 +5,8 @@ import HyprFM
 import Quill as Q
 
 // Asks for the passphrase of a locked LUKS or BitLocker drive when its Mount
-// button is pressed (DeviceModel::unlockRequested).  Like the archive password
-// prompt it stays up on a wrong passphrase, says so in place, and only closes
-// once the drive is unlocked.
+// button is pressed (DeviceModel::unlockRequested). The user can retry a
+// rejected passphrase or cancel the prompt.
 Q.Dialog {
     id: root
     anchors.fill: parent
@@ -15,6 +14,8 @@ Q.Dialog {
     dialogWidth: 430
     title: "Unlock encrypted drive"
     subtitle: root.deviceName
+    closeOnOverlayPress: false
+    closeOnEscape: false
     initialFocusItem: passphraseField
 
     property string devicePath: ""
@@ -38,8 +39,8 @@ Q.Dialog {
     function failed(message) {
         root.checking = false
         root.errorText = message || "Wrong passphrase. Try again."
-        passphraseField.inputItem.forceActiveFocus()
-        passphraseField.inputItem.selectAll()
+        passphraseField.forceActiveFocus()
+        passphraseField.selectAll()
     }
 
     // Unlocked: nothing left to ask, and the passphrase does not linger.
@@ -62,19 +63,37 @@ Q.Dialog {
         root.confirmed(pass)
     }
 
-    onOpened: Qt.callLater(function() { passphraseField.inputItem.forceActiveFocus() })
     onRejected: passphraseField.text = ""
 
-    Q.TextField {
+    TextField {
         id: passphraseField
         objectName: "unlockPassphraseField"
         Layout.fillWidth: true
-        variant: "filled"
-        placeholder: "Passphrase"
+        padding: Q.Theme.spacing
+        placeholderText: "Passphrase"
+        placeholderTextColor: Theme.muted
+        Accessible.name: placeholderText
+        color: Theme.text
+        selectionColor: Theme.accent
+        selectedTextColor: Theme.base
+        font.pixelSize: Q.Theme.fontSize
+        font.family: Q.Theme.fontFamily
         echoMode: TextInput.Password
         enabled: !root.checking
-        inputItem.Keys.onReturnPressed: root.submit()
+        opacity: enabled ? 1 : 0.5
+        onAccepted: root.submit()
         onTextChanged: root.errorText = ""
+
+        background: Rectangle {
+            implicitHeight: 34
+            radius: Theme.radiusMedium
+            color: Theme.surface
+        }
+
+        HoverHandler {
+            enabled: passphraseField.enabled
+            cursorShape: Qt.IBeamCursor
+        }
     }
 
     Text {
