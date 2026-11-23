@@ -7,6 +7,7 @@
 #include "services/filepicker.h"
 #include <QSignalSpy>
 #include <QGuiApplication>
+#include <QClipboard>
 #include <QDir>
 #include <QDirIterator>
 #include <QRegularExpression>
@@ -2863,7 +2864,7 @@ private slots:
             auto *field = App::findItem(dialog, "driveProperty-" + key);
             return field ? field->property("text").toString() : QString{};
         };
-        QCOMPARE(dialog->property("subtitle").toString(), QString("Data"));
+        QCOMPARE(value("name"), QString("Data"));
         QCOMPARE(value("status"), QString("Mounted"));
         QCOMPARE(value("device"), QString("/dev/fake-data"));
         QCOMPARE(value("filesystem"), QString("btrfs"));
@@ -2871,14 +2872,38 @@ private slots:
         QCOMPARE(value("capacity"), QString("1000 B"));
         QCOMPARE(value("used"), QString("500 B"));
         QCOMPARE(value("available"), QString("500 B"));
+        auto *config = app.engine.rootContext()->contextProperty("config").value<ConfigManager *>();
+        QVERIFY(config);
+        QTest::qWait(config->animDurationSlow());
+
+        auto *field = App::findItem(dialog, "driveProperty-device");
+        auto *close = App::findItem(dialog, "drivePropertiesCloseButton");
+        QVERIFY(field && close);
+        const QPoint start = field->mapToScene(QPointF(1, field->height() / 2)).toPoint();
+        const QPoint end = field->mapToScene(QPointF(field->width() - 1, field->height() / 2)).toPoint();
+        QTest::mousePress(app.window, Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(app.window, end);
+        QTest::mouseRelease(app.window, Qt::LeftButton, Qt::NoModifier, end);
+        QCOMPARE(field->property("selectedText").toString(), QString("/dev/fake-data"));
+        QTest::keyClick(app.window, Qt::Key_C, Qt::ControlModifier);
+        QCOMPARE(QGuiApplication::clipboard()->text(), QString("/dev/fake-data"));
+
+        // Click the space beside Close and the area outside the dialog.
+        const QPoint inside(start.x(), app.center(close).y());
+        QTest::mouseClick(app.window, Qt::LeftButton, Qt::NoModifier, inside);
+        QTest::mouseClick(app.window, Qt::LeftButton, Qt::NoModifier, background);
         QTest::keyClick(app.window, Qt::Key_Escape);
+        QTest::qWait(config->animDurationFast() + 50);
+        QVERIFY(dialog->isVisible());
+        QCOMPARE(selectedDrives(view), QVariantList{data});
+        QTest::mouseClick(app.window, Qt::LeftButton, Qt::NoModifier, app.center(close));
         QTRY_VERIFY(!dialog->isVisible());
 
         QTest::mouseClick(app.window, Qt::RightButton, Qt::NoModifier, app.center(App::findItem(view, usbCard)));
         QTRY_VERIFY(app.item("computerDrivePropertiesAction") && app.item("computerDrivePropertiesAction")->isVisible());
         QTest::mouseClick(app.window, Qt::LeftButton, Qt::NoModifier, app.center(app.item("computerDrivePropertiesAction")));
         QTRY_VERIFY(dialog->isVisible());
-        QCOMPARE(dialog->property("subtitle").toString(), QString("USB A"));
+        QCOMPARE(value("name"), QString("USB A"));
         QCOMPARE(value("status"), QString("Not mounted"));
         QCOMPARE(value("filesystem"), QString("exfat"));
         QCOMPARE(value("capacity"), QString("4 KB"));

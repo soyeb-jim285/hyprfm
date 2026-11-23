@@ -8,12 +8,30 @@ Q.Dialog {
 
     property var drive: ({})
     title: qsTr("Drive properties")
-    subtitle: drive.deviceName || ""
     dialogWidth: Math.min(width - 40, Math.round(460 * Theme.uiScale))
+    closeOnOverlayPress: false
+    closeOnEscape: false
     initialFocusItem: closeButton
+
+    component SelectableText: TextEdit {
+        readOnly: true
+        selectByMouse: true
+        textFormat: TextEdit.PlainText
+        color: Theme.text
+        selectionColor: Theme.accent
+        selectedTextColor: Theme.base
+        font.pointSize: Theme.fontNormal
+
+        // Give the focused text the standard Copy and Select All shortcuts.
+        Keys.onShortcutOverride: event => {
+            if (event.matches(StandardKey.Copy) || event.matches(StandardKey.SelectAll))
+                event.accepted = true
+        }
+    }
 
     Repeater {
         model: [
+            { key: "name", label: qsTr("Name"), value: root.drive.deviceName },
             { key: "status", label: qsTr("Status"), value: root.drive.mounted ? qsTr("Mounted")
                 : root.drive.encrypted ? qsTr("Locked")
                 : root.drive.backend === "mtp-missing" ? qsTr("Unavailable") : qsTr("Not mounted") },
@@ -34,23 +52,21 @@ Q.Dialog {
             Layout.fillWidth: true
             spacing: 12
 
-            Text {
+            SelectableText {
                 Layout.preferredWidth: 106 * Theme.uiScale
                 Layout.alignment: Qt.AlignTop
                 text: modelData.label
                 color: Theme.subtext
-                font.pointSize: Theme.fontNormal
-                wrapMode: Text.WordWrap
+                wrapMode: TextEdit.WordWrap
             }
 
-            Text {
+            SelectableText {
                 objectName: "driveProperty-" + modelData.key
                 Layout.fillWidth: true
+                activeFocusOnTab: true
+                Accessible.name: modelData.label
                 text: modelData.value
-                textFormat: Text.PlainText
-                color: Theme.text
-                font.pointSize: Theme.fontNormal
-                wrapMode: Text.WrapAnywhere
+                wrapMode: TextEdit.WrapAnywhere
             }
         }
     }
