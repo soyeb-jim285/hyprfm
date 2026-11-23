@@ -1393,6 +1393,9 @@ int main(int argc, char *argv[])
 
     // Save session on quit
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
+        // Release the launch socket before Qt begins waiting for its workers.
+        if (ipcServer)
+            ipcServer->close();
         sessionSaveTimer.stop();
         saveSession();
     });

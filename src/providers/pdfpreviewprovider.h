@@ -6,6 +6,9 @@
 #include <QSize>
 #include <QRunnable>
 #include <QString>
+#include <atomic>
+
+class QThreadPool;
 
 class PdfPreviewResponse : public QQuickImageResponse, public QRunnable
 {
@@ -14,6 +17,7 @@ class PdfPreviewResponse : public QQuickImageResponse, public QRunnable
 public:
     PdfPreviewResponse(const QString &id, const QSize &requestedSize);
 
+    void cancel() override;
     void run() override;
     QQuickTextureFactory *textureFactory() const override;
 
@@ -30,9 +34,12 @@ private:
     bool tryDiskCache(const QString &key);
     void writeDiskCache(const QString &key, const QByteArray &jpeg);
 
-    QString m_id;
+    QString m_path;
+    int m_page = 0;
     QSize m_requestedSize;
     QImage m_image;
+    QThreadPool *m_pool = nullptr;
+    std::atomic_bool m_cancelled{false};
 };
 
 class PdfPreviewProvider : public QQuickAsyncImageProvider

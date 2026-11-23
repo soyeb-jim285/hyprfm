@@ -1,6 +1,8 @@
 #include "providers/pdfpreviewprovider.h"
+#include "services/filesystemtasks.h"
 
 #include <QDateTime>
+#include <QDeadlineTimer>
 #include <QFileInfo>
 #include <QCache>
 #include <QHash>
@@ -11,6 +13,7 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QSaveFile>
+#include <QScopeGuard>
 #include <QSet>
 #include <mutex>
 #include <QStandardPaths>
@@ -19,6 +22,12 @@
 #include <QUrlQuery>
 
 #include <algorithm>
+
+#ifdef Q_OS_LINUX
+#include <signal.h>
+#include <sys/prctl.h>
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -43,20 +52,49 @@ PdfRequest parseRequest(const QString &id)
     return request;
 }
 
+QByteArray runPdfCommand(const QString &executable, const QStringList &arguments,
+                         int timeout, const std::atomic_bool &cancelled)
+{
+    if (cancelled.load())
+        return {};
+
+    QProcess proc;
+#ifdef Q_OS_LINUX
+    const pid_t parentPid = ::getpid();
+    proc.setChildProcessModifier([parentPid] {
+        // Also stop a renderer if HyprFM exits before its worker can cancel it.
+        if (::prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0) == 0 && ::getppid() != parentPid)
+            ::_exit(1);
+    });
+#endif
+    proc.start(executable, arguments);
+    QDeadlineTimer deadline(timeout);
+    while (proc.state() != QProcess::NotRunning && !cancelled.load() && !deadline.hasExpired())
+        proc.waitForFinished(static_cast<int>(qMin<qint64>(100, deadline.remainingTime())));
+
+    if (proc.state() != QProcess::NotRunning) {
+        proc.kill();
+        proc.waitForFinished(-1);
+        return {};
+    }
+    if (cancelled.load() || proc.error() == QProcess::FailedToStart
+        || proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0)
+        return {};
+    return proc.readAllStandardOutput();
+}
+
 // pdfinfo prints "Page size:   595.28 x 841.89 pts (A4)" on one line.
 // Measured ~17 ms, and it used to run on every single page change even
 // though the answer is a property of the document, not the page.
-QSizeF pageSizeUncached(const QString &path)
+QSizeF pageSizeUncached(const QString &path, const std::atomic_bool &cancelled)
 {
-    QProcess proc;
-    proc.start(QStringLiteral("pdfinfo"), {path});
-    if (!proc.waitForFinished(5000) || proc.exitCode() != 0)
+    const auto output = runPdfCommand(QStringLiteral("pdfinfo"), {path}, 5000, cancelled);
+    if (output.isEmpty())
         return {};
 
-    const QString out = QString::fromUtf8(proc.readAllStandardOutput());
-    static const QRegularExpression re(
+    const QRegularExpression re(
         QStringLiteral(R"(Page size:\s*([0-9.]+)\s*x\s*([0-9.]+)\s*pts)"));
-    const auto m = re.match(out);
+    const auto m = re.match(QString::fromUtf8(output));
     if (!m.hasMatch())
         return {};
     return QSizeF(m.captured(1).toDouble(), m.captured(2).toDouble());
@@ -72,33 +110,32 @@ QSizeF pageSizeUncached(const QString &path)
 QSizeF pageSizeFromDisk(const QString &key);
 void pageSizeToDisk(const QString &key, const QSizeF &size);
 
-QSizeF pageSizePoints(const QString &path)
+QSizeF pageSizePoints(const QString &path, const std::atomic_bool &cancelled)
 {
     const QString key = path + QLatin1Char('\0')
         + QString::number(QFileInfo(path).lastModified().toMSecsSinceEpoch());
 
-    static QMutex mutex;
-    static QHash<QString, QSizeF> cache;
+    static auto *mutex = new QMutex;
+    static auto *cache = new QHash<QString, QSizeF>;
 
     {
-        QMutexLocker locker(&mutex);
-        const auto it = cache.constFind(key);
-        if (it != cache.constEnd())
+        QMutexLocker locker(mutex);
+        const auto it = cache->constFind(key);
+        if (it != cache->constEnd())
             return *it;
     }
 
-    // Deliberately computed outside the lock: two threads racing on a cold
-    // cache just both run pdfinfo and store the same answer, which is far
-    // cheaper than serialising every render behind one mutex.
     QSizeF size = pageSizeFromDisk(key);
     if (!size.isValid()) {
-        size = pageSizeUncached(path);
+        size = pageSizeUncached(path, cancelled);
         if (size.isValid())
             pageSizeToDisk(key, size);
     }
 
-    QMutexLocker locker(&mutex);
-    cache.insert(key, size);
+    if (!cancelled.load()) {
+        QMutexLocker locker(mutex);
+        cache->insert(key, size);
+    }
     return size;
 }
 
@@ -143,23 +180,22 @@ QString renderKey(const QString &path, int page, int dpi)
 
 QMutex &renderCacheMutex()
 {
-    static QMutex mutex;
-    return mutex;
+    static auto *mutex = new QMutex;
+    return *mutex;
 }
 
 QCache<QString, QImage> &renderCache()
 {
-    static QCache<QString, QImage> cache(64 * 1024 * 1024);
-    return cache;
+    static auto *cache = new QCache<QString, QImage>(64 * 1024 * 1024);
+    return *cache;
 }
 
 // Pages that could not be rendered: a file that is not really a PDF, or one
-// poppler refuses. Without this, every pass over a directory of them spawns
-// pdftoppm again for each one, and they are serialised behind renderLock().
+// poppler refuses. Otherwise, scrolling back would run pdftoppm again.
 QSet<QString> &failedRenders()
 {
-    static QSet<QString> failed;
-    return failed;
+    static auto *failed = new QSet<QString>;
+    return *failed;
 }
 
 // The in-memory cache dies with the process and is capped at 64 MB, so a
@@ -233,24 +269,41 @@ void pruneDiskCacheOnce()
     });
 }
 
-// Serialises the actual pdftoppm runs. Without it the cache never helps on
-// first paint: QML issues the duplicate requests concurrently, so both miss
-// the cache and both render. Holding this across the subprocess is safe --
-// it is only ever taken by pool threads, never by the GUI thread.
-QMutex &renderLock()
+QThreadPool *pdfPool(const QString &path)
 {
+    const QByteArray mount = MountTable().forPath(path);
     static QMutex mutex;
-    return mutex;
+    static auto *pools = new QHash<QByteArray, QThreadPool *>;
+    QMutexLocker locker(&mutex);
+    auto *&pool = (*pools)[mount];
+    if (!pool) {
+        // Serialise duplicate renders for a mount, while keeping other mounts
+        // independent. Qt waits for its global pool on exit, so keep these
+        // pools and the caches they use alive until the process ends.
+        pool = new QThreadPool;
+        pool->setMaxThreadCount(1);
+    }
+    return pool;
 }
 
 }
 
 PdfPreviewResponse::PdfPreviewResponse(const QString &id, const QSize &requestedSize)
-    : m_id(id)
-    , m_requestedSize(requestedSize)
+    : m_requestedSize(requestedSize)
 {
+    const auto request = parseRequest(id);
+    m_path = request.path;
+    m_page = request.page;
+    m_pool = pdfPool(m_path);
     setAutoDelete(false);
-    QThreadPool::globalInstance()->start(this);
+    m_pool->start(this);
+}
+
+void PdfPreviewResponse::cancel()
+{
+    m_cancelled.store(true);
+    if (m_pool->tryTake(this))
+        finish();
 }
 
 bool PdfPreviewResponse::tryCache(const QString &key)
@@ -296,56 +349,32 @@ void PdfPreviewResponse::finish()
 
 void PdfPreviewResponse::run()
 {
-    const PdfRequest request = parseRequest(m_id);
-    if (request.path.isEmpty() || !QFileInfo::exists(request.path)) {
-        finish();
+    const auto onExit = qScopeGuard([this] { finish(); });
+    if (m_cancelled.load() || m_path.isEmpty() || !QFileInfo(m_path).isFile())
         return;
-    }
 
-    if (QStandardPaths::findExecutable(QStringLiteral("pdftoppm")).isEmpty()) {
-        finish();
+    if (m_cancelled.load() || QStandardPaths::findExecutable(QStringLiteral("pdftoppm")).isEmpty())
         return;
-    }
 
     // poppler scans the first kilobyte for the header and renders anything it
     // finds one in, so this rejects only what it would reject anyway - but it
-    // does so with a 1 KB read instead of a process spawn. A directory of
-    // files that merely end in .pdf (MIME detection falls back to the
-    // extension when the content says nothing) used to start pdftoppm for
-    // every one of them, serialised behind renderLock().
-    if (!looksLikePdf(request.path)) {
-        finish();
+    // does so with a 1 KB read instead of a process spawn.
+    if (!looksLikePdf(m_path) || m_cancelled.load())
         return;
-    }
 
-    const QSizeF sizePts = pageSizePoints(request.path);
+    const QSizeF sizePts = pageSizePoints(m_path, m_cancelled);
+    if (m_cancelled.load())
+        return;
     const int dpi = static_cast<int>(dpiForRequest(sizePts, m_requestedSize) + 0.5);
-    const QString key = renderKey(request.path, request.page, dpi);
+    const QString key = renderKey(m_path, m_page, dpi);
 
-    if (tryCache(key)) {
-        finish();
+    if (tryCache(key) || tryDiskCache(key))
         return;
-    }
-    if (tryDiskCache(key)) {
-        finish();
-        return;
-    }
 
-    QMutexLocker renderLocker(&renderLock());
-
-    // Re-check: another thread may have rendered this exact page while we
-    // were queued behind it. This is the check that actually collapses the
-    // duplicate first-paint requests.
-    if (tryCache(key)) {
-        finish();
-        return;
-    }
     {
         QMutexLocker locker(&renderCacheMutex());
-        if (failedRenders().contains(key)) {
-            finish();
+        if (failedRenders().contains(key))
             return;
-        }
     }
 
     // pdftoppm writes to stdout only when no output-prefix argument is
@@ -357,23 +386,21 @@ void PdfPreviewResponse::run()
     // photographic-quality raster either way, and at quality=90 the mean
     // per-pixel difference from the PNG is 0.42/255 — invisible in a
     // preview pane, 8x faster to produce.
-    QProcess proc;
-    proc.start(QStringLiteral("pdftoppm"), {
+    const QByteArray jpeg = runPdfCommand(QStringLiteral("pdftoppm"), {
         QStringLiteral("-jpeg"),
         QStringLiteral("-jpegopt"), QStringLiteral("quality=90"),
         QStringLiteral("-singlefile"),
-        QStringLiteral("-f"), QString::number(request.page + 1),
-        QStringLiteral("-l"), QString::number(request.page + 1),
+        QStringLiteral("-f"), QString::number(m_page + 1),
+        QStringLiteral("-l"), QString::number(m_page + 1),
         QStringLiteral("-r"), QString::number(dpi),
-        request.path,
-    });
+        m_path,
+    }, 15000, m_cancelled);
 
-    const bool ran = proc.waitForFinished(15000) && proc.exitCode() == 0;
-    const QByteArray jpeg = ran ? proc.readAllStandardOutput() : QByteArray();
+    if (m_cancelled.load())
+        return;
     if (jpeg.isEmpty()) {
         QMutexLocker locker(&renderCacheMutex());
         failedRenders().insert(key);
-        finish();
         return;
     }
 
@@ -387,8 +414,6 @@ void PdfPreviewResponse::run()
         }
         writeDiskCache(key, jpeg);
     }
-
-    finish();
 }
 
 QQuickTextureFactory *PdfPreviewResponse::textureFactory() const
