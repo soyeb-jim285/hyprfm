@@ -76,11 +76,12 @@ add_executable(tst_previewservice tst_previewservice.cpp
     ${CMAKE_SOURCE_DIR}/src/services/metadataextractor.cpp
 )
 target_include_directories(tst_previewservice PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_previewservice PRIVATE Qt6::Test Qt6::Core Qt6::Gui)
+target_link_libraries(tst_previewservice PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Svg hyprfm_markdown)
 add_test(NAME tst_previewservice COMMAND tst_previewservice)
 # Without md2html on PATH, Markdown goes through Qt's own renderer.
 add_test(NAME tst_previewservice_no_md2html COMMAND tst_previewservice
-    testMarkdownPreviewDropsRemoteImages testMarkdownPreviewHonoursTheLineCap)
+    testMarkdownPreviewDropsRemoteImages testMarkdownPreviewHonoursTheLineCap
+    testMarkdownPreviewRendersMathOutsideCode)
 set_tests_properties(tst_previewservice_no_md2html PROPERTIES ENVIRONMENT "PATH=/nonexistent")
 
 add_executable(tst_rcloneservice tst_rcloneservice.cpp
@@ -155,7 +156,7 @@ target_compile_definitions(tst_millerview PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_millerview PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
+target_link_libraries(tst_millerview PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO hyprfm_markdown)
 add_dependencies(tst_millerview hyprfm)
 add_test(NAME tst_millerview COMMAND tst_millerview)
 
@@ -177,7 +178,7 @@ target_compile_definitions(tst_viewcontextmenu PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     TEST_MODULE_DIR="${CMAKE_BINARY_DIR}/src"
 )
-target_link_libraries(tst_viewcontextmenu PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO)
+target_link_libraries(tst_viewcontextmenu PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::DBus PkgConfig::GIO hyprfm_markdown)
 add_dependencies(tst_viewcontextmenu hyprfm)
 add_test(NAME tst_viewcontextmenu COMMAND tst_viewcontextmenu)
 
@@ -237,7 +238,7 @@ target_compile_definitions(tst_mainwindow PRIVATE
     HYPRFM_DATA_DIR="${CMAKE_SOURCE_DIR}"
     HYPRFM_VERSION="test"
 )
-target_link_libraries(tst_mainwindow PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Svg Qt6::Network Qt6::Concurrent PkgConfig::GIO)
+target_link_libraries(tst_mainwindow PRIVATE Qt6::Test Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Svg Qt6::Network Qt6::Concurrent PkgConfig::GIO hyprfm_markdown)
 add_dependencies(tst_mainwindow hyprfm)
 qt_add_resources(tst_mainwindow "logo"
     PREFIX "/HyprFM"

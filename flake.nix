@@ -123,7 +123,7 @@
             kdePackages.qtwayland
             kdePackages.kwindowsystem
             glib
-          ];
+          ] ++ lib.optional (pkgs ? jkqtplotter) pkgs.jkqtplotter;
 
           # Submodules aren't fetched for a plain flake source; drop the
           # pinned inputs in where CMake/QML expect them instead.

@@ -1372,15 +1372,6 @@ FocusScope {
             // is written against; without it Qt resolves them against the qrc:
             // path this view was loaded from and draws a broken-image glyph
             // for every one. Segments are encoded so spaces and '#' survive.
-            // Qt draws a rich-text image at its native size, so a README's
-            // screenshots run far outside the column and push the text off
-            // with them. A pixel max-width shrinks anything wider than the
-            // column and leaves whatever already fits alone.
-            function fitMarkdownImages(html, limit) {
-                return html.replace(/<img\b/g,
-                                    '<img style="max-width:' + Math.max(64, Math.floor(limit)) + 'px"')
-            }
-
             readonly property url markdownBaseUrl: {
                 if (!previewColumn.isMarkdown || previewColumn.previewFilePath === "")
                     return ""
@@ -1807,7 +1798,8 @@ FocusScope {
                         interactive: true
                         boundsMovement: Flickable.StopAtBounds
                         boundsBehavior: Flickable.StopAtBounds
-                        contentWidth: previewColumn.isMarkdown ? markdownWidth : Math.max(width, textArea.implicitWidth)
+                        contentWidth: previewColumn.isMarkdown ? Math.max(markdownWidth, markdownGraphics.rightEdge)
+                            : Math.max(width, textArea.implicitWidth)
                         contentHeight: Math.max(height, textArea.implicitHeight)
 
                         // The width Markdown is laid out at, caught up once the
@@ -1839,15 +1831,20 @@ FocusScope {
                                     ? "This file looks binary and cannot be previewed as text."
                                     : (previewColumn.textPreview.usesBat && previewColumn.textPreview.html !== ""
                                         ? (previewColumn.isMarkdown
-                                            ? previewColumn.fitMarkdownImages(
-                                                  previewColumn.textPreview.html,
-                                                  textPreviewFlick.markdownWidth - 24)
+                                            ? markdownGraphics.preparedHtml
                                             : previewColumn.textPreview.html)
                                         : previewColumn.textPreview.content))
                             color: Theme.text
                             wrapMode: previewColumn.isMarkdown ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
                             font.family: previewColumn.isMarkdown ? Qt.application.font.family : "monospace"
-                            font.pointSize: Theme.fontSmall - 1
+                            font.pointSize: Theme.fontSmall - 1 * (previewColumn.isMarkdown ? markdownGraphics.zoom : 1)
+
+                            MarkdownGraphics {
+                                id: markdownGraphics
+                                editor: textArea
+                                html: previewColumn.isMarkdown ? previewColumn.textPreview.html : ""
+                                availableWidth: textPreviewFlick.markdownWidth - 24
+                            }
 
                             onCursorRectangleChanged: {
                                 var r = cursorRectangle

@@ -121,6 +121,7 @@ list(APPEND hyprfm_qml_module_args
         qml/components/ConfirmDialog.qml
         qml/components/QuillThemeBinding.qml
         qml/components/RemoteConnectDialog.qml
+        qml/components/MarkdownGraphics.qml
         qml/components/PreviewLoader.qml
         qml/components/QuickPreview.qml
         qml/components/CsvTable.qml
@@ -199,6 +200,10 @@ if(HYPRFM_TERMINAL)
     list(APPEND hyprfm_qml_module_args qml/components/TerminalPanel.qml)
 endif()
 
+find_package(Qt6QuickVectorImage CONFIG QUIET)
+if(TARGET Qt6::QuickVectorImage)
+    list(APPEND hyprfm_qml_module_args qml/components/MarkdownVectorImage.qml)
+endif()
 qt_add_qml_module(hyprfm ${hyprfm_qml_module_args})
 
 # The app logo, for the About page; the installed copy is only in the icon
@@ -267,6 +272,7 @@ target_link_libraries(hyprfm PRIVATE
     Qt6::QuickControls2
     Qt6::DBus
     Qt6::Svg
+    hyprfm_markdown
     Qt6::Network
     Qt6::Concurrent
     PkgConfig::GIO
