@@ -285,7 +285,11 @@ SVG files, resolve relative to the Markdown document. Basic Markdown
 also renders through Qt without `md2html`.
 
 Builds with JKQTMathText 5, including the Nix package, render inline and
-display LaTeX math. Unsupported TeX commands stay visible as source.
+display LaTeX math. Math uses Latin Modern when available and follows the
+surrounding text size and baseline. Equations and SVG diagrams both follow
+Ctrl+wheel zoom in the Markdown preview. Builds with Qt Quick VectorImage
+display them as vector artwork.
+Unsupported TeX commands stay visible as source.
 The preview uses Qt rich text. Mermaid diagrams display as fenced code,
 and interactive HTML and Markdown footnotes have limited support.
 

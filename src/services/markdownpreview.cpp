@@ -1,6 +1,8 @@
 #include "markdownpreview.h"
 
 #include <QBuffer>
+#include <QFile>
+#include <QFileInfo>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
@@ -9,13 +11,16 @@
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QUrl>
 #include <QUuid>
 #include <QXmlStreamReader>
 
 #ifdef HYPRFM_MARKDOWN_MATH
+#include "outlinesvg.h"
+
+#include <QFontDatabase>
+#include <QFontMetricsF>
 #include <QImage>
-#include <QPainter>
-#include <QSvgGenerator>
 #include <QtMath>
 #include <jkqtmathtext/jkqtmathtext.h>
 #endif
@@ -56,13 +61,19 @@ QString unescapeCode(QString code)
         .replace(QStringLiteral("&amp;"), QStringLiteral("&"));
 }
 
-QString imageTag(const QByteArray &svg, const QString &description)
+QString svgDataUrl(const QByteArray &svg, const QSize &size, qreal xHeight = 0, qreal descent = 0)
 {
-    return QStringLiteral("<img src=\"data:image/svg+xml;base64,%1\" alt=\"%2\">")
-        .arg(QString::fromLatin1(svg.toBase64()), description.toHtmlEscaped());
+    return QStringLiteral("data:image/svg+xml;base64,%1#hyprfm-svg,%2,%3,%4,%5")
+        .arg(QString::fromLatin1(svg.toBase64())).arg(size.width()).arg(size.height())
+        .arg(xHeight).arg(descent);
 }
 
-QString svgImage(const QString &source)
+QString imageTag(const QString &source, const QString &description)
+{
+    return QStringLiteral("<img src=\"%1\" alt=\"%2\">").arg(source, description.toHtmlEscaped());
+}
+
+QString diagramUrl(const QString &source)
 {
     if (source.size() > 128 * 1024)
         return {};
@@ -106,7 +117,7 @@ QString svgImage(const QString &source)
     const QSize size = renderer.defaultSize();
     if (!renderer.isValid() || size.isEmpty() || size.width() > 4096 || size.height() > 4096)
         return {};
-    return imageTag(svg, QStringLiteral("SVG diagram"));
+    return svgDataUrl(svg, size);
 }
 
 struct Equation
@@ -125,7 +136,22 @@ QString equationImage(const Equation &equation, bool lightTheme)
 
     JKQTMathText math;
     math.useXITS();
-    math.setFontSizePixels(equation.display ? 22 : 16);
+    // Match Sioyek's note typography. The 10 pt optical master has genuine
+    // italic letterforms. The math face supplies operators and symbols.
+    const auto encoding = JKQTMathTextFontEncoding::MTFEUnicode;
+    static const auto families = QFontDatabase::families();
+    const QString latinMath = QStringLiteral("Latin Modern Math");
+    if (families.contains(latinMath)) {
+        math.setFontRomanAndMath(latinMath, encoding);
+        math.setFallbackFontSymbols(latinMath, encoding);
+        if (families.contains(QStringLiteral("LM Roman 10")))
+            math.setFontMathRoman(QStringLiteral("LM Roman 10"), encoding);
+    }
+    if (families.contains(QStringLiteral("TeX Gyre Chorus")))
+        math.setFontCaligraphic(QStringLiteral("TeX Gyre Chorus"), encoding);
+
+    constexpr int em = 48;
+    math.setFontSizePixels(equation.display ? 60 : em);
     math.setFontColor(lightTheme ? QColor(Qt::black) : QColor(Qt::white));
     if (!math.parse(equation.source.trimmed(), JKQTMathText::DefaultParser,
                     JKQTMathText::StartWithMathMode) || !math.getErrorList().isEmpty()) {
@@ -138,22 +164,22 @@ QString equationImage(const Equation &equation, bool lightTheme)
     constexpr int padding = 2;
     const QSize size(qCeil(dimensions.width) + 2 * padding,
                      qCeil(dimensions.getAscent() + dimensions.getDescent()) + 2 * padding);
-    if (size.isEmpty() || size.width() > 3072 || size.height() > 1024)
+    if (size.isEmpty() || size.width() > 8192 || size.height() > 3072)
         return {};
 
     QByteArray svg;
     QBuffer buffer(&svg);
     buffer.open(QIODevice::WriteOnly);
-    QSvgGenerator generator;
-    generator.setOutputDevice(&buffer);
-    generator.setSize(size);
-    generator.setViewBox(QRect(QPoint(), size));
-    generator.setResolution(96);
+    OutlineSvg generator(&buffer, size);
     QPainter painter(&generator);
     math.draw(painter, padding, padding + dimensions.getAscent());
     painter.end();
 
-    const QString image = imageTag(svg, equation.original);
+    QFont font(math.getFontMathRoman());
+    font.setPixelSize(em);
+    const qreal xHeight = QFontMetricsF(font, &metrics).xHeight();
+    const qreal descent = equation.display ? 0 : size.height() - padding - dimensions.getAscent();
+    const QString image = imageTag(svgDataUrl(svg, size, xHeight, descent), equation.original);
     return equation.display ? QStringLiteral("<br>%1<br>").arg(image) : image;
 #else
     Q_UNUSED(equation);
@@ -260,13 +286,19 @@ private:
                 output += image.isEmpty() ? equation.original.toHtmlEscaped() : image;
             } else if (match.hasCaptured(1)) {
                 const QString source = unescapeCode(restoreEquations(match.captured(2)));
-                const QString image = match.captured(1).compare(QLatin1String("svg"), Qt::CaseInsensitive) == 0
-                    ? svgImage(source) : equationImage({source, source, true}, m_lightTheme);
+                QString image;
+                if (match.captured(1).compare(QLatin1String("svg"), Qt::CaseInsensitive) == 0) {
+                    const QString url = diagramUrl(source);
+                    if (!url.isEmpty())
+                        image = imageTag(url, QStringLiteral("SVG diagram"));
+                } else {
+                    image = equationImage({source, source, true}, m_lightTheme);
+                }
                 output += image.isEmpty() ? restoreEquations(match.captured()) : image;
             } else if (match.hasCaptured(3)) {
                 const QString svg = restoreEquations(match.captured(), false);
-                const QString image = svgImage(svg);
-                output += image.isEmpty() ? svg.toHtmlEscaped() : image;
+                const QString url = diagramUrl(svg);
+                output += url.isEmpty() ? svg.toHtmlEscaped() : imageTag(url, QStringLiteral("SVG diagram"));
             } else {
                 output += restoreEquations(match.captured());
             }
@@ -300,7 +332,7 @@ private:
 
 }
 
-QString renderMarkdownPreview(const QString &markdown, bool lightTheme)
+QString renderMarkdownPreview(const QString &markdown, bool lightTheme, const QString &path)
 {
     QString html = MarkdownGraphics(lightTheme).toHtml(markdown);
     html.replace(QStringLiteral("<table>"),
@@ -321,5 +353,33 @@ QString renderMarkdownPreview(const QString &markdown, bool lightTheme)
         QStringLiteral(R"(<img\b[^>]*\bsrc\s*=\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?//[^>]*>)"),
         QRegularExpression::CaseInsensitiveOption);
     html.remove(remoteImage);
-    return html;
+    // Resolve linked SVGs on the preview worker with the same size and
+    // self-contained artwork checks as embedded diagrams. Keep the original
+    // image link as the fallback for files Qt's rich text already handled.
+    static const QRegularExpression linkedImage(
+        QStringLiteral(R"re(<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["'][^>]*>)re"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QUrl base = QUrl::fromLocalFile(path).adjusted(QUrl::RemoveFilename);
+    auto sources = linkedImage.globalMatch(html);
+    QString withVectors;
+    qsizetype offset = 0;
+    while (sources.hasNext()) {
+        const auto match = sources.next();
+        const QUrl url = base.resolved(QUrl(unescapeCode(match.captured(1))));
+        if (!url.isLocalFile() || !url.path().endsWith(QLatin1String(".svg"), Qt::CaseInsensitive))
+            continue;
+        const QFileInfo info(url.toLocalFile());
+        if (!info.isFile() || info.size() > 128 * 1024)
+            continue;
+        QFile file(info.filePath());
+        if (!file.open(QIODevice::ReadOnly))
+            continue;
+        const QString source = diagramUrl(QString::fromUtf8(file.read(128 * 1024 + 1)));
+        if (source.isEmpty())
+            continue;
+        withVectors += QStringView(html).mid(offset, match.capturedStart(1) - offset);
+        withVectors += source;
+        offset = match.capturedEnd(1);
+    }
+    return withVectors + QStringView(html).mid(offset);
 }

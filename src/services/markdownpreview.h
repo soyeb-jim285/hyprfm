@@ -2,4 +2,4 @@
 
 #include <QString>
 
-QString renderMarkdownPreview(const QString &markdown, bool lightTheme);
+QString renderMarkdownPreview(const QString &markdown, bool lightTheme, const QString &path);

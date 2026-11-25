@@ -46,6 +46,9 @@ public:
 
     Q_INVOKABLE QVariantMap loadTextPreview(const QString &path, int maxBytes = 131072,
                                             int maxLines = 400, bool lightTheme = false) const;
+    Q_INVOKABLE QVariantMap prepareMarkdownGraphics(QObject *document, const QString &html) const;
+    Q_INVOKABLE QVariantList layoutMarkdownGraphics(QObject *document, const QVariantList &images,
+                                                   qreal zoom, qreal width) const;
     Q_INVOKABLE QVariantMap loadDirectoryPreview(const QString &path, int maxEntries = 40) const;
     Q_INVOKABLE QVariantMap loadArchivePreview(const QString &path, int maxEntries = 200,
                                                const QString &password = QString()) const;

@@ -15,8 +15,11 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Svg 
 find_package(KF6WindowSystem QUIET)
 find_package(JKQTPlotter6 CONFIG QUIET)
 
-add_library(hyprfm_markdown STATIC src/services/markdownpreview.cpp)
-target_link_libraries(hyprfm_markdown PRIVATE Qt6::Gui Qt6::Svg)
+add_library(hyprfm_markdown STATIC
+    src/services/markdownpreview.cpp
+    src/services/markdownpreviewlayout.cpp
+)
+target_link_libraries(hyprfm_markdown PRIVATE Qt6::Gui Qt6::Quick Qt6::Svg)
 if(TARGET JKQTPlotter::JKQTMathText)
     target_link_libraries(hyprfm_markdown PRIVATE JKQTPlotter::JKQTMathText)
     target_compile_definitions(hyprfm_markdown PUBLIC HYPRFM_MARKDOWN_MATH)

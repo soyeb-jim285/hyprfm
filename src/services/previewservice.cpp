@@ -660,7 +660,7 @@ QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, i
     result["lineCount"] = lines.size();
 
     if (!binary && isMarkdownPath(path)) {
-        const QString html = renderMarkdownPreview(plainText, lightTheme);
+        const QString html = renderMarkdownPreview(plainText, lightTheme, path);
         if (!html.isEmpty()) {
             result["html"] = html;
             result["usesBat"] = true;   // QML routes this into its RichText branch

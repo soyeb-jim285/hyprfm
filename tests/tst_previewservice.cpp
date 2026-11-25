@@ -354,7 +354,7 @@ private slots:
         PreviewService service;
         const QString html = service.loadTextPreview(file.fileName()).value("html").toString();
         QCOMPARE(html.count("data:image/svg+xml;base64,"), 2);
-        const QRegularExpression imageData("data:image/svg[+]xml;base64,([^\"]+)");
+        const QRegularExpression imageData("data:image/svg[+]xml;base64,([A-Za-z0-9+/=]+)");
         const auto firstImage = imageData.match(html);
         QSvgRenderer renderer(QByteArray::fromBase64(firstImage.captured(1).toLatin1()));
         QVERIFY(renderer.isValid());
@@ -407,6 +407,14 @@ private slots:
         QCOMPARE(dark.count("data:image/svg+xml;base64,"), 4);
         QCOMPARE(light.count("data:image/svg+xml;base64,"), 4);
         QVERIFY(dark != light);
+        const QRegularExpression equationSvg("data:image/svg[+]xml;base64,([A-Za-z0-9+/=]+)#hyprfm-svg,");
+        auto equations = equationSvg.globalMatch(dark);
+        while (equations.hasNext()) {
+            const QByteArray svg = QByteArray::fromBase64(equations.next().captured(1).toLatin1());
+            QVERIFY(svg.contains("<path"));
+            QVERIFY(!svg.contains("<text"));
+            QVERIFY(!svg.contains("<image"));
+        }
         QVERIFY(dark.contains("$5 and $10"));
         QVERIFY(dark.contains("$x^2$"));
         QVERIFY(dark.contains("$z+1$"));
