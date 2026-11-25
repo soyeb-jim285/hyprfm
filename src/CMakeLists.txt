@@ -267,6 +267,7 @@ target_link_libraries(hyprfm PRIVATE
     Qt6::QuickControls2
     Qt6::DBus
     Qt6::Svg
+    hyprfm_markdown
     Qt6::Network
     Qt6::Concurrent
     PkgConfig::GIO

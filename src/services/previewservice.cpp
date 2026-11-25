@@ -1,6 +1,7 @@
 #include "services/previewservice.h"
 #include "services/archivepassword.h"
 
+#include "services/markdownpreview.h"
 #include "services/metadataextractor.h"
 
 #include <QDir>
@@ -15,7 +16,6 @@
 #include <QRegularExpression>
 #include <QRawFont>
 #include <QStandardPaths>
-#include <QTextDocument>
 #include <QThreadPool>
 #include <QUrl>
 
@@ -504,87 +504,6 @@ bool isJsonPath(const QString &path)
     return QFileInfo(path).suffix().compare(QLatin1String("json"), Qt::CaseInsensitive) == 0;
 }
 
-// Qt's own Markdown reader (md4c is built into QtGui), for systems without
-// md2html: Debian and Ubuntu package md4c's libraries but not its CLI. Only
-// the body is kept: the <body> tag pins the document's font and size, which
-// the preview sets itself.
-QString qtMarkdownToHtml(const QByteArray &markdown)
-{
-    QTextDocument doc;
-    doc.setMarkdown(QString::fromUtf8(markdown), QTextDocument::MarkdownDialectGitHub);
-    const QString html = doc.toHtml();
-    const qsizetype bodyTag = html.indexOf(QLatin1String("<body"));
-    const qsizetype start = bodyTag < 0 ? -1 : html.indexOf(QLatin1Char('>'), bodyTag);
-    const qsizetype end = html.lastIndexOf(QLatin1String("</body>"));
-    if (start < 0 || end < start)
-        return html;
-    return html.mid(start + 1, end - start - 1);
-}
-
-// Render Markdown to HTML via `md2html` (md4c), or Qt's reader without it.
-// md2html reads the data on stdin so the path never has to be quoted, and
-// never touches a shell. Returns empty and sets `error` when md2html times
-// out or fails.
-QByteArray markdownToHtml(const QByteArray &markdown, QString *error)
-{
-    if (error)
-        error->clear();
-
-    // Looked up once, the way batExecutable() does: this runs for every
-    // Markdown file the selection lands on.
-    static const QString executable =
-        QStandardPaths::findExecutable(QStringLiteral("md2html"));
-    QString html;
-    if (executable.isEmpty()) {
-        html = qtMarkdownToHtml(markdown);
-    } else {
-        QProcess proc;
-        // GFM (--github) enables GitHub-flavoured tables plus strikethrough,
-        // autolinks and task lists. Qt's rich-text engine renders all of them
-        // (minus the checkbox glyphs on task list items).
-        proc.start(executable, {QStringLiteral("--github")});
-        if (!proc.waitForStarted(2000)) {
-            if (error)
-                *error = proc.errorString();
-            return {};
-        }
-        proc.write(markdown);
-        proc.closeWriteChannel();
-        if (!proc.waitForFinished(5000)) {
-            proc.kill();
-            if (error)
-                *error = QStringLiteral("md2html preview timed out");
-            return {};
-        }
-        if (proc.exitCode() != 0) {
-            if (error)
-                *error = QString::fromUtf8(proc.readAllStandardError()).trimmed();
-            return {};
-        }
-
-        html = QString::fromUtf8(proc.readAllStandardOutput());
-    }
-    // Qt's rich-text engine only draws an HTML <table> as a bordered grid when
-    // the tag carries a border attribute; otherwise it flattens the cells into
-    // run-on text. md2html emits a bare <table>, so inject the attributes here
-    // to get real column layout and gridlines in the preview.
-    html.replace(QStringLiteral("<table>"),
-                 QStringLiteral("<table border=\"1\" cellpadding=\"4\" cellspacing=\"0\">"));
-
-    // Qt resolves <img> through QQuickPixmap, which fetches http(s) URLs. A
-    // Markdown file from a download, an archive or a shared folder could
-    // therefore tell whoever wrote it that the file had been opened, and hand
-    // over the reader's IP, from nothing more than selecting it in the file
-    // list. Remote images are dropped before the HTML ever reaches the view;
-    // local ones stay, since drawing them costs no request. Covers Markdown's
-    // own image syntax and the raw <img> tags md4c passes straight through.
-    static const QRegularExpression remoteImage(
-        QStringLiteral("<img\\b[^>]*\\bsrc\\s*=\\s*[\"']?\\s*(?:[a-z][a-z0-9+.-]*:)?//[^>]*>"),
-        QRegularExpression::CaseInsensitiveOption);
-    html.remove(remoteImage);
-    return html.toUtf8();
-}
-
 }
 
 PreviewService::PreviewService(QObject *parent)
@@ -630,7 +549,7 @@ void PreviewService::cancelPreview(const QString &requester)
 }
 
 void PreviewService::requestPreview(const QString &requester, const QString &path,
-                                    const QString &kind, const QString &password)
+                                    const QString &kind, const QString &password, bool lightTheme)
 {
     const quint64 generation = bumpGeneration(requester);
 
@@ -639,8 +558,8 @@ void PreviewService::requestPreview(const QString &requester, const QString &pat
         return;
     }
 
-    m_pool->start([this, requester, path, kind, password, generation]() {
-        const QVariantMap data = buildPreview(path, kind, password);
+    m_pool->start([this, requester, path, kind, password, generation, lightTheme]() {
+        const QVariantMap data = buildPreview(path, kind, password, lightTheme);
 
         // Cheap early-out so a superseded worker doesn't queue a no-op onto
         // the GUI thread. The authoritative check is the one inside the
@@ -657,12 +576,12 @@ void PreviewService::requestPreview(const QString &requester, const QString &pat
 }
 
 QVariantMap PreviewService::buildPreview(const QString &path, const QString &kind,
-                                         const QString &password) const
+                                         const QString &password, bool lightTheme) const
 {
     QVariantMap data;
 
     if (kind == QLatin1String("text"))
-        data["text"] = loadTextPreview(path);
+        data["text"] = loadTextPreview(path, 131072, 400, lightTheme);
     else if (kind == QLatin1String("pdf"))
         data["pdf"] = loadPdfPreview(path);
     else if (kind == QLatin1String("archive"))
@@ -689,7 +608,7 @@ void PreviewService::refreshSupport()
     emit supportChanged();
 }
 
-QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, int maxLines) const
+QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, int maxLines, bool lightTheme) const
 {
     QVariantMap result;
     bool truncated = false;
@@ -741,19 +660,13 @@ QVariantMap PreviewService::loadTextPreview(const QString &path, int maxBytes, i
     result["lineCount"] = lines.size();
 
     if (!binary && isMarkdownPath(path)) {
-        // Rendered Markdown document (md2html), not bat highlighting. Renders
-        // the text the cap already trimmed, so a long document costs the same
-        // as it does through bat.
-        QString mdError;
-        const QByteArray html = markdownToHtml(plainText.toUtf8(), &mdError);
+        const QString html = renderMarkdownPreview(plainText, lightTheme);
         if (!html.isEmpty()) {
-            result["html"] = QString::fromUtf8(html);
+            result["html"] = html;
             result["usesBat"] = true;   // QML routes this into its RichText branch
             result["markdown"] = true;  // lets QML choose wrap/font for a document
             return result;
         }
-        // md2html missing/failed: fall through to bat so the user still sees
-        // the raw source, highlighted, rather than a blank pane.
     }
 
     if (!binary) {

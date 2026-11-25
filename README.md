@@ -278,10 +278,16 @@ A note on Markdown previews: `md2html` ships in the `md4c` package on Arch
 and Alpine, and in `pkgs.md4c` on Nix. Debian and Ubuntu package md4c's
 libraries but **not** its command line tool, and Fedora has no md4c binary
 package either, so on those distributions build `md2html` from
-[md4c](https://github.com/mity/md4c) if you want rendered Markdown. Without
-it, `.md` files fall back to `bat` and show as highlighted source, exactly
-as they did before. The Flatpak bundles `md2html` itself, so no extra
-install is needed there.
+[md4c](https://github.com/mity/md4c) for the same preview features. The
+Flatpak and Nix packages include `md2html`. It adds support for embedded
+SVG diagrams in `svg` fences and raw HTML. Local image links, including
+SVG files, resolve relative to the Markdown document. Basic Markdown
+also renders through Qt without `md2html`.
+
+Builds with JKQTMathText 5, including the Nix package, render inline and
+display LaTeX math. Unsupported TeX commands stay visible as source.
+The preview uses Qt rich text. Mermaid diagrams display as fenced code,
+and interactive HTML and Markdown footnotes have limited support.
 
 ---
 

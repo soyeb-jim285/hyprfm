@@ -5,10 +5,13 @@
 #include <sys/stat.h>
 #include <QDir>
 #include <QFile>
+#include <QImage>
 #include <QPainter>
 #include <QPdfWriter>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QStandardPaths>
+#include <QSvgRenderer>
 #include <QTemporaryDir>
 #include <QUuid>
 
@@ -309,6 +312,106 @@ private slots:
         QVERIFY2(html.contains("<em>"), qPrintable(html.left(200)));
         // Raw source must not leak through as the body.
         QVERIFY2(!html.contains("# Title"), qPrintable(html.left(200)));
+    }
+
+    void testMarkdownPreviewRendersGraphicsAndTasks()
+    {
+        if (!md2htmlAvailable())
+            QSKIP("md2html not found in PATH");
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile file(dir.filePath("graphics.md"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("# Graphics\n"
+                   "\n"
+                   "- [x] Done\n"
+                   "- [ ] Pending\n"
+                   "\n"
+                   "> ~~~svg\n"
+                   "> <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 60 40\">\n"
+                   ">   <rect width=\"60\" height=\"40\" fill=\"#de251e\"/>\n"
+                   "> </svg>\n"
+                   "> ~~~\n"
+                   "\n"
+                   "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"30\">\n"
+                   "  <circle cx=\"20\" cy=\"15\" r=\"10\" fill=\"#229a50\"/>\n"
+                   "</svg>\n"
+                   "\n"
+                   "```svg\n"
+                   "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"60\" height=\"40\">\n"
+                   "  <image href=\"https://tracker.invalid/pixel.png\" width=\"60\" height=\"40\"/>\n"
+                   "</svg>\n"
+                   "```\n"
+                   "\n"
+                   "```xml\n"
+                   "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"60\" height=\"40\"/>\n"
+                   "```\n"
+                   "\n"
+                   "![Local figure](images/plot.svg)\n");
+        file.close();
+
+        PreviewService service;
+        const QString html = service.loadTextPreview(file.fileName()).value("html").toString();
+        QCOMPARE(html.count("data:image/svg+xml;base64,"), 2);
+        const QRegularExpression imageData("data:image/svg[+]xml;base64,([^\"]+)");
+        const auto firstImage = imageData.match(html);
+        QSvgRenderer renderer(QByteArray::fromBase64(firstImage.captured(1).toLatin1()));
+        QVERIFY(renderer.isValid());
+        QImage diagram(renderer.defaultSize(), QImage::Format_ARGB32_Premultiplied);
+        diagram.fill(Qt::transparent);
+        QPainter painter(&diagram);
+        renderer.render(&painter);
+        painter.end();
+        QCOMPARE(diagram.pixelColor(diagram.width() / 2, diagram.height() / 2), QColor("#de251e"));
+        QVERIFY(html.contains("&#9745;"));
+        QVERIFY(html.contains("&#9744;"));
+        QVERIFY(html.contains("&lt;image href="));
+        QVERIFY(html.contains("images/plot.svg"));
+    }
+
+    void testMarkdownPreviewRendersMathOutsideCode()
+    {
+#ifndef HYPRFM_MARKDOWN_MATH
+        QSKIP("Built without JKQTMathText");
+#else
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile file(dir.filePath("equations.md"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("An inline $x_1^2$ and \\(\\sqrt{x}\\).\n"
+                   "\n"
+                   "\\[\n"
+                   "\\frac{a}{b}\n"
+                   "\\]\n"
+                   "\n"
+                   "$$\\sum_{i=1}^{n} i$$\n"
+                   "\n"
+                   "Prices $5 and $10 are ordinary text.\n"
+                   "\n"
+                   "Literal `$x^2$` and \\$z+1$.\n"
+                   "\n"
+                   "```sh\n"
+                   "printf '%s' '$x^2$'\n"
+                   "```\n"
+                   "\n"
+                   "An unsupported $\\HyprfmUnknownCommand{1}$ stays readable.\n");
+        file.close();
+
+        PreviewService service;
+        const auto preview = [&](bool lightTheme) {
+            return service.loadTextPreview(file.fileName(), 4096, 100, lightTheme).value("html").toString();
+        };
+        const QString dark = preview(false);
+        const QString light = preview(true);
+        QCOMPARE(dark.count("data:image/svg+xml;base64,"), 4);
+        QCOMPARE(light.count("data:image/svg+xml;base64,"), 4);
+        QVERIFY(dark != light);
+        QVERIFY(dark.contains("$5 and $10"));
+        QVERIFY(dark.contains("$x^2$"));
+        QVERIFY(dark.contains("$z+1$"));
+        QVERIFY(dark.contains("$\\HyprfmUnknownCommand{1}$"));
+#endif
     }
 
     void testMarkdownTablesGetBorders()

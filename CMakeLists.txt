@@ -13,6 +13,14 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Svg Network Concurrent)
 find_package(KF6WindowSystem QUIET)
+find_package(JKQTPlotter6 CONFIG QUIET)
+
+add_library(hyprfm_markdown STATIC src/services/markdownpreview.cpp)
+target_link_libraries(hyprfm_markdown PRIVATE Qt6::Gui Qt6::Svg)
+if(TARGET JKQTPlotter::JKQTMathText)
+    target_link_libraries(hyprfm_markdown PRIVATE JKQTPlotter::JKQTMathText)
+    target_compile_definitions(hyprfm_markdown PUBLIC HYPRFM_MARKDOWN_MATH)
+endif()
 
 # Built-in terminal on libghostty-vt, Ghostty's terminal core (MIT). Its C API
 # is only on Ghostty's main branch so far, hence the pinned commit; building it
