@@ -362,6 +362,7 @@ void ConfigManager::setDefaults()
     m_sidebarWidth = 200;
     m_dependencyStartupCheck = true;
     m_sidebarVisible = true;
+    m_previewPanelVisible = false;
     m_sidebarHeader = QStringLiteral("name");
     m_sidebarAutoHideWidth = 700;
     m_hiddenQuickAccess.clear();
@@ -506,6 +507,8 @@ void ConfigManager::loadConfig()
             m_sidebarWidth = static_cast<int>(*v);
         if (auto v = config["sidebar"]["visible"].value<bool>())
             m_sidebarVisible = *v;
+        if (auto v = config["general"]["preview_panel_visible"].value<bool>())
+            m_previewPanelVisible = *v;
         // show_title = false shipped briefly on main before header did.
         if (auto v = config["sidebar"]["show_title"].value<bool>(); v && !*v)
             m_sidebarHeader = QStringLiteral("none");
@@ -1386,6 +1389,11 @@ void ConfigManager::saveSettings(const QVariantMap &settings)
     if (settings.contains("rememberSortPerFolder")) {
         m_rememberSortPerFolder = settings.value("rememberSortPerFolder").toBool();
         general.insert_or_assign("remember_sort_per_folder", m_rememberSortPerFolder);
+    }
+
+    if (settings.contains("previewPanelVisible")) {
+        m_previewPanelVisible = settings.value("previewPanelVisible").toBool();
+        general.insert_or_assign("preview_panel_visible", m_previewPanelVisible);
     }
 
     if (!general.empty())

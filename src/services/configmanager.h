@@ -43,6 +43,7 @@ class ConfigManager : public QObject
     Q_PROPERTY(QString sidebarPosition READ sidebarPosition NOTIFY configChanged)
     Q_PROPERTY(int sidebarWidth READ sidebarWidth NOTIFY configChanged)
     Q_PROPERTY(bool sidebarVisible READ sidebarVisible NOTIFY configChanged)
+    Q_PROPERTY(bool previewPanelVisible READ previewPanelVisible NOTIFY configChanged)
     Q_PROPERTY(QString sidebarHeader READ sidebarHeader NOTIFY configChanged)
     Q_PROPERTY(int sidebarAutoHideWidth READ sidebarAutoHideWidth NOTIFY configChanged)
     Q_PROPERTY(QStringList hiddenQuickAccess READ hiddenQuickAccess NOTIFY configChanged)
@@ -119,6 +120,7 @@ public:
     QString sidebarPosition() const;
     int sidebarWidth() const;
     bool sidebarVisible() const;
+    bool previewPanelVisible() const { return m_previewPanelVisible; }
     QString sidebarHeader() const;
     // Window width below which the sidebar folds away on its own; 0 disables it.
     int sidebarAutoHideWidth() const;
@@ -245,6 +247,7 @@ private:
     QString m_sidebarPosition;
     int m_sidebarWidth;
     bool m_sidebarVisible;
+    bool m_previewPanelVisible = false;
     QString m_sidebarHeader;  // "name" | "logo" | "button" | "none"
     int m_sidebarAutoHideWidth;
     QStringList m_hiddenQuickAccess;

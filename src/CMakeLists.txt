@@ -122,6 +122,7 @@ list(APPEND hyprfm_qml_module_args
         qml/components/QuillThemeBinding.qml
         qml/components/RemoteConnectDialog.qml
         qml/components/PreviewLoader.qml
+        qml/components/FilePreviewPanel.qml
         qml/components/QuickPreview.qml
         qml/components/CsvTable.qml
         qml/components/Toast.qml
